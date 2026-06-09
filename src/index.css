@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-primary: #030408;
+  --color-accent: #38BDF8;
+  --color-accent-hover: #0EA5E9;
+}
+
+@layer base {
+  body {
+    @apply font-sans text-slate-900 bg-white;
+  }
+}
+
+.glass-card {
+  @apply bg-white/10 backdrop-blur-md border border-white/20;
+}
+
+.btn-primary {
+  @apply bg-accent text-primary font-semibold px-6 py-3 rounded-full transition-all hover:bg-accent-hover flex items-center gap-2;
+}
+
+.btn-outline {
+  @apply border border-white/30 text-white font-semibold px-6 py-3 rounded-full transition-all hover:bg-white/10 flex items-center gap-2;
+}
+
+.section-padding {
+  @apply py-20 px-6 md:px-12 lg:px-24;
+}
+
+.heading-lg {
+  @apply text-4xl md:text-5xl lg:text-6xl font-bold leading-tight;
+}
+
+.heading-md {
+  @apply text-3xl md:text-4xl font-bold;
+}
+
+@layer utilities {
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .animate-marquee {
+    animation: marquee 30s linear infinite;
+  }
+}
+
+/* Standee Simulator Playback Transitions */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+@keyframes zoomIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes flipIn {
+  from { transform: perspective(800px) rotateY(90deg); opacity: 0; }
+  to { transform: perspective(800px) rotateY(0deg); opacity: 1; }
+}
+@keyframes spinIn {
+  from { transform: rotate(180deg) scale(0.8); opacity: 0; }
+  to { transform: rotate(0deg) scale(1); opacity: 1; }
+}
+@keyframes blurIn {
+  from { filter: blur(12px); opacity: 0; }
+  to { filter: blur(0); opacity: 1; }
+}
+@keyframes bounceIn {
+  0% { transform: scale(0.9); opacity: 0; }
+  50% { transform: scale(1.03); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes wipeIn {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.animate-fadeIn { animation: fadeIn 0.6s ease-out forwards; }
+.animate-slideIn { animation: slideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slideUp { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slideDown { animation: slideDown 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-zoomIn { animation: zoomIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-flipIn { animation: flipIn 0.7s ease-out forwards; }
+.animate-spinIn { animation: spinIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.animate-blurIn { animation: blurIn 0.6s ease-out forwards; }
+.animate-bounceIn { animation: bounceIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.animate-wipeIn { animation: wipeIn 0.6s ease-out forwards; }
+
