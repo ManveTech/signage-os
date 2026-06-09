@@ -1,4 +1,8 @@
 import express from 'express';
+import dns from 'dns';
+// Force Node.js to prioritize IPv4 DNS resolution to prevent ENETUNREACH errors on IPv6 networks
+dns.setDefaultResultOrder('ipv4first');
+
 import { PORT } from './config';
 import { authenticatePBAdmin } from './db';
 import apiRouter from './routes';

@@ -38,6 +38,16 @@ export async function createUser(req: any, res: any) {
       return res.status(503).json({ error: 'Database authentication unavailable. Try again shortly.' });
     }
 
+    // Check if user already exists in pb
+    try {
+      const existing = await pb.collection('users').getFirstListItem(`email="${email.toLowerCase().trim()}"`);
+      if (existing) {
+        return res.status(400).json({ error: 'User with this email already exists' });
+      }
+    } catch (e) {
+      // Not found, which is correct
+    }
+
     const roleMap: Record<string, string> = {
       client: 'org_admin',
       admin: 'super_admin',
@@ -48,25 +58,60 @@ export async function createUser(req: any, res: any) {
     };
     const pbRole = roleMap[body.role] || 'org_admin';
 
+    // Retrieve license if licenseId is provided
+    let license = null;
+    if (body.licenseId) {
+      try {
+        license = await pb.collection('licenses').getOne(body.licenseId);
+        if (license.assignedUserEmail) {
+          return res.status(400).json({ error: `License ${body.licenseId} is already assigned to ${license.assignedUserEmail}` });
+        }
+      } catch (err: any) {
+        return res.status(400).json({ error: `Selected license not found: ${err.message}` });
+      }
+    }
+
+    // Organization Setup / Lookup
+    const orgName = body.company || '';
+    let orgId = '';
+    if (orgName) {
+      try {
+        const existingOrg = await pb.collection('organizations').getFirstListItem(`name = "${orgName.replace(/"/g, '\\"')}"`);
+        orgId = existingOrg.id;
+      } catch (e) {
+        // Create new organization if it doesn't exist
+        const newOrgId = body.organizationId || (Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10)).substring(0, 15);
+        const newOrg = {
+          id: newOrgId,
+          name: orgName,
+          adminName: body.name || email.split('@')[0],
+          email: email.toLowerCase().trim(),
+          planType: license ? (license.name.toLowerCase().includes('pro') ? 'Business' : 'Starter') : 'Starter',
+          screensAllowed: license ? license.deviceLimit : 5,
+          storageLimit: license ? license.storageLimit : 5,
+          subscriptionStatus: 'active',
+          renewalDate: license ? license.expiryDate : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        };
+        const createdOrg = await pb.collection('organizations').create(newOrg);
+        orgId = createdOrg.id;
+      }
+    }
+
     const createData: Record<string, any> = {
       name: body.name || email.split('@')[0],
       email: email.toLowerCase().trim(),
       mobile: body.mobile || '',
       role: pbRole,
-      company: body.company || body.organizationId || '',
+      company: orgName,
       address: body.address || '',
       password: userPassword,
       passwordConfirm: body.passwordConfirm || userPassword,
       emailVisibility: body.emailVisibility ?? true,
       firstTimeLogin: true, // Mark as first time login
+      licenseCount: license ? 1 : 0,
+      screensAssigned: license ? (license.deviceLimit || 0) : 0,
+      status: body.status || 'active'
     };
-
-    if (body.status) createData.status = body.status;
-    if (body.licenseCount != null) createData.licenseCount = body.licenseCount;
-    if (body.screensAssigned != null) createData.screensAssigned = body.screensAssigned;
-    if (body.lastLogin) createData.lastLogin = body.lastLogin;
-    if (body.twoFAEnabled != null) createData.twoFAEnabled = body.twoFAEnabled;
-    if (body.verified != null) createData.verified = body.verified;
 
     if (body.id && /^[a-z0-9]{15}$/.test(body.id)) {
       createData.id = body.id;
@@ -74,13 +119,24 @@ export async function createUser(req: any, res: any) {
 
     const record = await pb.collection('users').create(createData);
 
+    // Update license assignment if license was selected
+    if (license) {
+      await pb.collection('licenses').update(license.id, {
+        assignedUserEmail: email.toLowerCase().trim(),
+        assignedOrgName: orgName,
+        assignedOrgId: orgId
+      });
+    }
+
     // Send credentials email
-    await sendCredentialsEmail({
-      toEmail: record.email,
-      userName: record.name,
-      role: record.role,
-      tempPassword: userPassword
-    });
+    if (body.sendEmail !== false) {
+      await sendCredentialsEmail({
+        toEmail: record.email,
+        userName: record.name,
+        role: record.role,
+        tempPassword: userPassword
+      });
+    }
 
     res.status(201).json(record);
   } catch (error: any) {

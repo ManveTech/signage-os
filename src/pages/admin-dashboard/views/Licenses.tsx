@@ -481,6 +481,11 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                     const daysRemaining = Math.ceil(
                       (new Date(lic.expiryDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24)
                     );
+                    return { lic, daysRemaining };
+                  })
+                  .filter(item => item.daysRemaining < 10) // only show expirations below 10 days
+                  .sort((a, b) => a.daysRemaining - b.daysRemaining) // sort ascending of days left
+                  .map(({ lic, daysRemaining }) => {
                     const isExpiringSoon = daysRemaining <= 30;
                     const isOverdue = daysRemaining < 0;
 

@@ -25,7 +25,7 @@ import Profile from './views/Profile';
 import LicenseBillingView from './views/LicenseBillingView';
 
 import { licensingStore, License } from '../../lib/licensingStore';
-import { X, CheckCircle, Key } from 'lucide-react';
+import { X, CheckCircle, Key, Lock } from 'lucide-react';
 
 function renderView(view: string, navigate: (v: string) => void, userEmail: string) {
   switch (view) {
@@ -75,6 +75,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   const [isRzpOpen, setIsRzpOpen] = useState(false);
   const [rzpStep, setRzpStep] = useState<'methods' | 'processing' | 'success'>('methods');
   const [selectedMethod, setSelectedMethod] = useState<'upi' | 'card' | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   // First time login states
   const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
@@ -119,8 +120,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   const handleInitiateRealPayment = async () => {
     try {
       if (!clientLicense) return;
-      setRzpStep('processing');
-      setIsRzpOpen(true);
+      setPaymentLoading(true);
 
       const token = localStorage.getItem('signageos_token');
       const response = await fetch('http://localhost:5000/api/v1/payments/create-order', {
@@ -147,7 +147,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
           description: `License Reactivation for ${clientLicense.name}`,
           order_id: orderData.orderId,
           handler: async function (response: any) {
-            setRzpStep('processing');
+            setPaymentLoading(true);
             try {
               const verifyRes = await fetch('http://localhost:5000/api/v1/payments/verify', {
                 method: 'POST',
@@ -164,7 +164,6 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
               });
 
               if (verifyRes.ok) {
-                setRzpStep('success');
                 const durationDays = clientLicense.tenure === 'monthly' ? 30 : 365;
                 const today = new Date();
                 today.setDate(today.getDate() + durationDays);
@@ -175,47 +174,45 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                   expiryDate: newExpiry
                 });
 
-                setTimeout(() => {
-                  setIsRzpOpen(false);
-                  setIsPaywallOpen(false);
-                  checkLicense();
-                }, 1500);
+                setIsPaywallOpen(false);
+                checkLicense();
               } else {
                 const err = await verifyRes.json().catch(() => ({}));
                 alert(`Payment verification failed: ${err.message || 'Signature mismatch'}`);
-                setRzpStep('methods');
-                setIsRzpOpen(false);
               }
             } catch (err) {
               console.error(err);
               alert('Network error verifying payment.');
-              setRzpStep('methods');
-              setIsRzpOpen(false);
+            } finally {
+              setPaymentLoading(false);
             }
           },
           prefill: {
             email: userEmail
           },
           theme: {
-            color: '#2563EB'
+            color: '#0EA5E9'
           },
           modal: {
             ondismiss: function() {
-              setIsRzpOpen(false);
+              setPaymentLoading(false);
             }
           }
         };
 
         const rzp = new (window as any).Razorpay(options);
+        setPaymentLoading(false);
         rzp.open();
       } else {
         // Fallback to simulated UI
+        setPaymentLoading(false);
+        setIsRzpOpen(true);
         setRzpStep('methods');
       }
     } catch (error: any) {
       console.error('Error initiating payment:', error);
       alert('Failed to initiate payment. Please try again.');
-      setIsRzpOpen(false);
+      setPaymentLoading(false);
     }
   };
 
@@ -354,131 +351,161 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
 
   if (isPaywallOpen && clientLicense) {
     return (
-      <div className="flex h-screen w-full bg-slate-950 text-white items-center justify-center p-6 text-left relative overflow-hidden select-none">
-        {/* Decorator background */}
-        <div className="absolute inset-0 pointer-events-none opacity-20 overflow-hidden">
+      <div className="flex h-screen w-full bg-slate-100 items-center justify-center p-6 text-left relative overflow-hidden select-none">
+        {/* Subtle grid background */}
+        <div className="absolute inset-0 pointer-events-none opacity-40 overflow-hidden z-0">
           <svg className="absolute inset-0 w-full h-full" width="100%" height="100%">
             <pattern id="paywall-grid-pattern" width="30" height="30" patternUnits="userSpaceOnUse">
-              <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(255, 255, 255, 0.05)" strokeWidth="1" />
+              <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(15, 23, 42, 0.04)" strokeWidth="1" />
             </pattern>
             <rect width="100%" height="100%" fill="url(#paywall-grid-pattern)" />
           </svg>
         </div>
 
-        <div className="relative w-full max-w-md bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 p-8 space-y-6 z-10 animate-scaleIn">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-xs font-bold font-mono">SO</div>
-              <span className="font-extrabold text-sm text-slate-100 tracking-tight">SignageOS</span>
+        <div className="relative w-full max-w-lg bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 z-10 animate-scaleIn">
+          {/* Blue gradient header strip */}
+          <div className="bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 px-8 py-6 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white text-xs font-black font-mono border border-white/30">SO</div>
+              <span className="font-black text-sm text-white tracking-tight">SignageOS Portal</span>
             </div>
-            <button 
+            <button
               onClick={onLogout}
-              className="text-xs uppercase font-extrabold text-slate-400 hover:text-slate-200 cursor-pointer"
+              className="text-[11px] uppercase font-black text-white/70 hover:text-white cursor-pointer tracking-wider transition-colors"
             >
               Sign Out
             </button>
           </div>
 
-          <div className="space-y-2 text-center py-4">
-            <div className="w-12 h-12 bg-rose-500/10 border border-rose-500/20 rounded-full flex items-center justify-center mx-auto text-rose-500">
-              <Key size={20} />
+          <div className="p-8 space-y-6">
+            {/* Icon + heading */}
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center flex-shrink-0 text-rose-500">
+                <Key size={22} />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-slate-900 tracking-tight">Access Suspended</h2>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  License <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{clientLicense.id}</span> is unpaid or expired.
+                </p>
+              </div>
             </div>
-            <h2 className="text-lg font-black text-slate-100 uppercase tracking-tight">Access Suspended</h2>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-              Your license profile <span className="font-mono text-slate-200 font-bold">{clientLicense.id}</span> is currently unpaid or expired.
-            </p>
-          </div>
 
-          <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-3 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-450">Plan Name</span>
-              <span className="font-bold text-slate-200">{clientLicense.name}</span>
+            {/* License details table */}
+            <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="divide-y divide-slate-100">
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-xs text-slate-500 font-semibold">Plan Name</span>
+                  <span className="text-xs font-bold text-slate-800">{clientLicense.name}</span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-xs text-slate-500 font-semibold">Billing Tenure</span>
+                  <span className="text-xs font-bold text-slate-800 capitalize">{clientLicense.tenure}</span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-xs text-slate-500 font-semibold">Cycle Price</span>
+                  <span className="text-xs font-bold text-slate-800">₹{clientLicense.price.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3 bg-blue-50/60">
+                  <span className="text-xs text-blue-700 font-black uppercase tracking-wider">Total Due (Testing Mode)</span>
+                  <span className="text-lg font-black text-blue-600">₹1</span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-455">Billing tenure</span>
-              <span className="font-bold text-slate-200 capitalize">{clientLicense.tenure}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-455">Cycle Price</span>
-              <span className="font-bold text-slate-200">₹{clientLicense.price.toLocaleString()}</span>
-            </div>
-            <hr className="border-slate-800" />
-            <div className="flex justify-between items-baseline">
-              <span className="text-slate-455">Total Due (with 18% GST)</span>
-              <span className="text-lg font-black text-blue-400">₹{(clientLicense.price * 1.18).toLocaleString()}</span>
-            </div>
-          </div>
 
-          <button
-            onClick={handleReactivateClick}
-            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-500/10 cursor-pointer text-center"
-          >
-            Pay & Reactivate
-          </button>
+            <button
+              onClick={handleReactivateClick}
+              disabled={paymentLoading}
+              className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {paymentLoading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Initiating Checkout...
+                </>
+              ) : (
+                'Pay & Reactivate License'
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Razorpay simulated modal popup inside paywall */}
+        {/* Razorpay simulated modal popup */}
         {isRzpOpen && (
-          <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-            <div className="w-full max-w-sm bg-slate-900 text-white rounded-2xl overflow-hidden shadow-2xl border border-slate-800 animate-scaleIn">
-              <div className="bg-[#111827] px-4 py-3.5 flex items-center justify-between border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded bg-blue-500 flex items-center justify-center text-[10px] font-black italic text-white">R</div>
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+            <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn">
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 px-5 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center text-[11px] font-black italic text-white">R</div>
                   <div>
-                    <p className="text-[10px] font-black tracking-wider uppercase text-slate-300">Razorpay Checkout</p>
-                    <p className="text-[8px] text-slate-400">SignageOS Technologies Ltd.</p>
+                    <p className="text-[10px] font-black tracking-wider uppercase text-white">Razorpay Checkout</p>
+                    <p className="text-[8.5px] text-white/70 font-medium">SignageOS Technologies Ltd.</p>
                   </div>
                 </div>
-                <button onClick={() => setIsRzpOpen(false)} className="text-slate-400 hover:text-white cursor-pointer"><X size={14} /></button>
+                <button onClick={() => setIsRzpOpen(false)} className="text-white/70 hover:text-white cursor-pointer transition-colors">
+                  <X size={16} />
+                </button>
               </div>
 
               {rzpStep === 'methods' && (
                 <div className="p-5 space-y-4 text-left">
-                  <div className="text-center py-2 bg-slate-800/40 rounded-xl border border-slate-800">
-                    <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Total Payable Amount</p>
-                    <p className="text-2xl font-black mt-0.5 text-blue-400">₹{(clientLicense.price * 1.18).toLocaleString()}</p>
-                    <p className="text-[8px] text-slate-400 font-medium">Includes 18% GST (₹{(clientLicense.price * 0.18).toLocaleString()})</p>
+                  {/* Amount display */}
+                  <div className="text-center py-3 bg-slate-50 rounded-2xl border border-slate-200">
+                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-wider">Total Payable Amount</p>
+                    <p className="text-3xl font-black mt-1 text-blue-600">₹1</p>
+                    <p className="text-[8.5px] text-slate-400 font-semibold mt-0.5">Testing Mode — GST Included</p>
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-[9px] text-slate-450 uppercase tracking-widest font-black block">Select Payment Method</p>
-                    <button 
+                    <p className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Select Payment Method</p>
+
+                    <button
                       onClick={() => setSelectedMethod('upi')}
-                      className={`w-full p-3 rounded-xl border text-left transition-colors flex items-center justify-between cursor-pointer ${
-                        selectedMethod === 'upi' ? 'bg-blue-600/10 border-blue-500' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'
+                      className={`w-full p-3.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
+                        selectedMethod === 'upi'
+                          ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-100'
+                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       <div>
-                        <p className="text-xs font-bold text-slate-100">UPI — Paytm / Google Pay</p>
-                        <p className="text-[9px] text-slate-400 mt-0.5">Pay instantly via QR code or phone number</p>
+                        <p className="text-xs font-bold text-slate-800">UPI — Paytm / Google Pay</p>
+                        <p className="text-[9px] text-slate-500 mt-0.5">Pay instantly via QR code or phone number</p>
                       </div>
-                      <span className="w-3.5 h-3.5 rounded-full border border-slate-400 flex items-center justify-center">
-                        {selectedMethod === 'upi' && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />}
+                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                        selectedMethod === 'upi' ? 'border-blue-500' : 'border-slate-300'
+                      }`}>
+                        {selectedMethod === 'upi' && <span className="w-2 h-2 bg-blue-500 rounded-full" />}
                       </span>
                     </button>
-                    <button 
+
+                    <button
                       onClick={() => setSelectedMethod('card')}
-                      className={`w-full p-3 rounded-xl border text-left transition-colors flex items-center justify-between cursor-pointer ${
-                        selectedMethod === 'card' ? 'bg-blue-600/10 border-blue-500' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'
+                      className={`w-full p-3.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
+                        selectedMethod === 'card'
+                          ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-100'
+                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       <div>
-                        <p className="text-xs font-bold text-slate-100">Credit / Debit Card</p>
-                        <p className="text-[9px] text-slate-400 mt-0.5">Visa, Mastercard, RuPay, Maestro</p>
+                        <p className="text-xs font-bold text-slate-800">Credit / Debit Card</p>
+                        <p className="text-[9px] text-slate-500 mt-0.5">Visa, Mastercard, RuPay, Maestro</p>
                       </div>
-                      <span className="w-3.5 h-3.5 rounded-full border border-slate-400 flex items-center justify-center">
-                        {selectedMethod === 'card' && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />}
+                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                        selectedMethod === 'card' ? 'border-blue-500' : 'border-slate-300'
+                      }`}>
+                        {selectedMethod === 'card' && <span className="w-2 h-2 bg-blue-500 rounded-full" />}
                       </span>
                     </button>
                   </div>
 
-                  <button 
+                  <button
                     disabled={!selectedMethod}
                     onClick={handlePaySuccess}
-                    className={`w-full py-3 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
-                      selectedMethod 
-                        ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20' 
-                        : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                    className={`w-full py-3.5 rounded-xl font-extrabold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      selectedMethod
+                        ? 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-md shadow-blue-500/20'
+                        : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
                     }`}
                   >
                     Pay Securely via Razorpay
@@ -487,21 +514,25 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
               )}
 
               {rzpStep === 'processing' && (
-                <div className="p-8 text-center space-y-4">
-                  <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-sm font-bold text-slate-100">Processing Payment...</p>
+                <div className="p-10 text-center space-y-4">
+                  <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-sm font-bold text-slate-800">Processing Payment...</p>
+                  <p className="text-xs text-slate-400">Please do not close this window.</p>
                 </div>
               )}
 
               {rzpStep === 'success' && (
-                <div className="p-8 text-center space-y-4">
-                  <CheckCircle size={32} className="text-emerald-400 mx-auto animate-pulse" />
-                  <p className="text-sm font-bold text-slate-100 font-mono">Payment Succeeded!</p>
+                <div className="p-10 text-center space-y-3">
+                  <div className="w-14 h-14 bg-emerald-50 border border-emerald-200 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle size={28} className="text-emerald-500" />
+                  </div>
+                  <p className="text-base font-black text-slate-800">Payment Successful!</p>
+                  <p className="text-xs text-slate-500">Your license has been reactivated.</p>
                 </div>
               )}
 
-              <div className="bg-[#111827] py-2 border-t border-slate-800 text-center text-[8px] text-slate-500 font-mono">
-                SECURE 256-BIT SSL ENCRYPTION
+              <div className="bg-slate-50 border-t border-slate-100 py-2.5 text-center text-[8px] text-slate-400 font-bold uppercase tracking-widest">
+                🔒 Secured by 256-bit SSL Encryption
               </div>
             </div>
           </div>
@@ -542,71 +573,100 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
 
       {/* First Time Login Password Reset Modal */}
       {isFirstLogin && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn select-none">
-          <div className="relative w-full max-w-md bg-slate-900 text-white rounded-3xl overflow-hidden shadow-2xl border border-slate-800 p-8 space-y-6 animate-scaleIn">
-            <div className="text-center space-y-2 py-4">
-              <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center mx-auto text-blue-500">
-                <Lock size={20} />
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn select-none">
+          <div className="relative w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn">
+            {/* Blue header strip */}
+            <div className="bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 px-8 py-6 text-white">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl flex items-center justify-center">
+                  <Lock size={18} className="text-white" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-200 block">First-Time Setup</span>
+                  <h2 className="text-lg font-black text-white uppercase tracking-tight leading-none">Security Update</h2>
+                </div>
               </div>
-              <h2 className="text-lg font-black text-slate-100 uppercase tracking-tight">Security Update</h2>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-                Welcome! As a first-time user, please change your password to secure your account.
+              <p className="text-white/75 text-[11px] leading-relaxed">
+                Welcome! Please set a new password to secure your account before continuing.
               </p>
             </div>
 
-            {passError && (
-              <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 font-semibold flex items-start gap-2">
-                <X className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{passError}</span>
-              </div>
-            )}
-
-            {passSuccess && (
-              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 font-semibold flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span>Password changed successfully! Redirecting...</span>
-              </div>
-            )}
-
-            <form onSubmit={handleFirstLoginSubmit} className="space-y-4">
-              <div className="group relative">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">New Password</label>
-                <div className="flex items-center relative rounded-lg bg-slate-950 border border-slate-850 transition-all duration-300 focus-within:border-blue-500 overflow-hidden">
-                  <div className="w-1.5 self-stretch bg-blue-500" />
-                  <input 
-                    type="password"
-                    value={newPassword}
-                    onChange={e => setNewPassword(e.target.value)}
-                    placeholder="Enter new secure password"
-                    className="w-full py-3 px-4 text-xs font-semibold text-white placeholder-slate-600 focus:outline-none bg-transparent"
-                    required
-                  />
+            <div className="p-8 space-y-5">
+              {passError && (
+                <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-[11px] text-rose-600 font-semibold flex items-start gap-2">
+                  <X className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-extrabold block">Error:</span>
+                    {passError}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="group relative">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">Confirm Password</label>
-                <div className="flex items-center relative rounded-lg bg-slate-950 border border-slate-855 transition-all duration-300 focus-within:border-blue-500 overflow-hidden">
-                  <div className="w-1.5 self-stretch bg-blue-500" />
-                  <input 
-                    type="password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm secure password"
-                    className="w-full py-3 px-4 text-xs font-semibold text-white placeholder-slate-600 focus:outline-none bg-transparent"
-                    required
-                  />
+              {passSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-[11px] text-emerald-600 font-semibold flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-extrabold block">Success:</span>
+                    Password changed! Redirecting to your dashboard...
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <button
-                type="submit"
-                disabled={passLoading || passSuccess}
-                className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-500/10 cursor-pointer text-center disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {passLoading ? 'Updating...' : 'Update Password & Enter'}
-              </button>
-            </form>
+              <form onSubmit={handleFirstLoginSubmit} className="space-y-4">
+                <div className="group relative">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">New Password</label>
+                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                    <div className="w-1.5 self-stretch bg-blue-500" />
+                    <div className="pl-3.5 pr-2.5 text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      placeholder="Enter new secure password"
+                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="group relative">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">Confirm Password</label>
+                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                    <div className="w-1.5 self-stretch bg-blue-500" />
+                    <div className="pl-3.5 pr-2.5 text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm secure password"
+                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={passLoading || passSuccess}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 cursor-pointer text-center disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {passLoading ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Password & Enter'
+                  )}
+                </button>
+              </form>
+
+              <p className="text-[9px] text-slate-400 text-center">Designed for SignageOS Technologies Ltd. © 2026.</p>
+            </div>
           </div>
         </div>
       )}

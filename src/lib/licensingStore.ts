@@ -1,4 +1,4 @@
-import { pushToDatabase, generatePocketBaseId } from './syncHelper';
+import { pushToDatabase, generatePocketBaseId, PushResult } from './syncHelper';
 
 export interface License {
   id: string;
@@ -95,14 +95,15 @@ export const licensingStore = {
     return newLicense;
   },
 
-  updateLicense(id: string, updates: Partial<Omit<License, 'id' | 'createdAt'>>) {
+  async updateLicense(id: string, updates: Partial<Omit<License, 'id' | 'createdAt'>>): Promise<PushResult> {
     const licenses = this.getLicenses();
     const index = licenses.findIndex(l => l.id === id);
     if (index !== -1) {
       licenses[index] = { ...licenses[index], ...updates };
       this.saveLicenses(licenses);
-      pushToDatabase('licenses', id, licenses[index], 'PUT');
+      return await pushToDatabase('licenses', id, licenses[index], 'PUT');
     }
+    return { ok: false, status: 404, error: 'License not found' };
   },
 
   deleteLicense(id: string) {

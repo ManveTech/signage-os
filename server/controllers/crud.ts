@@ -1,8 +1,21 @@
 import express from 'express';
-import { pb } from '../db';
+import { pb, ensurePBAuth } from '../db';
 
 export function createCrudRouter(collectionName: string) {
   const router = express.Router();
+
+  // Middleware to ensure PocketBase auth is valid before any operation
+  router.use(async (req: any, res: any, next: any) => {
+    try {
+      const authenticated = await ensurePBAuth();
+      if (!authenticated) {
+        return res.status(503).json({ error: 'PocketBase admin authentication failed' });
+      }
+      next();
+    } catch (err: any) {
+      res.status(500).json({ error: `PB Auth error: ${err.message}` });
+    }
+  });
 
   // GET ALL
   router.get('/', async (req: any, res: any) => {
@@ -41,6 +54,12 @@ export function createCrudRouter(collectionName: string) {
   router.post('/', async (req: any, res: any) => {
     try {
       const body = { ...req.body };
+      delete body.collectionId;
+      delete body.collectionName;
+      delete body.expand;
+      delete body.createdAt;
+      delete body.created;
+      delete body.updated;
       if (body.id && !/^[a-z0-9]{15}$/.test(body.id)) {
         delete body.id;
       }
@@ -55,7 +74,15 @@ export function createCrudRouter(collectionName: string) {
   // UPDATE (supports PUT/PATCH)
   router.put('/:id', async (req: any, res: any) => {
     try {
-      const record = await pb.collection(collectionName).update(req.params.id, req.body);
+      const body = { ...req.body };
+      delete body.id;
+      delete body.collectionId;
+      delete body.collectionName;
+      delete body.expand;
+      delete body.createdAt;
+      delete body.created;
+      delete body.updated;
+      const record = await pb.collection(collectionName).update(req.params.id, body);
       res.json(record);
     } catch (error: any) {
       console.error(`Error updating record in ${collectionName}:`, error);
@@ -65,7 +92,15 @@ export function createCrudRouter(collectionName: string) {
 
   router.patch('/:id', async (req: any, res: any) => {
     try {
-      const record = await pb.collection(collectionName).update(req.params.id, req.body);
+      const body = { ...req.body };
+      delete body.id;
+      delete body.collectionId;
+      delete body.collectionName;
+      delete body.expand;
+      delete body.createdAt;
+      delete body.created;
+      delete body.updated;
+      const record = await pb.collection(collectionName).update(req.params.id, body);
       res.json(record);
     } catch (error: any) {
       console.error(`Error updating record in ${collectionName}:`, error);
@@ -79,6 +114,10 @@ export function createCrudRouter(collectionName: string) {
       await pb.collection(collectionName).delete(req.params.id);
       res.status(204).end();
     } catch (error: any) {
+      if (error.status === 404) {
+        console.log(`Record ${req.params.id} already deleted from ${collectionName} (404). Treating as success.`);
+        return res.status(204).end();
+      }
       console.error(`Error deleting record from ${collectionName}:`, error);
       res.status(500).json({ error: error.message || 'Error deleting record' });
     }

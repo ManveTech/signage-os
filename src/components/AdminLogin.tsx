@@ -2,27 +2,27 @@ import React, { useState, useEffect } from 'react';
 import AdminDashboard from '../pages/admin-dashboard';
 import UserDashboard from '../pages/user-dashboard';
 import logoImg from '../assets/BS-main-Logo.png';
-import { 
-  ShieldCheck, 
-  Mail, 
-  Lock, 
-  ChevronRight, 
-  Check, 
-  X, 
-  Users, 
-  PhoneCall, 
-  IndianRupee, 
-  Sliders, 
-  TrendingUp, 
-  Layers, 
-  ArrowLeft, 
+import {
+  ShieldCheck,
+  Mail,
+  Lock,
+  ChevronRight,
+  Check,
+  X,
+  Users,
+  PhoneCall,
+  IndianRupee,
+  Sliders,
+  TrendingUp,
+  Layers,
+  ArrowLeft,
   ExternalLink,
   UserCheck
 } from 'lucide-react';
 
 import { syncAllFromDatabase } from '../lib/syncHelper';
 
-interface AdminLoginProps {}
+interface Props { }
 
 // Struct for dummy quotation requests to show in admin dashboard
 interface LeadQuote {
@@ -54,10 +54,36 @@ export default function AdminLogin() {
     return null;
   });
   const [errorMessage, setErrorMessage] = useState('');
-  
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Recovery views state
+  const [view, setView] = useState<'login' | 'forgot' | 'reset'>('login');
+  const [resetToken, setResetToken] = useState('');
+  const [resetUserId, setResetUserId] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
   // Dashboard states
   const [leads, setLeads] = useState<LeadQuote[]>(initialLeads);
   const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved'>('All');
+
+  // Parse query parameters for token & userId on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenParam = params.get('token');
+    const userIdParam = params.get('userId');
+    if (tokenParam && userIdParam) {
+      setResetToken(tokenParam);
+      setResetUserId(userIdParam);
+      setView('reset');
+      setErrorMessage('');
+      setSuccessMessage('');
+
+      // Clear URL params to avoid re-triggering and maintain clean address bar
+      const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+      window.history.replaceState({ path: newUrl }, '', newUrl);
+    }
+  }, []);
 
   // Auto-sync database cache to localStorage on load if user is logged in
   useEffect(() => {
@@ -75,7 +101,7 @@ export default function AdminLogin() {
       setErrorMessage('Please fill in all security fields.');
       return;
     }
-    
+
     const lowerEmail = email.toLowerCase().trim();
 
     fetch('http://localhost:5000/api/v1/auth/login', {
@@ -83,61 +109,157 @@ export default function AdminLogin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: lowerEmail, password })
     })
-    .then(async (res) => {
-      if (res.ok) {
-        const data = await res.json();
-        if (data.token) {
-          localStorage.setItem('signageos_token', data.token);
-          localStorage.setItem('signageos_user_id', data.user.id);
-          localStorage.setItem('signageos_user_email', data.user.email);
-          localStorage.setItem('signageos_user_role', data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client');
-          localStorage.setItem('signageos_first_time_login', data.user.firstTimeLogin ? 'true' : 'false');
-        }
-        
-        // Sync database cache to localStorage
-        try {
-          await syncAllFromDatabase();
-        } catch (syncErr) {
-          console.error('Initial sync error:', syncErr);
-        }
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            localStorage.setItem('signageos_token', data.token);
+            localStorage.setItem('signageos_user_id', data.user.id);
+            localStorage.setItem('signageos_user_email', data.user.email);
+            localStorage.setItem('signageos_user_role', data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client');
+            localStorage.setItem('signageos_first_time_login', data.user.firstTimeLogin ? 'true' : 'false');
+          }
 
-        setLoggedInUser({
-          email: data.user.email,
-          role: data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client'
-        });
-        setErrorMessage('');
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        setErrorMessage(errData.message || 'Invalid access credentials.');
-      }
+          // Sync database cache to localStorage
+          try {
+            await syncAllFromDatabase();
+          } catch (syncErr) {
+            console.error('Initial sync error:', syncErr);
+          }
+
+          setLoggedInUser({
+            email: data.user.email,
+            role: data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client'
+          });
+          setErrorMessage('');
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setErrorMessage(errData.message || 'Invalid access credentials.');
+        }
+      })
+      .catch((err) => {
+        console.error('Server connection error:', err);
+        // Offline fallback: Accept simple demo credentials for easy offline/standalone testing
+        const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
+        if (
+          (lowerEmail === 'admin@demo.com' && password === 'admin123') ||
+          (lowerEmail === 'admin' && password === 'admin')
+        ) {
+          const mockToken = 'offline_simulated_admin_token';
+          localStorage.setItem('signageos_token', mockToken);
+          localStorage.setItem('signageos_user_id', 'admin_sys_usr');
+          localStorage.setItem('signageos_user_email', 'admin@demo.com');
+          localStorage.setItem('signageos_user_role', 'admin');
+          setLoggedInUser({ email: 'admin@demo.com', role: 'admin' });
+          setErrorMessage('');
+        } else if (clientEmails.includes(lowerEmail)) {
+          const mockToken = `offline_simulated_client_token_${lowerEmail}`;
+          localStorage.setItem('signageos_token', mockToken);
+          localStorage.setItem('signageos_user_id', `client_${lowerEmail}`);
+          localStorage.setItem('signageos_user_email', lowerEmail);
+          localStorage.setItem('signageos_user_role', 'client');
+          setLoggedInUser({ email: lowerEmail, role: 'client' });
+          setErrorMessage('');
+        } else {
+          setErrorMessage('Server offline. Use admin/admin or admin@demo.com/admin123 offline.');
+        }
+      });
+  };
+
+  // Handle forgot password submit
+  const handleForgotSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      setErrorMessage('Please enter your email address.');
+      return;
+    }
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    const lowerEmail = email.toLowerCase().trim();
+
+    fetch('http://localhost:5000/api/v1/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: lowerEmail })
     })
-    .catch((err) => {
-      console.error('Server connection error:', err);
-      // Offline fallback: Accept simple demo credentials for easy offline/standalone testing
-      const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
-      if (
-        (lowerEmail === 'admin@demo.com' && password === 'admin123') ||
-        (lowerEmail === 'admin' && password === 'admin')
-      ) {
-        const mockToken = 'offline_simulated_admin_token';
-        localStorage.setItem('signageos_token', mockToken);
-        localStorage.setItem('signageos_user_id', 'admin_sys_usr');
-        localStorage.setItem('signageos_user_email', 'admin@demo.com');
-        localStorage.setItem('signageos_user_role', 'admin');
-        setLoggedInUser({ email: 'admin@demo.com', role: 'admin' });
-        setErrorMessage('');
-      } else if (clientEmails.includes(lowerEmail)) {
-        const mockToken = `offline_simulated_client_token_${lowerEmail}`;
-        localStorage.setItem('signageos_token', mockToken);
-        localStorage.setItem('signageos_user_id', `client_${lowerEmail}`);
-        localStorage.setItem('signageos_user_email', lowerEmail);
-        localStorage.setItem('signageos_user_role', 'client');
-        setLoggedInUser({ email: lowerEmail, role: 'client' });
-        setErrorMessage('');
-      } else {
-        setErrorMessage('Server offline. Use admin/admin or admin@demo.com/admin123 offline.');
-      }
-    });
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setSuccessMessage(data.message || 'Password reset link sent to your email.');
+          setEmail('');
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setErrorMessage(errData.message || 'Email address not found.');
+        }
+      })
+      .catch((err) => {
+        console.error('Forgot password connection error:', err);
+        const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
+        if (clientEmails.includes(lowerEmail) || lowerEmail === 'admin@demo.com') {
+          const mockToken = 'offline_simulated_reset_token';
+          setSuccessMessage('Offline simulated recovery triggered. Check the server terminal logs.');
+          console.log('\n============================= [SIMULATED RESET LINK] =============================');
+          console.log(`URL: http://localhost:3000/?token=${mockToken}&userId=${lowerEmail === 'admin@demo.com' ? 'admin_sys_usr' : 'client_' + lowerEmail}`);
+          console.log('==================================================================================\n');
+          setEmail('');
+        } else {
+          setErrorMessage('Server offline. Reset only works for registered database or fallback emails.');
+        }
+      });
+  };
+
+  // Handle reset password submit
+  const handleResetSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || !confirmPassword) {
+      setErrorMessage('Please enter and confirm your password.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrorMessage('Passwords do not match.');
+      return;
+    }
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    fetch('http://localhost:5000/api/v1/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: resetToken,
+        userId: resetUserId,
+        password: newPassword
+      })
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          setSuccessMessage('Password has been successfully updated. Redirecting to login view...');
+          setNewPassword('');
+          setConfirmPassword('');
+          setTimeout(() => {
+            setView('login');
+            setSuccessMessage('');
+          }, 2500);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setErrorMessage(errData.message || 'Reset expired or invalid.');
+        }
+      })
+      .catch((err) => {
+        console.error('Reset password connection error:', err);
+        if (resetToken === 'offline_simulated_reset_token') {
+          setSuccessMessage('Simulated reset succeeded. Redirecting to login view...');
+          setNewPassword('');
+          setConfirmPassword('');
+          setTimeout(() => {
+            setView('login');
+            setSuccessMessage('');
+          }, 2500);
+        } else {
+          setErrorMessage('Server offline. Password reset request failed.');
+        }
+      });
   };
 
   const handleLogout = () => {
@@ -148,16 +270,12 @@ export default function AdminLogin() {
     setLoggedInUser(null);
   };
 
-  const handleStatusChange = (id: string, newStatus: 'Pending' | 'Approved' | 'Declined') => {
-    setLeads(prev => prev.map(lead => lead.id === id ? { ...lead, status: newStatus } : lead));
-  };
-
   // If successfully logged in, render the premium admin dashboard panel
   if (loggedInUser) {
     if (loggedInUser.role === 'admin') {
       return (
-        <AdminDashboard 
-          onLogout={handleLogout} 
+        <AdminDashboard
+          onLogout={handleLogout}
           onSwitchToClient={() => {
             localStorage.setItem('signageos_user_role', 'client');
             setLoggedInUser({ email: 'priya@demo.com', role: 'client' });
@@ -166,13 +284,9 @@ export default function AdminLogin() {
       );
     } else {
       return (
-        <UserDashboard 
-          onLogout={handleLogout} 
-          userEmail={loggedInUser.email} 
-          onSwitchToAdmin={() => {
-            localStorage.setItem('signageos_user_role', 'admin');
-            setLoggedInUser({ email: 'admin@demo.com', role: 'admin' });
-          }}
+        <UserDashboard
+          onLogout={handleLogout}
+          userEmail={loggedInUser.email}
         />
       );
     }
@@ -181,7 +295,7 @@ export default function AdminLogin() {
   // Otherwise, render the gorgeous dual-panel Login Page resembling the layout mockup
   return (
     <div className="w-full min-h-screen bg-slate-100 pt-24 pb-16 flex items-center justify-center font-sans px-4 relative select-none" id="admin-login-screen">
-      
+
       {/* Absolute Decorative Circles & Grid Background */}
       <div className="absolute inset-0 pointer-events-none opacity-40 overflow-hidden z-0">
         <svg className="absolute inset-0 w-full h-full" width="100%" height="100%">
@@ -194,10 +308,10 @@ export default function AdminLogin() {
 
       {/* Main Container - Dual Pane Card */}
       <div className="relative w-full max-w-4xl bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 grid md:grid-cols-12 z-10 animate-scaleIn">
-        
+
         {/* LEFT PANE: Ambient Bright Tech Blue Panel */}
         <div className="md:col-span-6 bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 p-8 sm:p-12 flex flex-col justify-between text-white relative overflow-hidden text-left min-h-[380px] md:min-h-[500px]">
-          
+
           {/* Wave Curve Decorative Overlays */}
           <div className="absolute inset-0 pointer-events-none opacity-20">
             <svg className="absolute -bottom-20 -left-10 w-[140%] h-[140%]" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -218,14 +332,18 @@ export default function AdminLogin() {
           {/* Central Typography Heading */}
           <div className="relative z-10 my-auto" id="login-pane-welcome">
             <span className="text-cyan-100 text-xs font-bold uppercase tracking-wider block mb-2 opacity-90">
-              Nice to see you again
+              {view === 'login' ? 'Nice to see you again' : view === 'forgot' ? 'Retrieve access' : 'Configure security'}
             </span>
-            <h2 className="text-4xl xs:text-5xl font-black text-white leading-none tracking-tight mb-4">
-              WELCOME BACK
+            <h2 className="text-4xl xs:text-5xl font-black text-white leading-none tracking-tight mb-4 uppercase">
+              {view === 'login' ? 'WELCOME BACK' : view === 'forgot' ? 'RESET SECURITY' : 'NEW PASSWORD'}
             </h2>
             <div className="w-14 h-1 bg-white rounded-full mb-6" />
             <p className="text-white/80 text-[11px] sm:text-xs leading-relaxed max-w-[280px]">
-              Log into your account.
+              {view === 'login'
+                ? 'Log into your account.'
+                : view === 'forgot'
+                  ? 'Submit your email to request recovery link.'
+                  : 'Choose a strong password key.'}
             </p>
           </div>
 
@@ -233,18 +351,20 @@ export default function AdminLogin() {
 
         {/* RIGHT PANE: White Minimal Form Panel */}
         <div className="md:col-span-6 p-8 sm:p-12 flex flex-col justify-between text-left bg-white relative">
-          
-
 
           <div className="my-auto pt-6" id="login-right-pane-body">
-            
+
             {/* Header Typography */}
             <div className="mb-8 select-text">
               <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
-                Login Account
+                {view === 'login' ? 'Login Account' : view === 'forgot' ? 'Forgot Password' : 'Reset Password'}
               </h1>
               <p className="text-xs text-slate-400 font-semibold mt-1">
-                Enter your credentials to enter your dashboard.
+                {view === 'login'
+                  ? 'Enter your credentials to enter your dashboard.'
+                  : view === 'forgot'
+                    ? 'Enter your email to receive a password reset link.'
+                    : 'Enter and confirm your new password key.'}
               </p>
             </div>
 
@@ -259,83 +379,221 @@ export default function AdminLogin() {
               </div>
             )}
 
-            {/* Main Form Fields */}
-            <form onSubmit={handleLoginSubmit} className="space-y-4">
-              
-              {/* Email ID input built with blue bar styling */}
-              <div className="group relative">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
-                  Email ID
-                </label>
-                <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                  {/* Glowing left primary vertical blue border block identical to layout design */}
-                  <div className="w-1.5 self-stretch bg-blue-500" />
-                  
-                  <div className="pl-3.5 pr-2.5 text-slate-400">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <input 
-                    type="text" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="e.g. admin@demo.com" 
-                    className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                  />
+            {/* Success Alert */}
+            {successMessage && (
+              <div className="mb-6 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-[11px] text-emerald-600 font-semibold flex items-start gap-2">
+                <Check className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-extrabold block">Verification:</span>
+                  {successMessage}
                 </div>
               </div>
+            )}
 
-              {/* Password ID input built with blue bar styling */}
-              <div className="group relative">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
-                  Password
-                </label>
-                <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                  {/* Glowing left primary vertical blue border block */}
-                  <div className="w-1.5 self-stretch bg-blue-500" />
-                  
-                  <div className="pl-3.5 pr-2.5 text-slate-400">
-                    <Lock className="w-4 h-4" />
+            {view === 'login' && (
+              /* Main Form Fields */
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
+
+                {/* Email ID input built with blue bar styling */}
+                <div className="group relative">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                    Email ID
+                  </label>
+                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                    {/* Glowing left primary vertical blue border block identical to layout design */}
+                    <div className="w-1.5 self-stretch bg-blue-500" />
+
+                    <div className="pl-3.5 pr-2.5 text-slate-400">
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="e.g. admin@demo.com"
+                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                    />
                   </div>
-                  <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter security key" 
-                    className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                  />
                 </div>
-              </div>
 
-              {/* Checkboxes from styling guideline */}
-              <div className="flex items-center justify-between pt-1 pb-4 text-[11px] font-semibold text-slate-400">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={keepSignedIn}
-                    onChange={() => setKeepSignedIn(!keepSignedIn)}
-                    className="accent-blue-500 rounded border-slate-300"
-                  />
-                  <span>Keep me signed in</span>
-                </label>
-                <span className="text-blue-500 hover:underline cursor-pointer">
-                  Forgot Password?
-                </span>
-              </div>
+                {/* Password ID input built with blue bar styling */}
+                <div className="group relative">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                    Password
+                  </label>
+                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                    {/* Glowing left primary vertical blue border block */}
+                    <div className="w-1.5 self-stretch bg-blue-500" />
 
-              {/* Large blue action button styled like SUBSCRBE in design preview */}
-              <button
-                type="submit"
-                className="w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 active:scale-98 cursor-pointer flex items-center justify-center gap-2"
-                id="login-subscribe-btn"
-              >
-                Sign In / Verify <ChevronRight className="w-4 h-4" />
-              </button>
+                    <div className="pl-3.5 pr-2.5 text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter security key"
+                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                    />
+                  </div>
+                </div>
 
-            </form>
+                {/* Checkboxes from styling guideline */}
+                <div className="flex items-center justify-between pt-1 pb-4 text-[11px] font-semibold text-slate-400">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={keepSignedIn}
+                      onChange={() => setKeepSignedIn(!keepSignedIn)}
+                      className="accent-blue-500 rounded border-slate-300"
+                    />
+                    <span>Keep me signed in</span>
+                  </label>
+                  <span
+                    onClick={() => {
+                      setView('forgot');
+                      setErrorMessage('');
+                      setSuccessMessage('');
+                    }}
+                    className="text-blue-500 hover:underline cursor-pointer"
+                  >
+                    Forgot Password?
+                  </span>
+                </div>
+
+                {/* Large blue action button styled like SUBSCRBE in design preview */}
+                <button
+                  type="submit"
+                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 active:scale-98 cursor-pointer flex items-center justify-center gap-2"
+                  id="login-subscribe-btn"
+                >
+                  Sign In / Verify <ChevronRight className="w-4 h-4" />
+                </button>
+
+              </form>
+            )}
+
+            {view === 'forgot' && (
+              /* Forgot Password Request Form */
+              <form onSubmit={handleForgotSubmit} className="space-y-4">
+
+                <div className="group relative">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                    Email ID
+                  </label>
+                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                    <div className="w-1.5 self-stretch bg-blue-500" />
+
+                    <div className="pl-3.5 pr-2.5 text-slate-400">
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="e.g. admin@demo.com"
+                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 pb-4 text-[11px] font-semibold text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setView('login');
+                      setErrorMessage('');
+                      setSuccessMessage('');
+                    }}
+                    className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer bg-transparent border-none outline-none font-semibold"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back to Login
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 active:scale-98 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  Send Reset Link <ChevronRight className="w-4 h-4" />
+                </button>
+
+              </form>
+            )}
+
+            {view === 'reset' && (
+              /* Reset Password Form */
+              <form onSubmit={handleResetSubmit} className="space-y-4">
+
+                {/* New Password input */}
+                <div className="group relative">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                    New Password
+                  </label>
+                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                    <div className="w-1.5 self-stretch bg-blue-500" />
+
+                    <div className="pl-3.5 pr-2.5 text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                    />
+                  </div>
+                </div>
+
+                {/* Confirm Password input */}
+                <div className="group relative">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                    Confirm Password
+                  </label>
+                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                    <div className="w-1.5 self-stretch bg-blue-500" />
+
+                    <div className="pl-3.5 pr-2.5 text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm new password"
+                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 pb-4 text-[11px] font-semibold text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setView('login');
+                      setErrorMessage('');
+                      setSuccessMessage('');
+                    }}
+                    className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer bg-transparent border-none outline-none font-semibold"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Back to Login
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 active:scale-98 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  Reset Password <ChevronRight className="w-4 h-4" />
+                </button>
+
+              </form>
+            )}
 
           </div>
 
-          {/* Copyright/Freepik notice styled cleanly at bottom margin */}
+          {/* Copyright notice styled cleanly at bottom margin */}
           <div className="text-[9px] text-slate-350 mt-6 select-text text-center">
             Designed for SignageOS Technologies Ltd. © 2026.
           </div>

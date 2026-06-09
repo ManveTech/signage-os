@@ -69,14 +69,14 @@ export default function Dashboard() {
   const expiringLicenses = licenses.filter(l => calculateDaysLeft(l.expiryDate) < 15 && l.status === 'active').length;
 
   const kpiCards = [
-    { label: 'Total Screens', value: totalScreens.toString(), change: '+0', icon: <Monitor size={20} />, color: 'blue' },
-    { label: 'My Screens', value: myScreens.toString(), change: '+0', icon: <Monitor size={20} />, color: 'teal' },
-    { label: 'Online', value: onlineScreens.toString(), change: '+0', icon: <Wifi size={20} />, color: 'green' },
-    { label: 'Offline', value: offlineScreens.toString(), change: '+0', icon: <WifiOff size={20} />, color: 'red' },
-    { label: 'Total Media', value: totalMedia.toString(), change: '+0', icon: <Film size={20} />, color: 'blue' },
-    { label: 'Active Playlists', value: activePlaylists.toString(), change: '+0', icon: <List size={20} />, color: 'teal' },
-    { label: 'Total Licenses', value: totalLicenses.toString(), change: '+0', icon: <Key size={20} />, color: 'blue' },
-    { label: 'Expiring Licenses', value: expiringLicenses.toString(), change: '+0', icon: <Clock size={20} />, color: 'orange' },
+    { label: 'Total Screens', value: totalScreens.toString(), icon: <Monitor size={20} />, color: 'blue' },
+    { label: 'My Screens', value: myScreens.toString(), icon: <Monitor size={20} />, color: 'teal' },
+    { label: 'Online', value: onlineScreens.toString(), icon: <Wifi size={20} />, color: 'green' },
+    { label: 'Offline', value: offlineScreens.toString(), icon: <WifiOff size={20} />, color: 'red' },
+    { label: 'Total Media', value: totalMedia.toString(), icon: <Film size={20} />, color: 'blue' },
+    { label: 'Active Playlists', value: activePlaylists.toString(), icon: <List size={20} />, color: 'teal' },
+    { label: 'Total Licenses', value: totalLicenses.toString(), icon: <Key size={20} />, color: 'blue' },
+    { label: 'Expiring Licenses', value: expiringLicenses.toString(), icon: <Clock size={20} />, color: 'orange' },
   ];
 
   const alerts: { type: 'error' | 'warning' | 'info'; title: string; desc: string; time: string }[] = [];
@@ -125,13 +125,10 @@ export default function Dashboard() {
           const c = colorMap[card.color] || colorMap.blue;
           return (
             <div key={card.label} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-3">
+              <div className="mb-3">
                 <div className={`w-9 h-9 rounded-lg ${c.light} ${c.text} flex items-center justify-center`}>
                   {card.icon}
                 </div>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                  card.change.startsWith('+') ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
-                }`}>{card.change}</span>
               </div>
               <p className="text-2xl font-bold text-gray-900">{card.value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{card.label}</p>

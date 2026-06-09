@@ -34,11 +34,13 @@ export default function Users() {
     syncCollection('licenses', 'signageos_licenses').then(() => {
       setLicenses(licensingStore.getLicenses());
     });
+    syncCollection('organizations', 'signageos_organizations');
   }, []);
 
   // Add Client Modal states
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [step, setStep] = useState(1);
+  const [isOnboarding, setIsOnboarding] = useState(false);
 
   // Form states
   const [clientName, setClientName] = useState('');
@@ -73,6 +75,7 @@ export default function Users() {
     setSelectedLicenseId('');
     setGeneratedPassword('');
     setSendEmail(true);
+    setIsOnboarding(false);
   };
 
   const handleNextStep = () => {
@@ -109,94 +112,56 @@ export default function Users() {
   };
 
   const handleOnboardClient = async () => {
-    const selectedLic = licenses.find(l => l.id === selectedLicenseId);
-    
-    // 1. Create client user object
-    const newClientId = generatePocketBaseId();
-    const newOrgId = generatePocketBaseId();
-
-    const newClient: UserType = {
-      id: newClientId,
-      name: clientName,
-      email: clientEmail,
-      mobile: clientPhone,
-      company: orgName,
-      role: 'org_admin',
-      status: 'active',
-      licenseCount: selectedLic ? 1 : 0,
-      screensAssigned: selectedLic ? (selectedLic.deviceLimit || 0) : 0,
-      lastLogin: 'Never',
-      twoFAEnabled: false,
-      address: clientAddress
-    };
-
-    // Save user locally (optimistic update)
-    const updatedUsers = [...users, newClient];
-    setUsers(updatedUsers);
-    localStorage.setItem('signageos_users', JSON.stringify(updatedUsers));
-
-    // Save to PocketBase database via API
-    const userPayload = {
-      ...newClient,
-      password: generatedPassword,
-      passwordConfirm: generatedPassword,
-      emailVisibility: true,
-      verified: true
-    };
-    const userResult = await pushToDatabase('users', newClientId, userPayload, 'POST');
-    if (!userResult.ok) {
-      // Roll back optimistic local save on failure
-      setUsers(users);
-      localStorage.setItem('signageos_users', JSON.stringify(users));
-      addToast(`Failed to save client to database. Is the server running? (${(userResult as any).error})`);
-      return;
-    }
-
-    // Sync local state with the record returned by the server (correct id + fields)
-    const savedUser = { ...newClient, ...userResult.data };
-    const syncedUsers = [...users, savedUser];
-    setUsers(syncedUsers);
-    localStorage.setItem('signageos_users', JSON.stringify(syncedUsers));
-
-    // 2. Assign license in licensing store if selected (which is mandatory)
-    if (selectedLic) {
-      licensingStore.updateLicense(selectedLic.id, {
-        assignedUserEmail: clientEmail,
-        assignedOrgName: orgName,
-        assignedOrgId: newOrgId
-      });
-      // Refresh local licenses pool
-      setLicenses(licensingStore.getLicenses());
-    }
-
-    // 3. Sync newly created organization to organizations database
-    const orgsData = localStorage.getItem('signageos_organizations');
-    let orgList = orgsData ? JSON.parse(orgsData) : mockOrganizations;
-    const exists = orgList.some((o: any) => o.name.toLowerCase() === orgName.toLowerCase());
-    if (!exists) {
-      const newOrg = {
-        id: newOrgId,
-        name: orgName,
-        adminName: clientName,
+    setIsOnboarding(true);
+    try {
+      const userPayload = {
+        name: clientName,
         email: clientEmail,
-        planType: selectedLic ? (selectedLic.name.toLowerCase().includes('pro') ? 'Business' : 'Starter') : 'Starter',
-        screensAllowed: selectedLic ? selectedLic.deviceLimit : 5,
-        storageLimit: selectedLic ? selectedLic.storageLimit : 5,
-        subscriptionStatus: 'active',
-        renewalDate: selectedLic ? selectedLic.expiryDate : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        mobile: clientPhone,
+        address: clientAddress,
+        company: orgName,
+        licenseId: selectedLicenseId,
+        password: generatedPassword,
+        sendEmail: sendEmail,
+        role: 'org_admin'
       };
-      orgList.push(newOrg);
-      localStorage.setItem('signageos_organizations', JSON.stringify(orgList));
-      const orgResult = await pushToDatabase('organizations', newOrgId, newOrg, 'POST');
-      if (!orgResult.ok) {
-        addToast('Client saved, but organization sync failed.');
-      }
-    }
 
-    // Success feedback
-    addToast(`Client onboarded!${sendEmail ? ` Credentials emailed to ${clientEmail}` : ''}`);
-    setIsAddClientOpen(false);
-    resetForm();
+      const userResult = await pushToDatabase('users', '', userPayload, 'POST');
+      if (!userResult.ok) {
+        const errorText = (userResult as any).error;
+        let errMsg = 'unknown error';
+        if (typeof errorText === 'string') {
+          try {
+            const parsed = JSON.parse(errorText);
+            errMsg = parsed.error || parsed.message || errorText;
+          } catch (e) {
+            errMsg = errorText;
+          }
+        }
+        addToast(`Failed to onboard client: ${errMsg}`);
+        setIsOnboarding(false);
+        return;
+      }
+
+      // Sync all collections from backend server to update local listings
+      const updatedUsers = await syncCollection('users', 'signageos_users');
+      await syncCollection('licenses', 'signageos_licenses');
+      await syncCollection('organizations', 'signageos_organizations');
+
+      // Update React state
+      if (updatedUsers && updatedUsers.length > 0) {
+        setUsers(updatedUsers.filter((u: any) => u.role !== 'super_admin' && u.role !== 'admin'));
+      }
+      setLicenses(licensingStore.getLicenses());
+
+      addToast(`Client onboarded successfully!${sendEmail ? ` Credentials emailed to ${clientEmail}` : ''}`);
+      setIsAddClientOpen(false);
+      resetForm();
+    } catch (error: any) {
+      console.error('Error in onboard flow:', error);
+      addToast(`An unexpected error occurred: ${error.message || error}`);
+      setIsOnboarding(false);
+    }
   };
 
   const handleDeleteClient = (userId: string, userEmail: string, userName: string) => {
@@ -653,10 +618,10 @@ export default function Users() {
                 ) : (
                   <button 
                     onClick={handleOnboardClient}
-                    disabled={!generatedPassword}
+                    disabled={!generatedPassword || isOnboarding}
                     className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    Confirm & Onboard
+                    {isOnboarding ? 'Onboarding...' : 'Confirm & Onboard'}
                   </button>
                 )}
               </div>
