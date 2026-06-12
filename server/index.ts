@@ -10,7 +10,8 @@ import apiRouter from './routes';
 const app = express();
 
 // Global Middleware
-app.use(express.json());
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ limit: '200mb', extended: true }));
 
 // Custom CORS middleware
 app.use((req, res, next) => {

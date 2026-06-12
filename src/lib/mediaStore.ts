@@ -1,4 +1,11 @@
-import { pushToDatabase, generatePocketBaseId } from './syncHelper';
+import { pushToDatabase, generatePocketBaseId, memoryMedia, setMemoryMedia } from './syncHelper';
+
+// Purge the old bloated local storage key immediately on load to free up space
+try {
+  localStorage.removeItem('signageos_media');
+} catch (e) {
+  console.warn('Failed to clear signageos_media from localStorage:', e);
+}
 
 export interface MediaItem {
   id: string;
@@ -14,6 +21,14 @@ export interface MediaItem {
   tags: string[];
   status: 'active' | 'archived' | 'expired';
   thumbnail: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  checksum?: string;
+  youtube_url?: string;
+  youtube_video_id?: string;
+  fileData?: string;
+  fileName?: string;
 }
 
 export interface Playlist {
@@ -46,7 +61,7 @@ export interface Playlist {
 export interface Screen {
   id: string;
   name: string;
-  status: 'online' | 'offline' | 'warning';
+  status: 'online' | 'offline' | 'warning' | 'active' | 'suspended' | 'pairing';
   playlist: string; // Playlist name
   playlistId?: string; // Assigned playlist ID
   location: string;
@@ -60,6 +75,7 @@ export interface Screen {
   scheduleDate?: string;
   scheduleTime?: string;
   assignedToUserEmail?: string; // client email
+  clear_cache?: boolean;
 }
 
 const INITIAL_MEDIA: MediaItem[] = [];
@@ -70,16 +86,11 @@ const INITIAL_SCREENS: Screen[] = [];
 
 export const mediaStore = {
   getMedia(): MediaItem[] {
-    const data = localStorage.getItem('signageos_media');
-    if (!data) {
-      localStorage.setItem('signageos_media', JSON.stringify(INITIAL_MEDIA));
-      return INITIAL_MEDIA;
-    }
-    return JSON.parse(data);
+    return memoryMedia;
   },
 
   saveMedia(media: MediaItem[]) {
-    localStorage.setItem('signageos_media', JSON.stringify(media));
+    setMemoryMedia(media);
   },
 
   uploadMedia(media: Omit<MediaItem, 'id' | 'createdDate' | 'status'>): MediaItem {
@@ -159,7 +170,7 @@ export const mediaStore = {
         const screens = this.getScreens();
         const updatedScreens = screens.map(s => {
           if (s.playlistId === id && !updates.assignedScreenIds?.includes(s.id)) {
-            const updatedScreen = { ...s, playlist: 'Normal', playlistId: undefined };
+            const updatedScreen = { ...s, playlist: 'Normal', playlistId: '' };
             pushToDatabase('screens', s.id, updatedScreen, 'PUT');
             return updatedScreen;
           }
@@ -185,7 +196,7 @@ export const mediaStore = {
     const screens = this.getScreens();
     const updatedScreens = screens.map(s => {
       if (s.playlistId === id) {
-        const updatedScreen = { ...s, playlist: 'Normal', playlistId: undefined };
+        const updatedScreen = { ...s, playlist: 'Normal', playlistId: '' };
         pushToDatabase('screens', s.id, updatedScreen, 'PUT');
         return updatedScreen;
       }
@@ -235,7 +246,7 @@ export const mediaStore = {
         screens[screenIndex].playlistId = playlistId;
         screens[screenIndex].playlist = play ? play.name : 'Normal';
       } else {
-        screens[screenIndex].playlistId = undefined;
+        screens[screenIndex].playlistId = '';
         screens[screenIndex].playlist = 'Normal';
       }
       this.saveScreens(screens);

@@ -31,17 +31,17 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
   switch (view) {
     case 'dashboard': return <Dashboard userEmail={userEmail} />;
     case 'my-screens-list': return <MyScreens onNavigate={navigate} userEmail={userEmail} />;
-    case 'screens-all': return <AllScreens onNavigate={navigate} />;
+    case 'screens-all': return <AllScreens onNavigate={navigate} userEmail={userEmail} />;
     case 'screens-add': return <AddScreen userEmail={userEmail} onNavigate={navigate} />;
     case 'screens-assign': return <AssignScreens />;
-    case 'screens-manage': return <ManageScreens />;
+    case 'screens-manage': return <ManageScreens userEmail={userEmail} />;
     case 'screens-groups': return <ScreenGroups userEmail={userEmail} />;
     case 'screens-health': return <HealthLogs />;
     case 'media-library': return <MediaLibrary onNavigate={navigate} userEmail={userEmail} />;
     case 'media-upload': return <UploadMedia />;
     case 'media-layout': return <LayoutStudio />;
     case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail={userEmail} />;
-    case 'playlists-create': return <CreatePlaylist userEmail={userEmail} />;
+    case 'playlists-create': return <CreatePlaylist userEmail={userEmail} onNavigate={navigate} />;
     case 'playlists-scheduler': return <Scheduler />;
     case 'reports-overview': return <Reports activeTab="Overview" />;
     case 'reports-screens': return <Reports activeTab="Screen Reports" />;

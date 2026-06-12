@@ -8,8 +8,9 @@ export type NavItem = {
 export type Screen = {
   id: string;
   name: string;
-  status: 'online' | 'offline' | 'warning';
+  status: 'online' | 'offline' | 'warning' | 'active' | 'suspended' | 'pairing';
   playlist: string;
+  playlistId?: string;
   location: string;
   licenseType: string;
   lastHeartbeat: string;
@@ -20,6 +21,8 @@ export type Screen = {
   schedulePlaylist?: string;
   scheduleDate?: string;
   scheduleTime?: string;
+  clear_cache?: boolean;
+  assignedToUserEmail?: string;
 };
 
 export type ScreenGroup = {
@@ -45,12 +48,21 @@ export type MediaItem = {
   duration: number;
   resolution: string;
   fileSize: string;
+  fileSizeBytes: number;
   uploadedBy: string;
   createdDate: string;
   expiryDate: string;
   tags: string[];
   status: 'active' | 'archived' | 'expired';
   thumbnail: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  checksum?: string;
+  youtube_url?: string;
+  youtube_video_id?: string;
+  fileData?: string;
+  fileName?: string;
 };
 
 export type Playlist = {

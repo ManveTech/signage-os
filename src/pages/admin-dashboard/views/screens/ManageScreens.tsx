@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Search, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit,
   Monitor, X, Check, CheckCircle, Power, Download, Settings,
-  Building2, User, MoreVertical, Filter
+  Building2, User, MoreVertical, Filter, Activity, Pause, Eraser
 } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
@@ -12,6 +12,9 @@ const statusConfig = {
   online: { label: 'Online', icon: <Wifi size={11} />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
   offline: { label: 'Offline', icon: <WifiOff size={11} />, cls: 'bg-red-50 text-red-700 border-red-100' },
   warning: { label: 'Warning', icon: <AlertTriangle size={11} />, cls: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+  pairing: { label: 'Pairing', icon: <Activity size={11} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+  active: { label: 'Active', icon: <CheckCircle size={11} />, cls: 'bg-teal-50 text-teal-700 border-teal-100' },
+  suspended: { label: 'Suspended', icon: <AlertTriangle size={11} />, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
 };
 
 const groupColorMap: Record<string, { bg: string; text: string; border: string }> = {
@@ -123,6 +126,38 @@ export default function ManageScreens() {
     }
     setSelectedScreens(new Set());
     setBulkAction('');
+  };
+
+  const handleRestart = (screen: Screen) => {
+    addToast(`Restart signal sent to "${screen.name}"`, 'info');
+  };
+
+  const handleStopPlayback = (screen: Screen) => {
+    const updatedScreen = {
+      ...screen,
+      playlist: 'None',
+      playlistId: ''
+    };
+    const allScreens = mediaStore.getScreens();
+    const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+    mediaStore.saveScreens(updatedAll);
+    setScreens(updatedAll);
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
+    addToast(`Playback stopped for "${screen.name}"`);
+  };
+
+  const handleClearCache = (screen: Screen) => {
+    const updatedScreen = {
+      ...screen,
+      clear_cache: true
+    };
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT').then(res => {
+      if (res.ok) {
+        addToast(`Cache purge command sent to "${screen.name}"`, 'success');
+      } else {
+        addToast(`Failed to send cache purge command`, 'error');
+      }
+    });
   };
 
   const handleSingleDelete = () => {
@@ -268,7 +303,7 @@ export default function ManageScreens() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map(screen => {
-                const st = statusConfig[screen.status];
+                const st = statusConfig[screen.status as keyof typeof statusConfig] || statusConfig.offline;
                 return (
                   <tr
                     key={screen.id}
@@ -336,11 +371,25 @@ export default function ManageScreens() {
                           <Edit size={13} />
                         </button>
                         <button
-                          onClick={() => addToast(`Restart sent to "${screen.name}"`, 'info')}
+                          onClick={() => handleRestart(screen)}
                           className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                           title="Restart"
                         >
                           <RefreshCw size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleStopPlayback(screen)}
+                          className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          title="Stop Playback"
+                        >
+                          <Pause size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleClearCache(screen)}
+                          className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          title="Clear Device Cache"
+                        >
+                          <Eraser size={13} />
                         </button>
                         <button
                           onClick={() => setDeleteScreen(screen)}
@@ -411,11 +460,12 @@ export default function ManageScreens() {
                     onChange={(e) => {
                       const val = e.target.value;
                       const play = userPlaylists.find(p => p.name === val);
-                      setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : undefined }));
+                      setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : '' }));
                     }}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
                   >
                     <option value="Normal">Normal</option>
+                    <option value="None">None (Stop Playback)</option>
                     {userPlaylists
                       .filter(p => p.createdBy === editScreen.assignedToUserEmail || p.createdBy === 'admin@demo.com')
                       .map(pl => (

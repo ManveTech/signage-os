@@ -17,7 +17,7 @@ interface AddScreenProps {
 
 export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: AddScreenProps) {
   const [step, setStep] = useState(1);
-  const [pairCode, setPairCode] = useState(() => Math.random().toString(36).substr(2, 6).toUpperCase());
+  const [inputPairingCode, setInputPairingCode] = useState('');
   
   const [groups, setGroups] = useState<any[]>(() => {
     const data = localStorage.getItem('signageos_groups');
@@ -58,58 +58,65 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
   const licenseStatus = clientLicense?.status || 'active';
   const licenseName = clientLicense?.name || 'Pro License';
 
-  const generateNewCode = () => {
-    setPairCode(Math.random().toString(36).substr(2, 6).toUpperCase());
-  };
-
-  const handleRegisterScreen = () => {
+  const handleRegisterScreen = async () => {
     if (!form.name.trim()) {
       alert('Please enter a screen name.');
       return;
     }
-    const newScreenId = 'screen_' + Math.random().toString(36).substr(2, 9);
-    
-    let playlistName = 'Normal';
-    if (form.group) {
-      const gp = groups.find(g => g.id === form.group);
-      playlistName = gp ? gp.playlist : 'Normal';
-    } else if (form.playlist) {
-      playlistName = form.playlist;
+    if (!inputPairingCode.trim()) {
+      alert('Please enter the pairing code from your TV screen.');
+      return;
     }
     
-    const licenseType = clientLicense ? (clientLicense.whiteLabel ? 'Pro' : 'Lite') : 'Lite';
-    
-    const newScreen: any = {
-      id: newScreenId,
-      name: form.name,
-      status: 'online',
-      playlist: playlistName,
-      location: [form.city, form.state].filter(Boolean).join(', ') || 'Unknown Location',
-      licenseType: licenseType,
-      lastHeartbeat: 'Just now',
-      playerVersion: '3.2.1',
-      storageUsed: 15,
-      thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&auto=format&fit=crop&q=60',
-      groupId: form.group || undefined,
-      assignedToUserEmail: userEmail,
-    };
-    
-    const currentScreens = mediaStore.getScreens();
-    currentScreens.push(newScreen);
-    mediaStore.saveScreens(currentScreens);
-    
-    pushToDatabase('screens', newScreenId, newScreen, 'POST');
- 
-    alert(`Screen "${form.name}" has been successfully paired and added to your license!`);
-    if (onNavigate) {
-      onNavigate('my-screens-list');
-    } else {
-      setStep(1);
-      setForm({
-        name: '', orientation: 'landscape', size: '', resolution: '1920x1080', os: 'android', timezone: 'Asia/Kolkata',
-        country: 'India', state: '', city: '', address: '', zip: '', tags: [],
-        playlist: '', group: '',
+    let playlistId = '';
+    if (form.group) {
+      const gp = groups.find(g => g.id === form.group);
+      playlistId = gp ? gp.playlistId || '' : '';
+    } else if (form.playlist) {
+      playlistId = form.playlist;
+    }
+
+    try {
+      const token = localStorage.getItem('signageos_token');
+      const response = await fetch('http://localhost:5000/api/v1/screens/pair', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          pairingCode: inputPairingCode.trim().toUpperCase(),
+          name: form.name,
+          location: [form.city, form.state].filter(Boolean).join(', ') || 'Not Specified',
+          groupId: form.group || '',
+          playlist: playlistId,
+          assignedToUserEmail: userEmail
+        })
       });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        alert(errData.message || 'Failed to pair device. Please check the code.');
+        return;
+      }
+
+      await syncCollection('screens', 'signageos_screens');
+
+      alert(`Screen "${form.name}" has been successfully paired and added to your license!`);
+      if (onNavigate) {
+        onNavigate('my-screens-list');
+      } else {
+        setStep(1);
+        setInputPairingCode('');
+        setForm({
+          name: '', orientation: 'landscape', size: '', resolution: '1920x1080', os: 'android', timezone: 'Asia/Kolkata',
+          country: 'India', state: '', city: '', address: '', zip: '', tags: [],
+          playlist: '', group: '',
+        });
+      }
+    } catch (err) {
+      console.error('Error during screen pairing:', err);
+      alert('Network error trying to pair screen. Please make sure the backend server is running.');
     }
   };
 
@@ -293,7 +300,7 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
                   <select value={form.playlist} onChange={e => set('playlist', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
                     <option value="">None (Standby Loop)</option>
                     <option value="Normal">Normal</option>
-                    {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
+                    {userPlaylists.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
                   </select>
                 </div>
               ) : (() => {
@@ -307,28 +314,25 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
             </div>
 
             {/* Device Pairing */}
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 mt-6">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 mt-6 text-left">
               <h3 className="text-sm font-semibold text-gray-900 mb-1">Device Pairing</h3>
-              <p className="text-xs text-gray-500 mb-4">Enter this code on your display device to complete pairing</p>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                <div className="bg-white border-2 border-blue-200 rounded-xl px-8 py-4 text-center shrink-0 w-full sm:w-auto">
-                  <p className="text-3xl font-bold tracking-widest text-blue-700 font-mono leading-none">{pairCode}</p>
-                  <p className="text-xs text-gray-400 mt-1.5 font-semibold tracking-wider uppercase">Valid for 5 minutes</p>
-                </div>
-                <div className="text-xs text-gray-600 space-y-1.5">
-                  <p>1. Open SignageOS Player app on your TV/display</p>
-                  <p>2. Tap "Pair Device" or "Enter Code"</p>
-                  <p>3. Enter the pairing code shown on the left</p>
-                  <p>4. The display will pair and activate automatically</p>
+              <p className="text-xs text-gray-500 mb-4">Enter the pairing code shown on your TV display below to pair the screen</p>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                  <input
+                    value={inputPairingCode}
+                    onChange={e => setInputPairingCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. SG-1234"
+                    className="px-4 py-3 border-2 border-blue-200 rounded-xl text-center text-xl font-bold tracking-widest text-blue-700 font-mono focus:border-blue-500 outline-none w-full sm:w-48 bg-white uppercase"
+                    maxLength={7}
+                  />
+                  <div className="text-xs text-gray-600 space-y-1">
+                    <p>1. Open the Bluestar Signage Player app on your TV</p>
+                    <p>2. Locate the 6-character pairing code shown on the screen</p>
+                    <p>3. Type the pairing code in the field on the left</p>
+                  </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={generateNewCode}
-                className="mt-4 flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700 hover:underline font-bold uppercase tracking-wider"
-              >
-                <RefreshCw size={10} /> Generate New Code
-              </button>
             </div>
           </div>
         )}

@@ -59,7 +59,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
   const [docTitle, setDocTitle] = useState('');
   const [docCategory, setDocCategory] = useState('General');
   const [docContent, setDocContent] = useState('');
-  const [docImages, setDocImages] = useState<string[]>([]); // base64 images
+  const [docYoutubeUrl, setDocYoutubeUrl] = useState('');
 
   // Ticket Detail Modal
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -106,24 +106,12 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setDocImages(prev => [...prev, reader.result as string]);
-          };
-          reader.readAsDataURL(file);
-        }
-      }
-    }
-  };
-
-  const handleRemoveDocImage = (index: number) => {
-    setDocImages(prev => prev.filter((_, i) => i !== index));
+  const getYouTubeId = (url?: string): string | null => {
+    if (!url) return null;
+    const trimmed = url.trim();
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = trimmed.match(regExp);
+    return (match && match[2].trim().length === 11) ? match[2].trim() : null;
   };
 
   const handleCreateDoc = (e: React.FormEvent) => {
@@ -133,13 +121,14 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
       title: docTitle,
       category: docCategory,
       content: docContent,
-      images: docImages
+      youtubeUrl: docYoutubeUrl,
+      images: []
     });
     showToast('Support Document published successfully!');
     setDocTitle('');
     setDocCategory('General');
     setDocContent('');
-    setDocImages([]);
+    setDocYoutubeUrl('');
     setIsDocFormOpen(false);
     loadData();
   };
@@ -383,37 +372,17 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                   />
                 </div>
 
-                {/* Upload Image Section */}
+                {/* YouTube Link Section */}
                 <div className="space-y-2 border-t border-slate-100 pt-3">
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Attach Images / Screenshots</label>
-                  <div className="flex flex-wrap gap-3 items-center">
-                    {/* Add Button */}
-                    <label className="w-16 h-16 rounded-xl border border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50 hover:bg-slate-100 flex flex-col items-center justify-center text-slate-400 cursor-pointer transition-all">
-                      <Plus size={16} />
-                      <span className="text-[8px] font-black uppercase mt-1">Add Image</span>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        multiple 
-                        onChange={handleImageUpload} 
-                        className="hidden" 
-                      />
-                    </label>
-
-                    {/* Previews */}
-                    {docImages.map((img, idx) => (
-                      <div key={idx} className="relative w-16 h-16 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 group">
-                        <img src={img} alt="Attachment" className="w-full h-full object-cover" />
-                        <button 
-                          type="button"
-                          onClick={() => handleRemoveDocImage(idx)}
-                          className="absolute inset-0 bg-rose-600/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[9px] font-black uppercase tracking-wider transition-opacity cursor-pointer"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">YouTube Video URL</label>
+                  <input 
+                    type="url" 
+                    placeholder="e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                    value={docYoutubeUrl}
+                    onChange={e => setDocYoutubeUrl(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-350 outline-none focus:border-indigo-500 bg-slate-50 text-xs"
+                  />
+                  <p className="text-[9px] text-gray-400 mt-1">Provide a watch or share link to embed this video directly under the document.</p>
                 </div>
 
                 <div className="pt-2 flex justify-end gap-2.5">
@@ -421,7 +390,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                     type="button"
                     onClick={() => {
                       setIsDocFormOpen(false);
-                      setDocImages([]);
+                      setDocYoutubeUrl('');
                     }}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
                   >
@@ -440,7 +409,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
             /* Support Documents List grid */
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {docs.length === 0 ? (
-                <div className="md:col-span-2 bg-white border border-dashed border-gray-300 rounded-2xl p-10 text-center text-slate-450 italic">
+                <div className="md:col-span-2 bg-white border border-dashed border-gray-300 rounded-2xl p-10 text-center text-slate-455 italic">
                   No support documents created yet. Click "Draft Document" to publish one.
                 </div>
               ) : (
@@ -454,16 +423,19 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                       <h3 className="text-sm font-black text-slate-800 leading-snug">{doc.title}</h3>
                       <p className="text-xs text-slate-500 leading-relaxed line-clamp-3 whitespace-pre-line">{doc.content}</p>
 
-                      {/* Doc Images Gallery at the bottom of the article card */}
-                      {doc.images && doc.images.length > 0 && (
+                      {/* YouTube Embed Player */}
+                      {(doc.youtubeUrl || (doc as any).youtube_url) && getYouTubeId(doc.youtubeUrl || (doc as any).youtube_url) && (
                         <div className="space-y-1.5 border-t border-slate-50 pt-2.5">
-                          <p className="text-[8px] font-black uppercase text-slate-400 tracking-wider">Document Images ({doc.images.length})</p>
-                          <div className="flex gap-2 overflow-x-auto py-1">
-                            {doc.images.map((img, index) => (
-                              <div key={index} className="w-12 h-12 rounded border border-slate-150 overflow-hidden bg-slate-50 shrink-0">
-                                <img src={img} alt="Help Article screenshot" className="w-full h-full object-cover" />
-                              </div>
-                            ))}
+                          <p className="text-[8px] font-black uppercase text-slate-400 tracking-wider">Embedded Video</p>
+                          <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-150 shadow-2xs">
+                            <iframe
+                              className="absolute top-0 left-0 w-full h-full"
+                              src={`https://www.youtube.com/embed/${getYouTubeId(doc.youtubeUrl || (doc as any).youtube_url)}`}
+                              title={doc.title}
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
                           </div>
                         </div>
                       )}

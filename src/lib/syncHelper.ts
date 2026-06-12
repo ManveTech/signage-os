@@ -28,6 +28,10 @@ export function generateClientPassword(clientName: string): string {
   }
   return password;
 }
+export let memoryMedia: any[] = [];
+export function setMemoryMedia(media: any[]) {
+  memoryMedia = media;
+}
 
 export type PushResult =
   | { ok: true; status: number; data: any }
@@ -57,7 +61,11 @@ export async function syncAllFromDatabase() {
       });
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem(col.key, JSON.stringify(data));
+        if (col.key === 'signageos_media') {
+          setMemoryMedia(data);
+        } else {
+          localStorage.setItem(col.key, JSON.stringify(data));
+        }
       }
     } catch (err) {
       console.error(`Failed to sync collection ${col.path}:`, err);
@@ -65,7 +73,7 @@ export async function syncAllFromDatabase() {
   }
 }
 
-// Sync a single collection from server and update localStorage
+// Sync a single collection from server and update localStorage / in-memory cache
 export async function syncCollection(collectionPath: string, localStorageKey: string): Promise<any[]> {
   try {
     const res = await fetch(`${API_BASE}/${collectionPath}`, {
@@ -73,13 +81,20 @@ export async function syncCollection(collectionPath: string, localStorageKey: st
     });
     if (res.ok) {
       const data = await res.json();
-      localStorage.setItem(localStorageKey, JSON.stringify(data));
+      if (localStorageKey === 'signageos_media') {
+        setMemoryMedia(data);
+      } else {
+        localStorage.setItem(localStorageKey, JSON.stringify(data));
+      }
       return data;
     }
   } catch (err) {
     console.error(`Failed to sync collection ${collectionPath}:`, err);
   }
-  // Fallback: return from localStorage
+  // Fallback: return from memory or localStorage
+  if (localStorageKey === 'signageos_media') {
+    return memoryMedia;
+  }
   const stored = localStorage.getItem(localStorageKey);
   return stored ? JSON.parse(stored) : [];
 }

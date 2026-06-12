@@ -379,9 +379,23 @@ export default function ClientPlaylists({ onNavigate }: Props) {
                 <div key={playlist.id} className="bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-all flex flex-col justify-between space-y-4">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${playlist.active ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                        {playlist.active ? <Play size={18} className="text-white ml-0.5" /> : <Pause size={18} className="text-gray-500" />}
-                      </div>
+                      <button 
+                        onClick={() => {
+                          const updatedActive = !playlist.active;
+                          mediaStore.updatePlaylist(playlist.id, { 
+                            active: updatedActive,
+                            scheduleStatus: updatedActive ? 'Running' : 'Paused'
+                          });
+                          showToast(`Playlist "${playlist.name}" is now ${updatedActive ? 'active' : 'paused'}.`);
+                          loadData();
+                        }}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-colors ${
+                          playlist.active ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-500'
+                        }`}
+                        title={playlist.active ? "Pause Playlist" : "Activate Playlist"}
+                      >
+                        {playlist.active ? <Play size={18} className="ml-0.5" /> : <Pause size={18} />}
+                      </button>
                       <div className="min-w-0">
                         <h3 className="text-xs font-bold text-slate-800 truncate max-w-[150px]" title={playlist.name}>{playlist.name}</h3>
                         <p className="text-[10px] text-gray-450 mt-0.5">Created: {playlist.createdDate}</p>

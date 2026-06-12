@@ -61,6 +61,14 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const getYouTubeId = (url?: string): string | null => {
+    if (!url) return null;
+    const trimmed = url.trim();
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = trimmed.match(regExp);
+    return (match && match[2].trim().length === 11) ? match[2].trim() : null;
+  };
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
@@ -291,18 +299,21 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
                 
                 <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line font-medium">{selectedDoc.content}</p>
 
-                {/* Images uploaded by admin are shown at the bottom here */}
-                {selectedDoc.images && selectedDoc.images.length > 0 && (
+                {/* YouTube Embed Player */}
+                {(selectedDoc.youtubeUrl || (selectedDoc as any).youtube_url) && getYouTubeId(selectedDoc.youtubeUrl || (selectedDoc as any).youtube_url) && (
                   <div className="space-y-2 border-t border-slate-100 pt-4">
-                    <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                      <ImageIcon size={12} className="text-indigo-600" /> Attached Screenshots & Diagrams
+                    <p className="text-[10px] font-black uppercase text-slate-550 tracking-wider">
+                      Reference Video Guide
                     </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {selectedDoc.images.map((img, index) => (
-                        <div key={index} className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 aspect-video flex items-center justify-center shadow-2xs hover:scale-[1.03] transition-transform">
-                          <img src={img} alt="Screenshot guide" className="w-full h-full object-cover" />
-                        </div>
-                      ))}
+                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-slate-200 shadow-sm max-w-2xl">
+                      <iframe
+                        className="absolute top-0 left-0 w-full h-full"
+                        src={`https://www.youtube.com/embed/${getYouTubeId(selectedDoc.youtubeUrl || (selectedDoc as any).youtube_url)}`}
+                        title={selectedDoc.title}
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
                     </div>
                   </div>
                 )}

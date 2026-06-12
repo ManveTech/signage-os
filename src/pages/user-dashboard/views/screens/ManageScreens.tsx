@@ -1,16 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit,
   Monitor, X, Check, CheckCircle, Power, Download, Settings,
-  Building2, User, MoreVertical, Filter
+  Building2, User, MoreVertical, Filter, Activity, Pause, Eraser
 } from 'lucide-react';
-import { mockScreens, mockOrganizations, mockUsers, mockGroups } from '../../data/mockData';
+import { mediaStore } from '../../../../lib/mediaStore';
+import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
 
 const statusConfig = {
   online: { label: 'Online', icon: <Wifi size={11} />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
   offline: { label: 'Offline', icon: <WifiOff size={11} />, cls: 'bg-red-50 text-red-700 border-red-100' },
   warning: { label: 'Warning', icon: <AlertTriangle size={11} />, cls: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+  pairing: { label: 'Pairing', icon: <Activity size={11} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+  active: { label: 'Active', icon: <CheckCircle size={11} />, cls: 'bg-teal-50 text-teal-700 border-teal-100' },
+  suspended: { label: 'Suspended', icon: <AlertTriangle size={11} />, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
 };
 
 const groupColorMap: Record<string, { bg: string; text: string; border: string }> = {
@@ -25,17 +29,40 @@ const groupColorMap: Record<string, { bg: string; text: string; border: string }
 type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' };
 type BulkAction = 'restart' | 'disable' | 'delete' | '';
 
-export default function ManageScreens() {
-  const [screens, setScreens] = useState<Screen[]>(mockScreens);
+export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEmail?: string }) {
+  const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail));
+  const [groups, setGroups] = useState<any[]>(() => {
+    const data = localStorage.getItem('signageos_groups');
+    return data ? JSON.parse(data) : [];
+  });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
-  const [orgFilter, setOrgFilter] = useState('');
   const [selectedScreens, setSelectedScreens] = useState<Set<string>>(new Set());
   const [editScreen, setEditScreen] = useState<Screen | null>(null);
   const [deleteScreen, setDeleteScreen] = useState<Screen | null>(null);
   const [bulkAction, setBulkAction] = useState<BulkAction>('');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [userPlaylists, setUserPlaylists] = useState<any[]>(() => mediaStore.getPlaylists().filter(p => p.createdBy === userEmail));
+
+  useEffect(() => {
+    syncCollection('screens', 'signageos_screens').then(serverScreens => {
+      if (serverScreens.length > 0) {
+        setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
+        mediaStore.saveScreens(serverScreens);
+      }
+    });
+    syncCollection('screen_groups', 'signageos_groups').then(serverGroups => {
+      if (serverGroups.length > 0) {
+        setGroups(serverGroups);
+      }
+    });
+    syncCollection('playlists', 'signageos_playlists').then(serverPlaylists => {
+      if (serverPlaylists.length > 0) {
+        setUserPlaylists(serverPlaylists.filter(p => p.createdBy === userEmail));
+      }
+    });
+  }, [userEmail]);
 
   const filtered = screens.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
@@ -67,30 +94,86 @@ export default function ManageScreens() {
     if (!bulkAction || selectedScreens.size === 0) return;
     const count = selectedScreens.size;
     if (bulkAction === 'delete') {
-      setScreens(p => p.filter(s => !selectedScreens.has(s.id)));
+      const allScreens = mediaStore.getScreens();
+      const updated = allScreens.filter(s => !selectedScreens.has(s.id));
+      mediaStore.saveScreens(updated);
+      setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+      selectedScreens.forEach(id => {
+        pushToDatabase('screens', id, null, 'DELETE');
+      });
       addToast(`${count} screen${count > 1 ? 's' : ''} deleted`);
     } else if (bulkAction === 'restart') {
       addToast(`Restart signal sent to ${count} screen${count > 1 ? 's' : ''}`, 'info');
     } else if (bulkAction === 'disable') {
-      setScreens(p => p.map(s => selectedScreens.has(s.id) ? { ...s, status: 'offline' } : s));
+      const allScreens = mediaStore.getScreens();
+      const updated = allScreens.map(s => {
+        if (selectedScreens.has(s.id)) {
+          const disabledScreen = { ...s, status: 'offline' as const };
+          pushToDatabase('screens', s.id, disabledScreen, 'PUT');
+          return disabledScreen;
+        }
+        return s;
+      });
+      mediaStore.saveScreens(updated);
+      setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
       addToast(`${count} screen${count > 1 ? 's' : ''} disabled`);
     }
     setSelectedScreens(new Set());
     setBulkAction('');
   };
 
+  const handleRestart = (screen: Screen) => {
+    addToast(`Restart signal sent to "${screen.name}"`, 'info');
+  };
+
+  const handleStopPlayback = (screen: Screen) => {
+    const updatedScreen = {
+      ...screen,
+      playlist: 'None',
+      playlistId: ''
+    };
+    const allScreens = mediaStore.getScreens();
+    const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+    mediaStore.saveScreens(updatedAll);
+    setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
+    addToast(`Playback stopped for "${screen.name}"`);
+  };
+
+  const handleClearCache = (screen: Screen) => {
+    const updatedScreen = {
+      ...screen,
+      clear_cache: true
+    };
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT').then(res => {
+      if (res.ok) {
+        addToast(`Cache purge command sent to "${screen.name}"`, 'success');
+      } else {
+        addToast(`Failed to send cache purge command`, 'error');
+      }
+    });
+  };
+
   const handleSingleDelete = () => {
     if (!deleteScreen) return;
-    setScreens(p => p.filter(s => s.id !== deleteScreen.id));
+    const allScreens = mediaStore.getScreens();
+    const updated = allScreens.filter(s => s.id !== deleteScreen.id);
+    mediaStore.saveScreens(updated);
+    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    pushToDatabase('screens', deleteScreen.id, null, 'DELETE');
     setDeleteScreen(null);
     addToast(`"${deleteScreen.name}" deleted`);
   };
 
   const handleEditSave = () => {
     if (!editScreen) return;
-    const gp = mockGroups.find(g => g.id === editScreen.groupId);
+    const gp = groups.find(g => g.id === editScreen.groupId);
     const finalScreen = gp ? { ...editScreen, playlist: gp.playlist } : editScreen;
-    setScreens(p => p.map(s => s.id === editScreen.id ? finalScreen : s));
+    const allScreens = mediaStore.getScreens();
+    const updated = allScreens.map(s => s.id === editScreen.id ? finalScreen : s);
+    mediaStore.saveScreens(updated);
+    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    pushToDatabase('screens', editScreen.id, finalScreen, 'PUT');
     setEditScreen(null);
     addToast(`"${editScreen.name}" updated`);
   };
@@ -216,7 +299,7 @@ export default function ManageScreens() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map(screen => {
-                const st = statusConfig[screen.status];
+                const st = statusConfig[screen.status as keyof typeof statusConfig] || statusConfig.offline;
                 return (
                   <tr
                     key={screen.id}
@@ -248,7 +331,7 @@ export default function ManageScreens() {
                     </td>
                     <td className="px-4 py-3">
                       {screen.groupId ? (() => {
-                        const gp = mockGroups.find(g => g.id === screen.groupId);
+                        const gp = groups.find(g => g.id === screen.groupId);
                         const c = gp ? (groupColorMap[gp.color] ?? groupColorMap.blue) : groupColorMap.blue;
                         return gp ? (
                           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${c.bg} ${c.text} ${c.border}`}>
@@ -264,7 +347,7 @@ export default function ManageScreens() {
                     <td className="px-4 py-3">
                       <span className={`text-sm ${screen.playlist === 'Normal' ? 'text-gray-400 italic' : 'text-gray-700'}`}>
                         {screen.groupId ? (() => {
-                          const gp = mockGroups.find(g => g.id === screen.groupId);
+                          const gp = groups.find(g => g.id === screen.groupId);
                           return gp ? `${gp.playlist} (Inherited)` : screen.playlist;
                         })() : screen.playlist}
                       </span>
@@ -289,6 +372,20 @@ export default function ManageScreens() {
                           title="Restart"
                         >
                           <RefreshCw size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleStopPlayback(screen)}
+                          className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          title="Stop Playback"
+                        >
+                          <Pause size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleClearCache(screen)}
+                          className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          title="Clear Device Cache"
+                        >
+                          <Eraser size={13} />
                         </button>
                         <button
                           onClick={() => setDeleteScreen(screen)}
@@ -346,7 +443,7 @@ export default function ManageScreens() {
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
                 >
                   <option value="">None (Ungrouped)</option>
-                  {mockGroups.map(g => (
+                  {groups.map(g => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
@@ -354,18 +451,23 @@ export default function ManageScreens() {
               {!editScreen.groupId && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
-                  <select value={editScreen.playlist} onChange={e => setEditScreen(p => p && ({ ...p, playlist: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
+                  <select
+                    value={editScreen.playlist}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const play = userPlaylists.find(p => p.name === val);
+                      setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : '' }));
+                    }}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
+                  >
                     <option value="Normal">Normal</option>
-                    <option value="Summer Campaign">Summer Campaign</option>
-                    <option value="Brand Showcase">Brand Showcase</option>
-                    <option value="Menu Loop">Menu Loop</option>
-                    <option value="Flight Info">Flight Info</option>
-                    <option value="Welcome Loop">Welcome Loop</option>
+                    <option value="None">None (Stop Playback)</option>
+                    {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
                   </select>
                 </div>
               )}
               {editScreen.groupId && (() => {
-                const gp = mockGroups.find(g => g.id === editScreen.groupId);
+                const gp = groups.find(g => g.id === editScreen.groupId);
                 return (
                   <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
                     Playlist is managed by group <strong>{gp?.name}</strong> (Inherited: <strong>{gp?.playlist || 'None'}</strong>).

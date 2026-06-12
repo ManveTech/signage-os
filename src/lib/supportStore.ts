@@ -24,6 +24,7 @@ export interface SupportDoc {
   category: string;
   content: string;
   images: string[]; // base64 strings
+  youtubeUrl?: string;
   createdDate: string;
 }
 
@@ -110,8 +111,32 @@ export const supportStore = {
   getDocs(): SupportDoc[] {
     const data = localStorage.getItem('signageos_docs');
     if (!data) {
-      localStorage.setItem('signageos_docs', JSON.stringify(INITIAL_DOCS));
-      return INITIAL_DOCS;
+      const defaultDocs: SupportDoc[] = [{
+        id: 'youtube-guide-doc',
+        title: 'Using YouTube Videos',
+        category: 'Tutorial',
+        content: `Supported URLs:
+• youtube.com/watch?v=
+• youtu.be/
+
+How It Works:
+1. Paste YouTube URL
+2. System validates link
+3. Video added to media library
+4. Add to playlist
+5. Assigned screens receive update automatically
+
+Notes:
+- Internet connection required
+- Private videos not supported
+- Age restricted videos may not play
+- Deleted videos are skipped automatically`,
+        youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        images: [],
+        createdDate: new Date().toISOString().split('T')[0]
+      }];
+      localStorage.setItem('signageos_docs', JSON.stringify(defaultDocs));
+      return defaultDocs;
     }
     return JSON.parse(data);
   },

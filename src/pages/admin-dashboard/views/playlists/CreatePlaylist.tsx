@@ -18,9 +18,10 @@ type PlaylistItem = {
 
 interface Props {
   userEmail: string;
+  onNavigate?: (view: string) => void;
 }
 
-export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) {
+export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigate }: Props) {
   // Target Client User Email for playlist creation
   const [targetUserEmail, setTargetUserEmail] = useState<string>(() => {
     const forClient = localStorage.getItem('signageos_create_playlist_for_client');
@@ -94,6 +95,11 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) 
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
   const [existingPlaylists, setExistingPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>('');
+
+  // Multi-upload sequential progress state
+  const [totalFilesToUpload, setTotalFilesToUpload] = useState(0);
+  const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
     loadMedia();
@@ -329,75 +335,131 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    processUploadedFile(files[0]);
+    processUploadedFiles(Array.from(files));
+    e.target.value = '';
   };
 
-  const processUploadedFile = (file: File) => {
-    if (file.size > 5 * 1024 * 1024) {
-      alert(`Upload cancelled: The file "${file.name}" is larger than 5MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). All uploaded files must be under 5MB.`);
-      return;
-    }
+  const uploadSingleFile = (file: File): Promise<void> => {
+    return new Promise<void>((resolve, reject) => {
+      if (file.size > 50 * 1024 * 1024) {
+        reject(new Error(`"${file.name}" is larger than 50MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). Please compress it or use a smaller file.`));
+        return;
+      }
 
-    const fileSizeMb = file.size / (1024 * 1024);
-    const fileSizeBytes = file.size;
-    const limitBytes = storageLimitGb * 1024 * 1024 * 1024;
+      const fileSizeMb = file.size / (1024 * 1024);
+      const fileSizeBytes = file.size;
+      const limitBytes = storageLimitGb * 1024 * 1024 * 1024;
 
-    if (storageUsedBytes + fileSizeBytes > limitBytes) {
-      alert(`Upload Failed: This file of ${fileSizeMb.toFixed(1)} MB exceeds your remaining license storage limit. Allowed storage: ${storageLimitGb} GB.`);
-      return;
-    }
+      if (storageUsedBytes + fileSizeBytes > limitBytes) {
+        reject(new Error(`This file of ${fileSizeMb.toFixed(1)} MB exceeds your remaining license storage limit. Allowed storage: ${storageLimitGb} GB.`));
+        return;
+      }
 
-    const isVideo = file.type.startsWith('video/');
-    const fileType = isVideo ? 'video' : 'image';
-    const reader = new FileReader();
+      const isVideo = file.type.startsWith('video/');
+      const fileType = isVideo ? 'video' : 'image';
+      const reader = new FileReader();
 
-    reader.onload = (event) => {
-      const resultDataUrl = event.target?.result as string;
+      reader.onload = (event) => {
+        const resultDataUrl = event.target?.result as string;
+        const base64Data = resultDataUrl.split(',')[1];
 
-      const saveMediaWithThumb = (thumbUrl: string) => {
-        const newMedia = mediaStore.uploadMedia({
-          title: file.name,
-          type: fileType,
-          duration: isVideo ? 15 : 10,
-          resolution: '1920x1080',
-          fileSize: `${fileSizeMb.toFixed(1)} MB`,
-          fileSizeBytes: fileSizeBytes,
-          uploadedBy: targetUserEmail,
-          expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          tags: ['uploaded', 'playlist-direct'],
-          thumbnail: thumbUrl
-        });
+        const saveMediaWithThumb = (thumbUrl: string, width: number, height: number, duration: number) => {
+          try {
+            const newMedia = mediaStore.uploadMedia({
+              title: file.name,
+              type: fileType,
+              duration: duration,
+              resolution: `${width}x${height}`,
+              fileSize: `${fileSizeMb.toFixed(1)} MB`,
+              fileSizeBytes: fileSizeBytes,
+              uploadedBy: targetUserEmail,
+              expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              tags: ['uploaded', 'playlist-direct'],
+              thumbnail: thumbUrl,
+              width: width,
+              height: height,
+              mimeType: file.type,
+              fileData: base64Data,
+              fileName: file.name
+            });
 
-        loadMedia();
-        addAssetToTimeline(newMedia);
-        showToast(`Media "${file.name}" uploaded and appended to playlist!`);
-      };
-
-      if (fileType === 'image') {
-        // Compress using Canvas to generate a tiny thumbnail (160x90) and stay within localStorage limits
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = 160;
-          canvas.height = 90;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, 160, 90);
-            const lowResDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-            saveMediaWithThumb(lowResDataUrl);
-          } else {
-            saveMediaWithThumb(resultDataUrl);
+            loadMedia();
+            addAssetToTimeline(newMedia);
+            showToast(`Media "${file.name}" uploaded and appended to playlist!`);
+            resolve();
+          } catch (e) {
+            reject(e);
           }
         };
-        img.src = resultDataUrl;
-      } else {
-        // Videos get a beautiful default fallback thumbnail to save localStorage quota
-        const videoPlaceholderThumbnail = 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60';
-        saveMediaWithThumb(videoPlaceholderThumbnail);
-      }
-    };
 
-    reader.readAsDataURL(file);
+        if (fileType === 'image') {
+          const img = new Image();
+          img.onload = () => {
+            const width = img.naturalWidth;
+            const height = img.naturalHeight;
+            saveMediaWithThumb(resultDataUrl, width, height, 10);
+          };
+          img.onerror = () => {
+            reject(new Error(`Failed to load image "${file.name}".`));
+          };
+          img.src = resultDataUrl;
+        } else {
+          const video = document.createElement('video');
+          video.preload = 'metadata';
+          video.onloadedmetadata = () => {
+            const width = video.videoWidth;
+            const height = video.videoHeight;
+            const duration = Math.round(video.duration) || 15;
+            window.URL.revokeObjectURL(video.src);
+            saveMediaWithThumb('https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60', width, height, duration);
+          };
+          video.onerror = () => {
+            saveMediaWithThumb('https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60', 1920, 1080, 15);
+          };
+          video.src = URL.createObjectURL(file);
+        }
+      };
+
+      reader.onerror = () => {
+        reject(new Error(`Failed to read file "${file.name}".`));
+      };
+
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processUploadedFiles = async (files: File[]) => {
+    setTotalFilesToUpload(files.length);
+    setUploadingFilesCount(0);
+    setUploadProgress(0);
+
+    let count = 0;
+    let failedCount = 0;
+    for (const file of files) {
+      count++;
+      setUploadingFilesCount(count);
+      setUploadProgress(((count - 1) / files.length) * 100);
+      try {
+        await uploadSingleFile(file);
+      } catch (err) {
+        console.error(err);
+        failedCount++;
+        showToast(`⚠️ Failed: ${file.name} — ${err instanceof Error ? err.message : 'Upload error'}`);
+      }
+      setUploadProgress((count / files.length) * 100);
+    }
+
+    if (failedCount === 0) {
+      showToast(`✅ All ${files.length} file(s) uploaded successfully!`);
+    } else {
+      showToast(`⚠️ ${files.length - failedCount} of ${files.length} files uploaded. ${failedCount} failed.`);
+    }
+
+    setTimeout(() => {
+      setTotalFilesToUpload(0);
+      setUploadingFilesCount(0);
+      setUploadProgress(0);
+    }, 1500);
   };
 
   const handleFileDropZone = (e: React.DragEvent) => {
@@ -405,7 +467,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) 
     setDragging(false);
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
-      processUploadedFile(files[0]);
+      processUploadedFiles(Array.from(files));
     }
   };
 
@@ -413,6 +475,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) 
   // SAVE PLAYLIST HANDLER
   // -------------------------------------------------------------
   const handleSavePlaylist = () => {
+    if (totalFilesToUpload > 0) {
+      alert('Please wait for all uploads to complete before saving the playlist.');
+      return;
+    }
     if (!playlistName.trim()) {
       alert('Please enter a playlist name.');
       return;
@@ -465,6 +531,15 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) 
     
     // Reset inputs
     handleStartNewPlaylist();
+
+    // Navigate to all playlists / my playlists view
+    if (onNavigate) {
+      if (userEmail === 'admin@demo.com') {
+        onNavigate('my-playlists');
+      } else {
+        onNavigate('playlists-all');
+      }
+    }
   };
 
   const getMediaItem = (id: string) => mediaList.find(m => m.id === id);
@@ -478,12 +553,47 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) 
         onChange={handleFileSelect} 
         accept="image/*,video/*" 
         className="hidden" 
+        multiple
       />
 
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl border border-slate-700 z-50 animate-slideIn">
+        <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl border border-slate-700 z-50 animate-slideIn max-w-xs">
           {toastMessage}
+        </div>
+      )}
+
+      {/* Full-page Upload Progress Overlay */}
+      {totalFilesToUpload > 0 && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] flex items-center justify-center">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 w-full max-w-sm mx-4 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+                <Upload size={22} className="text-blue-600 animate-bounce" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-900">Uploading Media Files</p>
+                <p className="text-xs text-slate-500 mt-0.5">Please wait — do not close this page</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-700">
+                  File {uploadingFilesCount} of {totalFilesToUpload}
+                </span>
+                <span className="text-xs font-bold text-blue-600">{Math.round(uploadProgress)}%</span>
+              </div>
+              <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 text-center">
+                Uploading to server and adding to your media library...
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -651,6 +761,21 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) 
               </span>
             </div>
 
+            {totalFilesToUpload > 0 && (
+              <div className="bg-blue-50/50 border border-blue-150 rounded-xl p-3.5 space-y-2">
+                <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                  <span>Uploading playlist assets...</span>
+                  <span>{uploadingFilesCount} of {totalFilesToUpload} files ({Math.round(uploadProgress)}%)</span>
+                </div>
+                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-blue-600 h-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             {playlistItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 border border-dashed border-slate-200 rounded-2xl bg-slate-50 text-center">
                 <ImageIcon size={32} className="text-slate-300 mb-2" />
@@ -707,7 +832,15 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com' }: Props) 
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-slate-800 truncate" title={media.title}>{media.title}</p>
-                          <p className="text-[9.5px] text-gray-400 font-semibold">{media.fileSize}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 uppercase flex items-center gap-1">
+                              {media.type === 'image' && '🖼 Image'}
+                              {media.type === 'video' && '🎥 Video'}
+                              {media.type === 'youtube' && '▶ YouTube'}
+                              {media.type !== 'image' && media.type !== 'video' && media.type !== 'youtube' && media.type}
+                            </span>
+                            <span className="text-[9.5px] text-gray-400 font-semibold">{media.type === 'youtube' ? 'YouTube' : media.fileSize}</span>
+                          </div>
                           
                           {/* Duration input */}
                           <div className="flex items-center gap-2 mt-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 w-fit">

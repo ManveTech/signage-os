@@ -34,6 +34,7 @@ const activityColorMap: Record<string, string> = {
 
 export default function Dashboard() {
   const [, setRefreshTick] = useState(0);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   // Sync all collections from server on mount
   useEffect(() => {
@@ -61,7 +62,7 @@ export default function Dashboard() {
 
   const totalScreens = screens.length;
   const myScreens = screens.filter(s => s.assignedToUserEmail === 'admin@demo.com').length;
-  const onlineScreens = screens.filter(s => s.status === 'online').length;
+  const onlineScreens = screens.filter(s => s.status === 'online' || s.status === 'active').length;
   const offlineScreens = screens.filter(s => s.status === 'offline').length;
   const totalMedia = media.length;
   const activePlaylists = playlists.length;
@@ -78,6 +79,14 @@ export default function Dashboard() {
     { label: 'Total Licenses', value: totalLicenses.toString(), icon: <Key size={20} />, color: 'blue' },
     { label: 'Expiring Licenses', value: expiringLicenses.toString(), icon: <Clock size={20} />, color: 'orange' },
   ];
+
+  const colorGlowMap: Record<string, { borderColor: string; glowColor: string }> = {
+    blue: { borderColor: '#3B82F6', glowColor: 'rgba(59,130,246,0.3)' },
+    teal: { borderColor: '#14B8A6', glowColor: 'rgba(20,184,166,0.3)' },
+    green: { borderColor: '#10B981', glowColor: 'rgba(16,185,129,0.3)' },
+    red: { borderColor: '#EF4444', glowColor: 'rgba(239,68,68,0.3)' },
+    orange: { borderColor: '#F97316', glowColor: 'rgba(249,115,22,0.3)' },
+  };
 
   const alerts: { type: 'error' | 'warning' | 'info'; title: string; desc: string; time: string }[] = [];
 
@@ -123,8 +132,22 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
         {kpiCards.map(card => {
           const c = colorMap[card.color] || colorMap.blue;
+          const glow = colorGlowMap[card.color] || colorGlowMap.blue;
+          const isHovered = hoveredCard === card.label;
+          const shadowStyle = isHovered ? {
+            boxShadow: `0 10px 25px -5px ${glow.glowColor}, 0 8px 10px -6px ${glow.glowColor}`,
+            borderColor: glow.borderColor,
+            transform: 'translateY(-2px)'
+          } : {};
+
           return (
-            <div key={card.label} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition-shadow">
+            <div 
+              key={card.label} 
+              className="bg-white rounded-xl border border-gray-100 p-4 transition-all duration-300 cursor-pointer"
+              style={shadowStyle}
+              onMouseEnter={() => setHoveredCard(card.label)}
+              onMouseLeave={() => setHoveredCard(null)}
+            >
               <div className="mb-3">
                 <div className={`w-9 h-9 rounded-lg ${c.light} ${c.text} flex items-center justify-center`}>
                   {card.icon}

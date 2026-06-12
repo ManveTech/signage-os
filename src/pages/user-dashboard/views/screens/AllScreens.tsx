@@ -1,12 +1,16 @@
-import { useState } from 'react';
-import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown } from 'lucide-react';
-import { mockScreens, mockGroups } from '../../data/mockData';
+import { useState, useEffect } from 'react';
+import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus } from 'lucide-react';
+import { mediaStore } from '../../../../lib/mediaStore';
+import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
 
 const statusConfig = {
   online: { label: 'Online', icon: <Wifi size={12} />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
   offline: { label: 'Offline', icon: <WifiOff size={12} />, cls: 'bg-red-50 text-red-700 border-red-100' },
   warning: { label: 'Warning', icon: <AlertTriangle size={12} />, cls: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+  pairing: { label: 'Pairing', icon: <Activity size={12} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+  active: { label: 'Active', icon: <CheckCircle size={12} />, cls: 'bg-teal-50 text-teal-700 border-teal-100' },
+  suspended: { label: 'Suspended', icon: <AlertTriangle size={12} />, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
 };
 
 const groupColorMap: Record<string, { bg: string; text: string; border: string }> = {
@@ -20,8 +24,33 @@ const groupColorMap: Record<string, { bg: string; text: string; border: string }
 
 type Toast = { id: number; message: string; type: 'success' | 'info' };
 
-export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => void }) {
-  const [screens, setScreens] = useState<Screen[]>(mockScreens);
+export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }: { onNavigate: (v: string) => void; userEmail?: string }) {
+  const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail));
+  const [groups, setGroups] = useState<any[]>(() => {
+    const data = localStorage.getItem('signageos_groups');
+    return data ? JSON.parse(data) : [];
+  });
+  const [userPlaylists, setUserPlaylists] = useState<any[]>(() => mediaStore.getPlaylists().filter(p => p.createdBy === userEmail));
+
+  useEffect(() => {
+    syncCollection('screens', 'signageos_screens').then(serverScreens => {
+      if (serverScreens.length > 0) {
+        setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
+        mediaStore.saveScreens(serverScreens);
+      }
+    });
+    syncCollection('screen_groups', 'signageos_groups').then(serverGroups => {
+      if (serverGroups.length > 0) {
+        setGroups(serverGroups);
+      }
+    });
+    syncCollection('playlists', 'signageos_playlists').then(serverPlaylists => {
+      if (serverPlaylists.length > 0) {
+        setUserPlaylists(serverPlaylists.filter(p => p.createdBy === userEmail));
+      }
+    });
+  }, [userEmail]);
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
@@ -44,7 +73,11 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
 
   const handleDelete = () => {
     if (!deleteScreen) return;
-    setScreens(p => p.filter(s => s.id !== deleteScreen.id));
+    const allScreens = mediaStore.getScreens();
+    const updated = allScreens.filter(s => s.id !== deleteScreen.id);
+    mediaStore.saveScreens(updated);
+    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    pushToDatabase('screens', deleteScreen.id, null, 'DELETE');
     setDeleteScreen(null);
     addToast(`"${deleteScreen.name}" has been removed`);
   };
@@ -53,11 +86,43 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
     addToast(`Restart signal sent to "${screen.name}"`, 'info');
   };
 
+  const handleStopPlayback = (screen: Screen) => {
+    const updatedScreen = {
+      ...screen,
+      playlist: 'None',
+      playlistId: ''
+    };
+    const allScreens = mediaStore.getScreens();
+    const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+    mediaStore.saveScreens(updatedAll);
+    setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
+    addToast(`Playback stopped for "${screen.name}"`);
+  };
+
+  const handleClearCache = (screen: Screen) => {
+    const updatedScreen = {
+      ...screen,
+      clear_cache: true
+    };
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT').then(res => {
+      if (res.ok) {
+        addToast(`Cache purge command sent to "${screen.name}"`, 'success');
+      } else {
+        addToast(`Failed to send cache purge command`, 'info');
+      }
+    });
+  };
+
   const handleEditSave = () => {
     if (!editScreen) return;
-    const gp = mockGroups.find(g => g.id === editScreen.groupId);
+    const gp = groups.find(g => g.id === editScreen.groupId);
     const finalScreen = gp ? { ...editScreen, playlist: gp.playlist } : editScreen;
-    setScreens(p => p.map(s => s.id === editScreen.id ? finalScreen : s));
+    const allScreens = mediaStore.getScreens();
+    const updated = allScreens.map(s => s.id === editScreen.id ? finalScreen : s);
+    mediaStore.saveScreens(updated);
+    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    pushToDatabase('screens', editScreen.id, finalScreen, 'PUT');
     setEditScreen(null);
     addToast(`"${editScreen.name}" updated successfully`);
   };
@@ -106,7 +171,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
           >
             <option value="all">All Groups</option>
             <option value="none">No Group</option>
-            {mockGroups.map(g => (
+            {groups.map(g => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>
@@ -150,7 +215,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map(screen => {
-                const st = statusConfig[screen.status];
+                const st = statusConfig[screen.status as keyof typeof statusConfig] || statusConfig.offline;
                 return (
                   <tr key={screen.id} className="hover:bg-gray-50 transition-colors group">
                     <td className="px-4 py-3">
@@ -171,7 +236,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                     </td>
                     <td className="px-4 py-3">
                       {screen.groupId ? (() => {
-                        const gp = mockGroups.find(g => g.id === screen.groupId);
+                        const gp = groups.find(g => g.id === screen.groupId);
                         const c = gp ? (groupColorMap[gp.color] ?? groupColorMap.blue) : groupColorMap.blue;
                         return gp ? (
                           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${c.bg} ${c.text} ${c.border}`}>
@@ -187,7 +252,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                     <td className="px-4 py-3">
                       <span className={`text-sm ${screen.playlist === 'Normal' ? 'text-gray-400 italic' : 'text-gray-700'}`}>
                         {screen.groupId ? (() => {
-                          const gp = mockGroups.find(g => g.id === screen.groupId);
+                          const gp = groups.find(g => g.id === screen.groupId);
                           return gp ? `${gp.playlist} (Inherited)` : screen.playlist;
                         })() : screen.playlist}
                       </span>
@@ -208,21 +273,26 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                       <div className="flex items-center justify-end gap-1 transition-opacity">
                         <button onClick={() => setEditScreen({ ...screen })} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit size={14} /></button>
                         <button onClick={() => handleRestart(screen)} className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors" title="Restart"><RefreshCw size={14} /></button>
+                        <button onClick={() => handleStopPlayback(screen)} className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors" title="Stop Playback"><Pause size={14} /></button>
+                        <button onClick={() => handleClearCache(screen)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Clear Device Cache"><Eraser size={14} /></button>
                         {screen.groupId && (
                           <button
                             onClick={() => {
-                              setScreens(p => p.map(s => s.id === screen.id ? { ...s, groupId: undefined } : s));
+                              const updatedScreen = { ...screen, groupId: '' };
+                              const allScreens = mediaStore.getScreens();
+                              const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+                              mediaStore.saveScreens(updatedAll);
+                              setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+                              pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
                               addToast(`"${screen.name}" removed from group`);
                             }}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                             title="Remove from group"
                           >
-                            <Trash2 size={14} />
+                            <FolderMinus size={14} />
                           </button>
                         )}
-                        {!screen.groupId && (
-                          <button onClick={() => setDeleteScreen(screen)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
-                        )}
+                        <button onClick={() => setDeleteScreen(screen)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -272,7 +342,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
                 >
                   <option value="">None (Ungrouped)</option>
-                  {mockGroups.map(g => (
+                  {groups.map(g => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
@@ -280,18 +350,23 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
               {!editScreen.groupId && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
-                  <select value={editScreen.playlist} onChange={e => setEditScreen(p => p && ({ ...p, playlist: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
+                  <select
+                    value={editScreen.playlist}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const play = userPlaylists.find(p => p.name === val);
+                      setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : '' }));
+                    }}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
+                  >
                     <option value="Normal">Normal</option>
-                    <option value="Summer Campaign">Summer Campaign</option>
-                    <option value="Brand Showcase">Brand Showcase</option>
-                    <option value="Menu Loop">Menu Loop</option>
-                    <option value="Flight Info">Flight Info</option>
-                    <option value="Welcome Loop">Welcome Loop</option>
+                    <option value="None">None (Stop Playback)</option>
+                    {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
                   </select>
                 </div>
               )}
               {editScreen.groupId && (() => {
-                const gp = mockGroups.find(g => g.id === editScreen.groupId);
+                const gp = groups.find(g => g.id === editScreen.groupId);
                 return (
                   <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
                     Playlist is managed by group <strong>{gp?.name}</strong> (Inherited: <strong>{gp?.playlist || 'None'}</strong>).

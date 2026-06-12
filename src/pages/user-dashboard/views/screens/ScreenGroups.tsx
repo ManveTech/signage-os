@@ -182,14 +182,14 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
 
   const handleDeleteGroup = () => {
     if (!deleteGroup) return;
-    const updatedScreens = screens.map(s => s.groupId === deleteGroup.id ? { ...s, groupId: undefined } : s);
+    const updatedScreens = screens.map(s => s.groupId === deleteGroup.id ? { ...s, groupId: '' } : s);
     setScreens(updatedScreens);
     mediaStore.saveScreens(updatedScreens);
     
     // Sync screens to DB
     screens.forEach(s => {
       if (s.groupId === deleteGroup.id) {
-        pushToDatabase('screens', s.id, { ...s, groupId: undefined }, 'PUT');
+        pushToDatabase('screens', s.id, { ...s, groupId: '' }, 'PUT');
       }
     });
 
@@ -214,7 +214,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
   const handleRemoveScreen = (screenId: string, groupName: string) => {
     const screen = screens.find(s => s.id === screenId);
     if (!screen) return;
-    const updatedScreen = { ...screen, groupId: undefined };
+    const updatedScreen = { ...screen, groupId: '' };
     const updatedScreens = screens.map(s => s.id === screenId ? updatedScreen : s);
     setScreens(updatedScreens);
     mediaStore.saveScreens(updatedScreens);

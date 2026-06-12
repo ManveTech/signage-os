@@ -7,7 +7,6 @@ const typeIcons: Record<string, React.ReactNode> = {
   video: <Film size={13} />,
   image: <Image size={13} />,
   layout: <Layout size={13} />,
-  youtube: <Youtube size={13} />,
   ticker: <AlignLeft size={13} />,
 };
 
@@ -15,7 +14,6 @@ const typeColors: Record<string, string> = {
   video: 'bg-blue-100 text-blue-700',
   image: 'bg-teal-100 text-teal-700',
   layout: 'bg-purple-100 text-purple-700',
-  youtube: 'bg-red-100 text-red-700',
   ticker: 'bg-orange-100 text-orange-700',
 };
 
@@ -36,6 +34,9 @@ export default function MediaLibrary({ userEmail }: Props) {
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const filesArray = selectedFiles ? (Array.from(selectedFiles) as File[]) : [];
   const [customTitle, setCustomTitle] = useState('');
+  const [totalFilesToUpload, setTotalFilesToUpload] = useState(0);
+  const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -66,6 +67,8 @@ export default function MediaLibrary({ userEmail }: Props) {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+
+
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (filesArray.length === 0) {
@@ -89,17 +92,25 @@ export default function MediaLibrary({ userEmail }: Props) {
       return;
     }
 
-    // Process files
-    const uploadPromises = filesArray.map((file) => {
-      return new Promise<void>((resolve, reject) => {
-        const isVideo = file.type.startsWith('video/');
-        const fileType = isVideo ? 'video' : 'image';
-        const reader = new FileReader();
+    setTotalFilesToUpload(filesArray.length);
+    setUploadingFilesCount(0);
+    setUploadProgress(0);
 
-        reader.onload = (event) => {
-          const resultDataUrl = event.target?.result as string;
+    let count = 0;
+    for (const file of filesArray) {
+      count++;
+      setUploadingFilesCount(count);
+      setUploadProgress(((count - 1) / filesArray.length) * 100);
 
-          const saveWithThumb = (thumbUrl: string) => {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const isVideo = file.type.startsWith('video/');
+          const fileType = isVideo ? 'video' : 'image';
+          const reader = new FileReader();
+
+          reader.onload = (event) => {
+            const resultDataUrl = event.target?.result as string;
+            const base64Data = resultDataUrl.split(',')[1];
             let title = file.name;
             if (filesArray.length === 1 && customTitle.trim()) {
               title = customTitle.trim();
@@ -107,58 +118,116 @@ export default function MediaLibrary({ userEmail }: Props) {
               title = file.name.replace(/\.[^/.]+$/, "");
             }
 
-            mediaStore.uploadMedia({
-              title: title,
-              type: fileType,
-              duration: isVideo ? 15 : 10,
-              resolution: '1920x1080',
-              fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-              fileSizeBytes: file.size,
-              uploadedBy: userEmail,
-              expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              tags: ['uploaded', fileType],
-              thumbnail: thumbUrl
-            });
-            resolve();
+            if (fileType === 'image') {
+              const img = new Image();
+              img.onload = () => {
+                const width = img.naturalWidth;
+                const height = img.naturalHeight;
+
+                try {
+                  mediaStore.uploadMedia({
+                    title: title,
+                    type: fileType,
+                    duration: 10,
+                    resolution: `${width}x${height}`,
+                    fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                    fileSizeBytes: file.size,
+                    uploadedBy: userEmail,
+                    expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    tags: ['uploaded', fileType],
+                    thumbnail: resultDataUrl,
+                    width: width,
+                    height: height,
+                    mimeType: file.type,
+                    fileData: base64Data,
+                    fileName: file.name
+                  });
+                  resolve();
+                } catch (err) {
+                  reject(err);
+                }
+              };
+              img.onerror = () => reject(new Error("Failed to load image metadata"));
+              img.src = resultDataUrl;
+            } else {
+              const video = document.createElement('video');
+              video.preload = 'metadata';
+              video.onloadedmetadata = () => {
+                const width = video.videoWidth;
+                const height = video.videoHeight;
+                const duration = Math.round(video.duration) || 15;
+                window.URL.revokeObjectURL(video.src);
+
+                try {
+                  mediaStore.uploadMedia({
+                    title: title,
+                    type: fileType,
+                    duration: duration,
+                    resolution: `${width}x${height}`,
+                    fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                    fileSizeBytes: file.size,
+                    uploadedBy: userEmail,
+                    expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    tags: ['uploaded', fileType],
+                    thumbnail: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60',
+                    width: width,
+                    height: height,
+                    mimeType: file.type,
+                    fileData: base64Data,
+                    fileName: file.name
+                  });
+                  resolve();
+                } catch (err) {
+                  reject(err);
+                }
+              };
+              video.onerror = () => {
+                try {
+                  mediaStore.uploadMedia({
+                    title: title,
+                    type: fileType,
+                    duration: 15,
+                    resolution: '1920x1080',
+                    fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                    fileSizeBytes: file.size,
+                    uploadedBy: userEmail,
+                    expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    tags: ['uploaded', fileType],
+                    thumbnail: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60',
+                    width: 1920,
+                    height: 1080,
+                    mimeType: file.type,
+                    fileData: base64Data,
+                    fileName: file.name
+                  });
+                  resolve();
+                } catch (err) {
+                  reject(err);
+                }
+              };
+              video.src = URL.createObjectURL(file);
+            }
           };
 
-          if (fileType === 'image') {
-            const img = new Image();
-            img.onload = () => {
-              const canvas = document.createElement('canvas');
-              canvas.width = 160;
-              canvas.height = 90;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.drawImage(img, 0, 0, 160, 90);
-                const lowResDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                saveWithThumb(lowResDataUrl);
-              } else {
-                saveWithThumb(resultDataUrl);
-              }
-            };
-            img.src = resultDataUrl;
-          } else {
-            const videoPlaceholderThumbnail = 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60';
-            saveWithThumb(videoPlaceholderThumbnail);
-          }
-        };
-
-        reader.onerror = () => reject();
-        reader.readAsDataURL(file);
-      });
-    });
-
-    try {
-      await Promise.all(uploadPromises);
-      showToast(`Successfully uploaded ${filesArray.length} file(s)!`);
-      setIsUploadOpen(false);
-      setSelectedFiles(null);
-      setCustomTitle('');
-      loadData();
-    } catch (err) {
-      alert("An error occurred during file upload.");
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsDataURL(file);
+        });
+      } catch (err) {
+        console.error("Single file upload error", err);
+        alert(`Error uploading file "${file.name}": ` + (err instanceof Error ? err.message : String(err)));
+      }
+      setUploadProgress((count / filesArray.length) * 100);
     }
+
+    showToast(`Successfully uploaded ${filesArray.length} file(s)!`);
+    setIsUploadOpen(false);
+    setSelectedFiles(null);
+    setCustomTitle('');
+    loadData();
+
+    setTotalFilesToUpload(0);
+    setUploadingFilesCount(0);
+    setUploadProgress(0);
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -230,7 +299,7 @@ export default function MediaLibrary({ userEmail }: Props) {
           />
         </div>
         <div className="flex gap-1.5 flex-wrap">
-          {['all', 'video', 'image', 'youtube', 'ticker'].map(f => (
+          {['all', 'video', 'image', 'ticker'].map(f => (
             <button 
               key={f} 
               onClick={() => setTypeFilter(f)} 
@@ -251,7 +320,11 @@ export default function MediaLibrary({ userEmail }: Props) {
         {filtered.map(media => (
           <div key={media.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-md transition-all group flex flex-col justify-between">
             <div className="relative aspect-video overflow-hidden bg-gray-100 border-b border-gray-100">
-              <img src={media.thumbnail} alt={media.title} className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300" />
+              <img src={media.thumbnail} alt={media.title} className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300 animate-fadeIn" />
+              <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-900/70 text-white capitalize flex items-center gap-1">
+                {typeIcons[media.type] || <Film size={10} />}
+                {media.type}
+              </div>
               <button 
                 onClick={() => handleDelete(media.id, media.title)}
                 className="absolute top-2 right-2 p-1.5 bg-slate-900/60 hover:bg-rose-600/90 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-pointer"
@@ -263,7 +336,7 @@ export default function MediaLibrary({ userEmail }: Props) {
               <h3 className="text-xs font-bold text-slate-800 line-clamp-1">{media.title}</h3>
               <div className="flex items-center justify-between text-[10px] text-gray-400 font-semibold pt-1">
                 <div className="flex items-center gap-1"><Clock size={11} /> {media.duration}s</div>
-                <div className="flex items-center gap-1"><HardDrive size={11} /> {media.fileSize}</div>
+                <div className="flex items-center gap-1"><HardDrive size={11} /> {media.type === 'youtube' ? 'YouTube' : media.fileSize}</div>
               </div>
             </div>
           </div>
@@ -284,10 +357,17 @@ export default function MediaLibrary({ userEmail }: Props) {
           <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 p-6 space-y-4 animate-scaleIn">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
-                <Upload size={16} className="text-blue-600" /> Upload Media File
+                <Upload size={16} className="text-blue-600" /> Add Media Content
               </h2>
               <button 
-                onClick={() => setIsUploadOpen(false)}
+                onClick={() => {
+                  setIsUploadOpen(false);
+                  setSelectedFiles(null);
+                  setCustomTitle('');
+                  setTotalFilesToUpload(0);
+                  setUploadingFilesCount(0);
+                  setUploadProgress(0);
+                }}
                 className="text-gray-400 hover:text-gray-600 font-bold p-1 cursor-pointer"
               >
                 &times;
@@ -295,6 +375,21 @@ export default function MediaLibrary({ userEmail }: Props) {
             </div>
 
             <form onSubmit={handleUploadSubmit} className="space-y-4 text-xs">
+              {totalFilesToUpload > 0 && (
+                <div className="bg-blue-50/50 border border-blue-150 rounded-xl p-3.5 space-y-2">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-slate-800">
+                    <span>Uploading files sequentially...</span>
+                    <span>{uploadingFilesCount} of {totalFilesToUpload} ({Math.round(uploadProgress)}%)</span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-blue-600 h-full transition-all duration-300" 
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Select File(s) *</label>
                 <input 
@@ -310,8 +405,9 @@ export default function MediaLibrary({ userEmail }: Props) {
                       setCustomTitle('');
                     }
                   }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-slate-50 font-medium outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-slate-50 font-medium outline-none focus:border-blue-550"
                   required
+                  disabled={totalFilesToUpload > 0}
                 />
                 <p className="text-[9px] text-gray-400 mt-1">Select one or more images or videos. Images must be below 5MB.</p>
               </div>
@@ -325,6 +421,7 @@ export default function MediaLibrary({ userEmail }: Props) {
                     value={customTitle}
                     onChange={e => setCustomTitle(e.target.value)}
                     className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold outline-none focus:border-blue-500 bg-slate-50"
+                    disabled={totalFilesToUpload > 0}
                   />
                 </div>
               )}
@@ -348,14 +445,18 @@ export default function MediaLibrary({ userEmail }: Props) {
                     setIsUploadOpen(false);
                     setSelectedFiles(null);
                     setCustomTitle('');
+                    setTotalFilesToUpload(0);
+                    setUploadingFilesCount(0);
+                    setUploadProgress(0);
                   }}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                  disabled={totalFilesToUpload > 0}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  disabled={filesArray.length === 0}
+                  disabled={filesArray.length === 0 || totalFilesToUpload > 0}
                   className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold uppercase rounded-xl cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {filesArray.length > 1 ? `Upload ${filesArray.length} Files` : 'Upload File'}

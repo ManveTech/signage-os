@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Search, Building2, User, Monitor, Check, X, ChevronDown,
-  CheckCircle, AlertCircle, ArrowRight, Wifi, WifiOff, AlertTriangle
+  CheckCircle, AlertCircle, ArrowRight, Wifi, WifiOff, AlertTriangle, Activity
 } from 'lucide-react';
 import { mockScreens, mockUsers, mockOrganizations } from '../../data/mockData';
 import type { Screen } from '../../types';
@@ -13,6 +13,9 @@ const statusConfig = {
   online: { icon: <Wifi size={11} />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
   offline: { icon: <WifiOff size={11} />, cls: 'bg-red-50 text-red-700 border-red-100' },
   warning: { icon: <AlertTriangle size={11} />, cls: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+  pairing: { icon: <Activity size={11} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+  active: { icon: <CheckCircle size={11} />, cls: 'bg-teal-50 text-teal-700 border-teal-100' },
+  suspended: { icon: <AlertTriangle size={11} />, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
 };
 
 export default function AssignScreens() {
@@ -142,7 +145,7 @@ export default function AssignScreens() {
             </div>
             <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
               {filteredScreens.map(screen => {
-                const st = statusConfig[screen.status];
+                const st = statusConfig[screen.status as keyof typeof statusConfig] || statusConfig.offline;
                 const assignment = getAssignment(screen.id);
                 return (
                   <label

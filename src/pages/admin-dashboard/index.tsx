@@ -34,7 +34,7 @@ function renderView(view: string, navigate: (v: string) => void) {
     // My Channel
     case 'my-media': return <MediaLibrary onNavigate={navigate} userEmail="admin@demo.com" />;
     case 'my-playlists': return <AllPlaylists onNavigate={navigate} userEmail="admin@demo.com" />;
-    case 'my-create-playlist': return <CreatePlaylist userEmail="admin@demo.com" />;
+    case 'my-create-playlist': return <CreatePlaylist userEmail="admin@demo.com" onNavigate={navigate} />;
     
     // Client Oversight
     case 'client-media': return <ClientMedia />;
@@ -54,7 +54,7 @@ function renderView(view: string, navigate: (v: string) => void) {
     case 'media-upload': return <UploadMedia />;
     case 'media-layout': return <LayoutStudio />;
     case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail="admin@demo.com" />;
-    case 'playlists-create': return <CreatePlaylist userEmail="admin@demo.com" />;
+    case 'playlists-create': return <CreatePlaylist userEmail="admin@demo.com" onNavigate={navigate} />;
     case 'playlists-scheduler': return <Scheduler />;
     case 'reports-overview': return <Reports activeTab="Overview" />;
     case 'reports-screens': return <Reports activeTab="Screen Reports" />;

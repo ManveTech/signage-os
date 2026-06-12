@@ -50,11 +50,27 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
   const handleToggleActive = (playlist: Playlist) => {
     const nextActive = !playlist.active;
     const nextStatus = nextActive ? 'Running' : 'Paused';
-    mediaStore.updatePlaylist(playlist.id, { 
-      active: nextActive,
-      scheduleStatus: nextStatus
-    });
-    showToast(`Playlist "${playlist.name}" is now ${nextActive ? 'active' : 'paused'}.`);
+
+    if (nextActive) {
+      // Reactivate playlist — restore all screen assignments
+      mediaStore.updatePlaylist(playlist.id, {
+        active: nextActive,
+        scheduleStatus: nextStatus
+      });
+      showToast(`Playlist "${playlist.name}" is now active.`);
+    } else {
+      // Pause playlist — unassign all screens so TV player stops playing
+      const assignedScreenIds = screens
+        .filter(s => s.playlistId === playlist.id)
+        .map(s => s.id);
+
+      mediaStore.updatePlaylist(playlist.id, {
+        active: nextActive,
+        scheduleStatus: nextStatus,
+        assignedScreenIds: [] // Clear screen assignments to stop playback
+      });
+      showToast(`Playlist "${playlist.name}" paused — playback stopped on ${assignedScreenIds.length} screen(s).`);
+    }
     loadData();
   };
 

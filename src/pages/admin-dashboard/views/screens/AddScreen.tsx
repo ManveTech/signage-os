@@ -98,6 +98,54 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
     pushToDatabase('screens', newScreenId, newScreen, 'POST');
   };
 
+  const handlePairScreen = async () => {
+    if (!enteredCode.trim()) {
+      alert('Please enter a pairing code.');
+      return;
+    }
+
+    let playlistId = '';
+    if (form.group) {
+      const gp = groups.find(g => g.id === form.group);
+      playlistId = gp ? gp.playlistId || '' : '';
+    } else if (form.playlist) {
+      playlistId = form.playlist;
+    }
+
+    const assignedUserEmail = mode === 'my' ? 'admin@demo.com' : (orgLicense?.assignedUserEmail || selectedOrg?.email || 'admin@demo.com');
+
+    try {
+      const token = localStorage.getItem('signageos_token');
+      const response = await fetch('http://localhost:5000/api/v1/screens/pair', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          pairingCode: enteredCode.trim().toUpperCase(),
+          name: form.name,
+          location: [form.city, form.state].filter(Boolean).join(', ') || 'Not Specified',
+          groupId: form.group || '',
+          playlist: playlistId,
+          assignedToUserEmail: assignedUserEmail
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        alert(errData.message || 'Failed to pair device. Please check the code.');
+        return;
+      }
+
+      await syncCollection('screens', 'signageos_screens');
+      setIsPaired(true);
+    } catch (err) {
+      console.error('Error during screen pairing:', err);
+      alert('Network error trying to pair screen. Please make sure the backend server is running.');
+    }
+  };
+
   if (isCreated) {
     return (
       <div className="p-6 max-w-md mx-auto bg-white rounded-xl border border-gray-100 shadow-sm text-center mt-12">
@@ -113,19 +161,16 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
             <div className="mb-6">
               <input
                 type="text"
-                maxLength={6}
+                maxLength={7}
                 value={enteredCode}
-                onChange={e => setEnteredCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                onChange={e => setEnteredCode(e.target.value.toUpperCase())}
                 placeholder="e.g. SO-4920"
                 className="w-full max-w-[200px] px-3.5 py-3 border border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none rounded-xl text-center text-2xl font-mono font-bold tracking-widest text-slate-800"
               />
             </div>
             <div className="space-y-3">
               <button
-                onClick={() => {
-                  setIsPaired(true);
-                  saveScreen(true);
-                }}
+                onClick={handlePairScreen}
                 disabled={enteredCode.length < 4}
                 className={`w-full py-2.5 text-sm font-medium text-white rounded-lg transition-colors ${
                   enteredCode.length < 4 ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
@@ -404,7 +449,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assign Playlist</label>
                   <select value={form.playlist} onChange={e => set('playlist', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
                     <option value="Normal">Normal</option>
-                    {filteredPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
+                    {filteredPlaylists.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
                   </select>
                 </div>
               ) : (() => {

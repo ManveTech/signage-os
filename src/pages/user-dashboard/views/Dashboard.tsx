@@ -9,6 +9,7 @@ import { syncCollection } from '../../../lib/syncHelper';
 
 export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?: string }) {
   const [, setRefreshTick] = useState(0);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   // Sync all relevant collections from server on mount
   useEffect(() => {
@@ -54,12 +55,25 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
   const daysUntilExpiry = userLicense ? calculateDaysLeft(userLicense.expiryDate) : 0;
   const daysUntilPayment = unpaidInvoice ? calculateDaysLeft(unpaidInvoice.dueDate) : null;
 
-  const onlineScreens = myScreens.filter(s => s.status === 'online').length;
+  const onlineScreens = myScreens.filter(s => s.status === 'online' || s.status === 'active').length;
   const offlineScreens = myScreens.filter(s => s.status === 'offline').length;
   const warningScreens = myScreens.filter(s => s.status === 'warning').length;
 
   const deviceLimit = userLicense ? userLicense.deviceLimit : 0;
   const slotsRemaining = Math.max(0, deviceLimit - myScreens.length);
+
+  // Advanced details calculations
+  const activePlaylistNames = Array.from(new Set(myScreens.map(s => s.playlist).filter(p => p && p !== 'None' && p !== 'Normal')));
+  const playlistSummary = activePlaylistNames.length > 0 ? activePlaylistNames.join(', ') : 'None';
+
+  const totalStorageUsedBytes = mediaStore.getClientStorageUsedBytes(userEmail);
+  const storageLimitGb = userLicense ? userLicense.storageLimit : 5;
+  const storageUsedMb = (totalStorageUsedBytes / (1024 * 1024)).toFixed(1);
+  const storageUsedPercent = Math.min(100, (totalStorageUsedBytes / (storageLimitGb * 1024 * 1024 * 1024)) * 100);
+
+  const uptimeText = myScreens.length > 0 
+    ? `${((myScreens.filter(s => s.status === 'online' || s.status === 'active').length / myScreens.length) * 100).toFixed(0)}% Uptime` 
+    : 'No Screens';
 
   // 3. Dynamic Alerts
   const myAlerts: { type: 'error' | 'warning' | 'info'; title: string; desc: string; time: string }[] = [];
@@ -133,102 +147,127 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
 
       {/* Main KPI Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Screen Slot Allotment Status */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
+        {/* Screen Network & Playbacks */}
+        <div 
+          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+          style={hoveredCard === 'screens' ? { boxShadow: '0 10px 25px -5px rgba(34,197,94,0.25), 0 8px 10px -6px rgba(34,197,94,0.25)', borderColor: '#22C55E' } : {}}
+          onMouseEnter={() => setHoveredCard('screens')}
+          onMouseLeave={() => setHoveredCard(null)}
+        >
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
               <Monitor size={20} />
             </div>
-            <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+            <span className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
               {onlineScreens} / {myScreens.length} Online
             </span>
           </div>
-          <div className="mt-4">
+          <div className="mt-4 space-y-2">
             <h3 className="text-2xl font-black text-slate-800">
               {myScreens.length} <span className="text-xs text-slate-400 font-semibold">of {deviceLimit} slots</span>
             </h3>
-            <p className="text-xs text-slate-500 font-medium mt-1">
-              Screen slots used ({slotsRemaining} slots left)
+            <p className="text-xs text-slate-500 font-medium">
+              Status: <span className="font-bold text-green-600">{uptimeText}</span>
             </p>
+            <div className="pt-2 border-t border-slate-100 mt-2">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Campaign Loops</p>
+              <p className="text-xs text-slate-700 font-semibold truncate mt-0.5" title={playlistSummary}>
+                {playlistSummary}
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* License Number Details */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
+        {/* License Profile */}
+        <div 
+          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+          style={hoveredCard === 'license' ? { boxShadow: '0 10px 25px -5px rgba(59,130,246,0.25), 0 8px 10px -6px rgba(59,130,246,0.25)', borderColor: '#3B82F6' } : {}}
+          onMouseEnter={() => setHoveredCard('license')}
+          onMouseLeave={() => setHoveredCard(null)}
+        >
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
               <Key size={20} />
             </div>
-            <span className="text-[10px] bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              {userLicense?.status === 'active' ? 'Active Plan' : 'Action Required'}
+            <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+              {userLicense?.name || 'PRO'}
             </span>
           </div>
-          <div className="mt-4">
-            <h3 className="text-xl font-black text-slate-800 truncate" title={userLicense?.id}>
+          <div className="mt-4 space-y-2">
+            <h3 className="text-lg font-black text-slate-850 truncate" title={userLicense?.id}>
               {userLicense?.id || 'NO LICENSE'}
             </h3>
-            <p className="text-xs text-slate-500 font-medium mt-1 truncate" title={userLicense?.name}>
-              {userLicense?.name || 'Unassigned License Profile'}
+            <p className="text-xs text-slate-500 font-medium">
+              Slots: {deviceLimit} · Storage: {storageLimitGb} GB
             </p>
+            <div className="pt-2 border-t border-slate-100 mt-2">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Expires In</p>
+              <p className="text-xs text-blue-600 font-bold mt-0.5">
+                {daysUntilExpiry} days left ({userLicense?.expiryDate})
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Expiration / Renewal Countdown */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
+        {/* Storage Vault Stats */}
+        <div 
+          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+          style={hoveredCard === 'storage' ? { boxShadow: '0 10px 25px -5px rgba(139,92,246,0.25), 0 8px 10px -6px rgba(139,92,246,0.25)', borderColor: '#8B5CF6' } : {}}
+          onMouseEnter={() => setHoveredCard('storage')}
+          onMouseLeave={() => setHoveredCard(null)}
+        >
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
-              <Clock size={20} />
+            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+              <HardDrive size={20} />
             </div>
-            {userLicense && (
-              <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                Exp: {userLicense.expiryDate}
-              </span>
-            )}
-          </div>
-          <div className="mt-4">
-            <h3 className="text-2xl font-black text-slate-800">
-              {daysUntilExpiry} <span className="text-xs text-slate-400 font-semibold">days</span>
-            </h3>
-            <p className="text-xs text-slate-500 font-medium mt-1">
-              Until license renewal / expiration
-            </p>
-          </div>
-        </div>
-
-        {/* Next Payment Dues */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-              <CreditCard size={20} />
-            </div>
-            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              {unpaidInvoice ? 'Unpaid Invoice' : 'Settled'}
+            <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+              {storageUsedPercent.toFixed(1)}% Capacity
             </span>
           </div>
-          <div className="mt-4">
-            {unpaidInvoice ? (
-              <>
-                <h3 className="text-2xl font-black text-slate-800">
-                  {daysUntilPayment !== null && daysUntilPayment <= 0 ? (
-                    <span className="text-rose-600">Overdue</span>
-                  ) : (
-                    <span>{daysUntilPayment} days</span>
-                  )}
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-1 truncate">
-                  ₹{unpaidInvoice.amount.toLocaleString()} due on {unpaidInvoice.dueDate}
-                </p>
-              </>
-            ) : (
-              <>
-                <h3 className="text-lg font-black text-slate-850">
-                  Fully Settled
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  No pending dues or invoices
-                </p>
-              </>
-            )}
+          <div className="mt-4 space-y-2">
+            <h3 className="text-2xl font-black text-slate-800">
+              {storageUsedMb} <span className="text-xs text-slate-400 font-semibold">MB of {storageLimitGb} GB</span>
+            </h3>
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-100 mt-1">
+              <div className="h-full bg-purple-500 rounded-full animate-pulse" style={{ width: `${storageUsedPercent}%` }} />
+            </div>
+            <div className="pt-2 border-t border-slate-100 mt-2">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Asset Pool</p>
+              <p className="text-xs text-slate-700 font-semibold mt-0.5">
+                {myMedia.length} Media Files Uploaded
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Diagnostics & Warnings */}
+        <div 
+          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+          style={hoveredCard === 'diagnostics' ? { boxShadow: '0 10px 25px -5px rgba(245,158,11,0.25), 0 8px 10px -6px rgba(245,158,11,0.25)', borderColor: '#F59E0B' } : {}}
+          onMouseEnter={() => setHoveredCard('diagnostics')}
+          onMouseLeave={() => setHoveredCard(null)}
+        >
+          <div className="flex justify-between items-start">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+              <Cpu size={20} />
+            </div>
+            <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+              {myAlerts.length} Alerts
+            </span>
+          </div>
+          <div className="mt-4 space-y-2">
+            <h3 className="text-2xl font-black text-slate-800">
+              {offlineScreens} <span className="text-xs text-slate-400 font-semibold">offline</span>
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">
+              Diagnostics check: {warningScreens} warning(s)
+            </p>
+            <div className="pt-2 border-t border-slate-100 mt-2">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Payment Status</p>
+              <p className="text-xs text-slate-750 font-semibold mt-0.5">
+                {unpaidInvoice ? `Overdue: ₹${unpaidInvoice.amount.toLocaleString()}` : 'No Pending Dues'}
+              </p>
+            </div>
           </div>
         </div>
       </div>

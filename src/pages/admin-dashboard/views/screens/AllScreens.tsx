@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown } from 'lucide-react';
+import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
@@ -8,6 +8,9 @@ const statusConfig = {
   online: { label: 'Online', icon: <Wifi size={12} />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
   offline: { label: 'Offline', icon: <WifiOff size={12} />, cls: 'bg-red-50 text-red-700 border-red-100' },
   warning: { label: 'Warning', icon: <AlertTriangle size={12} />, cls: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+  pairing: { label: 'Pairing', icon: <Activity size={12} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+  active: { label: 'Active', icon: <CheckCircle size={12} />, cls: 'bg-teal-50 text-teal-700 border-teal-100' },
+  suspended: { label: 'Suspended', icon: <AlertTriangle size={12} />, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
 };
 
 const groupColorMap: Record<string, { bg: string; text: string; border: string }> = {
@@ -73,6 +76,34 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
 
   const handleRestart = (screen: Screen) => {
     addToast(`Restart signal sent to "${screen.name}"`, 'info');
+  };
+
+  const handleStopPlayback = (screen: Screen) => {
+    const updatedScreen = {
+      ...screen,
+      playlist: 'None',
+      playlistId: ''
+    };
+    const allScreens = mediaStore.getScreens();
+    const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+    mediaStore.saveScreens(updatedAll);
+    setScreens(updatedAll);
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
+    addToast(`Playback stopped for "${screen.name}"`);
+  };
+
+  const handleClearCache = (screen: Screen) => {
+    const updatedScreen = {
+      ...screen,
+      clear_cache: true
+    };
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT').then(res => {
+      if (res.ok) {
+        addToast(`Cache purge command sent to "${screen.name}"`, 'success');
+      } else {
+        addToast(`Failed to send cache purge command`, 'info');
+      }
+    });
   };
 
   const handleEditSave = () => {
@@ -175,7 +206,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map(screen => {
-                const st = statusConfig[screen.status];
+                const st = statusConfig[screen.status as keyof typeof statusConfig] || statusConfig.offline;
                 return (
                   <tr key={screen.id} className="hover:bg-gray-50 transition-colors group">
                     <td className="px-4 py-3">
@@ -233,21 +264,26 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                       <div className="flex items-center justify-end gap-1 transition-opacity">
                         <button onClick={() => setEditScreen({ ...screen })} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit size={14} /></button>
                         <button onClick={() => handleRestart(screen)} className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors" title="Restart"><RefreshCw size={14} /></button>
+                        <button onClick={() => handleStopPlayback(screen)} className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Stop Playback"><Pause size={14} /></button>
+                        <button onClick={() => handleClearCache(screen)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Clear Device Cache"><Eraser size={14} /></button>
                         {screen.groupId && (
                           <button
                             onClick={() => {
-                              setScreens(p => p.map(s => s.id === screen.id ? { ...s, groupId: undefined } : s));
+                              const updatedScreen = { ...screen, groupId: '' };
+                              const allScreens = mediaStore.getScreens();
+                              const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+                              mediaStore.saveScreens(updatedAll);
+                              setScreens(updatedAll);
+                              pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
                               addToast(`"${screen.name}" removed from group`);
                             }}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                             title="Remove from group"
                           >
-                            <Trash2 size={14} />
+                            <FolderMinus size={14} />
                           </button>
                         )}
-                        {!screen.groupId && (
-                          <button onClick={() => setDeleteScreen(screen)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
-                        )}
+                        <button onClick={() => setDeleteScreen(screen)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -305,8 +341,18 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
               {!editScreen.groupId && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
-                  <select value={editScreen.playlist} onChange={e => setEditScreen(p => p && ({ ...p, playlist: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
+                  <select
+                    value={editScreen.playlist}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const playlists = mediaStore.getPlaylists();
+                      const play = playlists.find(p => p.name === val);
+                      setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : '' }));
+                    }}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
+                  >
                     <option value="Normal">Normal</option>
+                    <option value="None">None (Stop Playback)</option>
                     <option value="Summer Campaign">Summer Campaign</option>
                     <option value="Brand Showcase">Brand Showcase</option>
                     <option value="Menu Loop">Menu Loop</option>

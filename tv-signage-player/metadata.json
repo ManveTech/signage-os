@@ -1,0 +1,6 @@
+{
+  "name": "TV Signage Player",
+  "description": "A high-performance digital signage client player with local offline asset caching, dynamic pairing codes, real-time sync, and system performance health diagnostics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

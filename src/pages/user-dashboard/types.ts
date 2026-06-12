@@ -8,8 +8,9 @@ export type NavItem = {
 export type Screen = {
   id: string;
   name: string;
-  status: 'online' | 'offline' | 'warning';
+  status: 'online' | 'offline' | 'warning' | 'active' | 'suspended' | 'pairing';
   playlist: string;
+  playlistId?: string;
   location: string;
   licenseType: string;
   lastHeartbeat: string;
@@ -20,6 +21,8 @@ export type Screen = {
   schedulePlaylist?: string;
   scheduleDate?: string;
   scheduleTime?: string;
+  clear_cache?: boolean;
+  assignedToUserEmail?: string;
 };
 
 export type ScreenGroup = {
