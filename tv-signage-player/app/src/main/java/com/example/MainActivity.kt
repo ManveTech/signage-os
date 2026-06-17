@@ -107,7 +107,7 @@ fun SignagePlayerApp(
 
     // Apply screen orientation: Portrait by default (pairing/standby), or from playlist settings
     LaunchedEffect(uiState.status, uiState.playlist, uiState.playlistOrientation) {
-        val isPlaying = (uiState.status == "active" || uiState.status == "online") && uiState.playlist.isNotEmpty()
+        val isPlaying = (uiState.status == "active" || uiState.status == "online" || uiState.status == "offline") && uiState.playlist.isNotEmpty()
         
         activity?.requestedOrientation = if (isPlaying) {
             if (uiState.playlistOrientation == "vertical") {
@@ -126,7 +126,7 @@ fun SignagePlayerApp(
         } else {
             // Main Screen Routing based on Status
             when (uiState.status) {
-            "active", "online" -> {
+            "active", "online", "offline" -> {
                 if (uiState.playlist.isEmpty()) {
                     StandbyScreen(
                         uiState = uiState,
@@ -170,7 +170,7 @@ fun SignagePlayerApp(
                         ) {
                             Card(
                                 colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xCC111827) // Premium translucent dark HUD card
+                                    containerColor = if (widgetType == "qrcode") Color.Transparent else Color(0xCC111827)
                                 ),
                                 shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier
@@ -179,46 +179,24 @@ fun SignagePlayerApp(
                             ) {
                                 when (widgetType) {
                                     "qrcode" -> {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        val encodedLink = try {
+                                            java.net.URLEncoder.encode(widgetLink, "UTF-8")
+                                        } catch (e: Exception) {
+                                            widgetLink
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(120.dp)
+                                                .background(Color.White, RoundedCornerShape(12.dp))
+                                                .padding(6.dp),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Text(
-                                                text = "SCAN LINK",
-                                                color = Color(0xFF94A3B8),
-                                                fontSize = 8.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                letterSpacing = 1.sp,
-                                                modifier = Modifier.fillMaxWidth()
+                                            AsyncImage(
+                                                model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
+                                                contentDescription = "Scan QR Code Widget Overlay",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Fit
                                             )
-                                            val encodedLink = try {
-                                                java.net.URLEncoder.encode(widgetLink, "UTF-8")
-                                            } catch (e: Exception) {
-                                                widgetLink
-                                            }
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(120.dp)
-                                                    .background(Color.White, RoundedCornerShape(12.dp))
-                                                    .padding(6.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                AsyncImage(
-                                                    model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
-                                                    contentDescription = "Scan QR Code Widget Overlay",
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.Fit
-                                                )
-                                            }
-                                            if (widgetLink.isNotEmpty()) {
-                                                Text(
-                                                    text = widgetLink,
-                                                    color = Color(0xFFE2E8F0),
-                                                    fontSize = 8.sp,
-                                                    maxLines = 1,
-                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                )
-                                            }
                                         }
                                     }
                                     "weather" -> {

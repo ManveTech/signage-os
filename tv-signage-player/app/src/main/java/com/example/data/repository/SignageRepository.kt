@@ -204,8 +204,8 @@ class SignageRepository(private val context: Context) {
                 }
             }
 
-            // If active or online, sync the actual playlist assets
-            if (response.status == "active" || response.status == "online") {
+            // If active, online, or offline, sync the actual playlist assets
+            if (response.status == "active" || response.status == "online" || response.status == "offline") {
                 val activePlaylistId = response.playlistId ?: response.playlist
                 if (!activePlaylistId.isNullOrEmpty()) {
                     syncPlaylist(currentConfig.pocketbaseUrl, activePlaylistId)
