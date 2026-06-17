@@ -432,3 +432,52 @@ export async function syncScreenBrandingFromOrg(screenRecord: any) {
     console.error(`Error syncing screen branding for screen ${screenRecord.id}:`, err.message);
   }
 }
+
+export async function reportOffline(req: any, res: any) {
+  try {
+    const { hardwareUuid, reason } = req.body;
+    if (!hardwareUuid) {
+      return res.status(400).json({ message: 'hardwareUuid is required.' });
+    }
+
+    const screens = await pb.collection('screens').getList(1, 1, {
+      filter: `hardware_uuid = "${hardwareUuid}"`
+    });
+
+    if (screens.items.length > 0) {
+      const screen = screens.items[0];
+      if (screen.status === 'online' || screen.status === 'active') {
+        const now = Date.now();
+        let additionalUptime = 0;
+        if (screen.onlineSince) {
+          const onlineTime = new Date(screen.onlineSince).getTime();
+          if (onlineTime > 0 && now > onlineTime) {
+            additionalUptime = Math.floor((now - onlineTime) / 1000);
+          }
+        }
+        const updatedCumulativeUptime = (screen.cumulativeUptime || 0) + additionalUptime;
+
+        await pb.collection('screens').update(screen.id, {
+          status: 'offline',
+          cumulativeUptime: updatedCumulativeUptime
+        });
+
+        await pb.collection('screen_logs').create({
+          screenId: screen.id,
+          screenName: screen.name,
+          assignedToUserEmail: screen.assignedToUserEmail || '',
+          event: 'Screen went offline',
+          type: 'offline',
+          detail: reason || 'App was closed by the user.'
+        }).catch(err => console.error('Error logging screen offline:', err));
+        
+        console.log(`Screen "${screen.name}" (${screen.id}) marked offline immediately. Reason: ${reason || 'App closed'}`);
+      }
+    }
+
+    res.status(204).end();
+  } catch (error: any) {
+    console.error('Error recording screen offline:', error);
+    res.status(500).json({ message: error.message || 'Error recording screen offline' });
+  }
+}

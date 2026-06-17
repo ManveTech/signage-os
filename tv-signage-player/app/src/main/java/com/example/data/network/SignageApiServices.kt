@@ -129,6 +129,12 @@ interface SignageApiService {
         @Body request: HeartbeatRequest
     ): Response<Unit>
 
+    @POST
+    suspend fun reportOffline(
+        @Url url: String,
+        @Body fields: Map<String, String>
+    ): Response<Unit>
+
     @GET
     suspend fun getScreenRecord(
         @Url url: String

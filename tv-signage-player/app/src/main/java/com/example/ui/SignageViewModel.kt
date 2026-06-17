@@ -47,6 +47,7 @@ data class SignageUiState(
     val widgetPlacement: String? = null,
     val widgetLink: String? = null,
     val isWhiteLabel: Boolean = false,
+    val whiteLabelLogoUrl: String? = null,
     val whiteLabelLogoPath: String? = null,
     val whiteLabelName: String? = null
 )
@@ -90,6 +91,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                             widgetPlacement = config.widgetPlacement,
                             widgetLink = config.widgetLink,
                             isWhiteLabel = config.isWhiteLabel,
+                            whiteLabelLogoUrl = config.whiteLabelLogoUrl,
                             whiteLabelLogoPath = config.whiteLabelLogoPath,
                             whiteLabelName = config.whiteLabelName
                         )
@@ -132,15 +134,37 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             repository.downloadStateFlow.collectLatest { downloadState ->
                 _uiState.update {
                     val progressMessage = if (downloadState.isDownloading) {
-                        "Downloading ${downloadState.currentFileName} (${downloadState.completedFiles + 1}/${downloadState.totalFiles})"
+                        val displayCompleted = if (downloadState.completedFiles >= downloadState.totalFiles) {
+                            downloadState.totalFiles
+                        } else {
+                            downloadState.completedFiles + 1
+                        }
+                        "Downloading ${downloadState.currentFileName} ($displayCompleted/${downloadState.totalFiles})"
                     } else {
                         ""
                     }
-                    val overallProgress = if (downloadState.totalFiles > 0) {
-                        (downloadState.completedFiles.toFloat() + downloadState.currentFileProgress) / downloadState.totalFiles
+                    
+                    val overallProgress = if (it.playlist.isNotEmpty() || (it.isWhiteLabel && !it.whiteLabelLogoPath.isNullOrEmpty())) {
+                        val hasWhiteLabelLogo = it.isWhiteLabel && !it.whiteLabelLogoUrl.isNullOrEmpty()
+                        val logoExists = hasWhiteLabelLogo && !it.whiteLabelLogoPath.isNullOrEmpty() && java.io.File(it.whiteLabelLogoPath!!).exists()
+                        
+                        val totalAssets = it.playlist.size + (if (hasWhiteLabelLogo) 1 else 0)
+                        val alreadyDownloaded = it.playlist.count { asset ->
+                            asset.mediaType.equals("youtube", ignoreCase = true) || 
+                            (!asset.localPath.isNullOrEmpty() && java.io.File(asset.localPath).exists())
+                        } + (if (logoExists) 1 else 0)
+                        
+                        if (downloadState.isDownloading && downloadState.totalFiles > 0) {
+                            val pendingCount = downloadState.totalFiles
+                            val initialDownloadedCount = totalAssets - pendingCount
+                            ((initialDownloadedCount.toFloat() + downloadState.completedFiles + downloadState.currentFileProgress) / totalAssets).coerceIn(0f, 1f)
+                        } else {
+                            (alreadyDownloaded.toFloat() / totalAssets).coerceIn(0f, 1f)
+                        }
                     } else {
                         0f
                     }
+                    
                     it.copy(
                         isDownloading = downloadState.isDownloading,
                         downloadProgressMessage = progressMessage,
@@ -380,6 +404,21 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
     fun reportPlaybackError(assetName: String, errorDetails: String) {
         viewModelScope.launch {
             repository.sendDiagnosticsHeartbeat("Playback Error: $assetName ($errorDetails)")
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        syncJob?.cancel()
+        heartbeatJob?.cancel()
+        assetRotationJob?.cancel()
+
+        kotlinx.coroutines.runBlocking {
+            try {
+                repository.sendOfflineNotification("App was closed / process terminated.")
+            } catch (e: Exception) {
+                Log.e("SignageViewModel", "Failed to send offline notification on clear", e)
+            }
         }
     }
 }

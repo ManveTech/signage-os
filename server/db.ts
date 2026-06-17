@@ -417,6 +417,24 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         console.log('Programmatically added widgetLink field to playlists collection');
       }
 
+      if (!pFields.some((f: any) => f.name === 'volume')) {
+        pFields.push({
+          id: 'numplaylistvolumeid',
+          name: 'volume',
+          type: 'number',
+          required: false,
+          system: false,
+          help: 'Default playlist volume (0-100)',
+          hidden: false,
+          presentable: false,
+          onlyInt: true,
+          min: 0,
+          max: 100
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added volume field to playlists collection');
+      }
+
       if (!pFields.some((f: any) => f.name === 'whiteLabel')) {
         pFields.push({
           id: 'boolwhitelabelpl',
@@ -526,6 +544,26 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
               type: 'text',
               required: false,
               system: false
+            },
+            {
+              id: 'autodatecreatedid',
+              name: 'created',
+              type: 'autodate',
+              onCreate: true,
+              onUpdate: false,
+              system: false,
+              hidden: false,
+              presentable: false
+            },
+            {
+              id: 'autodateupdatedid',
+              name: 'updated',
+              type: 'autodate',
+              onCreate: true,
+              onUpdate: true,
+              system: false,
+              hidden: false,
+              presentable: false
             }
           ],
           listRule: '',
@@ -538,13 +576,49 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       }
 
       if (logsCollection) {
+        let logsUpdated = false;
         const fields = logsCollection.fields || [];
         const emailField = fields.find((f: any) => f.name === 'assignedToUserEmail');
         if (emailField && emailField.required === true) {
           emailField.required = false;
+          logsUpdated = true;
+          console.log('Making assignedToUserEmail optional in screen_logs');
+        }
+
+        if (!fields.some((f: any) => f.name === 'created')) {
+          fields.push({
+            id: 'autodatecreatedid',
+            name: 'created',
+            type: 'autodate',
+            onCreate: true,
+            onUpdate: false,
+            system: false,
+            hidden: false,
+            presentable: false
+          });
+          logsUpdated = true;
+          console.log('Programmatically added created field to screen_logs');
+        }
+
+        if (!fields.some((f: any) => f.name === 'updated')) {
+          fields.push({
+            id: 'autodateupdatedid',
+            name: 'updated',
+            type: 'autodate',
+            onCreate: true,
+            onUpdate: true,
+            system: false,
+            hidden: false,
+            presentable: false
+          });
+          logsUpdated = true;
+          console.log('Programmatically added updated field to screen_logs');
+        }
+
+        if (logsUpdated) {
           logsCollection.fields = fields;
           await pb.collections.update('screen_logs', logsCollection);
-          console.log('Successfully updated screen_logs collection to make assignedToUserEmail optional');
+          console.log('Successfully updated screen_logs collection schema');
         }
       }
     } catch (logsErr: any) {

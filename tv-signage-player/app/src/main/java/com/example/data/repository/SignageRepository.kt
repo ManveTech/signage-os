@@ -323,7 +323,11 @@ class SignageRepository(private val context: Context) {
         }
     }
 
-    suspend fun downloadWhiteLabelLogo(logoDataOrUrl: String): String? = withContext(Dispatchers.IO) {
+    suspend fun downloadWhiteLabelLogo(
+        logoDataOrUrl: String,
+        totalFilesForProgress: Int = 0,
+        completedFilesForProgress: Int = 0
+    ): String? = withContext(Dispatchers.IO) {
         if (logoDataOrUrl.isEmpty()) return@withContext null
         val cacheDir = File(context.filesDir, "signage_cache")
         if (!cacheDir.exists()) {
@@ -357,12 +361,30 @@ class SignageRepository(private val context: Context) {
                     if (response.isSuccessful) {
                         val body = response.body
                         if (body != null) {
+                            val contentLength = body.contentLength()
                             body.byteStream().use { inputStream ->
                                 FileOutputStream(tmpFile).use { outputStream ->
                                     val buffer = ByteArray(8192)
                                     var bytesRead: Int
+                                    var totalBytesRead = 0L
+                                    var lastProgressUpdatePercent = -1
                                     while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                                         outputStream.write(buffer, 0, bytesRead)
+                                        totalBytesRead += bytesRead
+                                        if (totalFilesForProgress > 0 && contentLength > 0) {
+                                            val progress = totalBytesRead.toFloat() / contentLength
+                                            val percent = (progress * 100).toInt()
+                                            if (percent > lastProgressUpdatePercent) {
+                                                lastProgressUpdatePercent = percent
+                                                downloadStateFlow.value = DownloadState(
+                                                    isDownloading = true,
+                                                    totalFiles = totalFilesForProgress,
+                                                    completedFiles = completedFilesForProgress,
+                                                    currentFileProgress = progress.coerceIn(0f, 1f),
+                                                    currentFileName = "Brand Logo"
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -688,47 +710,66 @@ class SignageRepository(private val context: Context) {
         val config = getOrCreateConfig()
         val cacheDir = File(context.filesDir, "signage_cache")
 
-        // Download whitelabel logo first if enabled and missing/changed
-        if (config.isWhiteLabel && !config.whiteLabelLogoUrl.isNullOrEmpty()) {
-            val logoFileName = getCacheFileName(config.whiteLabelLogoUrl, "whitelabel_logo.png")
-            val logoFile = File(cacheDir, logoFileName)
-            if (!logoFile.exists() || config.whiteLabelLogoPath != logoFile.absolutePath) {
-                Log.d("SignageRepository", "Whitelabel enabled. Downloading brand logo...")
-                val localPath = downloadWhiteLabelLogo(config.whiteLabelLogoUrl)
-                if (localPath != null) {
-                    val updated = getOrCreateConfig().copy(whiteLabelLogoPath = localPath)
-                    configDao.saveConfig(updated)
-                    Log.d("SignageRepository", "Whitelabel logo cached at: $localPath")
+        // Check if whitelabel logo needs downloading
+        val logoNeedsDownload = config.isWhiteLabel && !config.whiteLabelLogoUrl.isNullOrEmpty() &&
+                run {
+                    val logoFileName = getCacheFileName(config.whiteLabelLogoUrl, "whitelabel_logo.png")
+                    val logoFile = File(cacheDir, logoFileName)
+                    !logoFile.exists() || config.whiteLabelLogoPath != logoFile.absolutePath
                 }
-            }
-        }
 
         val assets = assetDao.getAllAssets()
         val pending = assets.filter {
             it.mediaType != "youtube" && (it.localPath.isNullOrEmpty() || !File(it.localPath).exists())
         }
         
-        if (pending.isEmpty()) {
+        if (pending.isEmpty() && !logoNeedsDownload) {
             downloadStateFlow.value = DownloadState(isDownloading = false)
             return@withContext
         }
 
+        val totalToDownload = pending.size + (if (logoNeedsDownload) 1 else 0)
+
         // Immediately set downloading to true so the bar appears as soon as the download starts
         downloadStateFlow.value = DownloadState(
             isDownloading = true,
-            totalFiles = pending.size,
+            totalFiles = totalToDownload,
             completedFiles = 0,
             currentFileProgress = 0f,
-            currentFileName = pending.first().filename
+            currentFileName = if (logoNeedsDownload) "Brand Logo" else pending.firstOrNull()?.filename ?: ""
         )
 
-        val total = pending.size
+        // Download whitelabel logo first if enabled and missing/changed
+        if (logoNeedsDownload) {
+            Log.d("SignageRepository", "Whitelabel enabled. Downloading brand logo...")
+            val localPath = downloadWhiteLabelLogo(
+                config.whiteLabelLogoUrl!!,
+                totalFilesForProgress = totalToDownload,
+                completedFilesForProgress = 0
+            )
+            if (localPath != null) {
+                val updated = getOrCreateConfig().copy(whiteLabelLogoPath = localPath)
+                configDao.saveConfig(updated)
+                Log.d("SignageRepository", "Whitelabel logo cached at: $localPath")
+            }
+            // Mark logo download as completed (progress = 1.0f equivalent)
+            downloadStateFlow.value = DownloadState(
+                isDownloading = true,
+                totalFiles = totalToDownload,
+                completedFiles = 1,
+                currentFileProgress = 0f,
+                currentFileName = pending.firstOrNull()?.filename ?: ""
+            )
+        }
+
+        val startIndex = if (logoNeedsDownload) 1 else 0
+
         pending.forEachIndexed { index, asset ->
             Log.d("SignageRepository", "Downloading playlist asset: ${asset.url}")
             downloadStateFlow.value = DownloadState(
                 isDownloading = true,
-                totalFiles = total,
-                completedFiles = index,
+                totalFiles = totalToDownload,
+                completedFiles = startIndex + index,
                 currentFileProgress = 0.0f,
                 currentFileName = asset.filename
             )
@@ -768,8 +809,8 @@ class SignageRepository(private val context: Context) {
 
                         downloadStateFlow.value = DownloadState(
                             isDownloading = true,
-                            totalFiles = total,
-                            completedFiles = index + 1,
+                            totalFiles = totalToDownload,
+                            completedFiles = startIndex + index + 1,
                             currentFileProgress = 0.0f,
                             currentFileName = asset.filename
                         )
@@ -788,18 +829,23 @@ class SignageRepository(private val context: Context) {
                                 val buffer = ByteArray(8192)
                                 var bytesRead: Int
                                 var totalBytesRead = 0L
+                                var lastProgressUpdatePercent = -1
                                 while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                                     outputStream.write(buffer, 0, bytesRead)
                                     totalBytesRead += bytesRead
                                     if (contentLength > 0) {
                                         val progress = totalBytesRead.toFloat() / contentLength
-                                        downloadStateFlow.value = DownloadState(
-                                            isDownloading = true,
-                                            totalFiles = total,
-                                            completedFiles = index,
-                                            currentFileProgress = progress,
-                                            currentFileName = asset.filename
-                                        )
+                                        val percent = (progress * 100).toInt()
+                                        if (percent > lastProgressUpdatePercent) {
+                                            lastProgressUpdatePercent = percent
+                                            downloadStateFlow.value = DownloadState(
+                                                isDownloading = true,
+                                                totalFiles = totalToDownload,
+                                                completedFiles = startIndex + index,
+                                                currentFileProgress = progress.coerceIn(0f, 1f),
+                                                currentFileName = asset.filename
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -825,8 +871,8 @@ class SignageRepository(private val context: Context) {
 
                     downloadStateFlow.value = DownloadState(
                         isDownloading = true,
-                        totalFiles = total,
-                        completedFiles = index + 1,
+                        totalFiles = totalToDownload,
+                        completedFiles = startIndex + index + 1,
                         currentFileProgress = 0.0f,
                         currentFileName = asset.filename
                     )
@@ -840,8 +886,8 @@ class SignageRepository(private val context: Context) {
                 // Update downloadStateFlow to increment completedFiles so progress continues and doesn't get stuck
                 downloadStateFlow.value = DownloadState(
                     isDownloading = true,
-                    totalFiles = total,
-                    completedFiles = index + 1,
+                    totalFiles = totalToDownload,
+                    completedFiles = startIndex + index + 1,
                     currentFileProgress = 0.0f,
                     currentFileName = asset.filename
                 )
@@ -987,6 +1033,26 @@ class SignageRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error sending heartbeat report", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun sendOfflineNotification(reason: String = "App closed by user"): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val config = getOrCreateConfig()
+            val url = "${config.serverUrl}/api/v1/devices/offline"
+            val body = mapOf(
+                "hardwareUuid" to config.hardwareUuid,
+                "reason" to reason
+            )
+            val response = apiService.reportOffline(url, body)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to report offline: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Error sending offline notification", e)
             Result.failure(e)
         }
     }

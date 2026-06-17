@@ -22,7 +22,7 @@ export function createCrudRouter(collectionName: string) {
   // GET ALL
   router.get('/', async (req: any, res: any) => {
     try {
-      if (collectionName === 'screens') {
+      if (collectionName === 'screens' || collectionName === 'screen_logs') {
         await checkDeviceStatuses();
       }
       

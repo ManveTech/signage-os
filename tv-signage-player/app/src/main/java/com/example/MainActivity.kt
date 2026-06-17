@@ -64,6 +64,9 @@ import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.size.Size
 import coil.size.Precision
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.basicMarquee
 
 
 class MainActivity : ComponentActivity() {
@@ -145,12 +148,13 @@ fun SignagePlayerApp(
                         transitionName = uiState.playlistTransition,
                         onOpenAdmin = { viewModel.toggleAdminOverlay() },
                         onVideoCompleted = { viewModel.advanceToNextAsset() },
-                        volumePercent = uiState.screenVolume
+                        volumePercent = uiState.playlistVolume
                     )
 
-                    // Global QR Code Overlay display
-                    val widgetLink = uiState.widgetLink
-                    if (uiState.widgetType == "qrcode" && !widgetLink.isNullOrEmpty()) {
+                    // Global Widget Overlay display
+                    val widgetType = uiState.widgetType
+                    val widgetLink = uiState.widgetLink ?: ""
+                    if (!widgetType.isNullOrEmpty()) {
                         val alignment = when (uiState.widgetPlacement) {
                             "top-left" -> Alignment.TopStart
                             "top-right" -> Alignment.TopEnd
@@ -164,26 +168,69 @@ fun SignagePlayerApp(
                                 .padding(24.dp),
                             contentAlignment = alignment
                         ) {
-                            val encodedLink = try {
-                                java.net.URLEncoder.encode(widgetLink, "UTF-8")
-                            } catch (e: Exception) {
-                                widgetLink
-                            }
-                            Box(
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xCC111827) // Premium translucent dark HUD card
+                                ),
+                                shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier
-                                    .size(130.dp)
-                                    .background(Color.White, RoundedCornerShape(24.dp))
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .border(2.dp, Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
-                                    .padding(12.dp),
-                                contentAlignment = Alignment.Center
+                                    .width(200.dp)
+                                    .padding(14.dp)
                             ) {
-                                AsyncImage(
-                                    model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
-                                    contentDescription = "Scan QR Code Widget Overlay",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit
-                                )
+                                when (widgetType) {
+                                    "qrcode" -> {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "SCAN LINK",
+                                                color = Color(0xFF94A3B8),
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 1.sp,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            val encodedLink = try {
+                                                java.net.URLEncoder.encode(widgetLink, "UTF-8")
+                                            } catch (e: Exception) {
+                                                widgetLink
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(120.dp)
+                                                    .background(Color.White, RoundedCornerShape(12.dp))
+                                                    .padding(6.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                AsyncImage(
+                                                    model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
+                                                    contentDescription = "Scan QR Code Widget Overlay",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Fit
+                                                )
+                                            }
+                                            if (widgetLink.isNotEmpty()) {
+                                                Text(
+                                                    text = widgetLink,
+                                                    color = Color(0xFFE2E8F0),
+                                                    fontSize = 8.sp,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                    "weather" -> {
+                                        WeatherWidget(location = widgetLink.ifEmpty { "Bengaluru" })
+                                    }
+                                    "clock" -> {
+                                        ClockWidget(header = widgetLink.ifEmpty { "Lobby Clock" })
+                                    }
+                                    "rss" -> {
+                                        RssTickerWidget(tickerText = widgetLink)
+                                    }
+                                }
                             }
                         }
                     }
@@ -228,7 +275,7 @@ fun SignagePlayerApp(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             CircularProgressIndicator(
-                                progress = uiState.downloadProgressFraction,
+                                progress = { uiState.downloadProgressFraction },
                                 modifier = Modifier.size(28.dp),
                                 color = Color(0xFFD0BCFF),
                                 strokeWidth = 3.dp,
@@ -1330,7 +1377,7 @@ fun DownloadProgressScreen(
         ) {
             // Background pulsing glow ring
             CircularProgressIndicator(
-                progress = uiState.downloadProgressFraction,
+                progress = { uiState.downloadProgressFraction },
                 modifier = Modifier.size(160.dp),
                 color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
                 strokeWidth = 10.dp,
@@ -1397,7 +1444,7 @@ fun DownloadProgressScreen(
                 
                 // Detailed horizontal progress bar
                 LinearProgressIndicator(
-                    progress = uiState.downloadProgressFraction,
+                    progress = { uiState.downloadProgressFraction },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp)
@@ -1498,6 +1545,211 @@ fun AppSplashScreen(uiState: SignageUiState) {
                 color = Color(0xFFD0BCFF),
                 strokeWidth = 3.dp,
                 modifier = Modifier.size(28.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun WeatherWidget(location: String) {
+    val locLower = location.lowercase()
+    var temp = 24
+    var condition = "Sunny"
+    var isRainy = false
+    var isSunny = true
+    var isSnowing = false
+    var isCloudy = false
+    var isWindy = false
+
+    if (locLower.contains("london") || locLower.contains("rain") || locLower.contains("seattle")) {
+        temp = 14
+        condition = "Rainy"
+        isRainy = true
+        isSunny = false
+    } else if (locLower.contains("delhi") || locLower.contains("hot") || locLower.contains("desert") || locLower.contains("chennai")) {
+        temp = 38
+        condition = "Hot & Sunny"
+        isSunny = true
+    } else if (locLower.contains("snow") || locLower.contains("cold") || locLower.contains("moscow") || locLower.contains("ice")) {
+        temp = -2
+        condition = "Snowing"
+        isSnowing = true
+        isSunny = false
+    } else if (locLower.contains("cloud") || locLower.contains("paris") || locLower.contains("tokyo") || locLower.contains("mumbai")) {
+        temp = 19
+        condition = "Partly Cloudy"
+        isCloudy = true
+        isSunny = false
+    } else if (locLower.contains("wind") || locLower.contains("storm") || locLower.contains("chicago")) {
+        temp = 16
+        condition = "Windy"
+        isWindy = true
+        isSunny = false
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = "WEATHER",
+            color = Color(0xFF94A3B8),
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(vertical = 4.dp)
+        ) {
+            // Drawn Weather Icon
+            Box(modifier = Modifier.size(24.dp)) {
+                if (isSunny) {
+                    // Golden sun
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .align(Alignment.Center)
+                            .background(Color(0xFFF59E0B), CircleShape)
+                    )
+                } else if (isRainy) {
+                    // Dark cloud & raindrops
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.Center)) {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 18.dp, height = 10.dp)
+                                .background(Color(0xFF64748B), RoundedCornerShape(5.dp))
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 2.dp)) {
+                            Box(modifier = Modifier.size(width = 1.dp, height = 3.dp).background(Color(0xFF38BDF8)))
+                            Box(modifier = Modifier.size(width = 1.dp, height = 3.dp).background(Color(0xFF38BDF8)))
+                            Box(modifier = Modifier.size(width = 1.dp, height = 3.dp).background(Color(0xFF38BDF8)))
+                        }
+                    }
+                } else if (isSnowing) {
+                    // Cold snowflake placeholder (white circle + dots)
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .align(Alignment.Center)
+                            .background(Color(0xFF93C5FD), CircleShape)
+                    )
+                } else if (isCloudy) {
+                    // Cloud + Sun peaking out
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .align(Alignment.TopStart)
+                                .background(Color(0xFFF59E0B), CircleShape)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(width = 16.dp, height = 10.dp)
+                                .align(Alignment.BottomEnd)
+                                .background(Color(0xFF94A3B8), RoundedCornerShape(5.dp))
+                        )
+                    }
+                } else { // windy
+                    // Wind lines
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.align(Alignment.Center).fillMaxWidth()
+                    ) {
+                        Box(modifier = Modifier.fillMaxWidth(0.8f).height(2.dp).background(Color(0xFF2DD4BF), RoundedCornerShape(1.dp)))
+                        Box(modifier = Modifier.fillMaxWidth(0.9f).height(2.5.dp).background(Color(0xFF2DD4BF), RoundedCornerShape(1.dp)))
+                        Box(modifier = Modifier.fillMaxWidth(0.7f).height(2.dp).background(Color(0xFF2DD4BF), RoundedCornerShape(1.dp)))
+                    }
+                }
+            }
+
+            Text(
+                text = "$temp°C",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+        Text(
+            text = "$location · $condition",
+            color = Color(0xFFE2E8F0),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun ClockWidget(header: String) {
+    var timeText by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            val sdf = java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale.getDefault())
+            timeText = sdf.format(java.util.Date())
+            delay(1000)
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = header.ifEmpty { "CLOCK" }.uppercase(),
+            color = Color(0xFF94A3B8),
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            text = timeText,
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(vertical = 4.dp)
+        )
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun RssTickerWidget(tickerText: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "LIVE TICKER",
+            color = Color(0xFF94A3B8),
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = tickerText.ifEmpty { "Welcome to SignageOS Digital Display Player Network Ticker" },
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier.basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    velocity = 30.dp
+                )
             )
         }
     }
