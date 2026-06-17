@@ -23,6 +23,9 @@ export type Screen = {
   scheduleTime?: string;
   clear_cache?: boolean;
   assignedToUserEmail?: string;
+  volume?: number;
+  onlineSince?: string;
+  force_sync?: boolean;
 };
 
 export type ScreenGroup = {
@@ -44,7 +47,7 @@ export type ScreenGroup = {
 export type MediaItem = {
   id: string;
   title: string;
-  type: 'video' | 'image' | 'layout' | 'youtube' | 'ticker';
+  type: 'image' | 'layout' | 'ticker';
   duration: number;
   resolution: string;
   fileSize: string;

@@ -489,8 +489,19 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
               )}
              </div>
             <div className="flex gap-3 px-5 pb-5">
-              <button onClick={() => setEditGroup(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={handleEditSave} className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Check size={15} /> Save</button>
+              <button 
+                onClick={() => {
+                  setDeleteGroup(editGroup);
+                  setEditGroup(null);
+                }} 
+                className="px-3 py-2.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200/60 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 size={13} />
+                Delete Group
+              </button>
+              <div className="flex-1" />
+              <button onClick={() => setEditGroup(null)} className="px-4 py-2.5 text-xs font-semibold text-gray-650 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
+              <button onClick={handleEditSave} className="px-5 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"><Check size={14} /> Save Changes</button>
             </div>
           </div>
         </div>

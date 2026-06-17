@@ -11,11 +11,20 @@ data class ScreenConfig(
     val pairingCode: String = "",
     val status: String = "pairing",
     val screenName: String = "Digital Signage Screen",
-    val serverUrl: String = "http://10.0.2.2:5000",
-    val pocketbaseUrl: String = "http://10.0.2.2:8090",
+    val serverUrl: String = "http://10.49.140.102:5000",
+    val pocketbaseUrl: String = "https://demo.manve.co",
     val lastSyncedAt: Long = 0L,
-    val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
+    val playlistOrientation: String = "vertical", // "horizontal" | "vertical"
     val playlistShuffle: Boolean = false,
     val playlistLoop: Boolean = true,
-    val playlistVolume: Int = 80
+    val playlistVolume: Int = 80,
+    val playlistTransition: String = "fade",
+    val screenVolume: Int = 80,
+    val widgetType: String? = null,
+    val widgetPlacement: String? = null,
+    val widgetLink: String? = null,
+    val isWhiteLabel: Boolean = false,
+    val whiteLabelLogoUrl: String? = null,
+    val whiteLabelLogoPath: String? = null,
+    val whiteLabelName: String? = null
 )

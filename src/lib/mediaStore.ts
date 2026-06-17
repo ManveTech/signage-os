@@ -10,7 +10,7 @@ try {
 export interface MediaItem {
   id: string;
   title: string;
-  type: 'video' | 'image' | 'layout' | 'youtube' | 'ticker';
+  type: 'image' | 'video' | 'layout' | 'ticker';
   duration: number;
   resolution: string;
   fileSize: string; // Friendly text (e.g. "45 MB")
@@ -21,12 +21,10 @@ export interface MediaItem {
   tags: string[];
   status: 'active' | 'archived' | 'expired';
   thumbnail: string;
+  fileUrl?: string; // Direct R2/S3 URL when using external storage
   width?: number;
   height?: number;
   mimeType?: string;
-  checksum?: string;
-  youtube_url?: string;
-  youtube_video_id?: string;
   fileData?: string;
   fileName?: string;
 }
@@ -45,6 +43,7 @@ export interface Playlist {
   orientation?: 'horizontal' | 'vertical';
   widgetType?: 'weather' | 'clock' | 'rss' | 'qrcode';
   widgetPlacement?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  widgetLink?: string;
   transition?: 'fade' | 'slide' | 'zoom' | 'slide-up' | 'slide-down' | 'flip' | 'spin' | 'blur' | 'bounce' | 'wipe';
   shuffle?: boolean;
   loop?: boolean;
@@ -67,6 +66,7 @@ export interface Screen {
   location: string;
   licenseType: string; // 'Lite' | 'Pro'
   lastHeartbeat: string;
+  onlineSince?: string;
   playerVersion: string;
   storageUsed: number; // Percentage
   thumbnail: string;
@@ -76,6 +76,8 @@ export interface Screen {
   scheduleTime?: string;
   assignedToUserEmail?: string; // client email
   clear_cache?: boolean;
+  volume?: number;
+  force_sync?: boolean;
 }
 
 const INITIAL_MEDIA: MediaItem[] = [];
@@ -93,7 +95,7 @@ export const mediaStore = {
     setMemoryMedia(media);
   },
 
-  uploadMedia(media: Omit<MediaItem, 'id' | 'createdDate' | 'status'>): MediaItem {
+  async uploadMedia(media: Omit<MediaItem, 'id' | 'createdDate' | 'status'>): Promise<MediaItem> {
     const all = this.getMedia();
     const newItem: MediaItem = {
       ...media,
@@ -103,7 +105,23 @@ export const mediaStore = {
     };
     all.unshift(newItem);
     this.saveMedia(all);
-    pushToDatabase('media_items', newItem.id, newItem, 'POST');
+
+    // Upload to server and update thumbnail with the real R2 URL from the response
+    const result = await pushToDatabase('media_items', newItem.id, newItem, 'POST');
+    if (result.ok && result.data) {
+      const serverRecord = result.data;
+      // Update our local copy with the authoritative URL from the server (R2 or PocketBase)
+      const currentAll = this.getMedia();
+      const idx = currentAll.findIndex(m => m.id === newItem.id);
+      if (idx !== -1) {
+        if (serverRecord.thumbnail) currentAll[idx].thumbnail = serverRecord.thumbnail;
+        if (serverRecord.fileUrl) currentAll[idx].fileUrl = serverRecord.fileUrl;
+        if (serverRecord.id) currentAll[idx].id = serverRecord.id;
+        this.saveMedia(currentAll);
+        return currentAll[idx];
+      }
+    }
+
     return newItem;
   },
 
@@ -279,5 +297,15 @@ export const mediaStore = {
   getClientScreensCount(clientEmail: string): number {
     const screens = this.getScreens();
     return screens.filter(s => s.assignedToUserEmail === clientEmail).length;
+  },
+
+  getScreenGroups(): any[] {
+    const data = localStorage.getItem('signageos_groups');
+    if (!data) return [];
+    try {
+      return JSON.parse(data);
+    } catch (e) {
+      return [];
+    }
   }
 };

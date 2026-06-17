@@ -35,11 +35,20 @@ data class SignageUiState(
     val isDownloading: Boolean = false,
     val downloadProgressMessage: String = "",
     val downloadProgressFraction: Float = 0f,
+    val showSplash: Boolean = true,
     // Playlist playback settings
-    val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
+    val playlistOrientation: String = "vertical", // "horizontal" | "vertical"
     val playlistShuffle: Boolean = false,
     val playlistLoop: Boolean = true,
-    val playlistVolume: Int = 80
+    val playlistVolume: Int = 80,
+    val playlistTransition: String = "fade",
+    val screenVolume: Int = 80,
+    val widgetType: String? = null,
+    val widgetPlacement: String? = null,
+    val widgetLink: String? = null,
+    val isWhiteLabel: Boolean = false,
+    val whiteLabelLogoPath: String? = null,
+    val whiteLabelName: String? = null
 )
 
 class SignageViewModel(application: Application) : AndroidViewModel(application) {
@@ -74,7 +83,15 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                             playlistOrientation = config.playlistOrientation,
                             playlistShuffle = config.playlistShuffle,
                             playlistLoop = config.playlistLoop,
-                            playlistVolume = config.playlistVolume
+                            playlistVolume = config.playlistVolume,
+                            playlistTransition = config.playlistTransition,
+                            screenVolume = config.screenVolume,
+                            widgetType = config.widgetType,
+                            widgetPlacement = config.widgetPlacement,
+                            widgetLink = config.widgetLink,
+                            isWhiteLabel = config.isWhiteLabel,
+                            whiteLabelLogoPath = config.whiteLabelLogoPath,
+                            whiteLabelName = config.whiteLabelName
                         )
                     }
                     // Start or update asset rotational loop based on playlist changes
@@ -95,14 +112,18 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             repository.assetsFlow.collectLatest { assets ->
                 val oldPlaylist = _uiState.value.playlist
                 val structurallyEqual = isPlaylistStructurallyEqual(oldPlaylist, assets)
-                _uiState.update { it.copy(playlist = assets) }
+                _uiState.update { 
+                    it.copy(
+                        playlist = assets,
+                        currentAssetIndex = if (!structurallyEqual) 0 else it.currentAssetIndex
+                    )
+                }
                 if (!structurallyEqual) {
-                    // Reset index when structural playlist changes
-                    _uiState.update { it.copy(currentAssetIndex = 0) }
                     restartAssetRotation(force = true)
                 } else {
                     restartAssetRotation(force = false)
                 }
+                repository.startDownloadingPendingAssets()
             }
         }
 
@@ -141,6 +162,32 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 requestPairingCode()
             }
         }
+
+        // If already whitelabeled from a previous session, kick off logo download immediately
+        // so it's ready before the splash screen dismisses
+        viewModelScope.launch {
+            val current = repository.getOrCreateConfig()
+            if (current.isWhiteLabel && !current.whiteLabelLogoUrl.isNullOrEmpty()) {
+                repository.startDownloadingPendingAssets()
+            }
+        }
+
+        // Smart splash dismissal — wait for the whitelabel logo to be cached before
+        // dismissing the splash (up to 6 seconds max), then fall through regardless.
+        viewModelScope.launch {
+            delay(1000) // minimum splash visibility
+            val maxWaitMs = 5000L
+            val startTime = System.currentTimeMillis()
+            while (System.currentTimeMillis() - startTime < maxWaitMs) {
+                val state = _uiState.value
+                // Dismiss as soon as: not whitelabeled, or logo path is already cached
+                if (!state.isWhiteLabel || !state.whiteLabelLogoPath.isNullOrEmpty()) {
+                    break
+                }
+                delay(200)
+            }
+            _uiState.update { it.copy(showSplash = false) }
+        }
     }
 
     fun requestPairingCode() {
@@ -174,12 +221,15 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 try {
                     val config = repository.getOrCreateConfig()
                     if (config.screenId.isNotEmpty()) {
+                        _uiState.update { it.copy(isSyncing = true) }
                         repository.syncScreenStatus()
+                        _uiState.update { it.copy(isSyncing = false) }
                     } else if (config.pairingCode.isEmpty()) {
                         repository.requestPairingCode()
                     }
                 } catch (e: Exception) {
                     Log.e("SignageViewModel", "Background sync failure", e)
+                    _uiState.update { it.copy(isSyncing = false) }
                 }
                 // Poll screen stats and pairing actions every 7.5 seconds
                 delay(7500)
@@ -232,6 +282,13 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             while (isActive) {
                 val currentIndex = _uiState.value.currentAssetIndex
                 val currentAsset = playlist.getOrNull(currentIndex) ?: break
+
+                if (currentAsset.mediaType.equals("video", ignoreCase = true)) {
+                    // Wait for video player completion callback to trigger advanceToNextAsset
+                    delay(3600000L) // 1 hour safety delay fallback
+                    continue
+                }
+
                 val durationMs = (currentAsset.duration * 1000L).coerceAtLeast(3000L) // Min 3 seconds
 
                 delay(durationMs)
@@ -245,6 +302,17 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun advanceToNextAsset() {
+        val playlist = _uiState.value.playlist
+        if (playlist.isNotEmpty()) {
+            _uiState.update {
+                val nextIndex = (it.currentAssetIndex + 1) % playlist.size
+                it.copy(currentAssetIndex = nextIndex)
+            }
+            restartAssetRotation(force = true)
+        }
+    }
+
     fun saveServerUrls(serverUrl: String, pocketbaseUrl: String) {
         viewModelScope.launch {
             repository.updateServerUrls(serverUrl, pocketbaseUrl)
@@ -252,6 +320,12 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             repository.startRealtimeSync()
             // Reset state and re-request code
             requestPairingCode()
+        }
+    }
+
+    fun saveVolumeSettings(volume: Int) {
+        viewModelScope.launch {
+            repository.updateDeviceVolume(volume)
         }
     }
 
@@ -297,6 +371,10 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _uiState.update { it.copy(status = "suspended", statusMessage = "License suspended simulation" ) }
         }
+    }
+
+    fun triggerPendingDownloads() {
+        repository.startDownloadingPendingAssets()
     }
 
     fun reportPlaybackError(assetName: String, errorDetails: String) {

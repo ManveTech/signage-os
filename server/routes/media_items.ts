@@ -1,5 +1,5 @@
 import express from 'express';
-import { uploadMediaItem } from '../controllers/media_items';
+import { uploadMediaItem, deleteMediaItem } from '../controllers/media_items';
 import { createCrudRouter } from '../controllers/crud';
 
 const router = express.Router();
@@ -7,7 +7,10 @@ const router = express.Router();
 // Custom upload interceptor
 router.post('/', uploadMediaItem);
 
-// Fallback to standard CRUD actions
+// Custom delete interceptor (cleans up R2 object before removing PocketBase record)
+router.delete('/:id', deleteMediaItem);
+
+// Fallback to standard CRUD actions (GET, PATCH, etc.)
 router.use(createCrudRouter('media_items'));
 
 export default router;

@@ -22,7 +22,7 @@ const navSections: NavSection[] = [
     children: [
       { id: 'my-screens-list', label: 'My Screens' },
       { id: 'screens-groups', label: 'Create Groups' },
-      { id: 'screens-health', label: 'Health Logs' },
+      { id: 'screens-logs', label: 'Logs' },
     ]
   },
   {

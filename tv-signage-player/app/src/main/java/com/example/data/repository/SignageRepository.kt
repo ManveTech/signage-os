@@ -30,6 +30,9 @@ import java.util.UUID
 import kotlin.random.Random
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.security.MessageDigest
 
 data class DownloadState(
@@ -51,6 +54,9 @@ class SignageRepository(private val context: Context) {
         .build()
 
     private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         })
@@ -94,21 +100,22 @@ class SignageRepository(private val context: Context) {
 
     suspend fun requestPairingCode(): Result<ScreenConfig> = withContext(Dispatchers.IO) {
         try {
-            val config = getOrCreateConfig()
-            val request = PairingRequest(hardwareUuid = config.hardwareUuid)
-            val url = "${config.serverUrl}/api/v1/devices/pairing-code"
+            val initialConfig = getOrCreateConfig()
+            val request = PairingRequest(hardwareUuid = initialConfig.hardwareUuid)
+            val url = "${initialConfig.serverUrl}/api/v1/devices/pairing-code"
 
             Log.d("SignageRepository", "Requesting pairing code from: $url")
             val response = apiService.getPairingCode(url, request)
 
             val basePbUrl = response.pocketbaseUrl
+            val currentConfig = getOrCreateConfig()
             val resolvedPocketbaseUrl = if (!basePbUrl.isNullOrEmpty()) {
                 basePbUrl.replace("localhost", "10.0.2.2").replace("127.0.0.1", "10.0.2.2")
             } else {
-                config.pocketbaseUrl
+                currentConfig.pocketbaseUrl
             }
 
-            val updatedConfig = config.copy(
+            val updatedConfig = currentConfig.copy(
                 screenId = response.screenId,
                 pairingCode = response.pairingCode,
                 status = response.status,
@@ -124,21 +131,43 @@ class SignageRepository(private val context: Context) {
 
     suspend fun syncScreenStatus(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val config = getOrCreateConfig()
-            if (config.screenId.isEmpty()) {
+            val initialConfig = getOrCreateConfig()
+            if (initialConfig.screenId.isEmpty()) {
                 return@withContext Result.failure(IllegalStateException("No screen record paired yet"))
             }
 
             // Read the real record state from Pocketbase
-            val url = "${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}"
+            val url = "${initialConfig.pocketbaseUrl}/api/collections/screens/records/${initialConfig.screenId}"
             val response = apiService.getScreenRecord(url)
 
             Log.d("SignageRepository", "Synced screen status: ${response.status}")
-            val updatedConfig = config.copy(
+            val currentConfig = getOrCreateConfig()
+            val isWhiteLabelNow = response.whiteLabel ?: false
+            val logoUrlNow = response.websiteLogo ?: ""
+            val nameNow = response.websiteName ?: ""
+
+            val isLogoChanged = logoUrlNow.isNotEmpty() && currentConfig.whiteLabelLogoUrl != logoUrlNow
+            val wasWhiteLabelLogoMissing = isWhiteLabelNow && (
+                    currentConfig.whiteLabelLogoPath.isNullOrEmpty() ||
+                    isLogoChanged ||
+                    !File(currentConfig.whiteLabelLogoPath).exists()
+            )
+
+            val updatedConfig = currentConfig.copy(
                 status = response.status,
-                screenName = response.name ?: config.screenName
+                screenName = response.name ?: currentConfig.screenName,
+                screenVolume = response.volume ?: currentConfig.screenVolume,
+                isWhiteLabel = isWhiteLabelNow,
+                whiteLabelLogoUrl = if (logoUrlNow.isNotEmpty()) logoUrlNow else currentConfig.whiteLabelLogoUrl,
+                whiteLabelName = if (nameNow.isNotEmpty()) nameNow else currentConfig.whiteLabelName,
+                whiteLabelLogoPath = if (isLogoChanged) null else currentConfig.whiteLabelLogoPath
             )
             configDao.saveConfig(updatedConfig)
+
+            // Trigger asset download if whitelabel logo is missing or changed
+            if (isWhiteLabelNow && wasWhiteLabelLogoMissing && logoUrlNow.isNotEmpty()) {
+                startDownloadingPendingAssets()
+            }
 
             // Check if clear_cache command was sent from backend
             if (response.clear_cache == true) {
@@ -147,17 +176,31 @@ class SignageRepository(private val context: Context) {
                 
                 // Clear the command flag on backend
                 try {
-                    val patchUrl = "${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}"
+                    val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
                     apiService.updateScreenRecord(patchUrl, mapOf("clear_cache" to false))
                 } catch (e: Exception) {
                     Log.e("SignageRepository", "Failed to clear clear_cache flag on server", e)
                 }
             }
 
+            // Check if force_sync command was sent from backend
+            if (response.force_sync == true) {
+                Log.d("SignageRepository", "Force sync command received. Retrying download of pending assets.")
+                startDownloadingPendingAssets()
+                
+                // Clear the command flag on backend
+                try {
+                    val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
+                    apiService.updateScreenRecord(patchUrl, mapOf("force_sync" to false))
+                } catch (e: Exception) {
+                    Log.e("SignageRepository", "Failed to clear force_sync flag on server", e)
+                }
+            }
+
             // Check if schedule is due
             if (!response.schedulePlaylist.isNullOrEmpty() && !response.scheduleDate.isNullOrEmpty() && !response.scheduleTime.isNullOrEmpty()) {
                 if (isScheduleDue(response.scheduleDate, response.scheduleTime)) {
-                    applyScheduledPlaylist(config, response.schedulePlaylist)
+                    applyScheduledPlaylist(currentConfig, response.schedulePlaylist)
                 }
             }
 
@@ -165,12 +208,20 @@ class SignageRepository(private val context: Context) {
             if (response.status == "active" || response.status == "online") {
                 val activePlaylistId = response.playlistId ?: response.playlist
                 if (!activePlaylistId.isNullOrEmpty()) {
-                    syncPlaylist(config.pocketbaseUrl, activePlaylistId)
+                    syncPlaylist(currentConfig.pocketbaseUrl, activePlaylistId)
                 } else {
                     // Clear playlist assets since none assigned
                     if (assetDao.getAllAssets().isNotEmpty()) {
                         assetDao.clearAllAssets()
                     }
+                    // Clear widget settings from local DB
+                    val latestConfig = getOrCreateConfig()
+                    val clearedConfig = latestConfig.copy(
+                        widgetType = null,
+                        widgetPlacement = null,
+                        widgetLink = null
+                    )
+                    configDao.saveConfig(clearedConfig)
                 }
             }
 
@@ -194,6 +245,11 @@ class SignageRepository(private val context: Context) {
             val cacheDir = File(context.filesDir, "signage_cache")
             if (cacheDir.exists()) {
                 cacheDir.listFiles()?.forEach { it.delete() }
+            }
+            try {
+                context.cacheDir?.deleteRecursively()
+            } catch (ex: Exception) {
+                Log.e("SignageRepository", "Error clearing cache directory", ex)
             }
             assetDao.clearAllAssets()
             Log.d("SignageRepository", "Successfully cleared device assets and cache directory files")
@@ -253,6 +309,83 @@ class SignageRepository(private val context: Context) {
         return url.replace("localhost", "10.0.2.2").replace("127.0.0.1", "10.0.2.2")
     }
 
+    private fun getCacheFileName(url: String, filename: String): String {
+        return try {
+            val ext = filename.substringAfterLast('.', "")
+            val extSuffix = if (ext.isNotEmpty()) ".$ext" else ""
+            val md = MessageDigest.getInstance("MD5")
+            val digest = md.digest(url.toByteArray())
+            val hash = digest.joinToString("") { "%02x".format(it) }
+            val cleanName = filename.substringBeforeLast('.').replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+            "${hash}_$cleanName$extSuffix"
+        } catch (e: Exception) {
+            "${url.hashCode()}_$filename"
+        }
+    }
+
+    suspend fun downloadWhiteLabelLogo(logoDataOrUrl: String): String? = withContext(Dispatchers.IO) {
+        if (logoDataOrUrl.isEmpty()) return@withContext null
+        val cacheDir = File(context.filesDir, "signage_cache")
+        if (!cacheDir.exists()) {
+            cacheDir.mkdirs()
+        }
+        
+        val logoFileName = getCacheFileName(logoDataOrUrl, "whitelabel_logo.png")
+        val logoFile = File(cacheDir, logoFileName)
+        val tmpFile = File(logoFile.absolutePath + ".tmp")
+        
+        try {
+            if (logoDataOrUrl.startsWith("data:", ignoreCase = true)) {
+                val commaIndex = logoDataOrUrl.indexOf(",")
+                if (commaIndex != -1) {
+                    val base64Data = logoDataOrUrl.substring(commaIndex + 1)
+                    val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                    FileOutputStream(tmpFile).use { outputStream ->
+                        outputStream.write(bytes)
+                    }
+                    if (logoFile.exists()) {
+                        logoFile.delete()
+                    }
+                    if (tmpFile.renameTo(logoFile)) {
+                        return@withContext logoFile.absolutePath
+                    }
+                }
+            } else {
+                val resolvedUrl = resolveUrl(logoDataOrUrl, getOrCreateConfig().pocketbaseUrl)
+                val request = Request.Builder().url(resolvedUrl).build()
+                okHttpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body
+                        if (body != null) {
+                            body.byteStream().use { inputStream ->
+                                FileOutputStream(tmpFile).use { outputStream ->
+                                    val buffer = ByteArray(8192)
+                                    var bytesRead: Int
+                                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                                        outputStream.write(buffer, 0, bytesRead)
+                                    }
+                                }
+                            }
+                            if (logoFile.exists()) {
+                                logoFile.delete()
+                            }
+                            if (tmpFile.renameTo(logoFile)) {
+                                return@withContext logoFile.absolutePath
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Error downloading whitelabel logo", e)
+        } finally {
+            if (tmpFile.exists()) {
+                tmpFile.delete()
+            }
+        }
+        null
+    }
+
     private suspend fun syncPlaylist(pocketbaseUrl: String, playlistId: String) = withContext(Dispatchers.IO) {
         try {
             if (playlistId.equals("Normal", ignoreCase = true) || playlistId.equals("None", ignoreCase = true) || playlistId.isEmpty()) {
@@ -290,82 +423,107 @@ class SignageRepository(private val context: Context) {
                 return@withContext
             }
 
-            // Store playlist settings (orientation, shuffle, loop, volume) into the ScreenConfig
+            // Store playlist settings (orientation, shuffle, loop, volume, transition) into the ScreenConfig
             val currentConfig = getOrCreateConfig()
+            val logoUrlNow = if (response.websiteLogo.isNullOrEmpty()) (currentConfig.whiteLabelLogoUrl ?: "") else response.websiteLogo
+            val isWhiteLabelNow = (response.whiteLabel == true) || currentConfig.isWhiteLabel
+            val isLogoChanged = logoUrlNow.isNotEmpty() && currentConfig.whiteLabelLogoUrl != logoUrlNow
+            val wasWhiteLabelLogoMissing = isWhiteLabelNow && (
+                currentConfig.whiteLabelLogoPath.isNullOrEmpty() ||
+                isLogoChanged ||
+                !File(currentConfig.whiteLabelLogoPath ?: "").exists()
+            )
+
             val updatedConfig = currentConfig.copy(
-                playlistOrientation = response.orientation ?: "horizontal",
+                playlistOrientation = response.orientation ?: "vertical",
                 playlistShuffle = response.shuffle ?: false,
                 playlistLoop = response.loop ?: true,
-                playlistVolume = response.volume?.toInt() ?: 80
+                playlistVolume = response.volume?.toInt() ?: 80,
+                playlistTransition = response.transition ?: "fade",
+                widgetType = response.widgetType,
+                widgetPlacement = response.widgetPlacement,
+                widgetLink = response.widgetLink,
+                isWhiteLabel = isWhiteLabelNow,
+                whiteLabelLogoUrl = logoUrlNow,
+                whiteLabelName = if (response.websiteName.isNullOrEmpty()) currentConfig.whiteLabelName else response.websiteName,
+                whiteLabelLogoPath = if (isLogoChanged) null else currentConfig.whiteLabelLogoPath
             )
             configDao.saveConfig(updatedConfig)
 
             // Map response assets to local PlaylistAssets configuration
             val newAssets = mutableListOf<PlaylistAsset>()
+            val cacheDir = File(context.filesDir, "signage_cache")
 
             // 1. Resolve from slides sequence (with custom durations, ordering, layout details)
             if (!response.slides.isNullOrEmpty()) {
-                response.slides.forEachIndexed { index, slide ->
-                    try {
-                        val mediaId = slide.mediaId
-                        val mediaItemUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/collections/media_items/records/$mediaId"
-                        Log.d("SignageRepository", "Fetching media item details for slide: $mediaItemUrl")
-                        val mediaItem = apiService.getMediaItemRecord(mediaItemUrl)
-                        val isVideo = mediaItem.type.equals("video", ignoreCase = true)
-                        val isYoutube = mediaItem.type.equals("youtube", ignoreCase = true)
-                        
-                        val fileUrl = if (!mediaItem.file.isNullOrEmpty()) {
-                            "$pocketbaseUrl/api/files/media_items/${mediaItem.id}/${mediaItem.file}"
-                        } else {
-                            mediaItem.thumbnail
-                        }
-                        val finalUrl = resolveUrl(if (isYoutube) (mediaItem.youtube_url ?: "") else fileUrl, pocketbaseUrl)
+                Log.d("SignageRepository", "Fetching metadata for ${response.slides.size} slides in parallel")
+                val slideAssets = coroutineScope {
+                    response.slides.mapIndexed { index, slide ->
+                        async {
+                            try {
+                                val mediaId = slide.mediaId
+                                val mediaItemUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/collections/media_items/records/$mediaId"
+                                val mediaItem = apiService.getMediaItemRecord(mediaItemUrl)
+                                
+                                val fileUrl = if (!mediaItem.file.isNullOrEmpty()) {
+                                    "$pocketbaseUrl/api/files/media_items/${mediaItem.id}/${mediaItem.file}"
+                                } else {
+                                    mediaItem.thumbnail
+                                }
+                                val finalUrl = resolveUrl(fileUrl, pocketbaseUrl)
 
-                        val extension = if (isYoutube) "" else if (isVideo) ".mp4" else ".jpg"
-                        val filename = if (isYoutube) {
-                            "youtube_${mediaItem.youtube_video_id ?: mediaItem.id}"
-                        } else if (mediaItem.thumbnail.startsWith("data:")) {
-                            "media_${mediaItem.id}$extension"
-                        } else {
-                            val lastSlash = finalUrl.lastIndexOf('/')
-                            if (lastSlash != -1 && lastSlash < finalUrl.length - 1) {
-                                finalUrl.substring(lastSlash + 1)
-                            } else {
-                                "${mediaItem.title.replace("[^a-zA-Z0-9]".toRegex(), "_")}$extension"
+                                val extension = ".jpg"
+                                val filename = if (mediaItem.thumbnail.startsWith("data:")) {
+                                    "media_${mediaItem.id}$extension"
+                                } else {
+                                    val lastSlash = finalUrl.lastIndexOf('/')
+                                    if (lastSlash != -1 && lastSlash < finalUrl.length - 1) {
+                                        finalUrl.substring(lastSlash + 1)
+                                    } else {
+                                        "${mediaItem.title.replace("[^a-zA-Z0-9]".toRegex(), "_")}$extension"
+                                    }
+                                }
+                                val slideId = if (!slide.id.isNullOrEmpty()) slide.id else "${playlistId}_${mediaId}_$index"
+                                val cacheFileName = getCacheFileName(finalUrl, filename)
+                                val cacheFile = File(cacheDir, cacheFileName)
+                                PlaylistAsset(
+                                    id = slideId,
+                                    url = finalUrl,
+                                    filename = filename,
+                                    localPath = cacheFile.absolutePath,
+                                    mediaType = mediaItem.type.lowercase(),
+                                    duration = slide.duration,
+                                    sortOrder = index,
+                                    checksum = mediaItem.checksum,
+                                    width = mediaItem.width,
+                                    height = mediaItem.height,
+                                    fileSize = mediaItem.fileSize,
+                                    fileSizeBytes = mediaItem.fileSizeBytes,
+                                    mimeType = mediaItem.mimeType,
+                                    youtubeVideoId = mediaItem.youtubeVideoId
+                                )
+                            } catch (e: Exception) {
+                                Log.e("SignageRepository", "Failed to fetch media item details for slide: ${slide.id}", e)
+                                null
                             }
                         }
-                        val slideId = if (!slide.id.isNullOrEmpty()) slide.id else "${playlistId}_${mediaId}_$index"
-                        newAssets.add(
-                            PlaylistAsset(
-                                id = slideId,
-                                url = finalUrl,
-                                filename = filename,
-                                mediaType = mediaItem.type.lowercase(),
-                                duration = slide.duration,
-                                sortOrder = index,
-                                checksum = mediaItem.checksum,
-                                width = mediaItem.width,
-                                height = mediaItem.height,
-                                fileSize = mediaItem.fileSize,
-                                fileSizeBytes = mediaItem.fileSizeBytes,
-                                mimeType = mediaItem.mimeType,
-                                youtubeVideoId = mediaItem.youtube_video_id
-                            )
-                        )
-                    } catch (e: Exception) {
-                        Log.e("SignageRepository", "Failed to fetch media item details for slide: ${slide.id}", e)
-                    }
+                    }.awaitAll().filterNotNull()
                 }
+                newAssets.addAll(slideAssets)
             }
 
             // 2. Fallback to Pocketbase assetsJson if present and slides was empty
             if (newAssets.isEmpty() && !response.assetsJson.isNullOrEmpty()) {
                 response.assetsJson.forEachIndexed { index, pbAsset ->
+                    val assetUrl = resolveUrl(pbAsset.url, pocketbaseUrl)
+                    val cacheFileName = getCacheFileName(assetUrl, pbAsset.filename)
+                    val cacheFile = File(cacheDir, cacheFileName)
                     newAssets.add(
                         PlaylistAsset(
                             id = "${playlistId}_${pbAsset.id}_$index",
-                            url = resolveUrl(pbAsset.url, pocketbaseUrl),
+                            url = assetUrl,
                             filename = pbAsset.filename,
+                            localPath = cacheFile.absolutePath,
                             mediaType = pbAsset.mediaType.lowercase(),
                             duration = pbAsset.duration,
                             sortOrder = index,
@@ -386,13 +544,15 @@ class SignageRepository(private val context: Context) {
                 response.files.forEachIndexed { index, fileName ->
                     val fileId = "${playlistId}_$index"
                     val fileUrl = "$pocketbaseUrl/api/files/playlists/$playlistId/$fileName"
-                    val isVideo = fileName.endsWith(".mp4", ignoreCase = true) || fileName.endsWith(".webm", ignoreCase = true)
+                    val cacheFileName = getCacheFileName(fileUrl, fileName)
+                    val cacheFile = File(cacheDir, cacheFileName)
                     newAssets.add(
                         PlaylistAsset(
                             id = fileId,
                             url = resolveUrl(fileUrl, pocketbaseUrl),
                             filename = fileName,
-                            mediaType = if (isVideo) "video" else "image",
+                            localPath = cacheFile.absolutePath,
+                            mediaType = "image",
                             duration = 10,
                             sortOrder = index
                         )
@@ -402,56 +562,59 @@ class SignageRepository(private val context: Context) {
 
             // 4. Fallback to mediaIds if slides, assetsJson, and files were all empty
             if (newAssets.isEmpty() && !response.mediaIds.isNullOrEmpty()) {
-                response.mediaIds.forEachIndexed { index, mediaId ->
-                    try {
-                        val mediaItemUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/collections/media_items/records/$mediaId"
-                        Log.d("SignageRepository", "Fetching media item details: $mediaItemUrl")
-                        val mediaItem = apiService.getMediaItemRecord(mediaItemUrl)
-                        val isVideo = mediaItem.type.equals("video", ignoreCase = true)
-                        val isYoutube = mediaItem.type.equals("youtube", ignoreCase = true)
-                        
-                        val fileUrl = if (!mediaItem.file.isNullOrEmpty()) {
-                            "$pocketbaseUrl/api/files/media_items/${mediaItem.id}/${mediaItem.file}"
-                        } else {
-                            mediaItem.thumbnail
-                        }
-                        val finalUrl = resolveUrl(if (isYoutube) (mediaItem.youtube_url ?: "") else fileUrl, pocketbaseUrl)
+                Log.d("SignageRepository", "Fetching metadata for ${response.mediaIds.size} media IDs in parallel")
+                val mediaAssets = coroutineScope {
+                    response.mediaIds.mapIndexed { index, mediaId ->
+                        async {
+                            try {
+                                val mediaItemUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/collections/media_items/records/$mediaId"
+                                val mediaItem = apiService.getMediaItemRecord(mediaItemUrl)
+                                
+                                val fileUrl = if (!mediaItem.file.isNullOrEmpty()) {
+                                    "$pocketbaseUrl/api/files/media_items/${mediaItem.id}/${mediaItem.file}"
+                                } else {
+                                    mediaItem.thumbnail
+                                }
+                                val finalUrl = resolveUrl(fileUrl, pocketbaseUrl)
 
-                        val extension = if (isYoutube) "" else if (isVideo) ".mp4" else ".jpg"
-                        val filename = if (isYoutube) {
-                            "youtube_${mediaItem.youtube_video_id ?: mediaItem.id}"
-                        } else if (mediaItem.thumbnail.startsWith("data:")) {
-                            "media_${mediaItem.id}$extension"
-                        } else {
-                            val lastSlash = finalUrl.lastIndexOf('/')
-                            if (lastSlash != -1 && lastSlash < finalUrl.length - 1) {
-                                finalUrl.substring(lastSlash + 1)
-                            } else {
-                                "${mediaItem.title.replace("[^a-zA-Z0-9]".toRegex(), "_")}$extension"
+                                val extension = ".jpg"
+                                val filename = if (mediaItem.thumbnail.startsWith("data:")) {
+                                    "media_${mediaItem.id}$extension"
+                                } else {
+                                    val lastSlash = finalUrl.lastIndexOf('/')
+                                    if (lastSlash != -1 && lastSlash < finalUrl.length - 1) {
+                                        finalUrl.substring(lastSlash + 1)
+                                    } else {
+                                        "${mediaItem.title.replace("[^a-zA-Z0-9]".toRegex(), "_")}$extension"
+                                    }
+                                }
+                                val slideId = "${playlistId}_${mediaId}_$index"
+                                val cacheFileName = getCacheFileName(finalUrl, filename)
+                                val cacheFile = File(cacheDir, cacheFileName)
+                                PlaylistAsset(
+                                    id = slideId,
+                                    url = finalUrl,
+                                    filename = filename,
+                                    localPath = cacheFile.absolutePath,
+                                    mediaType = mediaItem.type.lowercase(),
+                                    duration = mediaItem.duration,
+                                    sortOrder = index,
+                                    checksum = mediaItem.checksum,
+                                    width = mediaItem.width,
+                                    height = mediaItem.height,
+                                    fileSize = mediaItem.fileSize,
+                                    fileSizeBytes = mediaItem.fileSizeBytes,
+                                    mimeType = mediaItem.mimeType,
+                                    youtubeVideoId = mediaItem.youtubeVideoId
+                                )
+                            } catch (e: Exception) {
+                                Log.e("SignageRepository", "Failed to fetch media item details for ID: $mediaId", e)
+                                null
                             }
                         }
-                        val slideId = "${playlistId}_${mediaId}_$index"
-                        newAssets.add(
-                            PlaylistAsset(
-                                id = slideId,
-                                url = finalUrl,
-                                filename = filename,
-                                mediaType = mediaItem.type.lowercase(),
-                                duration = mediaItem.duration,
-                                sortOrder = index,
-                                checksum = mediaItem.checksum,
-                                width = mediaItem.width,
-                                height = mediaItem.height,
-                                fileSize = mediaItem.fileSize,
-                                fileSizeBytes = mediaItem.fileSizeBytes,
-                                mimeType = mediaItem.mimeType,
-                                youtubeVideoId = mediaItem.youtube_video_id
-                            )
-                        )
-                    } catch (e: Exception) {
-                        Log.e("SignageRepository", "Failed to fetch media item details for ID: $mediaId", e)
-                    }
+                    }.awaitAll().filterNotNull()
                 }
+                newAssets.addAll(mediaAssets)
             }
 
             if (newAssets.isNotEmpty()) {
@@ -462,18 +625,8 @@ class SignageRepository(private val context: Context) {
                     newAssets
                 }.mapIndexed { index, asset -> asset.copy(sortOrder = index) }
 
-                // Determine existing local files to keep them cached
                 val currentAssetsList = assetDao.getAllAssets()
-                val mergedAssets = finalAssets.map { newAsset ->
-                    // Find any existing asset with the same URL that has a valid localPath
-                    val existing = currentAssetsList.firstOrNull { it.url == newAsset.url && !it.localPath.isNullOrEmpty() && File(it.localPath).exists() }
-                    if (existing != null) {
-                        // Keep current local file path
-                        newAsset.copy(localPath = existing.localPath)
-                    } else {
-                        newAsset
-                    }
-                }
+                val mergedAssets = finalAssets
 
                 val hasChanged = currentAssetsList.size != mergedAssets.size ||
                         currentAssetsList.zip(mergedAssets).any { (old, new) ->
@@ -499,7 +652,13 @@ class SignageRepository(private val context: Context) {
                     assetDao.insertAssets(mergedAssets)
 
                     // Start downloading new items in the background
-                    downloadPendingAssets()
+                    startDownloadingPendingAssets()
+                } else if (wasWhiteLabelLogoMissing) {
+                    startDownloadingPendingAssets()
+                }
+            } else {
+                if (wasWhiteLabelLogoMissing) {
+                    startDownloadingPendingAssets()
                 }
             }
         } catch (e: Exception) {
@@ -507,16 +666,61 @@ class SignageRepository(private val context: Context) {
         }
     }
 
-    suspend fun downloadPendingAssets() = withContext(Dispatchers.IO) {
-        val assets = assetDao.getAllAssets()
+    private var downloadJob: kotlinx.coroutines.Job? = null
+
+    fun startDownloadingPendingAssets() {
+        synchronized(this) {
+            if (downloadJob?.isActive == true) {
+                Log.d("SignageRepository", "Cancelling previous download job and starting a new one.")
+                downloadJob?.cancel()
+            }
+            downloadJob = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    downloadPendingAssetsInternal()
+                } catch (e: Exception) {
+                    Log.e("SignageRepository", "Error running background download job", e)
+                }
+            }
+        }
+    }
+
+    private suspend fun downloadPendingAssetsInternal() = withContext(Dispatchers.IO) {
+        val config = getOrCreateConfig()
         val cacheDir = File(context.filesDir, "signage_cache")
 
-        // Exclude YouTube videos from the offline file download pipeline
-        val pending = assets.filter { it.mediaType != "youtube" && (it.localPath.isNullOrEmpty() || !File(it.localPath).exists()) }
+        // Download whitelabel logo first if enabled and missing/changed
+        if (config.isWhiteLabel && !config.whiteLabelLogoUrl.isNullOrEmpty()) {
+            val logoFileName = getCacheFileName(config.whiteLabelLogoUrl, "whitelabel_logo.png")
+            val logoFile = File(cacheDir, logoFileName)
+            if (!logoFile.exists() || config.whiteLabelLogoPath != logoFile.absolutePath) {
+                Log.d("SignageRepository", "Whitelabel enabled. Downloading brand logo...")
+                val localPath = downloadWhiteLabelLogo(config.whiteLabelLogoUrl)
+                if (localPath != null) {
+                    val updated = getOrCreateConfig().copy(whiteLabelLogoPath = localPath)
+                    configDao.saveConfig(updated)
+                    Log.d("SignageRepository", "Whitelabel logo cached at: $localPath")
+                }
+            }
+        }
+
+        val assets = assetDao.getAllAssets()
+        val pending = assets.filter {
+            it.mediaType != "youtube" && (it.localPath.isNullOrEmpty() || !File(it.localPath).exists())
+        }
+        
         if (pending.isEmpty()) {
             downloadStateFlow.value = DownloadState(isDownloading = false)
             return@withContext
         }
+
+        // Immediately set downloading to true so the bar appears as soon as the download starts
+        downloadStateFlow.value = DownloadState(
+            isDownloading = true,
+            totalFiles = pending.size,
+            completedFiles = 0,
+            currentFileProgress = 0f,
+            currentFileName = pending.first().filename
+        )
 
         val total = pending.size
         pending.forEachIndexed { index, asset ->
@@ -529,8 +733,12 @@ class SignageRepository(private val context: Context) {
                 currentFileName = asset.filename
             )
 
-            val localFile = File(cacheDir, "${asset.id}_${asset.filename}")
-            val tmpFile = File(cacheDir, "${asset.id}_${asset.filename}.tmp")
+            val localFile = if (!asset.localPath.isNullOrEmpty()) {
+                File(asset.localPath)
+            } else {
+                File(cacheDir, getCacheFileName(asset.url, asset.filename))
+            }
+            val tmpFile = File(localFile.absolutePath + ".tmp")
             try {
                 if (asset.url.startsWith("data:", ignoreCase = true)) {
                     val commaIndex = asset.url.indexOf(",")
@@ -549,6 +757,9 @@ class SignageRepository(private val context: Context) {
                             }
                         }
 
+                        if (localFile.exists()) {
+                            localFile.delete()
+                        }
                         if (tmpFile.renameTo(localFile)) {
                             assetDao.updateLocalPath(asset.id, localFile.absolutePath)
                         } else {
@@ -603,6 +814,9 @@ class SignageRepository(private val context: Context) {
                         }
                     }
 
+                    if (localFile.exists()) {
+                        localFile.delete()
+                    }
                     if (tmpFile.renameTo(localFile)) {
                         assetDao.updateLocalPath(asset.id, localFile.absolutePath)
                     } else {
@@ -623,6 +837,14 @@ class SignageRepository(private val context: Context) {
                 if (tmpFile.exists()) {
                     tmpFile.delete()
                 }
+                // Update downloadStateFlow to increment completedFiles so progress continues and doesn't get stuck
+                downloadStateFlow.value = DownloadState(
+                    isDownloading = true,
+                    totalFiles = total,
+                    completedFiles = index + 1,
+                    currentFileProgress = 0.0f,
+                    currentFileName = asset.filename
+                )
                 // Send diagnostics heartbeat with error status for playing/download failure tracking
                 sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
             }
@@ -812,11 +1034,13 @@ class SignageRepository(private val context: Context) {
 
     // Direct helper to inject simulated assets for demonstration / preview mode in emulator!
     suspend fun injectDemoPlaylist() = withContext(Dispatchers.IO) {
+        val cacheDir = File(context.filesDir, "signage_cache")
         val demoAssets = listOf(
             PlaylistAsset(
                 id = "demo_img_1",
                 url = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000",
                 filename = "sneaker_ad_banner.jpg",
+                localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000", "sneaker_ad_banner.jpg")).absolutePath,
                 mediaType = "image",
                 duration = 8,
                 sortOrder = 0
@@ -825,6 +1049,7 @@ class SignageRepository(private val context: Context) {
                 id = "demo_img_2",
                 url = "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000",
                 filename = "audio_headphone_promotion.jpg",
+                localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000", "audio_headphone_promotion.jpg")).absolutePath,
                 mediaType = "image",
                 duration = 6,
                 sortOrder = 1
@@ -833,6 +1058,7 @@ class SignageRepository(private val context: Context) {
                 id = "demo_img_3",
                 url = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1000",
                 filename = "smartwatch_sleek_promo.jpg",
+                localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1000", "smartwatch_sleek_promo.jpg")).absolutePath,
                 mediaType = "image",
                 duration = 7,
                 sortOrder = 2
@@ -847,6 +1073,22 @@ class SignageRepository(private val context: Context) {
         configDao.saveConfig(current.copy(status = "active"))
         
         // Download these files in background so they function offline!
-        downloadPendingAssets()
+        startDownloadingPendingAssets()
+    }
+
+    suspend fun updateDeviceVolume(volume: Int) = withContext(Dispatchers.IO) {
+        try {
+            val config = getOrCreateConfig()
+            val updatedConfig = config.copy(screenVolume = volume)
+            configDao.saveConfig(updatedConfig)
+            
+            if (config.screenId.isNotEmpty() && config.pocketbaseUrl.isNotEmpty()) {
+                val url = "${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}"
+                apiService.updateScreenRecord(url, mapOf("volume" to volume))
+                Log.d("SignageRepository", "Successfully updated volume on server to: $volume")
+            }
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Failed to update device volume", e)
+        }
     }
 }

@@ -189,9 +189,10 @@ export async function handleWebhook(req: any, res: any) {
       const paymentId = paymentEntity.id;
       const orderId = paymentEntity.order_id;
 
-      const licenses = await pb.collection('licenses').getFullList({
+      const licensesResult = await pb.collection('licenses').getList(1, 100, {
         filter: 'status = "pending_payment"'
       });
+      const licenses = licensesResult.items;
 
       if (licenses.length > 0) {
         const license = licenses[0];

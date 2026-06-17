@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Monitor, Film, Calendar, Trash2, Play, Pause, Tv, CheckSquare, Square, FolderOpen, AlertTriangle, Edit } from 'lucide-react';
+import { Plus, Monitor, Film, Calendar, Trash2, Trash, Play, Pause, Tv, CheckSquare, Square, FolderOpen, AlertTriangle, Edit, CheckCircle } from 'lucide-react';
 import { mediaStore, Playlist, Screen } from '../../../../lib/mediaStore';
 
 const scheduleColors: Record<string, string> = {
@@ -17,11 +17,19 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [screens, setScreens] = useState<Screen[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
+  // Selection & Delete state
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Assign screen modal state
-  const [assignModalPlaylist, setAssignModalPlaylist] = useState<Playlist | null>(null);
-  const [tempScreenAssignments, setTempScreenAssignments] = useState<string[]>([]);
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+
 
   useEffect(() => {
     loadData();
@@ -49,6 +57,16 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
     }
   };
 
+  const handleDeleteSelected = () => {
+    selectedIds.forEach(p => mediaStore.deletePlaylist(p));
+    const count = selectedIds.length;
+    setSelectedIds([]);
+    setIsSelectionMode(false);
+    setDeleteConfirm(false);
+    showToast(`${count} playlist(s) deleted successfully.`);
+    loadData();
+  };
+
   const handleToggleActive = (playlist: Playlist) => {
     const nextActive = !playlist.active;
     const nextStatus = nextActive ? 'Running' : 'Paused';
@@ -60,39 +78,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
     loadData();
   };
 
-  const handleOpenAssignModal = (playlist: Playlist) => {
-    setAssignModalPlaylist(playlist);
-    // Find screens currently assigned to this playlist
-    const assignedScreenIds = screens
-      .filter(s => s.playlistId === playlist.id)
-      .map(s => s.id);
-    setTempScreenAssignments(assignedScreenIds);
-  };
 
-  const handleSaveScreenAssignments = () => {
-    if (!assignModalPlaylist) return;
-
-    // Find screens owned by admin
-    const adminScreens = screens.filter(s => s.assignedToUserEmail === userEmail);
-
-    // Apply or remove assignments
-    adminScreens.forEach(screen => {
-      const isSelected = tempScreenAssignments.includes(screen.id);
-      const isAssigned = screen.playlistId === assignModalPlaylist.id;
-
-      if (isSelected && !isAssigned) {
-        mediaStore.assignPlaylistToScreen(screen.id, assignModalPlaylist.id);
-      } else if (!isSelected && isAssigned) {
-        mediaStore.assignPlaylistToScreen(screen.id, undefined);
-      }
-    });
-
-    showToast(`Playlist broadcast settings updated for "${assignModalPlaylist.name}"`);
-    setAssignModalPlaylist(null);
-    loadData();
-  };
-
-  const adminScreens = screens.filter(s => s.assignedToUserEmail === userEmail);
 
   return (
     <div className="p-6 space-y-5 text-left relative">
@@ -104,17 +90,44 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">My Channel Playlists</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage layout playlists broadcasting to your local screens</p>
         </div>
-        <button 
-          onClick={() => onNavigate('my-create-playlist')} 
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
-        >
-          <Plus size={14} /> Create Playlist
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {playlists.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setIsSelectionMode(!isSelectionMode);
+                  setSelectedIds([]);
+                }}
+                className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer ${
+                  isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                }`}
+              >
+                <CheckCircle size={14} />
+                {isSelectionMode ? 'Cancel Selection' : 'Select'}
+              </button>
+              {isSelectionMode && selectedIds.length > 0 && (
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-650 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
+                >
+                  <Trash size={14} />
+                  Delete Selected ({selectedIds.length})
+                </button>
+              )}
+            </div>
+          )}
+          <button 
+            onClick={() => onNavigate('my-create-playlist')} 
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+          >
+            <Plus size={14} /> Create Playlist
+          </button>
+        </div>
       </div>
 
       {/* Grid view */}
@@ -126,7 +139,20 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
             !s.groupId && (s.playlist === playlist.name || s.playlistId === playlist.id)
           );
           return (
-            <div key={playlist.id} className="bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-all flex flex-col justify-between space-y-4">
+            <div key={playlist.id} className="bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-all flex flex-col justify-between space-y-4 relative">
+              {isSelectionMode && (
+                <div 
+                  className="absolute inset-0 bg-slate-900/[0.02] hover:bg-slate-900/[0.05] z-40 rounded-2xl cursor-pointer flex items-start p-3"
+                  onClick={() => toggleSelect(playlist.id)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(playlist.id)}
+                    onChange={() => {}}
+                    className="w-5 h-5 rounded border-slate-350 text-blue-600 focus:ring-blue-550 cursor-pointer shadow-sm"
+                  />
+                </div>
+              )}
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <button 
@@ -208,16 +234,10 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
               </div>
 
               {/* Actions Footer */}
-              <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+              <div className="flex items-center justify-start pt-2 border-t border-gray-50">
                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold border ${scheduleColors[playlist.scheduleStatus]}`}>
                   <Calendar size={9} /> {playlist.scheduleStatus}
                 </span>
-                <button 
-                  onClick={() => handleOpenAssignModal(playlist)}
-                  className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <Tv size={11} /> Broadcast Screens
-                </button>
               </div>
             </div>
           );
@@ -232,79 +252,24 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
         )}
       </div>
 
-      {/* BROADCAST ASSIGN SCREEN MODAL */}
-      {assignModalPlaylist && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 p-6 space-y-4 animate-scaleIn text-left">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
-                <Tv size={16} className="text-blue-600" /> TV Broadcast Manager
-              </h2>
-              <button onClick={() => setAssignModalPlaylist(null)} className="text-gray-400 hover:text-gray-600 font-bold p-1 cursor-pointer">&times;</button>
-            </div>
 
-            <p className="text-xs text-gray-500 leading-relaxed">
-              Broadcast playlist <span className="font-bold text-slate-800">"{assignModalPlaylist.name}"</span> to your active display screens.
-            </p>
-
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {adminScreens.map(screen => {
-                const isSelected = tempScreenAssignments.includes(screen.id);
-                return (
-                  <div 
-                    key={screen.id} 
-                    onClick={() => {
-                      setTempScreenAssignments(prev => 
-                        prev.includes(screen.id) ? prev.filter(sid => sid !== screen.id) : [...prev, screen.id]
-                      );
-                    }}
-                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
-                      isSelected ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${screen.status === 'online' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
-                        <Monitor size={15} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">{screen.name}</p>
-                        <p className="text-[10px] text-gray-400">Current Broadcast: {screen.playlist}</p>
-                      </div>
-                    </div>
-                    <div>
-                      {isSelected ? (
-                        <CheckSquare size={16} className="text-blue-600 stroke-[2.5]" />
-                      ) : (
-                        <Square size={16} className="text-gray-300 stroke-[2.5]" />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {adminScreens.length === 0 && (
-                <div className="py-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-1.5">
-                  <AlertTriangle size={24} className="text-amber-500 mx-auto" />
-                  <p className="text-xs font-bold text-slate-700">No TVs registered</p>
-                  <p className="text-[10px] text-slate-400">You don't have any TV screens in your screen inventory yet.</p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-              <button
-                onClick={() => setAssignModalPlaylist(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={adminScreens.length === 0}
-                onClick={handleSaveScreenAssignments}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold uppercase rounded-xl cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Apply Broadcasts
-              </button>
+      {/* Delete Selected Confirm Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash size={26} className="text-red-500" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900 mb-1">Delete Selected Playlists</h2>
+              <p className="text-sm text-gray-500 mb-1">
+                This will permanently delete the <strong>{selectedIds.length} selected playlist{selectedIds.length !== 1 ? 's' : ''}</strong>.
+              </p>
+              <p className="text-xs text-red-500 font-semibold mb-5">This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+                <button onClick={handleDeleteSelected} className="flex-1 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">Delete Selected</button>
+              </div>
             </div>
           </div>
         </div>

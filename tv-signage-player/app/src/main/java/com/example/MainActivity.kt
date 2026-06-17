@@ -4,19 +4,24 @@ import android.app.Application
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
-import android.widget.VideoView
+import android.widget.ImageView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateDp
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -24,6 +29,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -41,6 +47,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.ui.AspectRatioFrameLayout
 import coil.compose.AsyncImage
 import com.example.data.database.PlaylistAsset
 import com.example.ui.SignageUiState
@@ -48,22 +60,17 @@ import com.example.ui.SignageViewModel
 import com.example.ui.theme.MyApplicationTheme
 import java.io.File
 import androidx.annotation.OptIn
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import androidx.media3.ui.AspectRatioFrameLayout
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.options.IFramePlayerOptions
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
 import coil.size.Size
 import coil.size.Precision
 
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Dismiss the native system splash immediately so our Compose AppSplashScreen
+        // (which supports the dynamic whitelabel logo) takes over on the very first frame.
+        installSplashScreen().setKeepOnScreenCondition { false }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -86,22 +93,48 @@ fun SignagePlayerApp(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val activity = LocalContext.current as? androidx.activity.ComponentActivity
 
-    // Apply screen orientation from playlist settings
-    LaunchedEffect(uiState.playlistOrientation) {
-        activity?.requestedOrientation = if (uiState.playlistOrientation == "vertical") {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    val allAssetsDownloaded = remember(uiState.playlist, uiState.isDownloading) {
+        uiState.playlist.all { asset ->
+            asset.mediaType.equals("youtube", ignoreCase = true) || 
+            (!asset.localPath.isNullOrEmpty() && File(asset.localPath).exists())
+        }
+    }
+
+    var playAnyway by remember(uiState.playlist) { mutableStateOf(false) }
+
+    // Apply screen orientation: Portrait by default (pairing/standby), or from playlist settings
+    LaunchedEffect(uiState.status, uiState.playlist, uiState.playlistOrientation) {
+        val isPlaying = (uiState.status == "active" || uiState.status == "online") && uiState.playlist.isNotEmpty()
+        
+        activity?.requestedOrientation = if (isPlaying) {
+            if (uiState.playlistOrientation == "vertical") {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
         } else {
-            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Main Screen Routing based on Status
-        when (uiState.status) {
+        if (uiState.showSplash) {
+            AppSplashScreen(uiState = uiState)
+        } else {
+            // Main Screen Routing based on Status
+            when (uiState.status) {
             "active", "online" -> {
                 if (uiState.playlist.isEmpty()) {
                     StandbyScreen(
+                        uiState = uiState,
                         onOpenAdmin = { viewModel.toggleAdminOverlay() }
+                    )
+                } else if (!allAssetsDownloaded && !playAnyway) {
+                    DownloadProgressScreen(
+                        uiState = uiState,
+                        onTriggerDownloads = { viewModel.triggerPendingDownloads() },
+                        onOpenAdmin = { viewModel.toggleAdminOverlay() },
+                        onPlayAnyway = { playAnyway = true }
                     )
                 } else {
                     PlaybackLoopScreen(
@@ -109,9 +142,51 @@ fun SignagePlayerApp(
                         currentIndex = uiState.currentAssetIndex,
                         orientation = uiState.playlistOrientation,
                         playlistLoop = uiState.playlistLoop,
-                        playlistVolume = uiState.playlistVolume,
-                        onOpenAdmin = { viewModel.toggleAdminOverlay() }
+                        transitionName = uiState.playlistTransition,
+                        onOpenAdmin = { viewModel.toggleAdminOverlay() },
+                        onVideoCompleted = { viewModel.advanceToNextAsset() },
+                        volumePercent = uiState.screenVolume
                     )
+
+                    // Global QR Code Overlay display
+                    val widgetLink = uiState.widgetLink
+                    if (uiState.widgetType == "qrcode" && !widgetLink.isNullOrEmpty()) {
+                        val alignment = when (uiState.widgetPlacement) {
+                            "top-left" -> Alignment.TopStart
+                            "top-right" -> Alignment.TopEnd
+                            "bottom-left" -> Alignment.BottomStart
+                            "bottom-right" -> Alignment.BottomEnd
+                            else -> Alignment.TopEnd
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = alignment
+                        ) {
+                            val encodedLink = try {
+                                java.net.URLEncoder.encode(widgetLink, "UTF-8")
+                            } catch (e: Exception) {
+                                widgetLink
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(130.dp)
+                                    .background(Color.White, RoundedCornerShape(24.dp))
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .border(2.dp, Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
+                                    .padding(12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
+                                    contentDescription = "Scan QR Code Widget Overlay",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+                    }
                 }
             }
             "suspended" -> {
@@ -165,7 +240,7 @@ fun SignagePlayerApp(
                                     color = Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
-                                )
+                               )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = uiState.downloadProgressMessage,
@@ -185,13 +260,17 @@ fun SignagePlayerApp(
         if (uiState.showAdminOverlay) {
             AdminSettingsDialog(
                 uiState = uiState,
-                onSave = { server, pb -> viewModel.saveServerUrls(server, pb) },
+                onSave = { server, pb, vol -> 
+                    viewModel.saveServerUrls(server, pb)
+                    viewModel.saveVolumeSettings(vol)
+                },
                 onDismiss = { viewModel.hideAdminOverlay() },
                 onReset = { viewModel.purgeCacheAndReset() },
                 onInjectDemo = { viewModel.testWithSimulatedDemo() },
                 onSimulateSuspended = { viewModel.simulateLicenceSuspended() }
             )
         }
+    }
     }
 }
 
@@ -224,32 +303,18 @@ fun LiveTvStatusBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Creative rotated geometric logo
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(Color(0xFFD0BCFF), RoundedCornerShape(12.dp))
-            ) {
-                // Rotated internal diamond
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .background(Color(0xFF381E72), RoundedCornerShape(2.dp))
-                        .graphicsLayer(rotationZ = 45f)
-                )
-            }
+            SignageLogo(uiState = uiState)
 
             Column(verticalArrangement = Arrangement.Center) {
                 Text(
-                    text = "Bluestar",
+                    text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) uiState.whiteLabelName else "Bluestar",
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     lineHeight = 22.sp
                 )
                 Text(
-                    text = "Signage Player v2.4.1",
+                    text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) "${uiState.whiteLabelName} Client" else "Signage Player v2.4.1",
                     color = Color(0xFF938F99),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -361,6 +426,8 @@ fun PairingSetupScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            SignageLogo(uiState = uiState, size = 100.dp, cornerRadius = 16.dp)
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "Connect your screen",
                 color = Color.White,
@@ -484,7 +551,11 @@ fun PairingSetupScreen(
                 SetupInstructionRow(
                     index = "1",
                     primaryText = "Login to ",
-                    boldText = "cms.bluestar.io",
+                    boldText = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
+                        "cms.${uiState.whiteLabelName.lowercase().replace(" ", "")}.com"
+                    } else {
+                        "cms.bluestar.io"
+                    },
                     suffixText = " on your computer."
                 )
                 SetupInstructionRow(
@@ -602,8 +673,10 @@ fun PlaybackLoopScreen(
     currentIndex: Int,
     orientation: String = "horizontal",
     playlistLoop: Boolean = true,
-    playlistVolume: Int = 80,
-    onOpenAdmin: () -> Unit
+    transitionName: String = "fade",
+    onOpenAdmin: () -> Unit,
+    onVideoCompleted: () -> Unit = {},
+    volumePercent: Int = 80
 ) {
     val activeAsset = playlist.getOrNull(currentIndex) ?: return
 
@@ -616,18 +689,110 @@ fun PlaybackLoopScreen(
         AnimatedContent(
             targetState = activeAsset,
             transitionSpec = {
-                fadeIn(animationSpec = tween(600)) togetherWith fadeOut(animationSpec = tween(600))
+                val duration = 800
+                when (transitionName) {
+                    "slide" -> {
+                        (slideInHorizontally(animationSpec = tween(duration)) { it } + fadeIn(animationSpec = tween(duration))) togetherWith
+                                (slideOutHorizontally(animationSpec = tween(duration)) { -it } + fadeOut(animationSpec = tween(duration)))
+                    }
+                    "zoom" -> {
+                        (scaleIn(initialScale = 0.8f, animationSpec = tween(duration)) + fadeIn(animationSpec = tween(duration))) togetherWith
+                                (scaleOut(targetScale = 1.2f, animationSpec = tween(duration)) + fadeOut(animationSpec = tween(duration)))
+                    }
+                    "slide-up" -> {
+                        (slideInVertically(animationSpec = tween(duration)) { it } + fadeIn(animationSpec = tween(duration))) togetherWith
+                                (slideOutVertically(animationSpec = tween(duration)) { -it } + fadeOut(animationSpec = tween(duration)))
+                    }
+                    "slide-down" -> {
+                        (slideInVertically(animationSpec = tween(duration)) { -it } + fadeIn(animationSpec = tween(duration))) togetherWith
+                                (slideOutVertically(animationSpec = tween(duration)) { it } + fadeOut(animationSpec = tween(duration)))
+                    }
+                    "bounce" -> {
+                        val bounceEasing = Easing { fraction ->
+                            val t = fraction - 1f
+                            t * t * ((2f + 1f) * t + 2f) + 1f // Overshoot
+                        }
+                        (scaleIn(initialScale = 0.6f, animationSpec = tween(duration, easing = bounceEasing)) + fadeIn(animationSpec = tween(duration))) togetherWith
+                                (scaleOut(targetScale = 1.4f, animationSpec = tween(duration)) + fadeOut(animationSpec = tween(duration)))
+                    }
+                    "spin" -> {
+                        fadeIn(animationSpec = tween(duration)) togetherWith fadeOut(animationSpec = tween(0, delayMillis = duration))
+                    }
+                    // For flip, blur, wipe, we use fade as base enter/exit transitions
+                    else -> {
+                        fadeIn(animationSpec = tween(duration)) togetherWith fadeOut(animationSpec = tween(duration))
+                    }
+                }
             },
             label = "media_transitions"
         ) { asset ->
-            when (asset.mediaType) {
-                "youtube" -> {
-                    YouTubePlayerRenderer(videoId = asset.youtubeVideoId ?: "")
+            val rotationZ by transition.animateFloat(
+                transitionSpec = { tween(800, easing = FastOutSlowInEasing) },
+                label = "rotationZ"
+            ) { state ->
+                if (state == EnterExitState.Visible) 0f else -180f
+            }
+
+            val rotationY by transition.animateFloat(
+                transitionSpec = { tween(800, easing = FastOutSlowInEasing) },
+                label = "rotationY"
+            ) { state ->
+                if (state == EnterExitState.Visible) 0f else -90f
+            }
+
+            val wipeFraction by transition.animateFloat(
+                transitionSpec = { tween(800, easing = LinearOutSlowInEasing) },
+                label = "wipe"
+            ) { state ->
+                if (state == EnterExitState.Visible) 1f else 0f
+            }
+
+            val blurRadiusVal = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val valDp by transition.animateDp(
+                    transitionSpec = { tween(800) },
+                    label = "blur"
+                ) { state ->
+                    if (state == EnterExitState.Visible) 0.dp else 25.dp
                 }
-                "video" -> {
-                    LocalVideoPlayer(asset = asset, volume = playlistVolume / 100f)
+                valDp
+            } else {
+                0.dp
+            }
+
+            var modifier = Modifier.fillMaxSize()
+            when (transitionName) {
+                "spin" -> {
+                    modifier = modifier.graphicsLayer {
+                        this.rotationZ = rotationZ
+                    }
                 }
-                else -> {
+                "flip" -> {
+                    modifier = modifier.graphicsLayer {
+                        this.rotationY = rotationY
+                        cameraDistance = 12 * density
+                    }
+                }
+                "blur" -> {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        modifier = modifier.blur(blurRadiusVal)
+                    }
+                }
+                "wipe" -> {
+                    modifier = modifier.clip(WipeShape(wipeFraction))
+                }
+            }
+
+            Box(
+                modifier = modifier,
+                contentAlignment = Alignment.Center
+            ) {
+                if (asset.mediaType.equals("video", ignoreCase = true)) {
+                    LocalVideoRenderer(
+                        asset = asset,
+                        volumePercent = volumePercent,
+                        onVideoCompleted = onVideoCompleted
+                    )
+                } else {
                     LocalImageRenderer(asset = asset)
                 }
             }
@@ -640,7 +805,6 @@ fun PlaybackLoopScreen(
                 .clickable { onOpenAdmin() }
         )
 
-
         // Overlay element displaying active asset name and playback progress (bottom-right edge, clean)
         Box(
             modifier = Modifier
@@ -651,18 +815,14 @@ fun PlaybackLoopScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = when (activeAsset.mediaType) {
-                        "youtube" -> Icons.Default.PlayArrow
-                        "video" -> Icons.Default.PlayArrow
-                        else -> Icons.Default.Star
-                    },
+                    imageVector = Icons.Default.Star,
                     contentDescription = "Media classification",
                     tint = Color(0xFF90CAF9),
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "${currentIndex + 1}/${playlist.size} • ${activeAsset.filename}",
+                    text = "${currentIndex + 1}/${playlist.size}",
                     color = Color.White,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
@@ -696,42 +856,55 @@ fun LocalImageRenderer(asset: PlaylistAsset) {
     )
 }
 
-@OptIn(UnstableApi::class)
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-fun LocalVideoPlayer(asset: PlaylistAsset, volume: Float = 0.8f) {
+fun LocalVideoRenderer(
+    asset: PlaylistAsset,
+    volumePercent: Int = 80,
+    onVideoCompleted: () -> Unit
+) {
     val context = LocalContext.current
     val videoSource = if (!asset.localPath.isNullOrEmpty() && File(asset.localPath).exists()) {
-        Uri.fromFile(File(asset.localPath))
+        File(asset.localPath)
     } else {
-        Uri.parse(asset.url)
+        null
     }
 
-    val exoPlayer = remember(videoSource) {
-        val trackSelector = DefaultTrackSelector(context).apply {
-            setParameters(
-                buildUponParameters()
-                    .setForceHighestSupportedBitrate(true)
-            )
-        }
-        ExoPlayer.Builder(context)
-            .setTrackSelector(trackSelector)
-            .build().apply {
-                val mediaItem = MediaItem.fromUri(videoSource)
-                setMediaItem(mediaItem)
-                repeatMode = ExoPlayer.REPEAT_MODE_ONE
-                this.volume = volume.coerceIn(0f, 1f)
-                prepare()
-                playWhenReady = true
+    val exoPlayer = remember(asset.id) {
+        ExoPlayer.Builder(context).build().apply {
+            volume = volumePercent / 100f
+            repeatMode = Player.REPEAT_MODE_OFF
+            val mediaItem = if (videoSource != null) {
+                MediaItem.fromUri(android.net.Uri.fromFile(videoSource))
+            } else {
+                MediaItem.fromUri(android.net.Uri.parse(asset.url))
             }
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = true
+        }
     }
 
-    // Update volume dynamically if it changes
-    LaunchedEffect(volume) {
-        exoPlayer.volume = volume.coerceIn(0f, 1f)
+    LaunchedEffect(volumePercent) {
+        exoPlayer.volume = volumePercent / 100f
     }
 
     DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    onVideoCompleted()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                android.util.Log.e("LocalVideoRenderer", "ExoPlayer error playing video: ${asset.filename}", error)
+                onVideoCompleted()
+            }
+        }
+        exoPlayer.addListener(listener)
         onDispose {
+            exoPlayer.removeListener(listener)
             exoPlayer.release()
         }
     }
@@ -739,51 +912,19 @@ fun LocalVideoPlayer(asset: PlaylistAsset, volume: Float = 0.8f) {
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
+                player = exoPlayer
                 useController = false
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                player = exoPlayer
+                setBackgroundColor(android.graphics.Color.BLACK)
             }
         },
         modifier = Modifier.fillMaxSize()
     )
 }
 
-@Composable
-fun YouTubePlayerRenderer(videoId: String) {
-    val context = LocalContext.current
-    val youTubePlayerView = remember(videoId) {
-        YouTubePlayerView(context).apply {
-            enableAutomaticInitialization = false
-            val listener = object : AbstractYouTubePlayerListener() {
-                override fun onReady(youTubePlayer: YouTubePlayer) {
-                    youTubePlayer.mute() // Autoplay muted
-                    youTubePlayer.loadVideo(videoId, 0f)
-                }
-            }
-            val options = IFramePlayerOptions.Builder()
-                .controls(0)
-                .rel(0)
-                .ivLoadPolicy(3)
-                .build()
-            initialize(listener, options)
-        }
-    }
-
-    DisposableEffect(youTubePlayerView) {
-        onDispose {
-            youTubePlayerView.release()
-        }
-    }
-
-    AndroidView(
-        factory = { youTubePlayerView },
-        modifier = Modifier.fillMaxSize()
-    )
-}
-
 
 @Composable
-fun StandbyScreen(onOpenAdmin: () -> Unit) {
+fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition(label = "radar")
     val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -804,39 +945,16 @@ fun StandbyScreen(onOpenAdmin: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Futuristic Rotating Custom Radar Graphic
-        Canvas(
-            modifier = Modifier
-                .size(160.dp)
-                .padding(12.dp)
-        ) {
-            val center = Offset(size.width / 2, size.height / 2)
-            val radius = size.width / 2
-
-            // Draw concentric rings
-            drawCircle(color = Color(0x1F64B5F6), radius = radius, style = Stroke(width = 1.dp.toPx()))
-            drawCircle(color = Color(0x3364B5F6), radius = radius * 0.6f, style = Stroke(width = 1.dp.toPx()))
-            drawCircle(color = Color(0x4D64B5F6), radius = radius * 0.3f, style = Stroke(width = 1.dp.toPx()))
-
-            // Sweep visual line representation
-            rotate(degrees = rotation) {
-                drawLine(
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFF64B5F6), Color.Transparent),
-                        start = center,
-                        end = Offset(size.width, size.height / 2)
-                    ),
-                    start = center,
-                    end = Offset(size.width, size.height / 2),
-                    strokeWidth = 3.dp.toPx()
-                )
-            }
-        }
+        SignageLogo(uiState = uiState, size = 160.dp, cornerRadius = 24.dp)
 
         Spacer(modifier = Modifier.height(30.dp))
 
         Text(
-            text = "READY FOR SYNCED CONTENT",
+            text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
+                "READY FOR ${uiState.whiteLabelName.uppercase()} CONTENT"
+            } else {
+                "READY FOR SYNCED CONTENT"
+            },
             color = Color(0xFF81C784),
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
@@ -846,7 +964,11 @@ fun StandbyScreen(onOpenAdmin: () -> Unit) {
         Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-            text = "Bluestar Signage Client",
+            text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
+                "${uiState.whiteLabelName} Signage Client"
+            } else {
+                "Bluestar Signage Client"
+            },
             color = Color.White,
             fontSize = 24.sp,
             fontWeight = FontWeight.SemiBold
@@ -855,7 +977,11 @@ fun StandbyScreen(onOpenAdmin: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "To stream promos, assign a playlist schedule of active photos or videos on the Node.js / Pocketbase CMS.",
+            text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
+                "To stream promos, assign a playlist schedule of active photos or videos on your ${uiState.whiteLabelName} CMS."
+            } else {
+                "To stream promos, assign a playlist schedule of active photos or videos on the Node.js / Pocketbase CMS."
+            },
             color = Color.White.copy(alpha = 0.5f),
             fontSize = 12.sp,
             textAlign = TextAlign.Center,
@@ -932,14 +1058,16 @@ fun SuspendedScreen(onOpenAdmin: () -> Unit) {
 @Composable
 fun AdminSettingsDialog(
     uiState: SignageUiState,
-    onSave: (String, String) -> Unit,
+    onSave: (String, String, Int) -> Unit,
     onDismiss: () -> Unit,
     onReset: () -> Unit,
     onInjectDemo: () -> Unit,
     onSimulateSuspended: () -> Unit
 ) {
-    var serverInput by remember { mutableStateOf(uiState.serverUrl) }
-    var pbInput by remember { mutableStateOf(uiState.pocketbaseUrl) }
+    var serverInput by remember(uiState.serverUrl) { mutableStateOf(uiState.serverUrl) }
+    var pbInput by remember(uiState.pocketbaseUrl) { mutableStateOf(uiState.pocketbaseUrl) }
+    var volumeInput by remember(uiState.screenVolume) { mutableStateOf(uiState.screenVolume) }
+    val scrollState = rememberScrollState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -964,6 +1092,7 @@ fun AdminSettingsDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(scrollState)
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
@@ -1002,6 +1131,26 @@ fun AdminSettingsDialog(
                         focusedBorderColor = Color(0xFF64B5F6),
                         unfocusedBorderColor = Color.White.copy(alpha = 0.3f)
                     )
+                )
+
+                Text(
+                    text = "SCREEN VOLUME ($volumeInput%)",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF90CAF9),
+                    letterSpacing = 1.sp
+                )
+
+                Slider(
+                    value = volumeInput.toFloat(),
+                    onValueChange = { volumeInput = it.toInt() },
+                    valueRange = 0f..100f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color(0xFFD0BCFF),
+                        activeTrackColor = Color(0xFFD0BCFF),
+                        inactiveTrackColor = Color(0xFF49454F)
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("volume_slider")
                 )
 
                 Divider(
@@ -1068,11 +1217,11 @@ fun AdminSettingsDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onSave(serverInput, pbInput) },
+                onClick = { onSave(serverInput, pbInput, volumeInput) },
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A5F))
             ) {
-                Text("Apply Coord")
+                Text("Apply Settings")
             }
         },
         dismissButton = {
@@ -1084,3 +1233,273 @@ fun AdminSettingsDialog(
         shape = RoundedCornerShape(20.dp)
     )
 }
+
+class WipeShape(private val fraction: Float) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(
+        size: androidx.compose.ui.geometry.Size,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+        density: androidx.compose.ui.unit.Density
+    ): androidx.compose.ui.graphics.Outline {
+        return androidx.compose.ui.graphics.Outline.Rectangle(
+            androidx.compose.ui.geometry.Rect(0f, 0f, size.width * fraction, size.height)
+        )
+    }
+}
+
+@Composable
+fun SignageLogo(
+    uiState: SignageUiState,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 40.dp,
+    cornerRadius: androidx.compose.ui.unit.Dp = 12.dp
+) {
+    if (uiState.isWhiteLabel && !uiState.whiteLabelLogoPath.isNullOrEmpty() && File(uiState.whiteLabelLogoPath).exists()) {
+        AsyncImage(
+            model = File(uiState.whiteLabelLogoPath),
+            contentDescription = "Signage Logo",
+            modifier = modifier
+                .size(size)
+                .clip(RoundedCornerShape(cornerRadius)),
+            contentScale = ContentScale.Fit
+        )
+    } else {
+        // Default Bluestar Logo
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = modifier
+                .size(size)
+                .background(Color(0xFFD0BCFF), RoundedCornerShape(cornerRadius))
+        ) {
+            val innerSize = size * 0.4f
+            val innerCorner = cornerRadius * 0.16f
+            Box(
+                modifier = Modifier
+                    .size(innerSize)
+                    .background(Color(0xFF381E72), RoundedCornerShape(innerCorner))
+                    .graphicsLayer(rotationZ = 45f)
+            )
+        }
+    }
+}
+
+@Composable
+fun DownloadProgressScreen(
+    uiState: SignageUiState,
+    onTriggerDownloads: () -> Unit,
+    onOpenAdmin: () -> Unit,
+    onPlayAnyway: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F0E13)) // Premium dark slate background
+            .clickable { onOpenAdmin() }
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Logo & Title Group at the top
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(bottom = 40.dp)
+        ) {
+            SignageLogo(uiState = uiState, size = 54.dp, cornerRadius = 12.dp)
+            
+            Column(verticalArrangement = Arrangement.Center) {
+                Text(
+                    text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) uiState.whiteLabelName else "Bluestar",
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "SYNCING MEDIA ASSETS",
+                    color = Color(0xFF938F99),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp
+                )
+            }
+        }
+
+        // Futuristic pulsating glow loading container
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(200.dp)
+        ) {
+            // Background pulsing glow ring
+            CircularProgressIndicator(
+                progress = uiState.downloadProgressFraction,
+                modifier = Modifier.size(160.dp),
+                color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
+                strokeWidth = 10.dp,
+                trackColor = Color(0xFF2B2930)
+            )
+            
+            // Text displaying percentage inside the circle
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "${Math.round(uiState.downloadProgressFraction * 100)}%",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = if (uiState.isDownloading) "SYNCING" else "PAUSED",
+                    color = Color(0xFFCAC4D0),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(40.dp))
+
+        // Progress Details Card
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF1D1B20)
+            ),
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier
+                .widthIn(max = 500.dp)
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFF35343A), RoundedCornerShape(24.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = if (uiState.isDownloading) "Downloading Display Assets" else "Download Incomplete",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (uiState.isDownloading) {
+                        uiState.downloadProgressMessage.ifEmpty { "Preparing assets for playback..." }
+                    } else {
+                        "Some playlist assets could not be downloaded. Please verify internet connection."
+                    },
+                    color = Color(0xFFEADDFF),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.sp
+                )
+                
+                Spacer(modifier = Modifier.height(20.dp))
+                
+                // Detailed horizontal progress bar
+                LinearProgressIndicator(
+                    progress = uiState.downloadProgressFraction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(CircleShape),
+                    color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
+                    trackColor = Color(0xFF49454F)
+                )
+
+                if (!uiState.isDownloading) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            onClick = onTriggerDownloads,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF381E72)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Retry Download", color = Color(0xFFEADDFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = onPlayAnyway,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B3A5F)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Play Anyway", color = Color(0xFFE0F7FA), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Screen playback will begin automatically as soon as all media files are stored locally for seamless offline streaming.",
+                    color = Color(0xFF938F99),
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 16.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(30.dp))
+
+        // Small indicator showing admin tools tap hint
+        Text(
+            text = "Tap screen to access Admin Tools",
+            color = Color(0xFF49454F),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+fun AppSplashScreen(uiState: SignageUiState) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF1C1B1F)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Logo
+            SignageLogo(uiState = uiState, size = 120.dp, cornerRadius = 24.dp)
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Name
+            Text(
+                text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) uiState.whiteLabelName else "Bluestar",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Subtitle
+            Text(
+                text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) "${uiState.whiteLabelName} Signage Client" else "Signage Player v2.4.1",
+                color = Color(0xFF938F99),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.5.sp
+            )
+            
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            // Pulse loading bar
+            CircularProgressIndicator(
+                color = Color(0xFFD0BCFF),
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+    }
+}
+

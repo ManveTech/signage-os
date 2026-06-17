@@ -3,7 +3,8 @@ import {
   Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, 
   Play, Pause, ChevronLeft, ChevronRight, ChevronDown, QrCode, Sun, Eye, 
   Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive,
-  Volume2, Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Building2
+  Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2, CloudRain, CloudSnow, CloudSun, Wind,
+  Building2
 } from 'lucide-react';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
@@ -70,17 +71,18 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   const [playlistDesc, setPlaylistDesc] = useState('');
   const [category, setCategory] = useState('Advertising');
 
-  // Playlist Settings (Orientation, Transition, Volume, Shuffle, Loop)
+  // Playlist Settings (Orientation, Transition, Shuffle, Loop)
   const [playlistOrientation, setPlaylistOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [playlistTransition, setPlaylistTransition] = useState<'fade' | 'slide' | 'zoom' | 'slide-up' | 'slide-down' | 'flip' | 'spin' | 'blur' | 'bounce' | 'wipe'>('fade');
   const [showAllTransitions, setShowAllTransitions] = useState(false);
-  const [playlistVolume, setPlaylistVolume] = useState<number>(80);
   const [playlistShuffle, setPlaylistShuffle] = useState<boolean>(false);
   const [playlistLoop, setPlaylistLoop] = useState<boolean>(true);
+  const [playlistVolume, setPlaylistVolume] = useState<number>(80);
 
   // Widget Settings
   const [playlistWidgetType, setPlaylistWidgetType] = useState<'weather' | 'clock' | 'rss' | 'qrcode' | undefined>(undefined);
   const [playlistWidgetPlacement, setPlaylistWidgetPlacement] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'>('top-right');
+  const [playlistWidgetLink, setPlaylistWidgetLink] = useState('');
 
   // Preview Modal States
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -128,11 +130,12 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       setPlaylistDesc(play.slides ? '' : 'Loaded from older layout');
       setPlaylistOrientation(play.orientation || 'horizontal');
       setPlaylistTransition(play.transition || 'fade');
-      setPlaylistVolume(play.volume !== undefined ? play.volume : 80);
       setPlaylistShuffle(play.shuffle || false);
       setPlaylistLoop(play.loop !== undefined ? play.loop : true);
+      setPlaylistVolume(play.volume !== undefined ? play.volume : 80);
       setPlaylistWidgetType(play.widgetType);
       setPlaylistWidgetPlacement(play.widgetPlacement || 'top-right');
+      setPlaylistWidgetLink(play.widgetLink || '');
       setTargetUserEmail(play.createdBy);
 
       if (play.slides && play.slides.length > 0) {
@@ -166,11 +169,12 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     setPlaylistItems([]);
     setPlaylistOrientation('horizontal');
     setPlaylistTransition('fade');
-    setPlaylistVolume(80);
     setPlaylistShuffle(false);
     setPlaylistLoop(true);
+    setPlaylistVolume(80);
     setPlaylistWidgetType(undefined);
     setPlaylistWidgetPlacement('top-right');
+    setPlaylistWidgetLink('');
     showToast('Starting a new playlist.');
   };
 
@@ -341,21 +345,24 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
   const uploadSingleFile = (file: File): Promise<void> => {
     return new Promise<void>((resolve, reject) => {
-      if (file.size > 50 * 1024 * 1024) {
-        reject(new Error(`"${file.name}" is larger than 50MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). Please compress it or use a smaller file.`));
+      const isVideo = file.type.startsWith('video/');
+      const maxFileBytes = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+      const limitMb = isVideo ? 50 : 5;
+
+      if (file.size > maxFileBytes) {
+        reject(new Error(`"${file.name}" is larger than ${limitMb}MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). All uploaded ${isVideo ? 'video' : 'image'} files must be under ${limitMb}MB.`));
         return;
       }
 
       const fileSizeMb = file.size / (1024 * 1024);
       const fileSizeBytes = file.size;
-      const limitBytes = storageLimitGb * 1024 * 1024 * 1024;
+      const storageLimitBytes = storageLimitGb * 1024 * 1024 * 1024;
 
-      if (storageUsedBytes + fileSizeBytes > limitBytes) {
+      if (storageUsedBytes + fileSizeBytes > storageLimitBytes) {
         reject(new Error(`This file of ${fileSizeMb.toFixed(1)} MB exceeds your remaining license storage limit. Allowed storage: ${storageLimitGb} GB.`));
         return;
       }
 
-      const isVideo = file.type.startsWith('video/');
       const fileType = isVideo ? 'video' : 'image';
       const reader = new FileReader();
 
@@ -363,9 +370,9 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         const resultDataUrl = event.target?.result as string;
         const base64Data = resultDataUrl.split(',')[1];
 
-        const saveMediaWithThumb = (thumbUrl: string, width: number, height: number, duration: number) => {
+        const saveMediaWithThumb = async (thumbUrl: string, width: number, height: number, duration: number) => {
           try {
-            const newMedia = mediaStore.uploadMedia({
+            const newMedia = await mediaStore.uploadMedia({
               title: file.name,
               type: fileType,
               duration: duration,
@@ -498,6 +505,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         orientation: playlistOrientation,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
+        widgetLink: playlistWidgetLink,
         transition: playlistTransition,
         shuffle: playlistShuffle,
         loop: playlistLoop,
@@ -517,6 +525,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         orientation: playlistOrientation,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
+        widgetLink: playlistWidgetLink,
         transition: playlistTransition,
         shuffle: playlistShuffle,
         loop: playlistLoop,
@@ -702,7 +711,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
           >
             <Upload size={18} className="text-blue-500 mx-auto mb-1.5" />
             <p className="text-[10.5px] font-bold text-slate-700">Drag files here or click to browse</p>
-            <p className="text-[9px] text-gray-400 mt-0.5">Enforces license storage limit ({storageLimitGb} GB)</p>
+            <p className="text-[9px] text-gray-400 mt-0.5">Enforces license storage limit ({storageLimitGb} GB). Limits: 5MB image, 50MB video</p>
           </div>
 
           {/* Asset Scroll Area */}
@@ -835,11 +844,9 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 uppercase flex items-center gap-1">
                               {media.type === 'image' && '🖼 Image'}
-                              {media.type === 'video' && '🎥 Video'}
-                              {media.type === 'youtube' && '▶ YouTube'}
-                              {media.type !== 'image' && media.type !== 'video' && media.type !== 'youtube' && media.type}
+                              {media.type !== 'image' && media.type}
                             </span>
-                            <span className="text-[9.5px] text-gray-400 font-semibold">{media.type === 'youtube' ? 'YouTube' : media.fileSize}</span>
+                            <span className="text-[9.5px] text-gray-400 font-semibold">{media.fileSize}</span>
                           </div>
                           
                           {/* Duration input */}
@@ -1060,25 +1067,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 </select>
               </div>
 
-              {/* Volume Slider */}
-              <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5 flex justify-between">
-                  <span>Audio Volume</span>
-                  <span className="font-bold text-blue-600">{playlistVolume}%</span>
-                </label>
-                <div className="flex items-center gap-3 border border-slate-200 rounded-xl h-[42px] px-3.5 bg-white shadow-xs">
-                  <Volume2 size={16} className="text-gray-400" />
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="100" 
-                    value={playlistVolume} 
-                    onChange={e => setPlaylistVolume(parseInt(e.target.value))}
-                    className="flex-1 accent-blue-600 h-1 rounded-lg bg-gray-200 appearance-none cursor-pointer"
-                  />
-                </div>
-              </div>
-
               {/* Loop and Shuffle Switches */}
               <div className="flex items-center justify-between border border-slate-200 rounded-xl px-4 h-[42px] bg-white shadow-xs">
                 <div className="flex items-center gap-2">
@@ -1106,6 +1094,25 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 >
                   <div className={`bg-white w-4 h-4 rounded-full shadow transition-transform ${playlistLoop ? 'translate-x-4' : 'translate-x-0'}`} />
                 </button>
+              </div>
+
+              {/* Playlist Default Volume */}
+              <div className="flex flex-col justify-center border border-slate-200 rounded-xl px-4 py-2 bg-white shadow-xs">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <Volume2 size={14} className="text-gray-450" />
+                    <span className="font-bold text-gray-600">Default Playlist Volume</span>
+                  </div>
+                  <span className="font-bold text-blue-605 text-blue-600">{playlistVolume}%</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="100" 
+                  value={playlistVolume} 
+                  onChange={e => setPlaylistVolume(parseInt(e.target.value))} 
+                  className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
               </div>
 
               {/* Widget overlays */}
@@ -1137,6 +1144,27 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                     <option value="bottom-left">Bottom Left Corner</option>
                     <option value="bottom-right">Bottom Right Corner</option>
                   </select>
+                </div>
+              )}
+
+              {playlistWidgetType && (
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">
+                    {playlistWidgetType === 'qrcode' ? 'QR Code Link / URL' :
+                     playlistWidgetType === 'weather' ? 'Weather Location / City' :
+                     playlistWidgetType === 'rss' ? 'News Ticker Text / RSS Feed URL' : 'Clock Label / Header'}
+                  </label>
+                  <input
+                    type={playlistWidgetType === 'qrcode' ? 'url' : 'text'}
+                    value={playlistWidgetLink}
+                    onChange={e => setPlaylistWidgetLink(e.target.value)}
+                    placeholder={
+                      playlistWidgetType === 'qrcode' ? 'https://example.com/menu.pdf' :
+                      playlistWidgetType === 'weather' ? 'e.g. Bengaluru' :
+                      playlistWidgetType === 'rss' ? 'e.g. + + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +' : 'e.g. Lobby Clock'
+                    }
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-850"
+                  />
                 </div>
               )}
             </div>
@@ -1220,7 +1248,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 <div key={previewIndex} className={`w-full h-full relative bg-slate-550/10 ${transitionClass}`}>
                   {slide.layoutType === 'single' ? (
                     <div className="w-full h-full">
-                      {pMedia.type === 'video' && pMedia.thumbnail.startsWith('data:video/') ? (
+                      {pMedia.type === 'video' ? (
                         <video src={pMedia.thumbnail} autoPlay loop muted className="w-full h-full object-cover" />
                       ) : (
                         <img src={pMedia.thumbnail} className="w-full h-full object-cover" alt="primary fullscreen" />
@@ -1235,7 +1263,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                         }} 
                         className={`overflow-hidden flex-shrink-0 border-slate-200 ${playlistOrientation === 'horizontal' ? 'border-r-2' : 'border-b-2'}`}
                       >
-                        {pMedia.type === 'video' && pMedia.thumbnail.startsWith('data:video/') ? (
+                        {pMedia.type === 'video' ? (
                           <video src={pMedia.thumbnail} autoPlay loop muted className="w-full h-full object-cover" />
                         ) : (
                           <img src={pMedia.thumbnail} className="w-full h-full object-cover" alt="primary layout split" />
@@ -1243,7 +1271,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                       </div>
                       <div className="flex-1 bg-slate-100 overflow-hidden">
                         {sMedia ? (
-                          sMedia.type === 'video' && sMedia.thumbnail.startsWith('data:video/') ? (
+                          sMedia.type === 'video' ? (
                             <video src={sMedia.thumbnail} autoPlay loop muted className="w-full h-full object-cover" />
                           ) : (
                             <img src={sMedia.thumbnail} className="w-full h-full object-cover" alt="secondary layout split" />
@@ -1268,20 +1296,66 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
                     return (
                       <div className={`absolute ${positionClasses} z-10 shadow-md bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl p-3 w-48 flex flex-col justify-between animate-fadeIn text-slate-800`}>
-                        {playlistWidgetType === 'weather' && (
-                          <div className="flex flex-col gap-1 text-center font-normal">
-                            <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left">Weather</span>
-                            <div className="flex items-center gap-2 mt-1 justify-center">
-                              <Sun className="text-amber-500 w-5 h-5 animate-pulse" />
-                              <span className="text-base font-extrabold text-slate-800">24°C</span>
+                        {playlistWidgetType === 'weather' && (() => {
+                          const location = playlistWidgetLink || 'Bengaluru';
+                          let temp = 24;
+                          let condition = 'Sunny';
+                          let WeatherIcon = Sun;
+                          let iconColor = 'text-amber-500';
+                          let animateClass = 'animate-pulse';
+                          
+                          const locLower = location.toLowerCase();
+                          if (locLower.includes('london') || locLower.includes('rain') || locLower.includes('seattle')) {
+                            temp = 14;
+                            condition = 'Rainy';
+                            WeatherIcon = CloudRain;
+                            iconColor = 'text-blue-400';
+                            animateClass = 'animate-bounce';
+                          } else if (locLower.includes('delhi') || locLower.includes('hot') || locLower.includes('desert') || locLower.includes('chennai')) {
+                            temp = 38;
+                            condition = 'Hot & Sunny';
+                            WeatherIcon = Sun;
+                            iconColor = 'text-orange-500';
+                            animateClass = 'animate-spin-slow';
+                          } else if (locLower.includes('snow') || locLower.includes('cold') || locLower.includes('moscow') || locLower.includes('ice')) {
+                            temp = -2;
+                            condition = 'Snowing';
+                            WeatherIcon = CloudSnow;
+                            iconColor = 'text-sky-300';
+                            animateClass = 'animate-bounce';
+                          } else if (locLower.includes('cloud') || locLower.includes('paris') || locLower.includes('tokyo') || locLower.includes('mumbai')) {
+                            temp = 19;
+                            condition = 'Partly Cloudy';
+                            WeatherIcon = CloudSun;
+                            iconColor = 'text-slate-400';
+                            animateClass = 'animate-pulse';
+                          } else if (locLower.includes('wind') || locLower.includes('storm') || locLower.includes('chicago')) {
+                            temp = 16;
+                            condition = 'Windy';
+                            WeatherIcon = Wind;
+                            iconColor = 'text-teal-400';
+                            animateClass = 'animate-pulse';
+                          }
+
+                          return (
+                            <div className="flex flex-col gap-1 text-center font-normal">
+                              <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left">Weather</span>
+                              <div className="flex items-center gap-2 mt-1 justify-center">
+                                <WeatherIcon className={`${iconColor} w-5 h-5 ${animateClass}`} />
+                                <span className="text-base font-extrabold text-slate-800">{temp}°C</span>
+                              </div>
+                              <div className="text-[9px] font-medium text-slate-650 mt-0.5 truncate max-w-full" title={`${location} · ${condition}`}>
+                                {location} · {condition}
+                              </div>
                             </div>
-                            <div className="text-[9px] font-medium text-slate-600 mt-0.5">Bengaluru · Sunny</div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {playlistWidgetType === 'clock' && (
                           <div className="text-center font-normal">
-                            <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">Lobby Clock</span>
+                            <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">
+                              {playlistWidgetLink || 'Lobby Clock'}
+                            </span>
                             <div className="text-base font-mono font-bold text-slate-800 mt-1">
                               {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                             </div>
@@ -1291,9 +1365,9 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                         {playlistWidgetType === 'rss' && (
                           <div className="text-center space-y-1 font-normal">
                             <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">Live Ticker</span>
-                            <div className="bg-slate-50/80 border border-slate-200/50 rounded-lg p-1 text-[8.5px] font-semibold text-slate-650 overflow-hidden h-5 flex items-center relative">
+                            <div className="bg-slate-50/80 border border-slate-200/50 rounded-lg p-1 text-[8.5px] font-semibold text-slate-655 overflow-hidden h-5 flex items-center relative">
                               <div className="absolute whitespace-nowrap animate-marquee">
-                                + + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +
+                                {playlistWidgetLink || '+ + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +'}
                               </div>
                             </div>
                           </div>
@@ -1302,9 +1376,22 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                         {playlistWidgetType === 'qrcode' && (
                           <div className="flex flex-col items-center gap-1.5 text-center font-normal">
                             <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left w-full">Scan Link</span>
-                            <div className="bg-white p-1 rounded-xl border border-slate-100 flex items-center justify-center w-12 h-12 shadow-xs">
-                              <QrCode size={40} className="text-slate-800" />
+                            <div className="bg-white p-1 rounded-xl border border-slate-100 flex items-center justify-center w-12 h-12 shadow-xs overflow-hidden">
+                              {playlistWidgetLink ? (
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(playlistWidgetLink)}`}
+                                  alt="QR Code"
+                                  className="w-full h-full object-contain"
+                                />
+                              ) : (
+                                <QrCode size={40} className="text-slate-800" />
+                              )}
                             </div>
+                            {playlistWidgetLink && (
+                              <div className="text-[7px] text-slate-500 truncate w-full max-w-[150px] mt-0.5" title={playlistWidgetLink}>
+                                {playlistWidgetLink}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

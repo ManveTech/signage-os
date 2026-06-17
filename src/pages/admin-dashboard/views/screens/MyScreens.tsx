@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit,
-  Clock, Monitor, X, Check, CheckCircle, MoreVertical, MapPin, Cpu,
-  Activity, Grid3X3, List, Pause, Eraser, Lock, ChevronDown
+  Clock, Monitor, X, Check, CheckCircle, MapPin,
+  Grid3X3, List, Pause, Eraser, Lock, Trash,
+  Calendar, Link, ListVideo
 } from 'lucide-react';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
+import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
 
@@ -19,12 +21,19 @@ const groupColorMap: Record<string, { bg: string; text: string; border: string; 
 
 const getStatusColors = (status: string) => {
   switch (status) {
-    case 'active':
     case 'online':
       return {
         borderColor: '#10B981', // emerald-500
         textColor: 'text-emerald-700',
-        badgeBg: 'bg-emerald-500/10',
+        badgeBg: 'bg-emerald-550/10',
+        glowColor: 'rgba(16, 185, 129, 0.2)',
+        label: 'Online'
+      };
+    case 'active':
+      return {
+        borderColor: '#10B981', // emerald-500
+        textColor: 'text-emerald-700',
+        badgeBg: 'bg-emerald-550/10',
         glowColor: 'rgba(16, 185, 129, 0.2)',
         label: 'Active'
       };
@@ -36,12 +45,20 @@ const getStatusColors = (status: string) => {
         glowColor: 'rgba(244, 63, 94, 0.2)',
         label: 'Offline'
       };
-    case 'pairing':
+    case 'warning':
       return {
         borderColor: '#F59E0B', // amber-500
         textColor: 'text-amber-700',
         badgeBg: 'bg-amber-500/10',
         glowColor: 'rgba(245, 158, 11, 0.2)',
+        label: 'Warning'
+      };
+    case 'pairing':
+      return {
+        borderColor: '#3B82F6', // blue-500
+        textColor: 'text-blue-700',
+        badgeBg: 'bg-blue-500/10',
+        glowColor: 'rgba(59, 130, 246, 0.2)',
         label: 'Pairing'
       };
     case 'suspended':
@@ -80,7 +97,7 @@ const renderStatusBadge = (status: string) => {
       ) : status === 'offline' ? (
         <span className="h-2 w-2 rounded-full bg-rose-500"></span>
       ) : status === 'pairing' ? (
-        <span className="h-2.5 w-2.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span>
+        <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>
       ) : status === 'suspended' ? (
         <Lock size={9} className="text-slate-500" />
       ) : (
@@ -91,7 +108,7 @@ const renderStatusBadge = (status: string) => {
   );
 };
 
-type Toast = { id: number; message: string; type: 'success' | 'info' };
+type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' };
 type ViewMode = 'grid' | 'list';
 
 export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: { onNavigate: (v: string) => void; userEmail?: string }) {
@@ -105,14 +122,34 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
   const [userPlaylists, setUserPlaylists] = useState<Playlist[]>(() =>
     mediaStore.getPlaylists().filter(p => p.createdBy === userEmail)
   );
+  const [licenses, setLicenses] = useState(() => licensingStore.getLicenses());
+  const [mediaList, setMediaList] = useState(() => mediaStore.getMedia());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
   const [editScreen, setEditScreen] = useState<Screen | null>(null);
   const [deleteScreen, setDeleteScreen] = useState<Screen | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [reconnectScreen, setReconnectScreen] = useState<Screen | null>(null);
+  const [reconnectPairingCode, setReconnectPairingCode] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hoveredScreen, setHoveredScreen] = useState<string | null>(null);
+  const [scheduleScreen, setScheduleScreen] = useState<Screen | null>(null);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  // Assign playlist modal
+  const [assignScreen, setAssignScreen] = useState<Screen | null>(null);
+  const [assignSearch, setAssignSearch] = useState('');
+  const [assignHighlight, setAssignHighlight] = useState(0);
+  const assignInputRef = useRef<HTMLInputElement>(null);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
 
   useEffect(() => {
     syncCollection('screens', 'signageos_screens').then(serverScreens => {
@@ -131,6 +168,12 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
         setUserPlaylists(serverPlaylists.filter(p => p.createdBy === userEmail));
       }
     });
+    syncCollection('licenses', 'signageos_licenses').then(serverLicenses => {
+      if (serverLicenses.length > 0) setLicenses(serverLicenses);
+    });
+    syncCollection('media_items', 'signageos_media').then(serverMedia => {
+      if (serverMedia.length > 0) setMediaList(serverMedia);
+    });
   }, [userEmail]);
 
   const filtered = screens.filter(s => {
@@ -138,6 +181,58 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const matchStatus = statusFilter === 'all' || s.status === statusFilter;
     return matchSearch && matchStatus;
   });
+
+  const getScreenStorageInfo = (screen: Screen) => {
+    let playlistName = 'Normal';
+    if (screen.groupId) {
+      const gp = groups.find(g => g.id === screen.groupId);
+      if (gp) {
+        playlistName = gp.playlist || 'Normal';
+      }
+    } else {
+      playlistName = screen.playlist || 'Normal';
+    }
+
+    const allPlaylists = mediaStore.getPlaylists();
+    let playlist = allPlaylists.find(p => p.name === playlistName && p.createdBy === screen.assignedToUserEmail);
+    if (!playlist && screen.playlistId) {
+      playlist = allPlaylists.find(p => p.id === screen.playlistId);
+    }
+    if (!playlist) {
+      playlist = allPlaylists.find(p => p.name === playlistName);
+    }
+
+    const mediaIds = playlist?.mediaIds || [];
+    let totalSizeBytes = 0;
+    mediaIds.forEach(id => {
+      const item = mediaList.find(m => m.id === id);
+      if (item) {
+        totalSizeBytes += item.fileSizeBytes || 0;
+      }
+    });
+
+    const myLicense = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
+    const limitGb = myLicense?.storageLimit || 5;
+    const limitBytes = limitGb * 1024 * 1024 * 1024;
+    const percentage = limitBytes > 0 ? (totalSizeBytes / limitBytes) * 100 : 0;
+
+    let friendlySize = '0 Bytes';
+    if (totalSizeBytes > 0) {
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(totalSizeBytes) / Math.log(k));
+      friendlySize = parseFloat((totalSizeBytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    return {
+      usedBytes: totalSizeBytes,
+      friendlySize,
+      limitGb,
+      percentage: Math.min(percentage, 100)
+    };
+  };
+
+
 
   const addToast = (message: string, type: Toast['type'] = 'success') => {
     const id = Date.now();
@@ -156,9 +251,67 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     addToast(`"${deleteScreen.name}" removed from your screens`);
   };
 
-  const handleRestart = (screen: Screen) => {
+  const handleDeleteSelected = () => {
+    const allScreens = mediaStore.getScreens();
+    const updated = allScreens.filter(s => !selectedIds.includes(s.id));
+    mediaStore.saveScreens(updated);
+    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    selectedIds.forEach(id => pushToDatabase('screens', id, null, 'DELETE'));
+    setSelectedIds([]);
+    setIsSelectionMode(false);
+    setDeleteConfirm(false);
+    addToast(`Selected screen(s) removed successfully`, 'success');
+  };
+
+  const handleReconnectSave = () => {
+    if (!reconnectScreen) return;
+    if (!reconnectPairingCode.trim()) {
+      addToast('Please enter a pairing code', 'error');
+      return;
+    }
+    fetch('http://localhost:5000/api/v1/screens/reconnect', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('signageos_token')}`
+      },
+      body: JSON.stringify({
+        screenId: reconnectScreen.id,
+        pairingCode: reconnectPairingCode.trim().toUpperCase()
+      })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.message || 'Failed to reconnect screen');
+        }
+        return res.json();
+      })
+      .then((updatedScreen) => {
+        addToast(`Successfully reconnected "${reconnectScreen.name}"`, 'success');
+        const allScreens = mediaStore.getScreens();
+        const updatedAll = allScreens.map(s => s.id === reconnectScreen.id ? { ...s, hardware_uuid: updatedScreen.hardware_uuid, status: 'active' as const, onlineSince: updatedScreen.onlineSince } : s);
+        mediaStore.saveScreens(updatedAll);
+        setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+        setReconnectScreen(null);
+        setReconnectPairingCode('');
+      })
+      .catch((err) => {
+        addToast(err.message, 'error');
+      });
+  };
+
+  const handleSync = (screen: Screen) => {
     setOpenMenu(null);
-    addToast(`Restart signal sent to "${screen.name}"`, 'info');
+    setHoveredScreen(null);
+    const updatedScreen = { ...screen, force_sync: true };
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT').then(res => {
+      if (res.ok) {
+        addToast(`Sync signal sent to "${screen.name}"`, 'success');
+      } else {
+        addToast(`Failed to send sync signal`, 'info');
+      }
+    });
   };
 
   const handleStopPlayback = (screen: Screen) => {
@@ -202,6 +355,40 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     addToast(`"${editScreen.name}" updated successfully`);
   };
 
+  const handleScheduleSave = () => {
+    if (!scheduleScreen) return;
+    const finalScreen = scheduleEnabled
+      ? scheduleScreen
+      : { ...scheduleScreen, schedulePlaylist: '', scheduleDate: '', scheduleTime: '' };
+    const allScreens = mediaStore.getScreens();
+    const updated = allScreens.map(s => s.id === finalScreen.id ? finalScreen : s);
+    mediaStore.saveScreens(updated);
+    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    pushToDatabase('screens', finalScreen.id, finalScreen, 'PUT');
+    setScheduleScreen(null);
+    setScheduleEnabled(false);
+    addToast(scheduleEnabled ? `Schedule set for "${finalScreen.name}"` : `Schedule cleared for "${scheduleScreen.name}"`, 'success');
+  };
+
+  const handleAssignPlaylist = (playlist: Playlist) => {
+    if (!assignScreen) return;
+    mediaStore.assignPlaylistToScreen(assignScreen.id, playlist.id);
+    const allScreens = mediaStore.getScreens();
+    setScreens(allScreens.filter(s => s.assignedToUserEmail === userEmail));
+    fetch(`http://localhost:5000/api/v1/screens/${assignScreen.id}/assign-playlist`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('signageos_token')}`
+      },
+      body: JSON.stringify({ playlistId: playlist.id, playlistName: playlist.name })
+    }).catch(() => {});
+    addToast(`"${playlist.name}" assigned to "${assignScreen.name}"`, 'success');
+    setAssignScreen(null);
+    setAssignSearch('');
+    setAssignHighlight(0);
+  };
+
   const stats = [
     { label: 'Total', count: screens.length, color: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200' },
     { label: 'Online', count: screens.filter(s => s.status === 'online').length, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' },
@@ -210,12 +397,12 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
   ];
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-5" onClick={() => openMenu && setOpenMenu(null)}>
       {/* Toasts */}
       <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
         {toasts.map(toast => (
           <div key={toast.id} className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white animate-fade-in ${
-            toast.type === 'success' ? 'bg-emerald-500' : 'bg-blue-500'
+            toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
           }`}>
             <CheckCircle size={15} />
             {toast.message}
@@ -224,20 +411,47 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">My Screens</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {screens.length} screen{screens.length !== 1 ? 's' : ''} assigned to your account
           </p>
         </div>
-        <button
-          onClick={() => onNavigate('screens-add-my')}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
-        >
-          <Plus size={15} />
-          Add Screen
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {filtered.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setIsSelectionMode(!isSelectionMode);
+                  setSelectedIds([]);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors cursor-pointer shadow-sm ${
+                  isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                }`}
+              >
+                <CheckCircle size={15} />
+                {isSelectionMode ? 'Cancel Selection' : 'Select'}
+              </button>
+              {isSelectionMode && selectedIds.length > 0 && (
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 hover:border-red-300 transition-colors cursor-pointer shadow-sm"
+                >
+                  <Trash size={15} />
+                  Delete Selected ({selectedIds.length})
+                </button>
+              )}
+            </div>
+          )}
+          <button
+            onClick={() => onNavigate('screens-add-my')}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+          >
+            <Plus size={15} />
+            Add Screen
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -304,38 +518,45 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
             return (
               <div 
                 key={screen.id} 
-                className="bg-white rounded-3xl border border-slate-150 overflow-hidden transition-all duration-300 group flex flex-col justify-between hover:border-slate-200"
+                className="bg-white rounded-3xl border border-slate-150 transition-all duration-300 group flex flex-col justify-between hover:border-slate-200 relative"
                 style={shadowStyle}
                 onMouseEnter={() => setHoveredScreen(screen.id)}
-                onMouseLeave={() => setHoveredScreen(null)}
+                onMouseLeave={() => { if (openMenu !== screen.id) setHoveredScreen(null); }}
               >
-                {/* Visual Preview / Device Mockup Container */}
-                <div 
-                  className="relative h-44 overflow-hidden flex items-center justify-center p-4 bg-slate-900 border-b border-slate-800"
-                >
-                  {/* Subtle glowing grid background */}
-                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:1rem_1rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 z-0" />
+                {isSelectionMode && (
+                  <div 
+                    className="absolute inset-0 bg-slate-900/[0.02] hover:bg-slate-900/[0.05] z-40 rounded-3xl cursor-pointer flex items-start p-3"
+                    onClick={() => toggleSelect(screen.id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(screen.id)}
+                      onChange={() => {}}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-550 cursor-pointer shadow-sm"
+                    />
+                  </div>
+                )}
 
-                  {/* Centered Monitor Device Mockup */}
+                {/* Status badge */}
+                {!isSelectionMode && (
+                  <div className="absolute top-3 left-3 z-30">
+                    {renderStatusBadge(screen.status)}
+                  </div>
+                )}
+
+                {/* 3-dot menu removed */}
+
+                {/* Visual Preview */}
+                <div className="relative h-44 overflow-hidden flex items-center justify-center p-4 bg-slate-900 border-b border-slate-800 rounded-t-3xl">
+                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:1rem_1rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 z-0" />
                   <div className="flex flex-col items-center justify-center h-full w-full relative z-10 pt-2">
-                    {/* Monitor Screen Container */}
-                    <div 
-                      className="w-[85%] aspect-[16/10] rounded-xl border-2 flex flex-col justify-between relative shadow-2xl transition-all duration-300 overflow-hidden bg-slate-950 border-slate-800 group-hover:border-slate-700/80"
-                    >
-                      {/* Live Screen Preview from Playlist Thumbnail if present, otherwise radial gradient */}
+                    <div className="w-[85%] aspect-[16/10] rounded-xl border-2 flex flex-col justify-between relative shadow-2xl transition-all duration-300 overflow-hidden bg-slate-950 border-slate-800 group-hover:border-slate-700/80">
                       {screen.thumbnail ? (
-                        <div 
-                          className="absolute inset-0 bg-cover bg-center z-0 transition-transform duration-500 group-hover:scale-105"
-                          style={{ backgroundImage: `url(${screen.thumbnail})` }}
-                        />
+                        <div className="absolute inset-0 bg-cover bg-center z-0 transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url(${screen.thumbnail})` }} />
                       ) : (
                         <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 z-0" />
                       )}
-                      
-                      {/* Dark overlay for readability */}
                       <div className="absolute inset-0 bg-slate-950/40 z-10 group-hover:bg-slate-950/20 transition-colors duration-300" />
-                      
-                      {/* Header with simple graphic layout element */}
                       <div className="relative z-20 p-1.5 flex justify-between items-center opacity-70">
                         <div className="flex gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-red-500/80" />
@@ -344,8 +565,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                         </div>
                         <div className="w-12 h-1 rounded-full bg-white/20" />
                       </div>
-
-                      {/* Screen content (Live tag / preview icon) */}
                       <div className="relative z-20 flex flex-col items-center justify-center flex-1">
                         {!screen.thumbnail && (
                           <Monitor size={24} className="text-white/60 transition-transform duration-300 group-hover:scale-110" />
@@ -356,13 +575,10 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                           </span>
                         )}
                       </div>
-
-                      {/* Screen Bezel bottom bar */}
                       <div className="relative z-20 bg-slate-950/90 border-t border-white/5 py-1.5 px-2 flex justify-between items-center text-[8px] text-white/50">
                         <span className="font-semibold tracking-wider font-mono text-[7px] uppercase bg-white/10 px-1 rounded-xs">
                           {screen.licenseType || 'PRO'}
                         </span>
-                        {/* LED status indicator light */}
                         <div className="flex items-center gap-1">
                           <span className="text-[7px] uppercase font-mono text-white/40">{screen.status}</span>
                           <span className={`h-1.5 w-1.5 rounded-full shadow-xs ${
@@ -377,50 +593,8 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                         </div>
                       </div>
                     </div>
-                    
-                    {/* Modern sleek metal neck */}
-                    <div 
-                      className="w-3 h-2 bg-gradient-to-b from-slate-700 to-slate-800 border-x border-slate-800"
-                    />
-                    {/* Modern sleek flat base */}
-                    <div 
-                      className="w-14 h-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 rounded-t border-t border-x border-slate-800 shadow-sm"
-                    />
-                  </div>
-
-                  {/* Absolute badging inside preview area */}
-                  <div className="absolute top-3 left-3 z-20">
-                    {renderStatusBadge(screen.status)}
-                  </div>
-                  <div className="absolute top-3 right-3 z-20">
-                    <div className="relative">
-                      <button
-                        onClick={() => setOpenMenu(openMenu === screen.id ? null : screen.id)}
-                        className="w-7 h-7 bg-slate-950/80 hover:bg-slate-950 border border-slate-800 text-white rounded-lg flex items-center justify-center shadow-md transition-colors cursor-pointer"
-                      >
-                        <MoreVertical size={13} />
-                      </button>
-                      {openMenu === screen.id && (
-                        <div className="absolute right-0 top-8 bg-white rounded-xl shadow-xl border border-gray-150 py-1 w-44 z-30">
-                          <button onClick={() => { setEditScreen({ ...screen }); setOpenMenu(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer text-left border-none">
-                            <Edit size={13} className="text-blue-500" /> Edit Screen
-                          </button>
-                          <button onClick={() => handleRestart(screen)} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer text-left border-none">
-                            <RefreshCw size={13} className="text-yellow-500" /> Restart
-                          </button>
-                          <button onClick={() => handleStopPlayback(screen)} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer text-left border-none">
-                            <Pause size={13} className="text-orange-500" /> Stop Playback
-                          </button>
-                          <button onClick={() => handleClearCache(screen)} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-750 hover:bg-gray-50 cursor-pointer text-left border-none">
-                            <Eraser size={13} className="text-purple-500" /> Clear Cache
-                          </button>
-                          <div className="my-1 border-t border-gray-100" />
-                          <button onClick={() => { setDeleteScreen(screen); setOpenMenu(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 cursor-pointer text-left border-none">
-                            <Trash2 size={13} /> Remove Screen
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <div className="w-3 h-2 bg-gradient-to-b from-slate-700 to-slate-800 border-x border-slate-800" />
+                    <div className="w-14 h-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 rounded-t border-t border-x border-slate-800 shadow-sm" />
                   </div>
                 </div>
 
@@ -438,20 +612,28 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                   </div>
 
                   {/* Storage Progress Bar */}
-                  <div className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <div className="flex justify-between text-[9.5px] font-bold text-slate-450 uppercase tracking-wide">
-                      <span>Device Storage</span>
-                      <span>{screen.storageUsed}% Used</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          screen.storageUsed > 85 ? 'bg-rose-500' : screen.storageUsed > 60 ? 'bg-amber-500' : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${screen.storageUsed}%` }}
-                      />
-                    </div>
-                  </div>
+                  {(() => {
+                    const storageInfo = getScreenStorageInfo(screen);
+                    return (
+                      <div className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                        <div className="flex justify-between text-[9.5px] font-bold text-slate-450 uppercase tracking-wide">
+                          <span>Signage Storage</span>
+                          <span>{storageInfo.friendlySize} / {storageInfo.limitGb} GB</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              storageInfo.percentage > 85 ? 'bg-rose-500' : storageInfo.percentage > 60 ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${storageInfo.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+
+
 
                   {/* Group / Playlist Section */}
                   {screen.groupId ? (() => {
@@ -467,43 +649,96 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                       </div>
                     );
                   })() : (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Active Loop Playlist</label>
-                      <div className="relative">
-                        <select
-                          value={screen.playlist}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const play = userPlaylists.find(p => p.name === val);
-                            const updatedScreen = {
-                              ...screen,
-                              playlist: val,
-                              playlistId: play ? play.id : ''
-                            };
-                            const allScreens = mediaStore.getScreens();
-                            const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
-                            mediaStore.saveScreens(updatedAll);
-                            setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
-                            pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
-                            addToast(`Playlist updated for "${screen.name}"`);
-                          }}
-                          className="w-full text-xs font-semibold border border-slate-200 bg-slate-50 hover:bg-white focus:bg-white rounded-xl pl-3 pr-8 py-2 outline-none text-slate-700 focus:border-blue-400 cursor-pointer appearance-none transition-colors"
-                        >
-                          <option value="Normal">Normal Loop</option>
-                          <option value="None">None (Stop Playback)</option>
-                          {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                        </select>
-                        <ChevronDown size={12} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                      <div className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5">
+                        {screen.playlist || 'Normal'}
                       </div>
-
                       {screen.schedulePlaylist && (
-                        <div className="mt-1 flex items-center gap-1.5 text-[9.5px] text-amber-700 bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-500/20 font-bold">
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[9.5px] text-amber-700 bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-500/20 font-bold">
                           <Clock size={10} className="text-amber-500" />
                           <span className="truncate">Next Scheduled: {screen.schedulePlaylist} ({screen.scheduleDate})</span>
                         </div>
                       )}
                     </div>
                   )}
+
+                  {/* Action Buttons Row — always visible */}
+                  <div className="flex flex-wrap items-center gap-1 pt-2 border-t border-slate-100">
+                    <button
+                      onClick={() => setEditScreen({ ...screen })}
+                      className="p-1 text-blue-600 bg-blue-550/10 hover:bg-blue-550/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer"
+                      title="Edit Screen"
+                    >
+                      <Edit size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleSync(screen)}
+                      className="p-1 text-yellow-600 bg-yellow-50 hover:bg-yellow-100 border border-yellow-100 rounded-lg transition-colors cursor-pointer"
+                      title="Sync Device"
+                    >
+                      <RefreshCw size={13} />
+                    </button>
+                    <button
+                      onClick={() => setReconnectScreen(screen)}
+                      className="p-1 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-lg transition-colors cursor-pointer"
+                      title="Reconnect Screen"
+                    >
+                      <Link size={13} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAssignScreen(screen);
+                        setAssignSearch('');
+                        setAssignHighlight(0);
+                        setTimeout(() => assignInputRef.current?.focus(), 50);
+                      }}
+                      className="p-1 text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-lg transition-colors cursor-pointer"
+                      title="Assign Playlist"
+                    >
+                      <ListVideo size={13} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setScheduleEnabled(!!screen.schedulePlaylist);
+                        setScheduleScreen({ ...screen,
+                          schedulePlaylist: screen.schedulePlaylist || userPlaylists[0]?.name || '',
+                          scheduleDate: screen.scheduleDate || new Date().toISOString().split('T')[0],
+                          scheduleTime: screen.scheduleTime || '12:00'
+                        });
+                      }}
+                      className="p-1 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg transition-colors cursor-pointer"
+                      title="Schedule Playlist"
+                    >
+                      <Calendar size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleStopPlayback(screen)}
+                      className={`p-1 rounded-lg transition-colors cursor-pointer border ${
+                        screen.groupId
+                          ? 'text-gray-400 bg-gray-50 border-gray-100 cursor-not-allowed opacity-50'
+                          : 'text-orange-600 bg-orange-50 hover:bg-orange-100 border-orange-100'
+                      }`}
+                      title="Stop Playback"
+                      disabled={!!screen.groupId}
+                    >
+                      <Pause size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleClearCache(screen)}
+                      className="p-1 text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-lg transition-colors cursor-pointer"
+                      title="Clear Cache"
+                    >
+                      <Eraser size={13} />
+                    </button>
+                    <button
+                      onClick={() => setDeleteScreen(screen)}
+                      className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer"
+                      title="Remove Screen"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
 
                   {/* Footer Stats: Heartbeat & Version */}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] font-semibold text-slate-400">
@@ -529,6 +764,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
+                  {isSelectionMode && <th className="px-4 py-3 text-left w-10"></th>}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Screen</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Location</th>
@@ -541,10 +777,20 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                 {filtered.map(screen => {
                   return (
                     <tr key={screen.id} className="hover:bg-gray-50 transition-colors group">
+                      {isSelectionMode && (
+                        <td className="px-4 py-3 w-10">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(screen.id)}
+                            onChange={() => toggleSelect(screen.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-550 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-12 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                            <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                            <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
                           </div>
                           <div>
                             <p className="text-sm font-medium text-gray-900">{screen.name}</p>
@@ -566,36 +812,16 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                             </div>
                           );
                         })() : (
-                          <div className="space-y-1">
-                            <select
-                              value={screen.playlist}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const play = userPlaylists.find(p => p.name === val);
-                                const updatedScreen = {
-                                  ...screen,
-                                  playlist: val,
-                                  playlistId: play ? play.id : ''
-                                };
-                                const allScreens = mediaStore.getScreens();
-                                const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
-                                mediaStore.saveScreens(updatedAll);
-                                setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
-                                pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
-                                addToast(`Playlist updated for "${screen.name}"`);
-                              }}
-                              className="text-xs border border-gray-200 bg-white rounded-lg px-2 py-1 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
-                            >
-                              <option value="Normal">Normal</option>
-                              <option value="None">None (Stop Playback)</option>
-                              {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                            </select>
-                            {screen.schedulePlaylist && (
-                              <div className="text-[9px] text-amber-600 font-medium">
-                                Scheduled: {screen.schedulePlaylist} ({screen.scheduleDate} {screen.scheduleTime})
-                              </div>
-                            )}
-                          </div>
+                           <div className="space-y-1">
+                             <div className="text-sm font-semibold text-gray-800">
+                               {screen.playlist || 'Normal'}
+                             </div>
+                             {screen.schedulePlaylist && (
+                               <div className="text-[9px] text-amber-600 font-medium">
+                                 Scheduled: {screen.schedulePlaylist} ({screen.scheduleDate} {screen.scheduleTime})
+                               </div>
+                             )}
+                           </div>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -604,34 +830,81 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                         </div>
                       </td>
 
-                      <td className="px-4 py-3 text-right">
-                        <div className="relative inline-block text-left">
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-end gap-1">
                           <button
-                            onClick={() => setOpenMenu(openMenu === `list_${screen.id}` ? null : `list_${screen.id}`)}
-                            className="w-7 h-7 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center shadow-2xs transition-colors cursor-pointer text-gray-600 ml-auto"
+                            onClick={() => setEditScreen({ ...screen })}
+                            className="p-1 text-blue-600 bg-blue-550/10 hover:bg-blue-550/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Screen"
                           >
-                            <MoreVertical size={13} />
+                            <Edit size={13} />
                           </button>
-                          {openMenu === `list_${screen.id}` && (
-                            <div className="absolute right-0 top-8 bg-white rounded-xl shadow-xl border border-gray-150 py-1 w-44 z-30">
-                              <button onClick={() => { setEditScreen({ ...screen }); setOpenMenu(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer text-left border-none">
-                                <Edit size={13} className="text-blue-500" /> Edit Screen
-                              </button>
-                              <button onClick={() => handleRestart(screen)} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer text-left border-none">
-                                <RefreshCw size={13} className="text-yellow-500" /> Restart
-                              </button>
-                              <button onClick={() => handleStopPlayback(screen)} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer text-left border-none">
-                                <Pause size={13} className="text-orange-500" /> Stop Playback
-                              </button>
-                              <button onClick={() => handleClearCache(screen)} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-750 hover:bg-gray-50 cursor-pointer text-left border-none">
-                                <Eraser size={13} className="text-purple-500" /> Clear Cache
-                              </button>
-                              <div className="my-1 border-t border-gray-100" />
-                              <button onClick={() => { setDeleteScreen(screen); setOpenMenu(null); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 cursor-pointer text-left border-none">
-                                <Trash2 size={13} /> Remove Screen
-                              </button>
-                            </div>
-                          )}
+                          <button
+                            onClick={() => handleSync(screen)}
+                            className="p-1 text-yellow-600 bg-yellow-50 hover:bg-yellow-100 border border-yellow-100 rounded-lg transition-colors cursor-pointer"
+                            title="Sync Device"
+                          >
+                            <RefreshCw size={13} />
+                          </button>
+                          <button
+                            onClick={() => setReconnectScreen(screen)}
+                            className="p-1 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-lg transition-colors cursor-pointer"
+                            title="Reconnect Screen"
+                          >
+                            <Link size={13} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setAssignScreen(screen);
+                              setAssignSearch('');
+                              setAssignHighlight(0);
+                              setTimeout(() => assignInputRef.current?.focus(), 50);
+                            }}
+                            className="p-1 text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-lg transition-colors cursor-pointer"
+                            title="Assign Playlist"
+                          >
+                            <ListVideo size={13} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setScheduleEnabled(!!screen.schedulePlaylist);
+                              setScheduleScreen({ ...screen,
+                                schedulePlaylist: screen.schedulePlaylist || userPlaylists[0]?.name || '',
+                                scheduleDate: screen.scheduleDate || new Date().toISOString().split('T')[0],
+                                scheduleTime: screen.scheduleTime || '12:00'
+                              });
+                            }}
+                            className="p-1 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg transition-colors cursor-pointer"
+                            title="Schedule Playlist"
+                          >
+                            <Calendar size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleStopPlayback(screen)}
+                            className={`p-1 rounded-lg transition-colors cursor-pointer border ${
+                              screen.groupId
+                                ? 'text-gray-400 bg-gray-50 border-gray-100 cursor-not-allowed opacity-50'
+                                : 'text-orange-600 bg-orange-50 hover:bg-orange-100 border-orange-100'
+                            }`}
+                            title="Stop Playback"
+                            disabled={!!screen.groupId}
+                          >
+                            <Pause size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleClearCache(screen)}
+                            className="p-1 text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-lg transition-colors cursor-pointer"
+                            title="Clear Cache"
+                          >
+                            <Eraser size={13} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteScreen(screen)}
+                            className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer"
+                            title="Remove Screen"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -677,6 +950,22 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Location</label>
                 <input value={editScreen.location} onChange={e => setEditScreen(p => p && ({ ...p, location: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
+                  <span>Screen Volume</span>
+                  <span className="font-semibold text-blue-600">{(editScreen.volume !== undefined ? editScreen.volume : 80)}%</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={editScreen.volume !== undefined ? editScreen.volume : 80} 
+                    onChange={e => setEditScreen(p => p && ({ ...p, volume: parseInt(e.target.value) }))} 
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                </div>
+              </div>
               {editScreen.groupId ? (() => {
                 const gp = groups.find(g => g.id === editScreen.groupId);
                 return (
@@ -693,19 +982,9 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                 <>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
-                    <select
-                      value={editScreen.playlist}
-                      onChange={e => {
-                        const val = e.target.value;
-                        const play = userPlaylists.find(p => p.name === val);
-                        setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : '' }));
-                      }}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
-                    >
-                      <option value="Normal">Normal</option>
-                      <option value="None">None (Stop Playback)</option>
-                      {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                    </select>
+                    <div className="w-full px-3 py-2.5 bg-slate-50 border border-gray-200 rounded-lg text-sm text-slate-500 font-semibold select-none">
+                      {editScreen.playlist || 'Normal'}
+                    </div>
                   </div>
 
                   <div className="border-t border-gray-100 pt-4 space-y-3">
@@ -728,9 +1007,9 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                             } else {
                               return {
                                 ...p,
-                                schedulePlaylist: undefined,
-                                scheduleDate: undefined,
-                                scheduleTime: undefined
+                                schedulePlaylist: '',
+                                scheduleDate: '',
+                                scheduleTime: ''
                               };
                             }
                           });
@@ -802,6 +1081,223 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
           </div>
         </div>
       )}
+      {/* Delete Selected Confirm */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash size={26} className="text-red-500" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900 mb-1">Delete Selected Screens</h2>
+              <p className="text-sm text-gray-500 mb-1">This will permanently remove the <strong>{selectedIds.length} selected screen(s)</strong> from your account.</p>
+              <p className="text-xs text-red-500 font-medium mb-5">This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+                <button onClick={handleDeleteSelected} className="flex-1 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">Delete Selected</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reconnect Screen Modal */}
+      {reconnectScreen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setReconnectScreen(null); setReconnectPairingCode(''); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-left space-y-4">
+              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-2 text-emerald-600">
+                <RefreshCw size={22} />
+              </div>
+              <div className="text-center">
+                <h2 className="text-base font-bold text-gray-900 mb-1">Reconnect Screen</h2>
+                <p className="text-xs text-gray-500">Enter the 6-character pairing code from the TV player screen to link it to "{reconnectScreen.name}".</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-black text-center">Pairing Code</label>
+                <input
+                  type="text"
+                  value={reconnectPairingCode}
+                  onChange={e => setReconnectPairingCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. ABCDEF"
+                  maxLength={6}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 font-mono font-bold text-center text-lg uppercase text-slate-850"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => { setReconnectScreen(null); setReconnectPairingCode(''); }} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
+                <button onClick={handleReconnectSave} className="flex-1 py-2.5 text-sm font-semibold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors cursor-pointer">Reconnect</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Playlist Modal */}
+      {scheduleScreen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setScheduleScreen(null); setScheduleEnabled(false); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
+                  <Calendar size={16} className="text-indigo-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Schedule Playlist</h2>
+                  <p className="text-[10px] text-gray-400 font-medium">{scheduleScreen.name}</p>
+                </div>
+              </div>
+              <button onClick={() => { setScheduleScreen(null); setScheduleEnabled(false); }} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              {scheduleScreen.groupId ? (() => {
+                const gp = groups.find(g => g.id === scheduleScreen.groupId);
+                return (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700 space-y-2">
+                    <p className="font-semibold">Inherited from Group</p>
+                    <p>This screen belongs to group <strong>{gp?.name}</strong>. Scheduling must be managed at the group level.</p>
+                  </div>
+                );
+              })() : (
+                <>
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs text-slate-600">
+                    Set a future date &amp; time to automatically switch this screen to a different playlist.
+                  </div>
+                  <label className="flex items-center justify-between cursor-pointer p-3 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+                    <span className="text-sm font-semibold text-gray-700">Enable scheduled switch</span>
+                    <div
+                      className={`w-11 h-6 rounded-full relative transition-colors duration-200 ${scheduleEnabled ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                      onClick={() => setScheduleEnabled(v => !v)}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${scheduleEnabled ? 'left-6' : 'left-1'}`} />
+                    </div>
+                  </label>
+                  {scheduleEnabled && (
+                    <div className="space-y-3 p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-xl">
+                      <div>
+                        <label className="block text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1.5">Target Playlist</label>
+                        <select
+                          value={scheduleScreen.schedulePlaylist || ''}
+                          onChange={e => setScheduleScreen(p => p && ({ ...p, schedulePlaylist: e.target.value }))}
+                          className="w-full px-3 py-2 border border-indigo-200 rounded-xl text-sm outline-none focus:border-indigo-400 bg-white font-medium"
+                        >
+                          {userPlaylists.length === 0 && <option value="">No playlists available</option>}
+                          {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1.5">Date</label>
+                          <input type="date" min={new Date().toISOString().split('T')[0]} value={scheduleScreen.scheduleDate || ''} onChange={e => setScheduleScreen(p => p && ({ ...p, scheduleDate: e.target.value }))} className="w-full px-3 py-2 border border-indigo-200 rounded-xl text-sm outline-none focus:border-indigo-400 bg-white" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1.5">Time</label>
+                          <input type="time" value={scheduleScreen.scheduleTime || ''} onChange={e => setScheduleScreen(p => p && ({ ...p, scheduleTime: e.target.value }))} className="w-full px-3 py-2 border border-indigo-200 rounded-xl text-sm outline-none focus:border-indigo-400 bg-white" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="flex gap-3 px-5 pb-5">
+              <button onClick={() => { setScheduleScreen(null); setScheduleEnabled(false); }} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+              <button
+                onClick={handleScheduleSave}
+                disabled={scheduleEnabled && !scheduleScreen.schedulePlaylist}
+                className="flex-1 py-2.5 text-sm font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Check size={15} /> {scheduleEnabled ? 'Save Schedule' : 'Clear Schedule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Playlist Modal */}
+      {assignScreen && (() => {
+        const filteredPlaylists = userPlaylists.filter(p =>
+          p.name.toLowerCase().includes(assignSearch.toLowerCase())
+        );
+        const clamped = Math.min(assignHighlight, filteredPlaylists.length - 1);
+        return (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+            onClick={() => { setAssignScreen(null); setAssignSearch(''); }}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b border-gray-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 bg-teal-100 rounded-xl flex items-center justify-center">
+                    <ListVideo size={16} className="text-teal-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">Assign Playlist</h2>
+                    <p className="text-[10px] text-gray-400 font-medium">{assignScreen.name}</p>
+                  </div>
+                </div>
+                <button onClick={() => { setAssignScreen(null); setAssignSearch(''); }} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100"><X size={18} /></button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-100 px-3 py-2 rounded-xl">
+                  <span className="font-semibold text-slate-600">Currently:</span>
+                  <span className="font-bold text-teal-700">{assignScreen.playlist || 'Normal'}</span>
+                </div>
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-2.5 text-gray-400" />
+                  <input
+                    ref={assignInputRef}
+                    type="text"
+                    value={assignSearch}
+                    placeholder="Search playlists..."
+                    onChange={e => { setAssignSearch(e.target.value); setAssignHighlight(0); }}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowDown') { e.preventDefault(); setAssignHighlight(h => Math.min(h + 1, filteredPlaylists.length - 1)); }
+                      else if (e.key === 'ArrowUp') { e.preventDefault(); setAssignHighlight(h => Math.max(h - 1, 0)); }
+                      else if (e.key === 'Enter') { if (filteredPlaylists[clamped]) handleAssignPlaylist(filteredPlaylists[clamped]); }
+                      else if (e.key === 'Escape') { setAssignScreen(null); setAssignSearch(''); }
+                    }}
+                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-teal-400 bg-white"
+                  />
+                </div>
+                <div className="border border-gray-100 rounded-xl overflow-hidden">
+                  {filteredPlaylists.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-gray-400 font-medium">No playlists found</div>
+                  ) : (
+                    <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                      {filteredPlaylists.map((pl, idx) => (
+                        <button
+                          key={pl.id}
+                          onClick={() => handleAssignPlaylist(pl)}
+                          className={`w-full text-left px-4 py-3 flex items-center justify-between transition-colors ${
+                            idx === clamped ? 'bg-teal-50 border-l-2 border-teal-500' : 'hover:bg-gray-50'
+                          } ${idx !== 0 ? 'border-t border-gray-50' : ''}`}
+                          onMouseEnter={() => setAssignHighlight(idx)}
+                        >
+                          <div>
+                            <p className={`text-sm font-semibold ${idx === clamped ? 'text-teal-700' : 'text-gray-800'}`}>{pl.name}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">{pl.mediaIds?.length || 0} items · {pl.scheduleStatus}</p>
+                          </div>
+                          {assignScreen.playlistId === pl.id && (
+                            <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Active</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-gray-400 text-center">Use ↑ ↓ arrows to navigate, Enter to select, Esc to close</p>
+              </div>
+              <div className="px-4 pb-4">
+                <button
+                  onClick={() => handleAssignPlaylist({ id: '', name: 'Normal', mediaIds: [], assignedScreenIds: [], assignedScreens: 0, mediaCount: 0, active: true, scheduleStatus: 'Running', createdDate: '', createdBy: '' })}
+                  className="w-full py-2.5 text-xs font-semibold text-gray-500 border border-dashed border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Clear playlist (set to Normal)
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

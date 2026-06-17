@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Image, Palette, Globe, HardDrive, Link, Monitor, Bell, Mail, Phone, Webhook, ShieldAlert, CheckCircle } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
-import { syncCollection } from '../../../lib/syncHelper';
+import { syncCollection, pushToDatabase } from '../../../lib/syncHelper';
 
 const tabs = ['General', 'Storage', 'Player Settings', 'Notifications'] as const;
 type Tab = typeof tabs[number];
@@ -9,7 +9,7 @@ type Tab = typeof tabs[number];
 export default function Settings({ activeTab: initTab = 'General', userEmail = 'priya@demo.com' }: { activeTab?: Tab; userEmail?: string }) {
   const [tab, setTab] = useState<Tab>(initTab);
   
-  // Custom branding states (persisted locally)
+  // Custom branding states (persisted locally and synced with db)
   const [companyLogo, setCompanyLogo] = useState(() => localStorage.getItem('signageos_client_logo') || '');
   const [companyName, setCompanyName] = useState(() => localStorage.getItem('signageos_client_name') || 'SignageOS');
   const [accentColor, setAccentColor] = useState(() => localStorage.getItem('signageos_client_accent') || '#2563eb');
@@ -21,8 +21,28 @@ export default function Settings({ activeTab: initTab = 'General', userEmail = '
   const isWhiteLabelEnabled = lic ? !!lic.whiteLabel : false;
 
   useEffect(() => {
-    syncCollection('licenses', 'signageos_licenses').then(() => {
-      setLicenses(licensingStore.getLicenses());
+    Promise.all([
+      syncCollection('licenses', 'signageos_licenses'),
+      syncCollection('organizations', 'signageos_organizations'),
+      syncCollection('users', 'signageos_users')
+    ]).then(() => {
+      const storedLicenses = licensingStore.getLicenses();
+      setLicenses(storedLicenses);
+      
+      const activeLic = storedLicenses.find(l => l.assignedUserEmail === userEmail);
+      if (activeLic) {
+        const orgsData = localStorage.getItem('signageos_organizations');
+        const orgs = orgsData ? JSON.parse(orgsData) : [];
+        const usersData = localStorage.getItem('signageos_users');
+        const users = usersData ? JSON.parse(usersData) : [];
+        const currentUser = users.find((u: any) => u.email === userEmail);
+        const myOrg = orgs.find((o: any) => o.id === activeLic.assignedOrgId || o.name === activeLic.assignedOrgName || o.name === currentUser?.company);
+        
+        if (myOrg) {
+          setCompanyLogo(myOrg.websiteLogo || localStorage.getItem('signageos_client_logo') || '');
+          setCompanyName(myOrg.websiteName || localStorage.getItem('signageos_client_name') || myOrg.name || 'SignageOS');
+        }
+      }
     });
   }, [userEmail]);
 
@@ -43,6 +63,28 @@ export default function Settings({ activeTab: initTab = 'General', userEmail = '
       localStorage.setItem('signageos_client_logo', companyLogo);
       localStorage.setItem('signageos_client_name', companyName);
       localStorage.setItem('signageos_client_accent', accentColor);
+
+      // Save to database
+      const orgsData = localStorage.getItem('signageos_organizations');
+      const orgs = orgsData ? JSON.parse(orgsData) : [];
+      const usersData = localStorage.getItem('signageos_users');
+      const users = usersData ? JSON.parse(usersData) : [];
+      const currentUser = users.find((u: any) => u.email === userEmail);
+      const myOrg = orgs.find((o: any) => o.id === lic?.assignedOrgId || o.name === lic?.assignedOrgName || o.name === currentUser?.company);
+
+      if (myOrg) {
+        const updatedOrg = {
+          ...myOrg,
+          websiteLogo: companyLogo,
+          websiteName: companyName
+        };
+        pushToDatabase('organizations', myOrg.id, updatedOrg, 'PUT').then((res) => {
+          if (res.ok && res.data) {
+            const updatedOrgs = orgs.map((o: any) => o.id === myOrg.id ? res.data : o);
+            localStorage.setItem('signageos_organizations', JSON.stringify(updatedOrgs));
+          }
+        });
+      }
     }
     // Dispatch custom event to notify sidebar of change
     window.dispatchEvent(new Event('signageos_branding_updated'));

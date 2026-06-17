@@ -3,7 +3,8 @@ import { sendCredentialsEmail } from '../email';
 
 export async function listUsers(req: any, res: any) {
   try {
-    const records = await pb.collection('users').getFullList({ sort: '-created' });
+    const result = await pb.collection('users').getList(1, 500, { sort: '-created' });
+    const records = result.items;
     res.json(records);
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Error fetching users' });

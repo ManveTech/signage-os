@@ -8,7 +8,7 @@ const breadcrumbMap: Record<string, string[]> = {
   'screens-all': ['Screens', 'All Screens'],
   'screens-add': ['Screens', 'Add Screen'],
   'screens-groups': ['Screens', 'Screen Groups'],
-  'screens-health': ['Screens', 'Health Logs'],
+  'screens-logs': ['Screens', 'Logs'],
   'media-library': ['Media', 'Library'],
   'media-upload': ['Media', 'Upload Media'],
   'media-layout': ['Media', 'Layout Studio'],

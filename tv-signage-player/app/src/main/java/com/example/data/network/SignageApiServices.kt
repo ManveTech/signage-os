@@ -39,7 +39,12 @@ data class PocketBaseScreenResponse(
     val schedulePlaylist: String? = null,
     val scheduleDate: String? = null,
     val scheduleTime: String? = null,
-    val clear_cache: Boolean? = null
+    val clear_cache: Boolean? = null,
+    val volume: Int? = null,
+    val force_sync: Boolean? = null,
+    val whiteLabel: Boolean? = null,
+    val websiteLogo: String? = null,
+    val websiteName: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -85,7 +90,13 @@ data class PocketBasePlaylistResponse(
     val shuffle: Boolean? = null,          // Shuffle slide order
     val loop: Boolean? = null,             // Loop playlist
     val transition: String? = null,        // Slide transition effect
-    val volume: Double? = null             // Playback volume (0-100)
+    val volume: Double? = null,             // Playback volume (0-100)
+    val widgetType: String? = null,
+    val widgetPlacement: String? = null,
+    val widgetLink: String? = null,
+    val whiteLabel: Boolean? = null,
+    val websiteLogo: String? = null,
+    val websiteName: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -100,10 +111,9 @@ data class PocketBaseMediaItemResponse(
     val width: Int? = null,
     val height: Int? = null,
     val mimeType: String? = null,
-    val youtube_url: String? = null,
-    val youtube_video_id: String? = null,
     val fileSize: String? = null,
-    val fileSizeBytes: Long? = null
+    val fileSizeBytes: Long? = null,
+    val youtubeVideoId: String? = null
 )
 
 interface SignageApiService {

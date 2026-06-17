@@ -19,9 +19,7 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Assign screen modal state
-  const [assignModalPlaylist, setAssignModalPlaylist] = useState<Playlist | null>(null);
-  const [tempScreenAssignments, setTempScreenAssignments] = useState<string[]>([]);
+
 
   useEffect(() => {
     loadData();
@@ -74,39 +72,7 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
     loadData();
   };
 
-  const handleOpenAssignModal = (playlist: Playlist) => {
-    setAssignModalPlaylist(playlist);
-    // Find screens currently assigned to this playlist
-    const assignedScreenIds = screens
-      .filter(s => s.playlistId === playlist.id)
-      .map(s => s.id);
-    setTempScreenAssignments(assignedScreenIds);
-  };
 
-  const handleSaveScreenAssignments = () => {
-    if (!assignModalPlaylist) return;
-
-    // Find screens owned by this user
-    const clientScreens = screens.filter(s => s.assignedToUserEmail === userEmail);
-
-    // Apply or remove assignments
-    clientScreens.forEach(screen => {
-      const isSelected = tempScreenAssignments.includes(screen.id);
-      const isAssigned = screen.playlistId === assignModalPlaylist.id;
-
-      if (isSelected && !isAssigned) {
-        mediaStore.assignPlaylistToScreen(screen.id, assignModalPlaylist.id);
-      } else if (!isSelected && isAssigned) {
-        mediaStore.assignPlaylistToScreen(screen.id, undefined);
-      }
-    });
-
-    showToast(`Playlist broadcast settings updated for "${assignModalPlaylist.name}"`);
-    setAssignModalPlaylist(null);
-    loadData();
-  };
-
-  const clientScreens = screens.filter(s => s.assignedToUserEmail === userEmail);
 
   return (
     <div className="p-6 space-y-5 text-left relative">
@@ -222,16 +188,10 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
               </div>
 
               {/* Actions Footer */}
-              <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+              <div className="flex items-center justify-start pt-2 border-t border-gray-50">
                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold border ${scheduleColors[playlist.scheduleStatus]}`}>
                   <Calendar size={9} /> {playlist.scheduleStatus}
                 </span>
-                <button 
-                  onClick={() => handleOpenAssignModal(playlist)}
-                  className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <Tv size={11} /> Broadcast Screens
-                </button>
               </div>
             </div>
           );
@@ -246,83 +206,7 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
         )}
       </div>
 
-      {/* BROADCAST ASSIGN SCREEN MODAL */}
-      {assignModalPlaylist && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 p-6 space-y-4 animate-scaleIn text-left">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
-                <Tv size={16} className="text-blue-600" /> TV Broadcast Manager
-              </h2>
-              <button onClick={() => setAssignModalPlaylist(null)} className="text-gray-400 hover:text-gray-600 font-bold p-1 cursor-pointer">&times;</button>
-            </div>
 
-            <p className="text-xs text-gray-500 leading-relaxed">
-              Broadcast playlist <span className="font-bold text-slate-800">"{assignModalPlaylist.name}"</span> to your active display screens.
-            </p>
-
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {clientScreens.map(screen => {
-                const isSelected = tempScreenAssignments.includes(screen.id);
-                return (
-                  <div 
-                    key={screen.id} 
-                    onClick={() => {
-                      setTempScreenAssignments(prev => 
-                        prev.includes(screen.id) ? prev.filter(sid => sid !== screen.id) : [...prev, screen.id]
-                      );
-                    }}
-                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
-                      isSelected ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${screen.status === 'online' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
-                        <Monitor size={15} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">{screen.name}</p>
-                        <p className="text-[10px] text-gray-400">Current Broadcast: {screen.playlist}</p>
-                      </div>
-                    </div>
-                    <div>
-                      {isSelected ? (
-                        <CheckSquare size={16} className="text-blue-600 stroke-[2.5]" />
-                      ) : (
-                        <Square size={16} className="text-gray-300 stroke-[2.5]" />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {clientScreens.length === 0 && (
-                <div className="py-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-1.5">
-                  <AlertTriangle size={24} className="text-amber-500 mx-auto" />
-                  <p className="text-xs font-bold text-slate-700">No TVs registered</p>
-                  <p className="text-[10px] text-slate-400">You don't have any TV screens in your screen inventory yet.</p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-              <button
-                onClick={() => setAssignModalPlaylist(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={clientScreens.length === 0}
-                onClick={handleSaveScreenAssignments}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold uppercase rounded-xl cursor-pointer text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Apply Broadcasts
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

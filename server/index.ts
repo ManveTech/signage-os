@@ -4,20 +4,24 @@ import dns from 'dns';
 dns.setDefaultResultOrder('ipv4first');
 
 import { PORT } from './config';
-import { authenticatePBAdmin } from './db';
+import { authenticatePBAdmin, startAuthKeepAlive } from './db';
 import apiRouter from './routes';
+import { startScheduler } from './scheduler';
 
 const app = express();
 
 // Global Middleware
-app.use(express.json({ limit: '200mb' }));
-app.use(express.urlencoded({ limit: '200mb', extended: true }));
+// 10 MB limit covers all normal API payloads. Large media uploads use
+// dedicated multipart/signed-URL flows and do not go through this body parser.
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Custom CORS middleware
+// CORS — restrict to configured origin in production, allow all in dev
+const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || '*';
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -33,6 +37,10 @@ async function startServer() {
   app.listen(PORT, () => {
     console.log(`[dotenv] injecting env variables`);
     console.log(`Express auth proxy server running on http://localhost:${PORT}`);
+    // Keep PocketBase admin token alive — refreshes every 10 minutes
+    startAuthKeepAlive();
+    // Start playlist scheduling cron
+    startScheduler();
   });
 }
 

@@ -8,7 +8,7 @@ import AddScreen from './views/screens/AddScreen';
 import AssignScreens from './views/screens/AssignScreens';
 import ManageScreens from './views/screens/ManageScreens';
 import ScreenGroups from './views/screens/ScreenGroups';
-import HealthLogs from './views/screens/HealthLogs';
+import Logs from './views/screens/Logs';
 import MediaLibrary from './views/media/MediaLibrary';
 import UploadMedia from './views/media/UploadMedia';
 import LayoutStudio from './views/media/LayoutStudio';
@@ -25,7 +25,8 @@ import Profile from './views/Profile';
 import LicenseBillingView from './views/LicenseBillingView';
 
 import { licensingStore, License } from '../../lib/licensingStore';
-import { X, CheckCircle, Key, Lock } from 'lucide-react';
+import { syncCollection, pushToDatabase } from '../../lib/syncHelper';
+import { X, CheckCircle, Key, Lock, Image } from 'lucide-react';
 
 function renderView(view: string, navigate: (v: string) => void, userEmail: string) {
   switch (view) {
@@ -36,13 +37,13 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'screens-assign': return <AssignScreens />;
     case 'screens-manage': return <ManageScreens userEmail={userEmail} />;
     case 'screens-groups': return <ScreenGroups userEmail={userEmail} />;
-    case 'screens-health': return <HealthLogs />;
+    case 'screens-logs': return <Logs userEmail={userEmail} mode="my" />;
     case 'media-library': return <MediaLibrary onNavigate={navigate} userEmail={userEmail} />;
     case 'media-upload': return <UploadMedia />;
     case 'media-layout': return <LayoutStudio />;
     case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail={userEmail} />;
     case 'playlists-create': return <CreatePlaylist userEmail={userEmail} onNavigate={navigate} />;
-    case 'playlists-scheduler': return <Scheduler />;
+    case 'playlists-scheduler': return <Scheduler userEmail={userEmail} />;
     case 'reports-overview': return <Reports activeTab="Overview" />;
     case 'reports-screens': return <Reports activeTab="Screen Reports" />;
     case 'reports-media': return <Reports activeTab="Media Reports" />;
@@ -85,6 +86,22 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   const [passSuccess, setPassSuccess] = useState(false);
   const [passLoading, setPassLoading] = useState(false);
 
+  // White-label onboarding branding states
+  const isWhiteLabelEnabled = clientLicense ? !!clientLicense.whiteLabel : false;
+  const [firstTimeLogo, setFirstTimeLogo] = useState(() => localStorage.getItem('signageos_client_logo') || '');
+  const [firstTimeName, setFirstTimeName] = useState(() => localStorage.getItem('signageos_client_name') || 'SignageOS');
+
+  const handleFirstTimeLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFirstTimeLogo(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const checkLicense = () => {
     const licenses = licensingStore.getLicenses();
     const lic = licenses.find(l => l.assignedUserEmail === userEmail);
@@ -104,7 +121,34 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   };
 
   useEffect(() => {
-    checkLicense();
+    Promise.all([
+      syncCollection('licenses', 'signageos_licenses'),
+      syncCollection('organizations', 'signageos_organizations'),
+      syncCollection('users', 'signageos_users')
+    ]).then(() => {
+      checkLicense();
+
+      // Sync branding to localStorage if user has a whitelabel license
+      const licenses = licensingStore.getLicenses();
+      const lic = licenses.find(l => l.assignedUserEmail === userEmail);
+      if (lic && lic.whiteLabel) {
+        const orgsData = localStorage.getItem('signageos_organizations');
+        const orgs = orgsData ? JSON.parse(orgsData) : [];
+        const usersData = localStorage.getItem('signageos_users');
+        const users = usersData ? JSON.parse(usersData) : [];
+        const currentUser = users.find((u: any) => u.email === userEmail);
+        const myOrg = orgs.find((o: any) => o.id === lic.assignedOrgId || o.name === lic.assignedOrgName || o.name === currentUser?.company);
+        if (myOrg) {
+          if (myOrg.websiteLogo) {
+            localStorage.setItem('signageos_client_logo', myOrg.websiteLogo);
+          }
+          if (myOrg.websiteName) {
+            localStorage.setItem('signageos_client_name', myOrg.websiteName);
+          }
+          window.dispatchEvent(new Event('signageos_branding_updated'));
+        }
+      }
+    });
   }, [userEmail]);
 
   // Keep checking license state on view changes
@@ -334,6 +378,36 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
       if (res.ok) {
         setPassSuccess(true);
         localStorage.setItem('signageos_first_time_login', 'false');
+        if (isWhiteLabelEnabled) {
+          localStorage.setItem('signageos_client_logo', firstTimeLogo);
+          localStorage.setItem('signageos_client_name', firstTimeName);
+          window.dispatchEvent(new Event('signageos_branding_updated'));
+
+          // Save branding details to the database organization record
+          try {
+            const orgsData = localStorage.getItem('signageos_organizations');
+            const orgs = orgsData ? JSON.parse(orgsData) : [];
+            const usersData = localStorage.getItem('signageos_users');
+            const users = usersData ? JSON.parse(usersData) : [];
+            const currentUser = users.find((u: any) => u.email === userEmail);
+            const myOrg = orgs.find((o: any) => o.id === clientLicense?.assignedOrgId || o.name === clientLicense?.assignedOrgName || o.name === currentUser?.company);
+            if (myOrg) {
+              const updatedOrg = {
+                ...myOrg,
+                websiteLogo: firstTimeLogo,
+                websiteName: firstTimeName
+              };
+              pushToDatabase('organizations', myOrg.id, updatedOrg, 'PUT').then(oRes => {
+                if (oRes.ok && oRes.data) {
+                  const updatedOrgs = orgs.map((o: any) => o.id === myOrg.id ? oRes.data : o);
+                  localStorage.setItem('signageos_organizations', JSON.stringify(updatedOrgs));
+                }
+              });
+            }
+          } catch (orgErr) {
+            console.error('Failed to save first-time branding to database:', orgErr);
+          }
+        }
         setTimeout(() => {
           setIsFirstLogin(false);
         }, 1500);
@@ -574,7 +648,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
       {/* First Time Login Password Reset Modal */}
       {isFirstLogin && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn select-none">
-          <div className="relative w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn">
+          <div className={`relative w-full ${isWhiteLabelEnabled ? 'max-w-2xl' : 'max-w-md'} bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn`}>
             {/* Blue header strip */}
             <div className="bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 px-8 py-6 text-white">
               <div className="flex items-center gap-3 mb-3">
@@ -583,15 +657,17 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                 </div>
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-cyan-200 block">First-Time Setup</span>
-                  <h2 className="text-lg font-black text-white uppercase tracking-tight leading-none">Security Update</h2>
+                  <h2 className="text-lg font-black text-white uppercase tracking-tight leading-none">
+                    {isWhiteLabelEnabled ? 'Security & Brand Customization' : 'Security Update'}
+                  </h2>
                 </div>
               </div>
               <p className="text-white/75 text-[11px] leading-relaxed">
-                Welcome! Please set a new password to secure your account before continuing.
+                Welcome! Please configure your account credentials {isWhiteLabelEnabled ? 'and custom website branding settings' : ''} to get started.
               </p>
             </div>
 
-            <div className="p-8 space-y-5">
+            <div className="p-8 space-y-6">
               {passError && (
                 <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-[11px] text-rose-600 font-semibold flex items-start gap-2">
                   <X className="w-4 h-4 shrink-0 mt-0.5" />
@@ -607,46 +683,105 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                   <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <div>
                     <span className="font-extrabold block">Success:</span>
-                    Password changed! Redirecting to your dashboard...
+                    Account setup completed! Redirecting to your dashboard...
                   </div>
                 </div>
               )}
 
-              <form onSubmit={handleFirstLoginSubmit} className="space-y-4">
-                <div className="group relative">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">New Password</label>
-                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                    <div className="w-1.5 self-stretch bg-blue-500" />
-                    <div className="pl-3.5 pr-2.5 text-slate-400">
-                      <Lock className="w-4 h-4" />
+              <form onSubmit={handleFirstLoginSubmit} className="space-y-6">
+                <div className={isWhiteLabelEnabled ? 'grid grid-cols-1 md:grid-cols-2 gap-6' : 'space-y-4'}>
+                  {/* Left Column: Password Fields */}
+                  <div className="space-y-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 pb-1">Security Credentials</p>
+                    <div className="group relative">
+                      <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">New Password</label>
+                      <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                        <div className="w-1.5 self-stretch bg-blue-500" />
+                        <div className="pl-3.5 pr-2.5 text-slate-400">
+                          <Lock className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={e => setNewPassword(e.target.value)}
+                          placeholder="Enter new secure password"
+                          className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                          required
+                        />
+                      </div>
                     </div>
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={e => setNewPassword(e.target.value)}
-                      placeholder="Enter new secure password"
-                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                      required
-                    />
-                  </div>
-                </div>
 
-                <div className="group relative">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">Confirm Password</label>
-                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                    <div className="w-1.5 self-stretch bg-blue-500" />
-                    <div className="pl-3.5 pr-2.5 text-slate-400">
-                      <Lock className="w-4 h-4" />
+                    <div className="group relative">
+                      <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">Confirm Password</label>
+                      <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                        <div className="w-1.5 self-stretch bg-blue-500" />
+                        <div className="pl-3.5 pr-2.5 text-slate-400">
+                          <Lock className="w-4 h-4" />
+                        </div>
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={e => setConfirmPassword(e.target.value)}
+                          placeholder="Confirm secure password"
+                          className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                          required
+                        />
+                      </div>
                     </div>
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={e => setConfirmPassword(e.target.value)}
-                      placeholder="Confirm secure password"
-                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                      required
-                    />
                   </div>
+
+                  {/* Right Column: Custom Branding (White-Label only) */}
+                  {isWhiteLabelEnabled && (
+                    <div className="space-y-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 pb-1">Website Branding</p>
+                      
+                      <div className="flex items-center gap-4">
+                        {firstTimeLogo ? (
+                          <div className="relative w-16 h-16 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center group">
+                            <img src={firstTimeLogo} alt="Logo preview" className="w-full h-full object-contain" />
+                            <button
+                              type="button"
+                              onClick={() => setFirstTimeLogo('')}
+                              className="absolute inset-0 bg-rose-600/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[9px] font-bold uppercase tracking-wider transition-opacity cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50">
+                            <Image size={20} className="text-gray-400" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-900">Website Logo</p>
+                          <label className="mt-1.5 inline-block px-2.5 py-1 text-[10px] text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer font-semibold select-none">
+                            Upload Logo
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleFirstTimeLogoUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="group relative">
+                        <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">Website Name</label>
+                        <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
+                          <div className="w-1.5 self-stretch bg-blue-500" />
+                          <input
+                            type="text"
+                            value={firstTimeName}
+                            onChange={e => setFirstTimeName(e.target.value)}
+                            placeholder="e.g. My Signage Network"
+                            className="w-full py-3.5 px-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -657,10 +792,10 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                   {passLoading ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Updating...
+                      Saving and Configuring...
                     </>
                   ) : (
-                    'Update Password & Enter'
+                    'Save Settings & Launch Portal'
                   )}
                 </button>
               </form>

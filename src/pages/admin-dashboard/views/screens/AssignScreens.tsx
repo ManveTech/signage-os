@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Search, Building2, User, Monitor, Check, X, ChevronDown,
-  CheckCircle, AlertCircle, ArrowRight, Wifi, WifiOff, AlertTriangle, Activity
+  CheckCircle, AlertCircle, ArrowRight, Wifi, WifiOff, AlertTriangle, Activity, Lock
 } from 'lucide-react';
 import { mockScreens, mockUsers, mockOrganizations } from '../../data/mockData';
 import type { Screen } from '../../types';
@@ -9,13 +9,51 @@ import type { Screen } from '../../types';
 type AssignTarget = 'organization' | 'user';
 type Toast = { id: number; message: string; type: 'success' | 'error' };
 
-const statusConfig = {
-  online: { icon: <Wifi size={11} />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-  offline: { icon: <WifiOff size={11} />, cls: 'bg-red-50 text-red-700 border-red-100' },
-  warning: { icon: <AlertTriangle size={11} />, cls: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
-  pairing: { icon: <Activity size={11} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
-  active: { icon: <CheckCircle size={11} />, cls: 'bg-teal-50 text-teal-700 border-teal-100' },
-  suspended: { icon: <AlertTriangle size={11} />, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+const renderStatusBadge = (status: string) => {
+  let label = status;
+  let bg = 'bg-slate-500/10 text-slate-700 border-slate-500/20';
+  let dot = <span className="h-2 w-2 rounded-full bg-slate-500"></span>;
+
+  switch (status) {
+    case 'online':
+    case 'active':
+      label = status === 'online' ? 'Online' : 'Active';
+      bg = 'bg-emerald-500/10 text-emerald-700 border-emerald-550/20';
+      dot = (
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+      );
+      break;
+    case 'offline':
+      label = 'Offline';
+      bg = 'bg-rose-500/10 text-rose-700 border-rose-550/20';
+      dot = <span className="h-2 w-2 rounded-full bg-rose-500"></span>;
+      break;
+    case 'warning':
+      label = 'Warning';
+      bg = 'bg-yellow-500/10 text-yellow-700 border-yellow-550/20';
+      dot = <span className="h-2 w-2 rounded-full bg-yellow-500"></span>;
+      break;
+    case 'pairing':
+      label = 'Pairing';
+      bg = 'bg-blue-500/10 text-blue-700 border-blue-550/20';
+      dot = <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>;
+      break;
+    case 'suspended':
+      label = 'Suspended';
+      bg = 'bg-slate-500/10 text-slate-700 border-slate-550/20';
+      dot = <Lock size={9} className="text-slate-500" />;
+      break;
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-2xs ${bg}`}>
+      {dot}
+      <span>{label}</span>
+    </span>
+  );
 };
 
 export default function AssignScreens() {
@@ -145,7 +183,6 @@ export default function AssignScreens() {
             </div>
             <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
               {filteredScreens.map(screen => {
-                const st = statusConfig[screen.status as keyof typeof statusConfig] || statusConfig.offline;
                 const assignment = getAssignment(screen.id);
                 return (
                   <label
@@ -161,7 +198,7 @@ export default function AssignScreens() {
                       className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer flex-shrink-0"
                     />
                     <div className="w-10 h-7 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                      <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                      <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{screen.name}</p>
@@ -173,9 +210,7 @@ export default function AssignScreens() {
                           <Check size={9} /> {assignment.targetName}
                         </span>
                       )}
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${st.cls}`}>
-                        {st.icon}
-                      </span>
+                      {renderStatusBadge(screen.status)}
                     </div>
                   </label>
                 );
@@ -287,7 +322,7 @@ export default function AssignScreens() {
               return (
                 <div key={a.screenId} className="flex items-center gap-3 px-4 py-3">
                   <div className="w-10 h-7 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                    <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                    <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{screen.name}</p>

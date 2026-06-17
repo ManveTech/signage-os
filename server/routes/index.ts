@@ -5,6 +5,7 @@ import screensRouter from './screens';
 import devicesRouter from './devices';
 import paymentsRouter from './payments';
 import mediaItemsRouter from './media_items';
+import organizationsRouter from './organizations';
 import { createCrudRouter } from '../controllers/crud';
 import { authenticateToken } from '../middleware/auth';
 
@@ -22,10 +23,12 @@ apiRouter.use('/devices', devicesRouter);
 apiRouter.use('/payments', paymentsRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/media_items', mediaItemsRouter);
+apiRouter.use('/organizations', organizationsRouter);
 
 // 4. Mount Generic PocketBase CRUD Collection Routers
 apiRouter.use('/screens', createCrudRouter('screens'));
 apiRouter.use('/screen_groups', createCrudRouter('screen_groups'));
+apiRouter.use('/screen_logs', createCrudRouter('screen_logs'));
 apiRouter.use('/media_items', createCrudRouter('media_items'));
 apiRouter.use('/playlists', createCrudRouter('playlists'));
 apiRouter.use('/licenses', createCrudRouter('licenses'));

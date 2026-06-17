@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, Lock, Shield, Key, LogOut, Eye, EyeOff, Copy, RefreshCw, 
-  Camera, CheckCircle, CreditCard, Mail, Phone
+  Camera, CheckCircle, CreditCard, Mail, Phone, Image, Globe
 } from 'lucide-react';
-import { pushToDatabase } from '../../../lib/syncHelper';
+import { pushToDatabase, syncCollection } from '../../../lib/syncHelper';
+import { licensingStore } from '../../../lib/licensingStore';
 
 interface Props {
   userEmail?: string;
@@ -29,6 +30,15 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
   const [showRzpKey, setShowRzpKey] = useState(false);
   const [showRzpSecret, setShowRzpSecret] = useState(false);
 
+  // Custom branding states (persisted locally and synced with db)
+  const [companyLogo, setCompanyLogo] = useState(() => localStorage.getItem('signageos_client_logo') || '');
+  const [companyName, setCompanyName] = useState(() => localStorage.getItem('signageos_client_name') || 'SignageOS');
+  
+  // Retrieve license configuration (refresh from server on mount)
+  const [licenses, setLicenses] = useState(() => licensingStore.getLicenses());
+  const lic = licenses.find(l => l.assignedUserEmail === userEmail);
+  const isWhiteLabelEnabled = lic ? !!lic.whiteLabel : false;
+
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -51,6 +61,31 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
     setAvatar(localStorage.getItem(`signageos_user_avatar_${userEmail}`) || '');
     setRzpKeyId(localStorage.getItem(`signageos_user_rzp_key_${userEmail}`) || '');
     setRzpKeySecret(localStorage.getItem(`signageos_user_rzp_secret_${userEmail}`) || '');
+
+    // Sync database collections
+    Promise.all([
+      syncCollection('licenses', 'signageos_licenses'),
+      syncCollection('organizations', 'signageos_organizations'),
+      syncCollection('users', 'signageos_users')
+    ]).then(() => {
+      const storedLicenses = licensingStore.getLicenses();
+      setLicenses(storedLicenses);
+      
+      const activeLic = storedLicenses.find(l => l.assignedUserEmail === userEmail);
+      if (activeLic) {
+        const orgsData = localStorage.getItem('signageos_organizations');
+        const orgs = orgsData ? JSON.parse(orgsData) : [];
+        const usersData = localStorage.getItem('signageos_users');
+        const users = usersData ? JSON.parse(usersData) : [];
+        const currentUser = users.find((u: any) => u.email === userEmail);
+        const myOrg = orgs.find((o: any) => o.id === activeLic.assignedOrgId || o.name === activeLic.assignedOrgName || o.name === currentUser?.company);
+        
+        if (myOrg) {
+          setCompanyLogo(myOrg.websiteLogo || localStorage.getItem('signageos_client_logo') || '');
+          setCompanyName(myOrg.websiteName || localStorage.getItem('signageos_client_name') || myOrg.name || 'SignageOS');
+        }
+      }
+    });
   }, [userEmail]);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,6 +125,51 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
     // Notify sidebar and headers
     window.dispatchEvent(new Event('signageos_user_profile_updated'));
     showToast('Razorpay credentials updated successfully!');
+  };
+
+  const handleCompanyLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isWhiteLabelEnabled) return;
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCompanyLogo(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveBranding = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isWhiteLabelEnabled) {
+      localStorage.setItem('signageos_client_logo', companyLogo);
+      localStorage.setItem('signageos_client_name', companyName);
+
+      // Save to database
+      const orgsData = localStorage.getItem('signageos_organizations');
+      const orgs = orgsData ? JSON.parse(orgsData) : [];
+      const usersData = localStorage.getItem('signageos_users');
+      const users = usersData ? JSON.parse(usersData) : [];
+      const currentUser = users.find((u: any) => u.email === userEmail);
+      const myOrg = orgs.find((o: any) => o.id === lic?.assignedOrgId || o.name === lic?.assignedOrgName || o.name === currentUser?.company);
+
+      if (myOrg) {
+        const updatedOrg = {
+          ...myOrg,
+          websiteLogo: companyLogo,
+          websiteName: companyName
+        };
+        pushToDatabase('organizations', myOrg.id, updatedOrg, 'PUT').then((res) => {
+          if (res.ok && res.data) {
+            const updatedOrgs = orgs.map((o: any) => o.id === myOrg.id ? res.data : o);
+            localStorage.setItem('signageos_organizations', JSON.stringify(updatedOrgs));
+          }
+        });
+      }
+    }
+    // Dispatch custom event to notify sidebar of change
+    window.dispatchEvent(new Event('signageos_branding_updated'));
+    showToast('Branding settings saved successfully!');
   };
 
   const handleCopy = (text: string, type: string) => {
@@ -286,6 +366,72 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
           </button>
         </div>
       </form>
+
+      {/* Website Custom Branding Card */}
+      {isWhiteLabelEnabled && (
+        <form onSubmit={handleSaveBranding} className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-50 pb-3">
+            <Globe size={16} className="text-blue-600" />
+            <h2 className="text-xs font-black uppercase text-gray-900 tracking-wider">Website Custom Branding</h2>
+          </div>
+          
+          <p className="text-[11px] text-gray-500 font-semibold leading-relaxed">
+            Customize your website brand name and brand logo. The logo will also be downloaded to your paired signage screens and used on the app splash screen.
+          </p>
+
+          <div className="flex items-center gap-5 pt-1">
+            {companyLogo ? (
+              <div className="relative w-20 h-20 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center group shrink-0">
+                <img src={companyLogo} alt="Company Logo" className="w-full h-full object-contain" />
+                <button 
+                  type="button"
+                  onClick={() => setCompanyLogo('')}
+                  className="absolute inset-0 bg-rose-600/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold uppercase tracking-wider transition-opacity cursor-pointer duration-200"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50 shrink-0">
+                <Image size={24} className="text-gray-400" />
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-bold text-gray-900">Company Logo</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">PNG or SVG format (recommended)</p>
+              <label className="mt-2 inline-block px-3 py-1.5 text-[10px] text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer font-black uppercase tracking-wider select-none">
+                Upload Logo
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleCompanyLogoUpload} 
+                  className="hidden" 
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="text-xs">
+            <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-black mb-1.5">Company Name / Website Name</label>
+            <input 
+              type="text"
+              required
+              value={companyName}
+              onChange={e => setCompanyName(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-blue-400 font-bold text-gray-800"
+            />
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-slate-50">
+            <button 
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+            >
+              Save Branding Settings
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Change Password */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">

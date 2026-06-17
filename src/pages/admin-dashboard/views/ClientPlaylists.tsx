@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Monitor, Film, Calendar, Trash2, Edit3, ArrowLeft, Play, Pause, 
-  Tv, CheckSquare, Square, FolderOpen, Save, Clock, ChevronRight, User, Filter, AlertTriangle, Building2
+  Tv, CheckSquare, Square, FolderOpen, Save, Clock, ChevronRight, User, Filter, AlertTriangle, Building2, CheckCircle, Trash
 } from 'lucide-react';
 import { mediaStore, Playlist, MediaItem, Screen } from '../../../lib/mediaStore';
 import { licensingStore, License } from '../../../lib/licensingStore';
@@ -25,6 +25,15 @@ export default function ClientPlaylists({ onNavigate }: Props) {
   const [selectedClientFilter, setSelectedClientFilter] = useState<string>('all');
   const [selectedOrgFilter, setSelectedOrgFilter] = useState<string>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
 
   // Navigation mode states: 'list' | 'create' | 'edit'
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list');
@@ -105,6 +114,16 @@ export default function ClientPlaylists({ onNavigate }: Props) {
     }
   };
 
+  const handleDeleteSelected = () => {
+    selectedIds.forEach(id => mediaStore.deletePlaylist(id));
+    const count = selectedIds.length;
+    setSelectedIds([]);
+    setIsSelectionMode(false);
+    setDeleteConfirm(false);
+    showToast(`Successfully deleted ${count} client playlist(s).`);
+    loadData();
+  };
+
   const handleOpenAssignModal = (playlist: Playlist) => {
     setAssignModalPlaylist(playlist);
     // Find screens currently assigned to this playlist
@@ -182,7 +201,7 @@ export default function ClientPlaylists({ onNavigate }: Props) {
     setIsPickerOpen(false);
   };
 
-  const handleQuickUploadMedia = (e: React.FormEvent) => {
+  const handleQuickUploadMedia = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadTitle || !selectedClientEmail) return;
     if (uploadSizeMb > 5) {
@@ -207,7 +226,7 @@ export default function ClientPlaylists({ onNavigate }: Props) {
       video: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60',
     };
 
-    const newMedia = mediaStore.uploadMedia({
+    const newMedia = await mediaStore.uploadMedia({
       title: uploadTitle,
       type: uploadType,
       duration: Number(uploadDuration),
@@ -314,17 +333,44 @@ export default function ClientPlaylists({ onNavigate }: Props) {
       {mode === 'list' && (
         <div className="space-y-5">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h1 className="text-xl font-bold text-gray-900">Client Playlists</h1>
               <p className="text-sm text-gray-500 mt-0.5">Manage digital playlists created by or assigned to client screens</p>
             </div>
-            <button 
-              onClick={handleOpenCreateMode}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
-            >
-              <Plus size={14} /> Create Client Playlist
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {filteredPlaylists.length > 0 && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setIsSelectionMode(!isSelectionMode);
+                      setSelectedIds([]);
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer ${
+                      isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                    }`}
+                  >
+                    <CheckCircle size={14} />
+                    {isSelectionMode ? 'Cancel Selection' : 'Select'}
+                  </button>
+                  {isSelectionMode && selectedIds.length > 0 && (
+                    <button
+                      onClick={() => setDeleteConfirm(true)}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-650 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
+                    >
+                      <Trash size={14} />
+                      Delete Selected ({selectedIds.length})
+                    </button>
+                  )}
+                </div>
+              )}
+              <button 
+                onClick={handleOpenCreateMode}
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                <Plus size={14} /> Create Client Playlist
+              </button>
+            </div>
           </div>
 
           {/* Filter Panel */}
@@ -376,7 +422,20 @@ export default function ClientPlaylists({ onNavigate }: Props) {
               );
 
               return (
-                <div key={playlist.id} className="bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-all flex flex-col justify-between space-y-4">
+                <div key={playlist.id} className="bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-all flex flex-col justify-between space-y-4 relative">
+                  {isSelectionMode && (
+                    <div 
+                      className="absolute inset-0 bg-slate-900/[0.02] hover:bg-slate-900/[0.05] z-40 rounded-2xl cursor-pointer flex items-start p-3"
+                      onClick={() => toggleSelect(playlist.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(playlist.id)}
+                        onChange={() => {}}
+                        className="w-5 h-5 rounded border-slate-350 text-blue-600 focus:ring-blue-550 cursor-pointer shadow-sm"
+                      />
+                    </div>
+                  )}
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <button 
@@ -402,20 +461,24 @@ export default function ClientPlaylists({ onNavigate }: Props) {
                       </div>
                     </div>
                     <div className="flex gap-1.5">
-                      <button 
-                        onClick={() => handleOpenEditMode(playlist)}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
-                        title="Edit Playlist"
-                      >
-                        <Edit3 size={13} />
-                      </button>
-                      <button 
-                        onClick={() => handleDeletePlaylist(playlist.id, playlist.name)}
-                        className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete Playlist"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {!isSelectionMode && (
+                        <>
+                          <button 
+                            onClick={() => handleOpenEditMode(playlist)}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Playlist"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                          <button 
+                            onClick={() => handleDeletePlaylist(playlist.id, playlist.name)}
+                            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Playlist"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -925,6 +988,27 @@ export default function ClientPlaylists({ onNavigate }: Props) {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+      {/* Delete Selected Confirm Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash size={26} className="text-red-500" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900 mb-1">Delete Selected Playlists</h2>
+              <p className="text-sm text-gray-500 mb-1">
+                This will permanently delete the <strong>{selectedIds.length} selected playlist{selectedIds.length !== 1 ? 's' : ''}</strong> matching the active filter selections from client storage.
+              </p>
+              <p className="text-xs text-red-500 font-semibold mb-5">This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+                <button onClick={handleDeleteSelected} className="flex-1 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">Delete Selected</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

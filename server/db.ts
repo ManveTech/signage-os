@@ -131,10 +131,128 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       }
     }
 
+    if (!sFields.some((f: any) => f.name === 'volume')) {
+      sFields.push({
+        id: 'numvolumeid',
+        name: 'volume',
+        type: 'number',
+        required: false,
+        system: false,
+        help: 'Screen volume (0-100)',
+        hidden: false,
+        presentable: false,
+        onlyInt: true,
+        min: 0,
+        max: 100
+      });
+      screensUpdated = true;
+      console.log('Programmatically added volume field to screens collection');
+    }
+
+    if (!sFields.some((f: any) => f.name === 'force_sync')) {
+      sFields.push({
+        id: 'boolforcesyncid',
+        name: 'force_sync',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Force device synchronization',
+        hidden: false,
+        presentable: false
+      });
+      screensUpdated = true;
+      console.log('Programmatically added force_sync field to screens collection');
+    }
+
+    if (!sFields.some((f: any) => f.name === 'onlineSince')) {
+      sFields.push({
+        id: 'txtonlinesinceid',
+        name: 'onlineSince',
+        type: 'text',
+        required: false,
+        system: false,
+        help: 'Timestamp when screen went online',
+        hidden: false,
+        presentable: false
+      });
+      screensUpdated = true;
+      console.log('Programmatically added onlineSince field to screens collection');
+    }
+
+    if (!sFields.some((f: any) => f.name === 'cumulativeUptime')) {
+      sFields.push({
+        id: 'numcumulativeuptimeid',
+        name: 'cumulativeUptime',
+        type: 'number',
+        required: false,
+        system: false,
+        help: 'Cumulative screen uptime in seconds',
+        hidden: false,
+        presentable: false,
+        onlyInt: true,
+        min: 0
+      });
+      screensUpdated = true;
+      console.log('Programmatically added cumulativeUptime field to screens collection');
+    }
+
+    if (!sFields.some((f: any) => f.name === 'whiteLabel')) {
+      sFields.push({
+        id: 'boolwhitelabelscr',
+        name: 'whiteLabel',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Is white labeling enabled for this screen',
+        hidden: false,
+        presentable: false
+      });
+      screensUpdated = true;
+      console.log('Programmatically added whiteLabel field to screens collection');
+    }
+
+    if (!sFields.some((f: any) => f.name === 'websiteLogo')) {
+      sFields.push({
+        id: 'txtwebsitelogoscr',
+        name: 'websiteLogo',
+        type: 'text',
+        required: false,
+        system: false,
+        help: 'Website logo for this screen',
+        hidden: false,
+        presentable: false
+      });
+      screensUpdated = true;
+      console.log('Programmatically added websiteLogo field to screens collection');
+    }
+
+    if (!sFields.some((f: any) => f.name === 'websiteName')) {
+      sFields.push({
+        id: 'txtwebsitenamescr',
+        name: 'websiteName',
+        type: 'text',
+        required: false,
+        system: false,
+        help: 'Website name for this screen',
+        hidden: false,
+        presentable: false
+      });
+      screensUpdated = true;
+      console.log('Programmatically added websiteName field to screens collection');
+    }
+
+    if (screensCollection.updateRule !== "" || screensCollection.viewRule !== "" || screensCollection.listRule !== "") {
+      screensCollection.updateRule = "";
+      screensCollection.viewRule = "";
+      screensCollection.listRule = "";
+      screensUpdated = true;
+      console.log('Programmatically updated screens collection rules to public');
+    }
+
     if (screensUpdated) {
       screensCollection.fields = sFields;
       await pb.collections.update('screens', screensCollection);
-      console.log('Successfully updated screens collection schema');
+      console.log('Successfully updated screens collection schema and rules');
     } else {
       console.log('screens collection schema is already up to date');
     }
@@ -237,6 +355,27 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('Programmatically added file field to media_items collection');
     }
 
+    // fileUrl stores the direct R2/S3 URL when using external storage
+    if (!mFields.some((f: any) => f.name === 'fileUrl')) {
+      mFields.push({
+        id: 'txtfileurlid',
+        name: 'fileUrl',
+        type: 'text',
+        required: false,
+        system: false,
+        help: '',
+        hidden: false,
+        presentable: false,
+        autogeneratePattern: '',
+        max: 0,
+        min: 0,
+        pattern: '',
+        primaryKey: false
+      });
+      mediaUpdated = true;
+      console.log('Programmatically added fileUrl field to media_items collection');
+    }
+
     const typeField = mFields.find((f: any) => f.name === 'type');
     if (typeField && typeField.type === 'select') {
       const requiredValues = ['video', 'image', 'layout', 'ticker'];
@@ -254,6 +393,162 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('Successfully updated media_items collection schema');
     } else {
       console.log('media_items collection schema is already up to date');
+    }
+
+    // Ensure playlists collection has widgetLink field
+    try {
+      console.log('Ensuring playlists collection schema has widgetLink field...');
+      const playlistsCollection = await pb.collections.getOne('playlists');
+      const pFields = playlistsCollection.fields || [];
+      let playlistsUpdated = false;
+
+      if (!pFields.some((f: any) => f.name === 'widgetLink')) {
+        pFields.push({
+          id: 'txtwidgetlinkid',
+          name: 'widgetLink',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'External link or configuration for the global widget (e.g. QR code link)',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added widgetLink field to playlists collection');
+      }
+
+      if (!pFields.some((f: any) => f.name === 'whiteLabel')) {
+        pFields.push({
+          id: 'boolwhitelabelpl',
+          name: 'whiteLabel',
+          type: 'bool',
+          required: false,
+          system: false,
+          help: 'Is white labeling enabled for this playlist',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added whiteLabel field to playlists collection');
+      }
+
+      if (!pFields.some((f: any) => f.name === 'websiteLogo')) {
+        pFields.push({
+          id: 'txtwebsitelogopl',
+          name: 'websiteLogo',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'Website logo for this playlist',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added websiteLogo field to playlists collection');
+      }
+
+      if (!pFields.some((f: any) => f.name === 'websiteName')) {
+        pFields.push({
+          id: 'txtwebsitenamepl',
+          name: 'websiteName',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'Website name for this playlist',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added websiteName field to playlists collection');
+      }
+
+      if (playlistsUpdated) {
+        playlistsCollection.fields = pFields;
+        await pb.collections.update('playlists', playlistsCollection);
+        console.log('Successfully updated playlists collection schema');
+      }
+    } catch (playlistsErr: any) {
+      console.warn('Failed to update playlists collection schema:', playlistsErr.message);
+    }
+
+    // Ensure screen_logs collection exists
+    try {
+      console.log('Ensuring screen_logs collection exists...');
+      let logsCollection;
+      try {
+        logsCollection = await pb.collections.getOne('screen_logs');
+        console.log('screen_logs collection already exists');
+      } catch (err) {
+        console.log('Creating screen_logs collection...');
+        logsCollection = await pb.collections.create({
+          id: 'collscreenlogsid',
+          name: 'screen_logs',
+          type: 'base',
+          fields: [
+            {
+              id: 'logscreenidid',
+              name: 'screenId',
+              type: 'text',
+              required: true,
+              system: false
+            },
+            {
+              id: 'logscreennameid',
+              name: 'screenName',
+              type: 'text',
+              required: true,
+              system: false
+            },
+            {
+              id: 'loguseremailid',
+              name: 'assignedToUserEmail',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'logeventid',
+              name: 'event',
+              type: 'text',
+              required: true,
+              system: false
+            },
+            {
+              id: 'logtypeid',
+              name: 'type',
+              type: 'text',
+              required: true,
+              system: false
+            },
+            {
+              id: 'logdetailid',
+              name: 'detail',
+              type: 'text',
+              required: false,
+              system: false
+            }
+          ],
+          listRule: '',
+          viewRule: '',
+          createRule: '',
+          updateRule: '',
+          deleteRule: ''
+        });
+        console.log('Successfully created screen_logs collection');
+      }
+
+      if (logsCollection) {
+        const fields = logsCollection.fields || [];
+        const emailField = fields.find((f: any) => f.name === 'assignedToUserEmail');
+        if (emailField && emailField.required === true) {
+          emailField.required = false;
+          logsCollection.fields = fields;
+          await pb.collections.update('screen_logs', logsCollection);
+          console.log('Successfully updated screen_logs collection to make assignedToUserEmail optional');
+        }
+      }
+    } catch (logsErr: any) {
+      console.warn('Failed to ensure screen_logs collection:', logsErr.message);
     }
 
     // Ensure support_docs collection schema has youtubeUrl field
@@ -289,6 +584,54 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       }
     } catch (docsSchemaErr: any) {
       console.warn('Failed to update support_docs collection schema:', docsSchemaErr.message);
+    }
+
+    // Ensure organizations collection schema is up to date
+    try {
+      console.log('Ensuring organizations collection schema is up to date...');
+      const orgsCollection = await pb.collections.getOne('organizations');
+      const oFields = orgsCollection.fields || [];
+      let orgsUpdated = false;
+
+      if (!oFields.some((f: any) => f.name === 'websiteLogo')) {
+        oFields.push({
+          id: 'txtwebsitelogoid',
+          name: 'websiteLogo',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'Base64 website logo for whitelabel clients',
+          hidden: false,
+          presentable: false
+        });
+        orgsUpdated = true;
+        console.log('Programmatically added websiteLogo field to organizations collection');
+      }
+
+      if (!oFields.some((f: any) => f.name === 'websiteName')) {
+        oFields.push({
+          id: 'txtwebsitenameid',
+          name: 'websiteName',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'Website name for whitelabel clients',
+          hidden: false,
+          presentable: false
+        });
+        orgsUpdated = true;
+        console.log('Programmatically added websiteName field to organizations collection');
+      }
+
+      if (orgsUpdated) {
+        orgsCollection.fields = oFields;
+        await pb.collections.update('organizations', orgsCollection);
+        console.log('Successfully updated organizations collection schema');
+      } else {
+        console.log('organizations collection schema is already up to date');
+      }
+    } catch (orgsErr: any) {
+      console.warn('Failed to update organizations collection schema:', orgsErr.message);
     }
 
     // Ensure Using YouTube Videos documentation exists in support_docs
@@ -337,8 +680,8 @@ Notes:
       console.warn('Failed to seed support document:', docErr.message);
     }
 
-    // 2. Setup SMTP settings dynamically
-    console.log('Configuring PocketBase SMTP settings dynamically...');
+    // 2. Setup SMTP settings only (S3 is now handled directly via AWS SDK, not via PocketBase)
+    console.log('Configuring PocketBase SMTP settings...');
     await pb.settings.update({
       meta: {
         appName: "SignageOS",
@@ -381,8 +724,56 @@ export async function authenticatePBAdmin(): Promise<boolean> {
   }
 }
 
+/**
+ * Keeps the PocketBase admin token alive indefinitely by re-authenticating
+ * every 10 minutes. This runs for the lifetime of the server process and
+ * ensures the token never expires unless the server is stopped.
+ */
+export function startAuthKeepAlive(): void {
+  const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+  const refresh = async () => {
+    try {
+      // Try a lightweight token refresh first (no password needed)
+      if (pb.authStore.isValid) {
+        try {
+          // Attempt to refresh via the _superusers endpoint
+          await pb.collection('_superusers').authRefresh();
+          return; // success — no need to re-login
+        } catch (_) {
+          // Refresh failed — fall through to full re-auth
+        }
+      }
+      // Full re-authentication
+      await authenticatePBAdmin();
+      console.log('[Auth KeepAlive] Token refreshed successfully');
+    } catch (err: any) {
+      console.error('[Auth KeepAlive] Failed to refresh token:', err.message);
+    }
+  };
+
+  setInterval(refresh, REFRESH_INTERVAL_MS);
+  console.log('[Auth KeepAlive] Started — token will refresh every 10 minutes');
+}
+
 export async function ensurePBAuth(): Promise<boolean> {
   if (!pb.authStore.isValid) {
+    return authenticatePBAdmin();
+  }
+  // Proactively refresh if the token expires in less than 15 minutes
+  try {
+    const token = pb.authStore.token;
+    if (token) {
+      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+      const expiresAt = payload.exp * 1000; // ms
+      const msLeft = expiresAt - Date.now();
+      if (msLeft < 15 * 60 * 1000) {
+        // Less than 15 minutes left — refresh now
+        await authenticatePBAdmin();
+      }
+    }
+  } catch (_) {
+    // Token parsing failed — do a full re-auth
     return authenticatePBAdmin();
   }
   return true;

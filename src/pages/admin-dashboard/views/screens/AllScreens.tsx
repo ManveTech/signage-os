@@ -1,16 +1,54 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus } from 'lucide-react';
+import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus, Lock } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
 
-const statusConfig = {
-  online: { label: 'Online', icon: <Wifi size={12} />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-  offline: { label: 'Offline', icon: <WifiOff size={12} />, cls: 'bg-red-50 text-red-700 border-red-100' },
-  warning: { label: 'Warning', icon: <AlertTriangle size={12} />, cls: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
-  pairing: { label: 'Pairing', icon: <Activity size={12} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
-  active: { label: 'Active', icon: <CheckCircle size={12} />, cls: 'bg-teal-50 text-teal-700 border-teal-100' },
-  suspended: { label: 'Suspended', icon: <AlertTriangle size={12} />, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+const renderStatusBadge = (status: string) => {
+  let label = status;
+  let bg = 'bg-slate-500/10 text-slate-700 border-slate-500/20';
+  let dot = <span className="h-2 w-2 rounded-full bg-slate-500"></span>;
+
+  switch (status) {
+    case 'online':
+    case 'active':
+      label = status === 'online' ? 'Online' : 'Active';
+      bg = 'bg-emerald-500/10 text-emerald-700 border-emerald-550/20';
+      dot = (
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+      );
+      break;
+    case 'offline':
+      label = 'Offline';
+      bg = 'bg-rose-500/10 text-rose-700 border-rose-550/20';
+      dot = <span className="h-2 w-2 rounded-full bg-rose-500"></span>;
+      break;
+    case 'warning':
+      label = 'Warning';
+      bg = 'bg-yellow-500/10 text-yellow-700 border-yellow-550/20';
+      dot = <span className="h-2 w-2 rounded-full bg-yellow-500"></span>;
+      break;
+    case 'pairing':
+      label = 'Pairing';
+      bg = 'bg-blue-500/10 text-blue-700 border-blue-550/20';
+      dot = <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>;
+      break;
+    case 'suspended':
+      label = 'Suspended';
+      bg = 'bg-slate-500/10 text-slate-700 border-slate-550/20';
+      dot = <Lock size={9} className="text-slate-500" />;
+      break;
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-2xs ${bg}`}>
+      {dot}
+      <span>{label}</span>
+    </span>
+  );
 };
 
 const groupColorMap: Record<string, { bg: string; text: string; border: string }> = {
@@ -49,7 +87,24 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [editScreen, setEditScreen] = useState<Screen | null>(null);
   const [deleteScreen, setDeleteScreen] = useState<Screen | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const selectAll = () => {
+    if (selectedIds.length === filtered.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filtered.map(s => s.id));
+    }
+  };
 
   const filtered = screens.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
@@ -72,6 +127,18 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
     pushToDatabase('screens', deleteScreen.id, null, 'DELETE');
     setDeleteScreen(null);
     addToast(`"${deleteScreen.name}" has been removed`);
+  };
+
+  const handleDeleteSelected = () => {
+    const updated = screens.filter(s => !selectedIds.includes(s.id));
+    setScreens(updated);
+    mediaStore.saveScreens(updated);
+    selectedIds.forEach(id => pushToDatabase('screens', id, null, 'DELETE'));
+    const count = selectedIds.length;
+    setSelectedIds([]);
+    setIsSelectionMode(false);
+    setDeleteConfirm(false);
+    addToast(`Successfully removed ${count} screen(s)`);
   };
 
   const handleRestart = (screen: Screen) => {
@@ -132,15 +199,42 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">All Screens</h1>
           <p className="text-sm text-gray-500 mt-0.5">{screens.length} total screens registered</p>
         </div>
-        <button onClick={() => onNavigate('screens-add')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-          <Plus size={16} />
-          Add Screen
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {filtered.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setIsSelectionMode(!isSelectionMode);
+                  setSelectedIds([]);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors cursor-pointer shadow-sm ${
+                  isSelectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                }`}
+              >
+                <CheckCircle size={16} />
+                {isSelectionMode ? 'Cancel Selection' : 'Select'}
+              </button>
+              {isSelectionMode && selectedIds.length > 0 && (
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 hover:border-red-300 transition-colors cursor-pointer shadow-sm animate-fadeIn"
+                >
+                  <Trash2 size={16} />
+                  Delete Selected ({selectedIds.length})
+                </button>
+              )}
+            </div>
+          )}
+          <button onClick={() => onNavigate('screens-add')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors cursor-pointer">
+            <Plus size={16} />
+            Add Screen
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -194,6 +288,16 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
+                {isSelectionMode && (
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.length === filtered.length && filtered.length > 0}
+                      onChange={selectAll}
+                      className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
+                    />
+                  </th>
+                )}
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Screen</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Group</th>
@@ -206,13 +310,23 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map(screen => {
-                const st = statusConfig[screen.status as keyof typeof statusConfig] || statusConfig.offline;
+                const isSelected = selectedIds.includes(screen.id);
                 return (
-                  <tr key={screen.id} className="hover:bg-gray-50 transition-colors group">
+                  <tr key={screen.id} className={`hover:bg-gray-50 transition-colors group ${isSelected ? 'bg-blue-50/70 hover:bg-blue-55/70' : ''}`} onClick={() => isSelectionMode && toggleSelect(screen.id)}>
+                    {isSelectionMode && (
+                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(screen.id)}
+                          className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                          <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                          <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900">{screen.name}</p>
@@ -221,9 +335,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${st.cls}`}>
-                        {st.icon}{st.label}
-                      </span>
+                      {renderStatusBadge(screen.status)}
                     </td>
                     <td className="px-4 py-3">
                       {screen.groupId ? (() => {
@@ -318,6 +430,22 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                 <input value={editScreen.location} onChange={e => setEditScreen(p => p && ({ ...p, location: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
               </div>
               <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
+                  <span>Screen Volume</span>
+                  <span className="font-semibold text-blue-600">{(editScreen.volume !== undefined ? editScreen.volume : 80)}%</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={editScreen.volume !== undefined ? editScreen.volume : 80} 
+                    onChange={e => setEditScreen(p => p && ({ ...p, volume: parseInt(e.target.value) }))} 
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                </div>
+              </div>
+              <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
                 <select value={editScreen.status} onChange={e => setEditScreen(p => p && ({ ...p, status: e.target.value as Screen['status'] }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
                   <option value="online">Online</option>
@@ -398,6 +526,27 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
               <div className="flex gap-3">
                 <button onClick={() => setDeleteScreen(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
                 <button onClick={handleDelete} className="flex-1 py-2.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Remove</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Selected Confirm Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={26} className="text-red-500" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900 mb-1">Delete Selected Screens</h2>
+              <p className="text-sm text-gray-500 mb-1">
+                This will permanently delete the <strong>{selectedIds.length} selected screen{selectedIds.length !== 1 ? 's' : ''}</strong>.
+              </p>
+              <p className="text-xs text-red-500 font-semibold mb-5">This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+                <button onClick={handleDeleteSelected} className="flex-1 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">Delete Selected</button>
               </div>
             </div>
           </div>

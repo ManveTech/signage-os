@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, QrCode, Sun, Eye, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, QrCode, Sun, Eye, Image as ImageIcon, Sparkles, CloudRain, CloudSnow, CloudSun, Wind } from 'lucide-react';
 import { mockMedia } from '../../data/mockData';
 
 type PlaylistItem = {
@@ -48,6 +48,7 @@ export default function UploadMedia() {
   const [playlistOrientation, setPlaylistOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [playlistWidgetType, setPlaylistWidgetType] = useState<'weather' | 'clock' | 'rss' | 'qrcode' | undefined>(undefined);
   const [playlistWidgetPlacement, setPlaylistWidgetPlacement] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'>('top-right');
+  const [playlistWidgetLink, setPlaylistWidgetLink] = useState('');
 
   // Preview Modal States
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -548,13 +549,35 @@ export default function UploadMedia() {
                   <select
                     value={playlistWidgetPlacement}
                     onChange={e => setPlaylistWidgetPlacement(e.target.value as any)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white font-medium shadow-sm h-[42px]"
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white font-medium shadow-sm h-[42px] mb-3"
                   >
                     <option value="top-left">Top Left Corner</option>
                     <option value="top-right">Top Right Corner</option>
                     <option value="bottom-left">Bottom Left Corner</option>
                     <option value="bottom-right">Bottom Right Corner</option>
                   </select>
+                </div>
+              )}
+
+              {/* Global Widget Link / custom text */}
+              {playlistWidgetType && (
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-755 mb-1.5 font-semibold">
+                    {playlistWidgetType === 'qrcode' ? 'QR Code Link / URL' :
+                     playlistWidgetType === 'weather' ? 'Weather Location / City' :
+                     playlistWidgetType === 'rss' ? 'News Ticker Text / RSS Feed URL' : 'Clock Label / Header'}
+                  </label>
+                  <input
+                    type={playlistWidgetType === 'qrcode' ? 'url' : 'text'}
+                    value={playlistWidgetLink}
+                    onChange={e => setPlaylistWidgetLink(e.target.value)}
+                    placeholder={
+                      playlistWidgetType === 'qrcode' ? 'https://example.com/menu.pdf' :
+                      playlistWidgetType === 'weather' ? 'e.g. Bengaluru' :
+                      playlistWidgetType === 'rss' ? 'e.g. + + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +' : 'e.g. Lobby Clock'
+                    }
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white font-medium shadow-sm"
+                  />
                 </div>
               )}
             </div>
@@ -639,7 +662,6 @@ export default function UploadMedia() {
                       </div>
                     </div>
                   )}
-
                   {/* Render Global Widget Overlay on top of the slide */}
                   {playlistWidgetType && (() => {
                     const positionClasses = {
@@ -650,21 +672,67 @@ export default function UploadMedia() {
                     }[playlistWidgetPlacement];
 
                     return (
-                      <div className={`absolute ${positionClasses} z-10 shadow-2xl backdrop-blur-md bg-slate-950/80 border border-white/10 rounded-xl p-3.5 w-52 flex flex-col justify-between animate-fadeIn`}>
-                        {playlistWidgetType === 'weather' && (
-                          <div className="flex flex-col gap-1 text-center font-normal">
-                            <span className="text-[7.5px] font-bold uppercase text-blue-400 tracking-widest text-left">Weather Live</span>
-                            <div className="flex items-center gap-2 mt-1 justify-center">
-                              <Sun className="text-yellow-400 w-6 h-6 animate-spin-slow" />
-                              <span className="text-xl font-bold">24°C</span>
+                      <div className={`absolute ${positionClasses} z-10 shadow-2xl backdrop-blur-md bg-slate-955/80 border border-white/10 rounded-xl p-3.5 w-52 flex flex-col justify-between animate-fadeIn`}>
+                        {playlistWidgetType === 'weather' && (() => {
+                          const location = playlistWidgetLink || 'Bengaluru';
+                          let temp = 24;
+                          let condition = 'Sunny';
+                          let WeatherIcon = Sun;
+                          let iconColor = 'text-yellow-400';
+                          let animateClass = 'animate-pulse';
+                          
+                          const locLower = location.toLowerCase();
+                          if (locLower.includes('london') || locLower.includes('rain') || locLower.includes('seattle')) {
+                            temp = 14;
+                            condition = 'Rainy';
+                            WeatherIcon = CloudRain;
+                            iconColor = 'text-blue-400';
+                            animateClass = 'animate-bounce';
+                          } else if (locLower.includes('delhi') || locLower.includes('hot') || locLower.includes('desert') || locLower.includes('chennai')) {
+                            temp = 38;
+                            condition = 'Hot & Sunny';
+                            WeatherIcon = Sun;
+                            iconColor = 'text-orange-400';
+                            animateClass = 'animate-spin-slow';
+                          } else if (locLower.includes('snow') || locLower.includes('cold') || locLower.includes('moscow') || locLower.includes('ice')) {
+                            temp = -2;
+                            condition = 'Snowing';
+                            WeatherIcon = CloudSnow;
+                            iconColor = 'text-sky-300';
+                            animateClass = 'animate-bounce';
+                          } else if (locLower.includes('cloud') || locLower.includes('paris') || locLower.includes('tokyo') || locLower.includes('mumbai')) {
+                            temp = 19;
+                            condition = 'Partly Cloudy';
+                            WeatherIcon = CloudSun;
+                            iconColor = 'text-slate-400';
+                            animateClass = 'animate-pulse';
+                          } else if (locLower.includes('wind') || locLower.includes('storm') || locLower.includes('chicago')) {
+                            temp = 16;
+                            condition = 'Windy';
+                            WeatherIcon = Wind;
+                            iconColor = 'text-teal-400';
+                            animateClass = 'animate-pulse';
+                          }
+
+                          return (
+                            <div className="flex flex-col gap-1 text-center font-normal text-white">
+                              <span className="text-[7.5px] font-bold uppercase text-blue-400 tracking-widest text-left">Weather Live</span>
+                              <div className="flex items-center gap-2 mt-1 justify-center">
+                                <WeatherIcon className={`${iconColor} w-6 h-6 ${animateClass}`} />
+                                <span className="text-xl font-bold">{temp}°C</span>
+                              </div>
+                              <div className="text-[9.5px] font-semibold text-white mt-0.5 truncate max-w-full" title={`${location} · ${condition}`}>
+                                {location} · {condition}
+                              </div>
                             </div>
-                            <div className="text-[9.5px] font-semibold text-white mt-0.5">Bengaluru · Sunny Sky</div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {playlistWidgetType === 'clock' && (
                           <div className="text-center font-normal">
-                            <span className="text-[7.5px] font-bold uppercase text-blue-400 tracking-widest text-left block">Lobby Clock</span>
+                            <span className="text-[7.5px] font-bold uppercase text-blue-400 tracking-widest text-left block">
+                              {playlistWidgetLink || 'Lobby Clock'}
+                            </span>
                             <div className="text-lg font-mono font-bold text-cyan-400 mt-1">
                               {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                             </div>
@@ -676,7 +744,7 @@ export default function UploadMedia() {
                             <span className="text-[7.5px] font-bold uppercase text-blue-400 tracking-widest text-left block">Tech Feed RSS</span>
                             <div className="bg-slate-900 border border-slate-800 rounded p-1 text-[9px] font-semibold text-slate-200 overflow-hidden h-6 flex items-center relative">
                               <div className="absolute whitespace-nowrap animate-marquee">
-                                +++ AI Summit reveals signage capabilities +++ SignageOS launches custom CNC enclosure lines +++
+                                {playlistWidgetLink || '+++ AI Summit reveals signage capabilities +++ SignageOS launches custom CNC enclosure lines +++'}
                               </div>
                             </div>
                           </div>
@@ -685,9 +753,22 @@ export default function UploadMedia() {
                         {playlistWidgetType === 'qrcode' && (
                           <div className="flex flex-col items-center gap-1.5 text-center font-normal">
                             <span className="text-[7.5px] font-bold uppercase text-blue-400 tracking-widest text-left w-full">Scan Link</span>
-                            <div className="bg-white p-1 rounded flex items-center justify-center w-14 h-14">
-                              <QrCode size={48} className="text-slate-950" />
+                            <div className="bg-white p-1 rounded flex items-center justify-center w-14 h-14 overflow-hidden">
+                              {playlistWidgetLink ? (
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(playlistWidgetLink)}`}
+                                  alt="QR Code"
+                                  className="w-full h-full object-contain"
+                                />
+                              ) : (
+                                <QrCode size={48} className="text-slate-950" />
+                              )}
                             </div>
+                            {playlistWidgetLink && (
+                              <div className="text-[7.5px] text-slate-300 truncate w-full max-w-[150px] mt-0.5" title={playlistWidgetLink}>
+                                {playlistWidgetLink}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

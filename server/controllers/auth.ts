@@ -13,10 +13,13 @@ export async function login(req: any, res: any) {
 
     const lowerEmail = email.toLowerCase().trim();
 
-    // Support simulated admin credentials
+    // DEV ONLY: hardcoded admin shortcut — disabled in production
     if (
-      (lowerEmail === 'admin@demo.com' && password === 'admin123') ||
-      (lowerEmail === 'admin' && password === 'admin')
+      process.env.NODE_ENV !== 'production' &&
+      (
+        (lowerEmail === 'admin@demo.com' && password === 'admin123') ||
+        (lowerEmail === 'admin' && password === 'admin')
+      )
     ) {
       const token = signJwt({
         id: 'admin_sys_usr',
@@ -59,24 +62,26 @@ export async function login(req: any, res: any) {
     } catch (pbErr: any) {
       console.log('PocketBase auth failed, checking fallback:', pbErr.message);
       
-      // Standalone/offline fallback
-      const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
-      if (clientEmails.includes(lowerEmail) && password === 'admin123') {
-        const token = signJwt({
-          id: `client_${lowerEmail}`,
-          email: lowerEmail,
-          role: 'client'
-        });
-        return res.status(200).json({
-          token,
-          user: {
+      // DEV ONLY: offline fallback demo users — disabled in production
+      if (process.env.NODE_ENV !== 'production') {
+        const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
+        if (clientEmails.includes(lowerEmail) && password === 'admin123') {
+          const token = signJwt({
             id: `client_${lowerEmail}`,
             email: lowerEmail,
-            name: 'Client User',
-            role: 'client',
-            organizationId: null
-          }
-        });
+            role: 'client'
+          });
+          return res.status(200).json({
+            token,
+            user: {
+              id: `client_${lowerEmail}`,
+              email: lowerEmail,
+              name: 'Client User',
+              role: 'client',
+              organizationId: null
+            }
+          });
+        }
       }
       return res.status(401).json({ message: 'Invalid access credentials.' });
     }

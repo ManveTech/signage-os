@@ -1,20 +1,58 @@
 import { useState, useEffect } from 'react';
 import {
-  Search, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit,
+  Search, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Trash,
   Monitor, X, Check, CheckCircle, Power, Download, Settings,
-  Building2, User, MoreVertical, Filter, Activity, Pause, Eraser
+  Building2, User, MoreVertical, Filter, Activity, Pause, Eraser, Lock
 } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
 
-const statusConfig = {
-  online: { label: 'Online', icon: <Wifi size={11} />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-  offline: { label: 'Offline', icon: <WifiOff size={11} />, cls: 'bg-red-50 text-red-700 border-red-100' },
-  warning: { label: 'Warning', icon: <AlertTriangle size={11} />, cls: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
-  pairing: { label: 'Pairing', icon: <Activity size={11} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
-  active: { label: 'Active', icon: <CheckCircle size={11} />, cls: 'bg-teal-50 text-teal-700 border-teal-100' },
-  suspended: { label: 'Suspended', icon: <AlertTriangle size={11} />, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+const renderStatusBadge = (status: string) => {
+  let label = status;
+  let bg = 'bg-slate-500/10 text-slate-700 border-slate-500/20';
+  let dot = <span className="h-2 w-2 rounded-full bg-slate-500"></span>;
+
+  switch (status) {
+    case 'online':
+    case 'active':
+      label = status === 'online' ? 'Online' : 'Active';
+      bg = 'bg-emerald-500/10 text-emerald-700 border-emerald-550/20';
+      dot = (
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+      );
+      break;
+    case 'offline':
+      label = 'Offline';
+      bg = 'bg-rose-500/10 text-rose-700 border-rose-550/20';
+      dot = <span className="h-2 w-2 rounded-full bg-rose-500"></span>;
+      break;
+    case 'warning':
+      label = 'Warning';
+      bg = 'bg-yellow-500/10 text-yellow-700 border-yellow-550/20';
+      dot = <span className="h-2 w-2 rounded-full bg-yellow-500"></span>;
+      break;
+    case 'pairing':
+      label = 'Pairing';
+      bg = 'bg-blue-500/10 text-blue-700 border-blue-550/20';
+      dot = <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>;
+      break;
+    case 'suspended':
+      label = 'Suspended';
+      bg = 'bg-slate-500/10 text-slate-700 border-slate-550/20';
+      dot = <Lock size={9} className="text-slate-500" />;
+      break;
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-2xs ${bg}`}>
+      {dot}
+      <span>{label}</span>
+    </span>
+  );
 };
 
 const groupColorMap: Record<string, { bg: string; text: string; border: string }> = {
@@ -42,6 +80,8 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
   const [deleteScreen, setDeleteScreen] = useState<Screen | null>(null);
   const [bulkAction, setBulkAction] = useState<BulkAction>('');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [userPlaylists, setUserPlaylists] = useState<any[]>(() => mediaStore.getPlaylists().filter(p => p.createdBy === userEmail));
 
@@ -165,6 +205,21 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
     addToast(`"${deleteScreen.name}" deleted`);
   };
 
+  const handleDeleteSelected = () => {
+    const ids = Array.from(selectedScreens);
+    const allScreens = mediaStore.getScreens();
+    const updated = allScreens.filter(s => !ids.includes(s.id));
+    mediaStore.saveScreens(updated);
+    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    ids.forEach(id => {
+      pushToDatabase('screens', id as string, null, 'DELETE');
+    });
+    setSelectedScreens(new Set());
+    setIsSelectionMode(false);
+    setDeleteConfirm(false);
+    addToast(`Successfully removed ${ids.length} screen(s)`);
+  };
+
   const handleEditSave = () => {
     if (!editScreen) return;
     const gp = groups.find(g => g.id === editScreen.groupId);
@@ -200,15 +255,42 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Manage Screens</h1>
           <p className="text-sm text-gray-500 mt-0.5">Monitor, configure and control all registered screens</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-          <Download size={15} />
-          Export
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {filtered.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setIsSelectionMode(!isSelectionMode);
+                  setSelectedScreens(new Set());
+                }}
+                className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-semibold transition-all shadow-sm cursor-pointer ${
+                  isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                }`}
+              >
+                <CheckCircle size={15} />
+                {isSelectionMode ? 'Cancel Selection' : 'Select'}
+              </button>
+              {isSelectionMode && selectedScreens.size > 0 && (
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
+                >
+                  <Trash size={15} />
+                  Delete Selected ({selectedScreens.size})
+                </button>
+              )}
+            </div>
+          )}
+          <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">
+            <Download size={15} />
+            Export
+          </button>
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -249,7 +331,7 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
       </div>
 
       {/* Bulk Actions */}
-      {selectedScreens.size > 0 && (
+      {isSelectionMode && selectedScreens.size > 0 && (
         <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-center gap-4 flex-wrap">
           <span className="text-sm font-semibold text-blue-700">{selectedScreens.size} selected</span>
           <div className="flex items-center gap-2 flex-1 flex-wrap">
@@ -281,14 +363,16 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-4 py-3 w-10">
-                  <input
-                    type="checkbox"
-                    checked={selectedScreens.size === filtered.length && filtered.length > 0}
-                    onChange={selectAll}
-                    className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
-                  />
-                </th>
+                {isSelectionMode && (
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedScreens.size === filtered.length && filtered.length > 0}
+                      onChange={selectAll}
+                      className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
+                    />
+                  </th>
+                )}
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Screen</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Group</th>
@@ -299,24 +383,25 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map(screen => {
-                const st = statusConfig[screen.status as keyof typeof statusConfig] || statusConfig.offline;
                 return (
                   <tr
                     key={screen.id}
                     className={`transition-colors group ${selectedScreens.has(screen.id) ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                   >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedScreens.has(screen.id)}
-                        onChange={() => toggleScreen(screen.id)}
-                        className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
-                      />
-                    </td>
+                    {isSelectionMode && (
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedScreens.has(screen.id)}
+                          onChange={() => toggleScreen(screen.id)}
+                          className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-11 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                          <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                          <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900">{screen.name}</p>
@@ -325,9 +410,7 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${st.cls}`}>
-                        {st.icon}{st.label}
-                      </span>
+                      {renderStatusBadge(screen.status)}
                     </td>
                     <td className="px-4 py-3">
                       {screen.groupId ? (() => {
@@ -358,38 +441,38 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
                       }`}>{screen.licenseType}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => setEditScreen({ ...screen })}
-                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition-colors"
                           title="Edit"
                         >
                           <Edit size={13} />
                         </button>
                         <button
                           onClick={() => addToast(`Restart sent to "${screen.name}"`, 'info')}
-                          className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-yellow-600 bg-yellow-50 hover:bg-yellow-100 border border-yellow-100 rounded-lg transition-colors"
                           title="Restart"
                         >
                           <RefreshCw size={13} />
                         </button>
                         <button
                           onClick={() => handleStopPlayback(screen)}
-                          className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-lg transition-colors"
                           title="Stop Playback"
                         >
                           <Pause size={13} />
                         </button>
                         <button
                           onClick={() => handleClearCache(screen)}
-                          className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                          title="Clear Device Cache"
+                          className="p-1.5 text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-lg transition-colors"
+                          title="Clear Cache"
                         >
                           <Eraser size={13} />
                         </button>
                         <button
                           onClick={() => setDeleteScreen(screen)}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors"
                           title="Delete"
                         >
                           <Trash2 size={13} />
@@ -426,6 +509,22 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Location</label>
                 <input value={editScreen.location} onChange={e => setEditScreen(p => p && ({ ...p, location: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
+                  <span>Screen Volume</span>
+                  <span className="font-semibold text-blue-600">{(editScreen.volume !== undefined ? editScreen.volume : 80)}%</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={editScreen.volume !== undefined ? editScreen.volume : 80} 
+                    onChange={e => setEditScreen(p => p && ({ ...p, volume: parseInt(e.target.value) }))} 
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
@@ -503,6 +602,26 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
               <div className="flex gap-3">
                 <button onClick={() => setDeleteScreen(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
                 <button onClick={handleSingleDelete} className="flex-1 py-2.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Selected Confirm */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash size={26} className="text-red-500" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900 mb-1">Delete Selected Screens</h2>
+              <p className="text-sm text-gray-500 mb-1">This will permanently delete the <strong>{selectedScreens.size} selected screen{selectedScreens.size !== 1 ? 's' : ''}</strong>.</p>
+              <p className="text-xs text-red-500 font-semibold mb-5">This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+                <button onClick={handleDeleteSelected} className="flex-1 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">Delete Selected</button>
               </div>
             </div>
           </div>

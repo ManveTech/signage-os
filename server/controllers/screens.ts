@@ -1,4 +1,5 @@
 import { pb } from '../db';
+import { syncScreenSchedule } from '../scheduler';
 
 export async function getPairingCode(req: any, res: any) {
   try {
@@ -120,7 +121,7 @@ export async function pairScreen(req: any, res: any) {
     const updatedScreen = await pb.collection('screens').update(screenRecord.id, {
       name,
       location: location || 'Not Specified',
-      status: 'active',
+      status: 'online',
       pairing_code: '', // clear code
       pairing_code_expires: '', // clear expiration
       license_id: license.id,
@@ -128,8 +129,22 @@ export async function pairScreen(req: any, res: any) {
       assignedToUserEmail: clientEmail,
       groupId: groupId || '',
       playlist: playlist || '', // playlist ID
-      playlistId: playlist || ''
+      playlistId: playlist || '',
+      onlineSince: new Date().toISOString()
     });
+
+    // Sync branding details
+    await syncScreenBrandingFromOrg(updatedScreen);
+
+    // Log pairing to screen_logs
+    await pb.collection('screen_logs').create({
+      screenId: updatedScreen.id,
+      screenName: updatedScreen.name,
+      assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
+      event: 'Screen paired',
+      type: 'online',
+      detail: `Device paired successfully. License: ${updatedScreen.license_id || 'None'}, Playlist: ${updatedScreen.playlist || 'None'}`
+    }).catch(err => console.error('Error logging pairing:', err));
 
     res.status(200).json({
       id: updatedScreen.id,
@@ -147,30 +162,43 @@ export async function pairScreen(req: any, res: any) {
   }
 }
 
-export async function syncDevice(req: any, res: any) {
+export async function checkDeviceStatuses() {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Unauthorized device' });
-    }
-
-    const screens = await pb.collection('screens').getList(1, 1);
-    const screen = screens.items[0];
-
-    res.status(200).json({
-      status: 'active',
-      licenseStatus: 'active',
-      playlist: {
-        id: screen ? screen.playlistId || 'play_normal_loop' : 'play_normal_loop',
-        assets: [
-          { url: 'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=600&fit=crop', duration: 15 },
-          { url: 'https://images.unsplash.com/photo-1541167760496-1628856ab772?w=600&fit=crop', duration: 30 }
-        ]
-      }
+    const screensResult = await pb.collection('screens').getList(1, 500, {
+      filter: 'status = "online" || status = "active"'
     });
-  } catch (error: any) {
-    console.error('Error syncing device:', error);
-    res.status(500).json({ message: error.message || 'Error syncing device' });
+    const screens = screensResult.items;
+    const now = Date.now();
+    for (const screen of screens) {
+      const lastHeartbeatTime = screen.lastHeartbeat ? new Date(screen.lastHeartbeat).getTime() : 0;
+      if (now - lastHeartbeatTime > 2 * 60 * 1000) {
+        console.log(`Screen "${screen.name}" (${screen.id}) missed heartbeat. Marking offline.`);
+        
+        let additionalUptime = 0;
+        if (screen.onlineSince) {
+          const onlineTime = new Date(screen.onlineSince).getTime();
+          if (onlineTime > 0 && now > onlineTime) {
+            additionalUptime = Math.floor((now - onlineTime) / 1000);
+          }
+        }
+        const updatedCumulativeUptime = (screen.cumulativeUptime || 0) + additionalUptime;
+
+        await pb.collection('screens').update(screen.id, {
+          status: 'offline',
+          cumulativeUptime: updatedCumulativeUptime
+        });
+        await pb.collection('screen_logs').create({
+          screenId: screen.id,
+          screenName: screen.name,
+          assignedToUserEmail: screen.assignedToUserEmail || '',
+          event: 'Screen went offline',
+          type: 'offline',
+          detail: `No heartbeat received since ${screen.lastHeartbeat || 'pairing'}.`
+        }).catch(err => console.error('Error logging screen offline:', err));
+      }
+    }
+  } catch (err) {
+    console.error('Error in checkDeviceStatuses:', err);
   }
 }
 
@@ -192,11 +220,53 @@ export async function recordHeartbeat(req: any, res: any) {
         ? Math.round((storageUsedBytes / (storageUsedBytes + storageAvailableBytes)) * 100) 
         : 15;
       
-      await pb.collection('screens').update(screenRecord.id, {
+      const wasOffline = screenRecord.status === 'offline' || screenRecord.status === 'pairing';
+      const lastHeartbeatTime = screenRecord.lastHeartbeat ? new Date(screenRecord.lastHeartbeat).getTime() : 0;
+      const isStale = (Date.now() - lastHeartbeatTime) > 2 * 60 * 1000;
+
+      const updateData: any = {
         lastHeartbeat: new Date().toISOString(),
         status: 'online',
         storageUsed: storageUsed
-      });
+      };
+
+      const now = Date.now();
+      const lastSyncTime = lastBrandingSync.get(screenRecord.id) || 0;
+      if (now - lastSyncTime > 5 * 60 * 1000) {
+        lastBrandingSync.set(screenRecord.id, now);
+        syncScreenBrandingFromOrg(screenRecord).catch(err => {
+          console.error('[Heartbeat Branding] Error syncing screen branding:', err);
+        });
+      }
+
+      // Only accumulate previous session uptime + reset onlineSince when the
+      // server has confirmed the screen was offline (status = 'offline' or 'pairing').
+      // Skipping the stale-based reset prevents double-counting uptime that
+      // checkDeviceStatuses() already accumulated when it marked the screen offline.
+      if (wasOffline || !screenRecord.onlineSince) {
+        if (wasOffline && screenRecord.onlineSince && screenRecord.lastHeartbeat) {
+          // Accumulate time from onlineSince → lastHeartbeat (the last confirmed alive moment)
+          const prevOnlineTime = new Date(screenRecord.onlineSince).getTime();
+          const sessionEnd = new Date(screenRecord.lastHeartbeat).getTime();
+          let additionalUptime = Math.floor((sessionEnd - prevOnlineTime) / 1000);
+          if (additionalUptime < 0) additionalUptime = 0;
+          updateData.cumulativeUptime = (screenRecord.cumulativeUptime || 0) + additionalUptime;
+        } else {
+          updateData.cumulativeUptime = screenRecord.cumulativeUptime || 0;
+        }
+        updateData.onlineSince = new Date().toISOString();
+
+        await pb.collection('screen_logs').create({
+          screenId: screenRecord.id,
+          screenName: screenRecord.name,
+          assignedToUserEmail: screenRecord.assignedToUserEmail || '',
+          event: 'Screen came online',
+          type: 'online',
+          detail: `Heartbeat received. CPU Temp: ${cpuTemp || 'N/A'}°C, Current Asset: ${currentPlayingAsset || 'None'}`
+        }).catch(err => console.error('Error logging screen online:', err));
+      }
+
+      await pb.collection('screens').update(screenRecord.id, updateData);
     } else {
       console.log(`Heartbeat received for unknown hardwareUuid: ${hardwareUuid}`);
     }
@@ -205,5 +275,160 @@ export async function recordHeartbeat(req: any, res: any) {
   } catch (error: any) {
     console.error('Error recording heartbeat:', error);
     res.status(500).json({ message: error.message || 'Error recording heartbeat' });
+  }
+}
+
+export async function reconnectScreen(req: any, res: any) {
+  try {
+    const { screenId, pairingCode } = req.body;
+    if (!screenId || !pairingCode) {
+      return res.status(400).json({ message: 'Screen ID and pairing code are required.' });
+    }
+
+    // 1. Find the new screen record by pairing code
+    const pairingScreens = await pb.collection('screens').getList(1, 1, {
+      filter: `pairing_code = "${pairingCode.trim().toUpperCase()}"`
+    });
+
+    if (pairingScreens.items.length === 0) {
+      return res.status(400).json({ message: 'Invalid pairing code.' });
+    }
+
+    const pairingScreen = pairingScreens.items[0];
+
+    // Check expiration of the pairing code
+    if (pairingScreen.pairing_code_expires) {
+      const expires = new Date(pairingScreen.pairing_code_expires);
+      if (expires.getTime() < Date.now()) {
+        return res.status(400).json({ message: 'Pairing code has expired.' });
+      }
+    }
+
+    // 2. Find the existing screen record by screenId
+    const existingScreen = await pb.collection('screens').getOne(screenId);
+
+    // 3. Update the existing screen with the hardware_uuid and new device details
+    const updatedScreen = await pb.collection('screens').update(existingScreen.id, {
+      hardware_uuid: pairingScreen.hardware_uuid,
+      status: 'online',
+      pairing_code: '',
+      pairing_code_expires: '',
+      onlineSince: new Date().toISOString()
+    });
+
+    // 4. Delete the temporary pairingScreen record to keep database clean (only if it is a different record)
+    if (pairingScreen.id !== existingScreen.id) {
+      await pb.collection('screens').delete(pairingScreen.id);
+    }
+
+    // 5. Log the reconnect event to screen_logs
+    await pb.collection('screen_logs').create({
+      screenId: updatedScreen.id,
+      screenName: updatedScreen.name,
+      assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
+      event: 'Screen reconnected',
+      type: 'online',
+      detail: `Device reconnected. Hardware UUID updated to ${updatedScreen.hardware_uuid}.`
+    }).catch(err => console.error('Error logging reconnect:', err));
+
+    res.status(200).json(updatedScreen);
+  } catch (error: any) {
+    console.error('Error reconnecting screen:', error);
+    res.status(500).json({ message: error.message || 'Error reconnecting screen' });
+  }
+}
+
+export async function assignPlaylistToScreen(req: any, res: any) {
+  try {
+    const { screenId } = req.params;
+    const { playlistId, playlistName } = req.body;
+    if (!screenId) {
+      return res.status(400).json({ message: 'screenId is required.' });
+    }
+
+    const updatedScreen = await pb.collection('screens').update(screenId, {
+      playlistId: playlistId || '',
+      playlist: playlistName || 'Normal',
+    });
+
+    // Sync scheduling on direct playlist assignment
+    syncScreenSchedule(updatedScreen);
+
+    await pb.collection('screen_logs').create({
+      screenId: updatedScreen.id,
+      screenName: updatedScreen.name,
+      assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
+      event: 'Playlist assigned',
+      type: 'sync',
+      detail: `Playlist "${playlistName || 'Normal'}" (${playlistId || 'none'}) assigned to screen.`
+    }).catch((err: any) => console.error('Error logging playlist assignment:', err));
+
+    res.status(200).json(updatedScreen);
+  } catch (error: any) {
+    console.error('Error assigning playlist to screen:', error);
+    res.status(500).json({ message: error.message || 'Error assigning playlist' });
+  }
+}
+
+const lastBrandingSync = new Map<string, number>();
+
+export async function syncScreenBrandingFromOrg(screenRecord: any) {
+  try {
+    const clientEmail = screenRecord.assignedToUserEmail;
+    if (!clientEmail) return;
+
+    // 1. Get user
+    const user = await pb.collection('users').getFirstListItem(`email="${clientEmail.toLowerCase().trim()}"`).catch(() => null);
+    if (!user) return;
+
+    // 2. Determine if white label is enabled for this license/screen
+    let isWhiteLabel = false;
+    let orgId = '';
+    if (screenRecord.license_id) {
+      try {
+        const license = await pb.collection('licenses').getOne(screenRecord.license_id);
+        isWhiteLabel = !!license.whiteLabel;
+        orgId = license.assignedOrgId || '';
+      } catch (_) {}
+    } else {
+      try {
+        const licenses = await pb.collection('licenses').getList(1, 1, {
+          filter: `assignedUserEmail = "${clientEmail}" && status = "active" && whiteLabel = true`
+        });
+        if (licenses.items.length > 0) {
+          isWhiteLabel = true;
+          orgId = licenses.items[0].assignedOrgId || '';
+        }
+      } catch (_) {}
+    }
+
+    // 3. Get organization
+    let org = null;
+    if (orgId) {
+      org = await pb.collection('organizations').getOne(orgId).catch(() => null);
+    }
+    if (!org && user.company) {
+      org = await pb.collection('organizations').getFirstListItem(`name="${user.company.replace(/"/g, '\\"')}"`).catch(() => null);
+    }
+
+    if (!org) return;
+
+    const updatedLogo = isWhiteLabel ? (org.websiteLogo || '') : '';
+    const updatedName = isWhiteLabel ? (org.websiteName || '') : '';
+
+    if (
+      screenRecord.whiteLabel !== isWhiteLabel ||
+      screenRecord.websiteLogo !== updatedLogo ||
+      screenRecord.websiteName !== updatedName
+    ) {
+      console.log(`Updating branding for screen ${screenRecord.id}: whiteLabel=${isWhiteLabel}, logoLength=${updatedLogo.length}, name=${updatedName}`);
+      await pb.collection('screens').update(screenRecord.id, {
+        whiteLabel: isWhiteLabel,
+        websiteLogo: updatedLogo,
+        websiteName: updatedName
+      });
+    }
+  } catch (err: any) {
+    console.error(`Error syncing screen branding for screen ${screenRecord.id}:`, err.message);
   }
 }
