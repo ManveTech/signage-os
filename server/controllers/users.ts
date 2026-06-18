@@ -41,7 +41,9 @@ export async function createUser(req: any, res: any) {
 
     // Check if user already exists in pb
     try {
-      const existing = await pb.collection('users').getFirstListItem(`email="${email.toLowerCase().trim()}"`);
+      const existing = await pb.collection('users').getFirstListItem(
+        pb.filter('email = {:email}', { email: email.toLowerCase().trim() })
+      );
       if (existing) {
         return res.status(400).json({ error: 'User with this email already exists' });
       }
@@ -77,7 +79,9 @@ export async function createUser(req: any, res: any) {
     let orgId = '';
     if (orgName) {
       try {
-        const existingOrg = await pb.collection('organizations').getFirstListItem(`name = "${orgName.replace(/"/g, '\\"')}"`);
+        const existingOrg = await pb.collection('organizations').getFirstListItem(
+          pb.filter('name = {:orgName}', { orgName })
+        );
         orgId = existingOrg.id;
       } catch (e) {
         // Create new organization if it doesn't exist

@@ -10,12 +10,6 @@ import { startScheduler } from './scheduler';
 
 const app = express();
 
-// Global Middleware
-// 10 MB limit covers all normal API payloads. Large media uploads use
-// dedicated multipart/signed-URL flows and do not go through this body parser.
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-
 // CORS — restrict to configured origin in production, allow all in dev
 const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || '*';
 app.use((req, res, next) => {
@@ -27,6 +21,12 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Global Middleware
+// 100 MB limit covers all normal API payloads including large base64 media uploads.
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
 
 // Mount all API endpoints under /api/v1
 app.use('/api/v1', apiRouter);

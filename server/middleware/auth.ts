@@ -10,7 +10,14 @@ export function verifyJwt(token: string): any {
       .createHmac('sha256', JWT_SECRET)
       .update(`${headerB64}.${payloadB64}`)
       .digest('base64url');
-    if (signature !== expectedSig) return null;
+    const sigBuf = Buffer.from(signature);
+    const expectedSigBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expectedSigBuf.length) {
+      return null;
+    }
+    if (!crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
+      return null;
+    }
     return JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
   } catch (e) {
     return null;

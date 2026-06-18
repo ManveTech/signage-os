@@ -27,26 +27,26 @@ export function createCrudRouter(collectionName: string) {
       }
       
       const filters: string[] = [];
+      const filterParams: Record<string, any> = {};
       let page = 1;
       let perPage = 500;
       // Only allow alphanumeric + underscore key names to prevent injection.
-      // Strip double-quotes and backslashes from values before interpolating.
       const SAFE_KEY = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-      const sanitizeValue = (v: string) => v.replace(/["\\]/g, '');
 
       Object.keys(req.query).forEach(key => {
         const raw = req.query[key];
-        if (!raw) return;
+        if (raw === undefined || raw === null || raw === '') return;
         if (key === 'page') {
-          page = parseInt(raw) || 1;
+          page = parseInt(raw as string) || 1;
         } else if (key === 'perPage') {
-          perPage = parseInt(raw) || 500;
+          perPage = parseInt(raw as string) || 500;
         } else if (SAFE_KEY.test(key)) {
-          filters.push(`${key} = "${sanitizeValue(String(raw))}"`);
+          filters.push(`${key} = {:${key}}`);
+          filterParams[key] = String(raw);
         }
         // silently drop keys with special characters
       });
-      const filterStr = filters.join(' && ');
+      const filterStr = filters.length > 0 ? pb.filter(filters.join(' && '), filterParams) : '';
 
       // Use getList instead of getFullList to avoid sending skipTotal=1.
       // Sort by '-id' instead of '-created' — on this PocketBase instance,
@@ -194,7 +194,9 @@ async function syncPlaylistBrandingFromUser(playlistRecord: any) {
     if (!creatorEmail) return;
 
     // 1. Get user
-    const user = await pb.collection('users').getFirstListItem(`email="${creatorEmail.toLowerCase().trim()}"`).catch(() => null);
+    const user = await pb.collection('users').getFirstListItem(
+      pb.filter('email = {:email}', { email: creatorEmail.toLowerCase().trim() })
+    ).catch(() => null);
     if (!user) return;
 
     // 2. Determine if white label is enabled for this license/user
@@ -202,7 +204,10 @@ async function syncPlaylistBrandingFromUser(playlistRecord: any) {
     let orgId = '';
     try {
       const licenses = await pb.collection('licenses').getList(1, 1, {
-        filter: `assignedUserEmail = "${creatorEmail}" && status = "active" && whiteLabel = true`
+        filter: pb.filter(
+          'assignedUserEmail = {:email} && status = "active" && whiteLabel = true',
+          { email: creatorEmail }
+        )
       });
       if (licenses.items.length > 0) {
         isWhiteLabel = true;
@@ -216,7 +221,9 @@ async function syncPlaylistBrandingFromUser(playlistRecord: any) {
       org = await pb.collection('organizations').getOne(orgId).catch(() => null);
     }
     if (!org && user.company) {
-      org = await pb.collection('organizations').getFirstListItem(`name="${user.company.replace(/"/g, '\\"')}"`).catch(() => null);
+      org = await pb.collection('organizations').getFirstListItem(
+        pb.filter('name = {:company}', { company: user.company })
+      ).catch(() => null);
     }
 
     if (!org) return;

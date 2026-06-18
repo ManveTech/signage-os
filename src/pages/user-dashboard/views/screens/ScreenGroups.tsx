@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar } from 'lucide-react';
+import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import { licensingStore } from '../../../../lib/licensingStore';
@@ -27,7 +27,7 @@ const LIBRARIES = ['Retail Assets', 'Airport Media', 'F&B Collection', 'Corporat
 
 type Toast = { id: number; message: string };
 
-const emptyGroup = (): Omit<ScreenGroup, 'id'> => ({ name: '', desc: '', color: 'blue', playlist: '', library: '', schedulePlaylist: '', scheduleDate: '', scheduleTime: '' });
+const emptyGroup = (): Omit<ScreenGroup, 'id'> => ({ name: '', desc: '', color: 'blue', playlist: '', library: '', schedulePlaylist: '', scheduleDate: '', scheduleTime: '', volume: 80, clear_cache: false, force_sync: false });
 
 export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEmail?: string }) {
   const [groups, setGroups] = useState<ScreenGroup[]>(() => {
@@ -176,6 +176,35 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
     setGroups(updated);
     localStorage.setItem('signageos_groups', JSON.stringify(updated));
     pushToDatabase('screen_groups', editGroup.id, updatedGroup, 'PUT');
+
+    // ALSO bulk update screens in this group!
+    const groupScreens = screensInGroup(editGroup.id);
+    const updatedScreens = screens.map(s => {
+      if (s.groupId === editGroup.id) {
+        const updatedScreen: Screen = {
+          ...s,
+          playlist: updatedGroup.playlist || s.playlist,
+          playlistId: userPlaylists.find(p => p.name === updatedGroup.playlist)?.id || s.playlistId,
+          volume: updatedGroup.volume !== undefined ? updatedGroup.volume : s.volume,
+          clear_cache: updatedGroup.clear_cache ? true : s.clear_cache,
+          force_sync: updatedGroup.force_sync ? true : s.force_sync,
+        };
+        // push each screen's update to the database
+        pushToDatabase('screens', s.id, updatedScreen, 'PUT');
+        return updatedScreen;
+      }
+      return s;
+    });
+    setScreens(updatedScreens);
+    mediaStore.saveScreens(updatedScreens);
+
+    // Reset one-time triggers in the group object
+    const finalGroup = { ...updatedGroup, clear_cache: false, force_sync: false };
+    const resetGroups = updated.map(g => g.id === editGroup.id ? finalGroup : g);
+    setGroups(resetGroups);
+    localStorage.setItem('signageos_groups', JSON.stringify(resetGroups));
+    pushToDatabase('screen_groups', editGroup.id, finalGroup, 'PUT');
+
     setEditGroup(null);
     addToast(`Group "${editGroup.name}" updated`);
   };
@@ -204,7 +233,14 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
   const handleAddScreen = (screenId: string, groupId: string) => {
     const targetScreen = screens.find(s => s.id === screenId);
     if (!targetScreen) return;
-    const updatedScreen = { ...targetScreen, groupId };
+    const gp = groups.find(g => g.id === groupId);
+    const updatedScreen = { 
+      ...targetScreen, 
+      groupId,
+      playlist: gp?.playlist || targetScreen.playlist,
+      playlistId: userPlaylists.find(p => p.name === (gp?.playlist || ''))?.id || targetScreen.playlistId,
+      volume: gp?.volume !== undefined ? gp.volume : targetScreen.volume,
+    };
     const updatedScreens = screens.map(s => s.id === screenId ? updatedScreen : s);
     setScreens(updatedScreens);
     mediaStore.saveScreens(updatedScreens);
@@ -223,7 +259,50 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
   };
 
   const handleBulkRestart = (group: ScreenGroup) => {
+    const groupScreens = screensInGroup(group.id);
+    if (groupScreens.length === 0) {
+      addToast(`No screens in group "${group.name}"`);
+      return;
+    }
     addToast(`Restart signal sent to all screens in "${group.name}"`);
+  };
+
+  const handleBulkClearCache = (group: ScreenGroup) => {
+    const groupScreens = screensInGroup(group.id);
+    if (groupScreens.length === 0) {
+      addToast(`No screens in group "${group.name}"`);
+      return;
+    }
+    const updatedScreens = screens.map(s => {
+      if (s.groupId === group.id) {
+        const updatedScreen = { ...s, clear_cache: true };
+        pushToDatabase('screens', s.id, updatedScreen, 'PUT');
+        return updatedScreen;
+      }
+      return s;
+    });
+    setScreens(updatedScreens);
+    mediaStore.saveScreens(updatedScreens);
+    addToast(`Cache purge command sent to all screens in "${group.name}"`);
+  };
+
+  const handleBulkForceSync = (group: ScreenGroup) => {
+    const groupScreens = screensInGroup(group.id);
+    if (groupScreens.length === 0) {
+      addToast(`No screens in group "${group.name}"`);
+      return;
+    }
+    const updatedScreens = screens.map(s => {
+      if (s.groupId === group.id) {
+        const updatedScreen = { ...s, force_sync: true };
+        pushToDatabase('screens', s.id, updatedScreen, 'PUT');
+        return updatedScreen;
+      }
+      return s;
+    });
+    setScreens(updatedScreens);
+    mediaStore.saveScreens(updatedScreens);
+    addToast(`Force sync command sent to all screens in "${group.name}"`);
   };
 
   return (
@@ -320,6 +399,12 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
                   </button>
                   <button onClick={() => handleBulkRestart(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
                     <RefreshCw size={12} /> Bulk Restart
+                  </button>
+                  <button onClick={() => handleBulkClearCache(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-purple-650 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors font-medium">
+                    <Eraser size={12} /> Bulk Clear Cache
+                  </button>
+                  <button onClick={() => handleBulkForceSync(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-650 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors font-medium">
+                    <RefreshCw size={12} /> Bulk Force Sync
                   </button>
                   <button onClick={() => handleStartLibraryAssignDirect(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
                     <BookOpen size={12} /> Assign Library
@@ -434,6 +519,49 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
                   ))}
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
+                  <span>Screen Volume (Bulk)</span>
+                  <span className="font-semibold text-blue-600">{(editGroup.volume !== undefined ? editGroup.volume : 80)}%</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={editGroup.volume !== undefined ? editGroup.volume : 80} 
+                    onChange={e => setEditGroup(p => p && ({ ...p, volume: parseInt(e.target.value) }))} 
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-gray-800">Clear Cache (Bulk)</label>
+                  <span className="text-[10px] text-gray-400">Purge cached media files on all group screens on save</span>
+                </div>
+                <input 
+                  type="checkbox"
+                  checked={!!editGroup.clear_cache}
+                  onChange={e => setEditGroup(p => p && ({ ...p, clear_cache: e.target.checked }))}
+                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-gray-800">Force Sync (Bulk)</label>
+                  <span className="text-[10px] text-gray-400">Force immediate content check on all group screens on save</span>
+                </div>
+                <input 
+                  type="checkbox"
+                  checked={!!editGroup.force_sync}
+                  onChange={e => setEditGroup(p => p && ({ ...p, force_sync: e.target.checked }))}
+                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                />
+              </div>
               <div className="space-y-3">
                 <label className="block text-xs font-medium text-gray-700">Playlist Settings</label>
                 <div className="flex bg-gray-100 p-0.5 rounded-lg">
@@ -531,6 +659,49 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
                     <button key={co.id} onClick={() => setNewGroup(p => ({ ...p, color: co.id }))} className={`w-7 h-7 rounded-full ${co.cls} transition-all ${newGroup.color === co.id ? 'ring-2 ring-offset-2 ring-blue-500' : 'hover:scale-110'}`} title={co.label} />
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
+                  <span>Screen Volume (Bulk)</span>
+                  <span className="font-semibold text-blue-600">{(newGroup.volume !== undefined ? newGroup.volume : 80)}%</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={newGroup.volume !== undefined ? newGroup.volume : 80} 
+                    onChange={e => setNewGroup(p => ({ ...p, volume: parseInt(e.target.value) }))} 
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-gray-800">Clear Cache (Bulk)</label>
+                  <span className="text-[10px] text-gray-400">Purge cached media files on all group screens on save</span>
+                </div>
+                <input 
+                  type="checkbox"
+                  checked={!!newGroup.clear_cache}
+                  onChange={e => setNewGroup(p => ({ ...p, clear_cache: e.target.checked }))}
+                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div className="flex-1">
+                  <label className="block text-xs font-semibold text-gray-800">Force Sync (Bulk)</label>
+                  <span className="text-[10px] text-gray-400">Force immediate content check on all group screens on save</span>
+                </div>
+                <input 
+                  type="checkbox"
+                  checked={!!newGroup.force_sync}
+                  onChange={e => setNewGroup(p => ({ ...p, force_sync: e.target.checked }))}
+                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                />
               </div>
               <div className="space-y-3">
                 <label className="block text-xs font-medium text-gray-700">Playlist Settings</label>

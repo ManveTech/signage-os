@@ -56,7 +56,7 @@ async function activateScheduledPlaylist(screen: any) {
     let playlistId = '';
     try {
       const plResult = await pb.collection('playlists').getList(1, 10, {
-        filter: `name = "${screen.schedulePlaylist}"`,
+        filter: pb.filter('name = {:playlistName}', { playlistName: screen.schedulePlaylist }),
       });
       if (plResult.items.length > 0) {
         playlistId = plResult.items[0].id;
@@ -169,7 +169,7 @@ export async function syncPlaylistDeletion(playlistName: string) {
 
     // Query screens scheduling this playlist
     const screensResult = await pb.collection('screens').getList(1, 500, {
-      filter: `schedulePlaylist = "${playlistName}"`,
+      filter: pb.filter('schedulePlaylist = {:playlistName}', { playlistName }),
     });
 
     for (const screen of screensResult.items) {

@@ -60,8 +60,6 @@ import com.example.ui.SignageViewModel
 import com.example.ui.theme.MyApplicationTheme
 import java.io.File
 import androidx.annotation.OptIn
-import androidx.compose.ui.platform.LocalContext
-import coil.compose.AsyncImage
 import coil.size.Size
 import coil.size.Precision
 import kotlinx.coroutines.isActive
@@ -98,8 +96,7 @@ fun SignagePlayerApp(
 
     val allAssetsDownloaded = remember(uiState.playlist, uiState.isDownloading) {
         uiState.playlist.all { asset ->
-            asset.mediaType.equals("youtube", ignoreCase = true) || 
-            (!asset.localPath.isNullOrEmpty() && File(asset.localPath).exists())
+            !asset.localPath.isNullOrEmpty() && File(asset.localPath).exists()
         }
     }
 
@@ -837,6 +834,7 @@ fun PlaybackLoopScreen(
                     LocalVideoRenderer(
                         asset = asset,
                         volumePercent = volumePercent,
+                        loopSingleVideo = playlist.size == 1 && playlistLoop,
                         onVideoCompleted = onVideoCompleted
                     )
                 } else {
@@ -908,6 +906,7 @@ fun LocalImageRenderer(asset: PlaylistAsset) {
 fun LocalVideoRenderer(
     asset: PlaylistAsset,
     volumePercent: Int = 80,
+    loopSingleVideo: Boolean = false,
     onVideoCompleted: () -> Unit
 ) {
     val context = LocalContext.current
@@ -920,7 +919,7 @@ fun LocalVideoRenderer(
     val exoPlayer = remember(asset.id) {
         ExoPlayer.Builder(context).build().apply {
             volume = volumePercent / 100f
-            repeatMode = Player.REPEAT_MODE_OFF
+            repeatMode = if (loopSingleVideo) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             val mediaItem = if (videoSource != null) {
                 MediaItem.fromUri(android.net.Uri.fromFile(videoSource))
             } else {
@@ -930,6 +929,10 @@ fun LocalVideoRenderer(
             prepare()
             playWhenReady = true
         }
+    }
+
+    LaunchedEffect(loopSingleVideo) {
+        exoPlayer.repeatMode = if (loopSingleVideo) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
     }
 
     LaunchedEffect(volumePercent) {

@@ -143,7 +143,7 @@ interface SignageApiService {
     @retrofit2.http.PATCH
     suspend fun updateScreenRecord(
         @Url url: String,
-        @Body fields: Map<String, Any?>
+        @Body fields: @JvmSuppressWildcards Map<String, Any?>
     ): PocketBaseScreenResponse
 
     @GET

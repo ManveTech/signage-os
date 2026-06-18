@@ -20,7 +20,7 @@ export async function getPairingCode(req: any, res: any) {
 
     // Check if screen record already exists in PocketBase
     const screens = await pb.collection('screens').getList(1, 1, {
-      filter: `hardware_uuid = "${hardwareUuid}"`
+      filter: pb.filter('hardware_uuid = {:hardwareUuid}', { hardwareUuid })
     });
 
     let screenRecord;
@@ -79,7 +79,7 @@ export async function pairScreen(req: any, res: any) {
 
     // 1. Verify user's license and slot limits
     const licenses = await pb.collection('licenses').getList(1, 1, {
-      filter: `assignedUserEmail = "${clientEmail}" && status = "active"`
+      filter: pb.filter('assignedUserEmail = {:clientEmail} && status = "active"', { clientEmail })
     });
 
     if (licenses.items.length === 0) {
@@ -89,7 +89,7 @@ export async function pairScreen(req: any, res: any) {
 
     // Count currently active screens for this user
     const activeScreens = await pb.collection('screens').getList(1, 100, {
-      filter: `assignedToUserEmail = "${clientEmail}" && status = "active"`
+      filter: pb.filter('assignedToUserEmail = {:clientEmail} && status = "active"', { clientEmail })
     });
 
     if (activeScreens.items.length >= license.deviceLimit) {
@@ -100,7 +100,7 @@ export async function pairScreen(req: any, res: any) {
 
     // 2. Locate screen record by pairing code
     const pairingScreens = await pb.collection('screens').getList(1, 1, {
-      filter: `pairing_code = "${pairingCode.trim().toUpperCase()}"`
+      filter: pb.filter('pairing_code = {:pairingCode}', { pairingCode: pairingCode.trim().toUpperCase() })
     });
 
     if (pairingScreens.items.length === 0) {
@@ -211,7 +211,7 @@ export async function recordHeartbeat(req: any, res: any) {
 
     // Find screen by hardware_uuid
     const screens = await pb.collection('screens').getList(1, 1, {
-      filter: `hardware_uuid = "${hardwareUuid}"`
+      filter: pb.filter('hardware_uuid = {:hardwareUuid}', { hardwareUuid })
     });
 
     if (screens.items.length > 0) {
@@ -287,7 +287,7 @@ export async function reconnectScreen(req: any, res: any) {
 
     // 1. Find the new screen record by pairing code
     const pairingScreens = await pb.collection('screens').getList(1, 1, {
-      filter: `pairing_code = "${pairingCode.trim().toUpperCase()}"`
+      filter: pb.filter('pairing_code = {:pairingCode}', { pairingCode: pairingCode.trim().toUpperCase() })
     });
 
     if (pairingScreens.items.length === 0) {
@@ -378,7 +378,9 @@ export async function syncScreenBrandingFromOrg(screenRecord: any) {
     if (!clientEmail) return;
 
     // 1. Get user
-    const user = await pb.collection('users').getFirstListItem(`email="${clientEmail.toLowerCase().trim()}"`).catch(() => null);
+    const user = await pb.collection('users').getFirstListItem(
+      pb.filter('email = {:email}', { email: clientEmail.toLowerCase().trim() })
+    ).catch(() => null);
     if (!user) return;
 
     // 2. Determine if white label is enabled for this license/screen
@@ -393,7 +395,10 @@ export async function syncScreenBrandingFromOrg(screenRecord: any) {
     } else {
       try {
         const licenses = await pb.collection('licenses').getList(1, 1, {
-          filter: `assignedUserEmail = "${clientEmail}" && status = "active" && whiteLabel = true`
+          filter: pb.filter(
+            'assignedUserEmail = {:email} && status = "active" && whiteLabel = true',
+            { email: clientEmail }
+          )
         });
         if (licenses.items.length > 0) {
           isWhiteLabel = true;
@@ -408,7 +413,9 @@ export async function syncScreenBrandingFromOrg(screenRecord: any) {
       org = await pb.collection('organizations').getOne(orgId).catch(() => null);
     }
     if (!org && user.company) {
-      org = await pb.collection('organizations').getFirstListItem(`name="${user.company.replace(/"/g, '\\"')}"`).catch(() => null);
+      org = await pb.collection('organizations').getFirstListItem(
+        pb.filter('name = {:company}', { company: user.company })
+      ).catch(() => null);
     }
 
     if (!org) return;
@@ -441,7 +448,7 @@ export async function reportOffline(req: any, res: any) {
     }
 
     const screens = await pb.collection('screens').getList(1, 1, {
-      filter: `hardware_uuid = "${hardwareUuid}"`
+      filter: pb.filter('hardware_uuid = {:hardwareUuid}', { hardwareUuid })
     });
 
     if (screens.items.length > 0) {

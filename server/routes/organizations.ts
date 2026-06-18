@@ -9,13 +9,13 @@ async function propagateBrandingToScreens(orgRecord: any) {
   try {
     // 1. Find all users in this organization
     const usersResult = await pb.collection('users').getList(1, 500, {
-      filter: `company = "${orgRecord.name.replace(/"/g, '\\"')}"`
+      filter: pb.filter('company = {:orgName}', { orgName: orgRecord.name })
     });
     
     for (const user of usersResult.items) {
       // 2. Find all screens assigned to this user's email
       const screensResult = await pb.collection('screens').getList(1, 500, {
-        filter: `assignedToUserEmail = "${user.email}"`
+        filter: pb.filter('assignedToUserEmail = {:email}', { email: user.email })
       });
       
       for (const screen of screensResult.items) {
@@ -30,7 +30,10 @@ async function propagateBrandingToScreens(orgRecord: any) {
           // Fallback: check if user has any active white-labeled license
           try {
             const licenses = await pb.collection('licenses').getList(1, 1, {
-              filter: `assignedUserEmail = "${user.email}" && status = "active" && whiteLabel = true`
+              filter: pb.filter(
+                'assignedUserEmail = {:email} && status = "active" && whiteLabel = true',
+                { email: user.email }
+              )
             });
             isWhiteLabelAllowed = licenses.items.length > 0;
           } catch (_) {}
@@ -58,20 +61,23 @@ async function propagateBrandingToPlaylists(orgRecord: any) {
   try {
     // 1. Find all users in this organization
     const usersResult = await pb.collection('users').getList(1, 500, {
-      filter: `company = "${orgRecord.name.replace(/"/g, '\\"')}"`
+      filter: pb.filter('company = {:orgName}', { orgName: orgRecord.name })
     });
 
     for (const user of usersResult.items) {
       // 2. Find all playlists created by this user
       const playlistsResult = await pb.collection('playlists').getList(1, 500, {
-        filter: `createdBy = "${user.email}"`
+        filter: pb.filter('createdBy = {:email}', { email: user.email })
       });
 
       // 3. Determine if white labeling is allowed
       let isWhiteLabelAllowed = false;
       try {
         const licenses = await pb.collection('licenses').getList(1, 1, {
-          filter: `assignedUserEmail = "${user.email}" && status = "active" && whiteLabel = true`
+          filter: pb.filter(
+            'assignedUserEmail = {:email} && status = "active" && whiteLabel = true',
+            { email: user.email }
+          )
         });
         isWhiteLabelAllowed = licenses.items.length > 0;
       } catch (_) {}

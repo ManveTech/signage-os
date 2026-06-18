@@ -159,7 +159,14 @@ export async function verifyPayment(req: any, res: any) {
       hmac.update(`${razorpayOrderId}|${razorpayPaymentId}`);
       const generatedSig = hmac.digest('hex');
 
-      if (generatedSig !== razorpaySignature && razorpaySignature !== 'simulated_sig') {
+      const sigBuf = Buffer.from(razorpaySignature);
+      const expectedSigBuf = Buffer.from(generatedSig);
+      let isSignatureValid = false;
+      if (sigBuf.length === expectedSigBuf.length && crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
+        isSignatureValid = true;
+      }
+
+      if (!isSignatureValid && razorpaySignature !== 'simulated_sig') {
         console.error('Razorpay signature verification failed!');
         return res.status(400).json({ message: 'Invalid payment signature.' });
       }

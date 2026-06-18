@@ -109,8 +109,9 @@ class SignageRepository(private val context: Context) {
 
             val basePbUrl = response.pocketbaseUrl
             val currentConfig = getOrCreateConfig()
+            val targetHost = getReplacementHost(initialConfig.serverUrl)
             val resolvedPocketbaseUrl = if (!basePbUrl.isNullOrEmpty()) {
-                basePbUrl.replace("localhost", "10.0.2.2").replace("127.0.0.1", "10.0.2.2")
+                basePbUrl.replace("localhost", targetHost).replace("127.0.0.1", targetHost)
             } else {
                 currentConfig.pocketbaseUrl
             }
@@ -197,16 +198,20 @@ class SignageRepository(private val context: Context) {
                 }
             }
 
+            var activePlaylistId = response.playlistId ?: response.playlist
+
             // Check if schedule is due
             if (!response.schedulePlaylist.isNullOrEmpty() && !response.scheduleDate.isNullOrEmpty() && !response.scheduleTime.isNullOrEmpty()) {
                 if (isScheduleDue(response.scheduleDate, response.scheduleTime)) {
-                    applyScheduledPlaylist(currentConfig, response.schedulePlaylist)
+                    val newPlaylistId = applyScheduledPlaylist(currentConfig, response.schedulePlaylist)
+                    if (newPlaylistId.isNotEmpty()) {
+                        activePlaylistId = newPlaylistId
+                    }
                 }
             }
 
             // If active or online, sync the actual playlist assets
             if (response.status == "active" || response.status == "online") {
-                val activePlaylistId = response.playlistId ?: response.playlist
                 if (!activePlaylistId.isNullOrEmpty()) {
                     syncPlaylist(currentConfig.pocketbaseUrl, activePlaylistId)
                 } else {
@@ -272,10 +277,10 @@ class SignageRepository(private val context: Context) {
         }
     }
 
-    private suspend fun applyScheduledPlaylist(config: ScreenConfig, playlistName: String) = withContext(Dispatchers.IO) {
+    private suspend fun applyScheduledPlaylist(config: ScreenConfig, playlistName: String): String = withContext(Dispatchers.IO) {
+        var newPlaylistId = ""
         try {
             Log.d("SignageRepository", "Schedule triggered! Switching active playlist to: $playlistName")
-            var newPlaylistId = ""
             if (playlistName != "Normal" && playlistName != "Unassigned") {
                 // Fetch the list of playlists to find one with the matching name
                 val url = "${config.pocketbaseUrl}/api/collections/playlists/records?filter=name=\"$playlistName\""
@@ -302,11 +307,13 @@ class SignageRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error applying scheduled playlist switch", e)
         }
+        newPlaylistId
     }
 
-    private fun resolveUrl(url: String, pocketbaseUrl: String): String {
+    private fun resolveUrl(url: String, pocketbaseUrl: String, serverUrl: String): String {
         if (url.startsWith("data:", ignoreCase = true)) return url
-        return url.replace("localhost", "10.0.2.2").replace("127.0.0.1", "10.0.2.2")
+        val targetHost = getReplacementHost(serverUrl)
+        return url.replace("localhost", targetHost).replace("127.0.0.1", targetHost)
     }
 
     private fun getCacheFileName(url: String, filename: String): String {
@@ -329,6 +336,7 @@ class SignageRepository(private val context: Context) {
         completedFilesForProgress: Int = 0
     ): String? = withContext(Dispatchers.IO) {
         if (logoDataOrUrl.isEmpty()) return@withContext null
+        val config = getOrCreateConfig()
         val cacheDir = File(context.filesDir, "signage_cache")
         if (!cacheDir.exists()) {
             cacheDir.mkdirs()
@@ -355,7 +363,7 @@ class SignageRepository(private val context: Context) {
                     }
                 }
             } else {
-                val resolvedUrl = resolveUrl(logoDataOrUrl, getOrCreateConfig().pocketbaseUrl)
+                val resolvedUrl = resolveUrl(logoDataOrUrl, config.pocketbaseUrl, config.serverUrl)
                 val request = Request.Builder().url(resolvedUrl).build()
                 okHttpClient.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
@@ -409,6 +417,8 @@ class SignageRepository(private val context: Context) {
     }
 
     private suspend fun syncPlaylist(pocketbaseUrl: String, playlistId: String) = withContext(Dispatchers.IO) {
+        val config = getOrCreateConfig()
+        val serverUrl = config.serverUrl
         try {
             if (playlistId.equals("Normal", ignoreCase = true) || playlistId.equals("None", ignoreCase = true) || playlistId.isEmpty()) {
                 if (assetDao.getAllAssets().isNotEmpty()) {
@@ -418,7 +428,7 @@ class SignageRepository(private val context: Context) {
             }
 
             val actualId = if (playlistId.length != 15 || !playlistId.all { it.isLowerCase() || it.isDigit() }) {
-                val queryUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/collections/playlists/records?filter=name=\"$playlistId\""
+                val queryUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl, serverUrl)}/api/collections/playlists/records?filter=name=\"$playlistId\""
                 val listResponse = apiService.getPlaylistList(queryUrl)
                 listResponse.items.firstOrNull()?.id ?: ""
             } else {
@@ -432,7 +442,7 @@ class SignageRepository(private val context: Context) {
                 return@withContext
             }
 
-            val url = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/collections/playlists/records/$actualId"
+            val url = "${resolveUrl(pocketbaseUrl, pocketbaseUrl, serverUrl)}/api/collections/playlists/records/$actualId"
             val response = apiService.getPlaylistRecord(url)
 
             Log.d("SignageRepository", "Synced playlist record name: ${response.name}")
@@ -484,7 +494,7 @@ class SignageRepository(private val context: Context) {
                         async {
                             try {
                                 val mediaId = slide.mediaId
-                                val mediaItemUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/collections/media_items/records/$mediaId"
+                                val mediaItemUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl, serverUrl)}/api/collections/media_items/records/$mediaId"
                                 val mediaItem = apiService.getMediaItemRecord(mediaItemUrl)
                                 
                                 val fileUrl = if (!mediaItem.file.isNullOrEmpty()) {
@@ -492,7 +502,7 @@ class SignageRepository(private val context: Context) {
                                 } else {
                                     mediaItem.thumbnail
                                 }
-                                val finalUrl = resolveUrl(fileUrl, pocketbaseUrl)
+                                val finalUrl = resolveUrl(fileUrl, pocketbaseUrl, serverUrl)
 
                                 val extension = ".jpg"
                                 val filename = if (mediaItem.thumbnail.startsWith("data:")) {
@@ -537,7 +547,7 @@ class SignageRepository(private val context: Context) {
             // 2. Fallback to Pocketbase assetsJson if present and slides was empty
             if (newAssets.isEmpty() && !response.assetsJson.isNullOrEmpty()) {
                 response.assetsJson.forEachIndexed { index, pbAsset ->
-                    val assetUrl = resolveUrl(pbAsset.url, pocketbaseUrl)
+                    val assetUrl = resolveUrl(pbAsset.url, pocketbaseUrl, serverUrl)
                     val cacheFileName = getCacheFileName(assetUrl, pbAsset.filename)
                     val cacheFile = File(cacheDir, cacheFileName)
                     newAssets.add(
@@ -571,7 +581,7 @@ class SignageRepository(private val context: Context) {
                     newAssets.add(
                         PlaylistAsset(
                             id = fileId,
-                            url = resolveUrl(fileUrl, pocketbaseUrl),
+                            url = resolveUrl(fileUrl, pocketbaseUrl, serverUrl),
                             filename = fileName,
                             localPath = cacheFile.absolutePath,
                             mediaType = "image",
@@ -589,7 +599,7 @@ class SignageRepository(private val context: Context) {
                     response.mediaIds.mapIndexed { index, mediaId ->
                         async {
                             try {
-                                val mediaItemUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/collections/media_items/records/$mediaId"
+                                val mediaItemUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl, serverUrl)}/api/collections/media_items/records/$mediaId"
                                 val mediaItem = apiService.getMediaItemRecord(mediaItemUrl)
                                 
                                 val fileUrl = if (!mediaItem.file.isNullOrEmpty()) {
@@ -597,7 +607,7 @@ class SignageRepository(private val context: Context) {
                                 } else {
                                     mediaItem.thumbnail
                                 }
-                                val finalUrl = resolveUrl(fileUrl, pocketbaseUrl)
+                                val finalUrl = resolveUrl(fileUrl, pocketbaseUrl, serverUrl)
 
                                 val extension = ".jpg"
                                 val filename = if (mediaItem.thumbnail.startsWith("data:")) {
@@ -672,9 +682,6 @@ class SignageRepository(private val context: Context) {
                     // Update database
                     assetDao.clearAllAssets()
                     assetDao.insertAssets(mergedAssets)
-
-                    // Start downloading new items in the background
-                    startDownloadingPendingAssets()
                 } else if (wasWhiteLabelLogoMissing) {
                     startDownloadingPendingAssets()
                 }
@@ -925,7 +932,7 @@ class SignageRepository(private val context: Context) {
                         continue
                     }
 
-                    val url = "${resolveUrl(config.pocketbaseUrl, config.pocketbaseUrl)}/api/realtime"
+                    val url = "${resolveUrl(config.pocketbaseUrl, config.pocketbaseUrl, config.serverUrl)}/api/realtime"
                     Log.d("SignageRepository", "Connecting to PocketBase SSE at $url")
 
                     val request = Request.Builder()
@@ -958,7 +965,7 @@ class SignageRepository(private val context: Context) {
                                         clientId = connectionInfo?.get("clientId") as? String ?: ""
                                         if (clientId.isNotEmpty()) {
                                             Log.d("SignageRepository", "SSE Connected. ClientID: $clientId. Subscribing...")
-                                            subscribeToRealtime(config.pocketbaseUrl, clientId, config.screenId)
+                                            subscribeToRealtime(config.pocketbaseUrl, config.serverUrl, clientId, config.screenId)
                                         }
                                     } else {
                                         Log.d("SignageRepository", "SSE update event received. Syncing screen status.")
@@ -976,9 +983,9 @@ class SignageRepository(private val context: Context) {
         }
     }
 
-    private suspend fun subscribeToRealtime(pocketbaseUrl: String, clientId: String, screenId: String) {
+    private suspend fun subscribeToRealtime(pocketbaseUrl: String, serverUrl: String, clientId: String, screenId: String) {
         try {
-            val url = "${resolveUrl(pocketbaseUrl, pocketbaseUrl)}/api/realtime"
+            val url = "${resolveUrl(pocketbaseUrl, pocketbaseUrl, serverUrl)}/api/realtime"
             val bodyMap = mapOf(
                 "clientId" to clientId,
                 "subscriptions" to listOf("screens", "playlists", "media_items")
@@ -1138,8 +1145,6 @@ class SignageRepository(private val context: Context) {
         val current = getOrCreateConfig()
         configDao.saveConfig(current.copy(status = "active"))
         
-        // Download these files in background so they function offline!
-        startDownloadingPendingAssets()
     }
 
     suspend fun updateDeviceVolume(volume: Int) = withContext(Dispatchers.IO) {
@@ -1157,4 +1162,37 @@ class SignageRepository(private val context: Context) {
             Log.e("SignageRepository", "Failed to update device volume", e)
         }
     }
+
+    private fun isEmulator(): Boolean {
+        val brand = android.os.Build.BRAND
+        val device = android.os.Build.DEVICE
+        val model = android.os.Build.MODEL
+        val hardware = android.os.Build.HARDWARE
+        val product = android.os.Build.PRODUCT
+        val fingerprint = android.os.Build.FINGERPRINT
+        return brand.startsWith("generic") ||
+                device.startsWith("generic") ||
+                model.contains("google_sdk") ||
+                model.contains("Emulator") ||
+                model.contains("Android SDK built for x86") ||
+                hardware.contains("goldfish") ||
+                hardware.contains("ranchu") ||
+                product.contains("sdk_google") ||
+                fingerprint.startsWith("generic")
+    }
+
+    private fun getReplacementHost(serverUrl: String): String {
+        return try {
+            val uri = java.net.URI(serverUrl)
+            val host = uri.host ?: ""
+            if (host == "localhost" || host == "127.0.0.1" || host.isEmpty()) {
+                if (isEmulator()) "10.0.2.2" else "127.0.0.1"
+            } else {
+                host
+            }
+        } catch (e: Exception) {
+            if (isEmulator()) "10.0.2.2" else "127.0.0.1"
+        }
+    }
 }
+

@@ -3,7 +3,7 @@ import {
   Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit,
   Clock, Monitor, X, Check, CheckCircle, MapPin,
   Grid3X3, List, Pause, Eraser, Lock, Trash,
-  Calendar, Link, ListVideo
+  Calendar, Link, ListVideo, FolderMinus
 } from 'lucide-react';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
@@ -335,13 +335,30 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
     });
   };
 
+  const handleRemoveScreenFromGroup = (screen: Screen) => {
+    const updatedScreen = { ...screen, groupId: '' };
+    const allScreens = mediaStore.getScreens();
+    const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+    mediaStore.saveScreens(updatedAll);
+    setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+    pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
+    addToast(`"${screen.name}" removed from group`);
+  };
+
   const handleEditSave = () => {
     if (!editScreen) return;
+    const gp = groups.find(g => g.id === editScreen.groupId);
+    const finalScreen = gp ? { 
+      ...editScreen, 
+      playlist: gp.playlist || editScreen.playlist,
+      playlistId: userPlaylists.find(p => p.name === (gp?.playlist || ''))?.id || editScreen.playlistId,
+      volume: gp.volume !== undefined ? gp.volume : editScreen.volume,
+    } : editScreen;
     const allScreens = mediaStore.getScreens();
-    const updated = allScreens.map(s => s.id === editScreen.id ? editScreen : s);
+    const updated = allScreens.map(s => s.id === editScreen.id ? finalScreen : s);
     mediaStore.saveScreens(updated);
     setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
-    pushToDatabase('screens', editScreen.id, editScreen, 'PUT');
+    pushToDatabase('screens', editScreen.id, finalScreen, 'PUT');
     setEditScreen(null);
     addToast(`"${editScreen.name}" updated successfully`);
   };
@@ -632,12 +649,22 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     const gp = groups.find(g => g.id === screen.groupId);
                     const c = gp ? (groupColorMap[gp.color] ?? groupColorMap.blue) : groupColorMap.blue;
                     return (
-                      <div className={`p-2.5 rounded-xl border ${c.bg} ${c.border} ${c.text} text-[10.5px] space-y-1`}>
+                      <div className={`p-2.5 rounded-xl border ${c.bg} ${c.border} ${c.text} text-[10.5px] space-y-1 relative group/group-badge`}>
                         <div className="font-bold flex items-center gap-1">
                           <span className={`w-2 h-2 rounded-full ${c.iconBg}`} />
                           Group: {gp?.name}
                         </div>
                         <div className="opacity-90 font-medium">Inherited Playlist: <span className="underline font-bold">{gp?.playlist || 'Normal'}</span></div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveScreenFromGroup(screen);
+                          }}
+                          className="absolute top-2 right-2 px-1.5 py-0.5 text-[9px] bg-red-100 hover:bg-red-200 text-red-750 border border-red-200 rounded cursor-pointer font-bold opacity-0 group-hover/group-badge:opacity-100 transition-opacity flex items-center gap-0.5"
+                          title="Remove from group"
+                        >
+                          Remove Group
+                        </button>
                       </div>
                     );
                   })() : (
@@ -723,6 +750,15 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     >
                       <Eraser size={13} />
                     </button>
+                    {screen.groupId && (
+                      <button
+                        onClick={() => handleRemoveScreenFromGroup(screen)}
+                        className="p-1 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-100 rounded-lg transition-colors cursor-pointer"
+                        title="Remove from group"
+                      >
+                        <FolderMinus size={13} />
+                      </button>
+                    )}
                     <button
                       onClick={() => setDeleteScreen(screen)}
                       className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer"
@@ -889,6 +925,15 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                         >
                           <Eraser size={13} />
                         </button>
+                         {screen.groupId && (
+                          <button
+                            onClick={() => handleRemoveScreenFromGroup(screen)}
+                            className="p-1 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-100 rounded-lg transition-colors cursor-pointer"
+                            title="Remove from group"
+                          >
+                            <FolderMinus size={13} />
+                          </button>
+                        )}
                         <button
                           onClick={() => setDeleteScreen(screen)}
                           className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer"
@@ -957,7 +1002,21 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                   />
                 </div>
               </div>
-              {editScreen.groupId ? (() => {
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Group</label>
+                <select
+                  value={editScreen.groupId ?? ''}
+                  onChange={e => setEditScreen(p => p && ({ ...p, groupId: e.target.value || undefined }))}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400 bg-white"
+                >
+                  <option value="">None (Ungrouped)</option>
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {editScreen.groupId && (() => {
                 const gp = groups.find(g => g.id === editScreen.groupId);
                 return (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-700 space-y-2">
@@ -967,9 +1026,19 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     {gp?.schedulePlaylist && (
                       <p>Group Scheduled Playlist: <strong>{gp.schedulePlaylist}</strong> on {gp.scheduleDate} at {gp.scheduleTime}</p>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setEditScreen(p => p && ({ ...p, groupId: undefined }))}
+                      className="w-full mt-1.5 py-2 text-xs font-semibold text-red-650 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <FolderMinus size={13} />
+                      Remove Screen from Group
+                    </button>
                   </div>
                 );
-              })() : (
+              })()}
+
+              {!editScreen.groupId && (
                 <>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
@@ -994,7 +1063,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                             }
                           });
                         }}
-                        className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500 accent-blue-600 cursor-pointer"
+                        className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-550 accent-blue-600 cursor-pointer"
                       />
                     </div>
                     {editScreen.schedulePlaylist !== undefined && (

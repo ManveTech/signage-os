@@ -49,7 +49,8 @@ data class SignageUiState(
     val isWhiteLabel: Boolean = false,
     val whiteLabelLogoUrl: String? = null,
     val whiteLabelLogoPath: String? = null,
-    val whiteLabelName: String? = null
+    val whiteLabelName: String? = null,
+    val isConfigLoaded: Boolean = false
 )
 
 class SignageViewModel(application: Application) : AndroidViewModel(application) {
@@ -93,7 +94,8 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                             isWhiteLabel = config.isWhiteLabel,
                             whiteLabelLogoUrl = config.whiteLabelLogoUrl,
                             whiteLabelLogoPath = config.whiteLabelLogoPath,
-                            whiteLabelName = config.whiteLabelName
+                            whiteLabelName = config.whiteLabelName,
+                            isConfigLoaded = true
                         )
                     }
                     // Start or update asset rotational loop based on playlist changes
@@ -112,20 +114,24 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         // Collect database playlist state
         viewModelScope.launch {
             repository.assetsFlow.collectLatest { assets ->
+                val filteredAssets = assets.filter {
+                    it.mediaType.equals("image", ignoreCase = true) ||
+                    it.mediaType.equals("video", ignoreCase = true)
+                }
                 val oldPlaylist = _uiState.value.playlist
-                val structurallyEqual = isPlaylistStructurallyEqual(oldPlaylist, assets)
+                val structurallyEqual = isPlaylistStructurallyEqual(oldPlaylist, filteredAssets)
                 _uiState.update { 
                     it.copy(
-                        playlist = assets,
+                        playlist = filteredAssets,
                         currentAssetIndex = if (!structurallyEqual) 0 else it.currentAssetIndex
                     )
                 }
                 if (!structurallyEqual) {
                     restartAssetRotation(force = true)
+                    repository.startDownloadingPendingAssets()
                 } else {
                     restartAssetRotation(force = false)
                 }
-                repository.startDownloadingPendingAssets()
             }
         }
 
@@ -204,9 +210,11 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             val startTime = System.currentTimeMillis()
             while (System.currentTimeMillis() - startTime < maxWaitMs) {
                 val state = _uiState.value
-                // Dismiss as soon as: not whitelabeled, or logo path is already cached
-                if (!state.isWhiteLabel || !state.whiteLabelLogoPath.isNullOrEmpty()) {
-                    break
+                if (state.isConfigLoaded) {
+                    // Once config is loaded from the database, evaluate the whitelabel logo condition
+                    if (!state.isWhiteLabel || !state.whiteLabelLogoPath.isNullOrEmpty()) {
+                        break
+                    }
                 }
                 delay(200)
             }

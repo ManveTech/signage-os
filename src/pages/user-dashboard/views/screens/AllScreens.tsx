@@ -185,7 +185,12 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
   const handleEditSave = () => {
     if (!editScreen) return;
     const gp = groups.find(g => g.id === editScreen.groupId);
-    const finalScreen = gp ? { ...editScreen, playlist: gp.playlist } : editScreen;
+    const finalScreen = gp ? { 
+      ...editScreen, 
+      playlist: gp.playlist || editScreen.playlist,
+      playlistId: userPlaylists.find(p => p.name === (gp?.playlist || ''))?.id || editScreen.playlistId,
+      volume: gp.volume !== undefined ? gp.volume : editScreen.volume,
+    } : editScreen;
     const allScreens = mediaStore.getScreens();
     const updated = allScreens.map(s => s.id === editScreen.id ? finalScreen : s);
     mediaStore.saveScreens(updated);
@@ -497,8 +502,16 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
               {editScreen.groupId && (() => {
                 const gp = groups.find(g => g.id === editScreen.groupId);
                 return (
-                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
-                    Playlist is managed by group <strong>{gp?.name}</strong> (Inherited: <strong>{gp?.playlist || 'None'}</strong>).
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700 space-y-2">
+                    <p>Playlist is managed by group <strong>{gp?.name}</strong> (Inherited: <strong>{gp?.playlist || 'None'}</strong>).</p>
+                    <button
+                      type="button"
+                      onClick={() => setEditScreen(p => p && ({ ...p, groupId: undefined }))}
+                      className="w-full mt-1.5 py-2 text-xs font-semibold text-red-655 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <FolderMinus size={13} />
+                      Remove Screen from Group
+                    </button>
                   </div>
                 );
               })()}

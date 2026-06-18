@@ -42,6 +42,9 @@ export type ScreenGroup = {
   scheduleTime?: string;
   scheduleLibrary?: string;
   orgId?: string;
+  volume?: number;
+  clear_cache?: boolean;
+  force_sync?: boolean;
 };
 
 export type MediaItem = {

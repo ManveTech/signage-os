@@ -104,7 +104,7 @@ export async function forgotPassword(req: any, res: any) {
     let user: any = null;
     try {
       await ensurePBAuth();
-      user = await pb.collection('users').getFirstListItem(`email = "${lowerEmail}"`);
+      user = await pb.collection('users').getFirstListItem(pb.filter('email = {:email}', { email: lowerEmail }));
     } catch (pbErr: any) {
       console.log('User lookup in PocketBase failed or not found:', pbErr.message);
     }
