@@ -267,7 +267,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             while (isActive) {
                 try {
                     val state = _uiState.value
-                    if (state.status == "active" || state.status == "online" || state.status == "offline") {
+                    if (state.status == "active" || state.status == "online") {
                         val currentAsset = state.playlist.getOrNull(state.currentAssetIndex)
                         repository.sendDiagnosticsHeartbeat(currentAsset?.filename)
                     }
@@ -298,8 +298,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
         assetRotationJob?.cancel()
         val playlist = _uiState.value.playlist
-        val status = _uiState.value.status
-        if (playlist.isEmpty() || (status != "active" && status != "online" && status != "offline")) {
+        if (playlist.isEmpty() || (_uiState.value.status != "active" && _uiState.value.status != "online")) {
             return
         }
 
