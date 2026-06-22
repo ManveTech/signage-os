@@ -73,6 +73,7 @@ class SignageRepository(private val context: Context) {
     val configFlow: Flow<ScreenConfig?> = configDao.getConfigFlow()
     val assetsFlow: Flow<List<PlaylistAsset>> = assetDao.getAllAssetsFlow()
     val downloadStateFlow = kotlinx.coroutines.flow.MutableStateFlow(DownloadState())
+    val commandFlow = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 64)
 
     init {
         // Log cache initialization details
@@ -161,7 +162,8 @@ class SignageRepository(private val context: Context) {
                 isWhiteLabel = isWhiteLabelNow,
                 whiteLabelLogoUrl = if (logoUrlNow.isNotEmpty()) logoUrlNow else currentConfig.whiteLabelLogoUrl,
                 whiteLabelName = if (nameNow.isNotEmpty()) nameNow else currentConfig.whiteLabelName,
-                whiteLabelLogoPath = if (isLogoChanged) null else currentConfig.whiteLabelLogoPath
+                whiteLabelLogoPath = if (isLogoChanged) null else currentConfig.whiteLabelLogoPath,
+                lastSyncedAt = System.currentTimeMillis()
             )
             configDao.saveConfig(updatedConfig)
 
@@ -186,8 +188,9 @@ class SignageRepository(private val context: Context) {
 
             // Check if force_sync command was sent from backend
             if (response.force_sync == true) {
-                Log.d("SignageRepository", "Force sync command received. Retrying download of pending assets.")
-                startDownloadingPendingAssets()
+                Log.d("SignageRepository", "Force sync command received. Purging local cache and restarting playlist.")
+                clearDeviceAssets()
+                commandFlow.emit("restart_playlist")
                 
                 // Clear the command flag on backend
                 try {
@@ -195,6 +198,20 @@ class SignageRepository(private val context: Context) {
                     apiService.updateScreenRecord(patchUrl, mapOf("force_sync" to false))
                 } catch (e: Exception) {
                     Log.e("SignageRepository", "Failed to clear force_sync flag on server", e)
+                }
+            }
+
+            // Check if restart_playlist command was sent from backend
+            if (response.restart_playlist == true) {
+                Log.d("SignageRepository", "Restart playlist command received. Restarting loop playlist from start.")
+                commandFlow.emit("restart_playlist")
+                
+                // Clear the command flag on backend
+                try {
+                    val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
+                    apiService.updateScreenRecord(patchUrl, mapOf("restart_playlist" to false))
+                } catch (e: Exception) {
+                    Log.e("SignageRepository", "Failed to clear restart_playlist flag on server", e)
                 }
             }
 
@@ -240,6 +257,18 @@ class SignageRepository(private val context: Context) {
             Result.failure(e)
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error syncing screen status with backend", e)
+            
+            // Check if it has been offline (unable to sync) for more than 24 hours
+            val currentConfig = getOrCreateConfig()
+            if (currentConfig.screenId.isNotEmpty() && currentConfig.lastSyncedAt > 0L) {
+                val offlineDuration = System.currentTimeMillis() - currentConfig.lastSyncedAt
+                val oneDayMs = 24 * 60 * 60 * 1000L
+                if (offlineDuration > oneDayMs) {
+                    Log.w("SignageRepository", "Screen has been offline for more than 24 hours. Unpairing device.")
+                    clearCache()
+                }
+            }
+            
             Result.failure(e)
         }
     }

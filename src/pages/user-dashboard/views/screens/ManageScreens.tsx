@@ -221,7 +221,7 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
   };
 
   const handleRemoveScreenFromGroup = (screen: Screen) => {
-    const updatedScreen = { ...screen, groupId: '' };
+    const updatedScreen = { ...screen, groupId: null };
     const allScreens = mediaStore.getScreens();
     const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
     mediaStore.saveScreens(updatedAll);
@@ -562,7 +562,7 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Group</label>
                 <select
                   value={editScreen.groupId ?? ''}
-                  onChange={e => setEditScreen(p => p && ({ ...p, groupId: e.target.value || undefined }))}
+                  onChange={e => setEditScreen(p => p && ({ ...p, groupId: e.target.value || null }))}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
                 >
                   <option value="">None (Ungrouped)</option>
@@ -596,7 +596,7 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
                     <p>Playlist is managed by group <strong>{gp?.name}</strong> (Inherited: <strong>{gp?.playlist || 'None'}</strong>).</p>
                     <button
                       type="button"
-                      onClick={() => setEditScreen(p => p && ({ ...p, groupId: undefined }))}
+                      onClick={() => setEditScreen(p => p && ({ ...p, groupId: null }))}
                       className="w-full mt-1.5 py-2 text-xs font-semibold text-red-655 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <FolderMinus size={13} />

@@ -78,24 +78,39 @@ export async function pairScreen(req: any, res: any) {
     const clientEmail = req.user?.email || assignedToUserEmail || 'priya@demo.com';
 
     // 1. Verify user's license and slot limits
-    const licenses = await pb.collection('licenses').getList(1, 1, {
+    const licensesResult = await pb.collection('licenses').getList(1, 100, {
       filter: pb.filter('assignedUserEmail = {:clientEmail} && status = "active"', { clientEmail })
     });
 
-    if (licenses.items.length === 0) {
+    if (licensesResult.items.length === 0) {
       return res.status(400).json({ message: 'No active license found for this user.' });
     }
-    const license = licenses.items[0];
 
-    // Count currently active screens for this user
-    const activeScreens = await pb.collection('screens').getList(1, 100, {
-      filter: pb.filter('assignedToUserEmail = {:clientEmail} && status = "active"', { clientEmail })
+    // Count currently active/paired screens for this user (status != 'pairing')
+    const activeScreens = await pb.collection('screens').getList(1, 500, {
+      filter: pb.filter('assignedToUserEmail = {:clientEmail} && status != "pairing"', { clientEmail })
     });
 
-    if (activeScreens.items.length >= license.deviceLimit) {
+    const totalAllowed = licensesResult.items.reduce((sum, lic) => sum + (lic.deviceLimit || 0), 0);
+    if (activeScreens.items.length >= totalAllowed) {
       return res.status(400).json({
-        message: `Device limit reached. Your ${license.name} only supports up to ${license.deviceLimit} screen(s).`
+        message: `Device limit reached. Your active license(s) only support up to ${totalAllowed} screen(s).`
       });
+    }
+
+    // Dynamically select a license that has available slots
+    let license = null;
+    for (const lic of licensesResult.items) {
+      const assignedCount = activeScreens.items.filter(s => s.license_id === lic.id).length;
+      if (assignedCount < lic.deviceLimit) {
+        license = lic;
+        break;
+      }
+    }
+
+    // Fallback to the first active license if mapping check is bypassed
+    if (!license) {
+      license = licensesResult.items[0];
     }
 
     // 2. Locate screen record by pairing code
@@ -127,10 +142,11 @@ export async function pairScreen(req: any, res: any) {
       license_id: license.id,
       licenseType: license.whiteLabel ? 'Pro' : 'Lite',
       assignedToUserEmail: clientEmail,
-      groupId: groupId || '',
+      groupId: groupId || null,
       playlist: playlist || '', // playlist ID
       playlistId: playlist || '',
-      onlineSince: new Date().toISOString()
+      onlineSince: new Date().toISOString(),
+      lastHeartbeat: new Date().toISOString()
     });
 
     // Sync branding details
@@ -307,13 +323,21 @@ export async function reconnectScreen(req: any, res: any) {
     // 2. Find the existing screen record by screenId
     const existingScreen = await pb.collection('screens').getOne(screenId);
 
+    // Verify ownership or super admin permissions
+    const clientEmail = req.user?.email;
+    const isSuperAdmin = req.user?.role === 'super_admin';
+    if (existingScreen.assignedToUserEmail !== clientEmail && !isSuperAdmin) {
+      return res.status(403).json({ message: 'Unauthorized: You do not own this screen.' });
+    }
+
     // 3. Update the existing screen with the hardware_uuid and new device details
     const updatedScreen = await pb.collection('screens').update(existingScreen.id, {
       hardware_uuid: pairingScreen.hardware_uuid,
       status: 'online',
       pairing_code: '',
       pairing_code_expires: '',
-      onlineSince: new Date().toISOString()
+      onlineSince: new Date().toISOString(),
+      lastHeartbeat: new Date().toISOString()
     });
 
     // 4. Delete the temporary pairingScreen record to keep database clean (only if it is a different record)

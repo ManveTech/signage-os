@@ -78,6 +78,7 @@ export interface Screen {
   clear_cache?: boolean;
   volume?: number;
   force_sync?: boolean;
+  restart_playlist?: boolean;
 }
 
 const INITIAL_MEDIA: MediaItem[] = [];

@@ -65,6 +65,17 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
     private var assetRotationJob: Job? = null
 
     init {
+        // Collect repository commands
+        viewModelScope.launch {
+            repository.commandFlow.collect { command ->
+                if (command == "restart_playlist") {
+                    Log.d("SignageViewModel", "Received restart_playlist command. Resetting asset index to 0.")
+                    _uiState.update { it.copy(currentAssetIndex = 0) }
+                    restartAssetRotation(force = true)
+                }
+            }
+        }
+
         // Collect database config state
         viewModelScope.launch {
             repository.configFlow.collectLatest { config ->
@@ -275,7 +286,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             while (isActive) {
                 try {
                     val state = _uiState.value
-                    if (state.status == "active" || state.status == "online") {
+                    if (state.status == "active" || state.status == "online" || state.status == "offline") {
                         val currentAsset = state.playlist.getOrNull(state.currentAssetIndex)
                         repository.sendDiagnosticsHeartbeat(currentAsset?.filename)
                     }
@@ -306,7 +317,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
         assetRotationJob?.cancel()
         val playlist = _uiState.value.playlist
-        if (playlist.isEmpty() || (_uiState.value.status != "active" && _uiState.value.status != "online")) {
+        if (playlist.isEmpty() || (_uiState.value.status != "active" && _uiState.value.status != "online" && _uiState.value.status != "offline")) {
             return
         }
 

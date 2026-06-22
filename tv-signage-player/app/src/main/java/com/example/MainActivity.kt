@@ -104,7 +104,7 @@ fun SignagePlayerApp(
 
     // Apply screen orientation: Portrait by default (pairing/standby), or from playlist settings
     LaunchedEffect(uiState.status, uiState.playlist, uiState.playlistOrientation) {
-        val isPlaying = (uiState.status == "active" || uiState.status == "online") && uiState.playlist.isNotEmpty()
+        val isPlaying = (uiState.status == "active" || uiState.status == "online" || uiState.status == "offline") && uiState.playlist.isNotEmpty()
         
         activity?.requestedOrientation = if (isPlaying) {
             if (uiState.playlistOrientation == "vertical") {
@@ -121,9 +121,8 @@ fun SignagePlayerApp(
         if (uiState.showSplash) {
             AppSplashScreen(uiState = uiState)
         } else {
-            // Main Screen Routing based on Status
             when (uiState.status) {
-            "active", "online" -> {
+            "active", "online", "offline" -> {
                 if (uiState.playlist.isEmpty()) {
                     StandbyScreen(
                         uiState = uiState,

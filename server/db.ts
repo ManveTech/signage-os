@@ -164,6 +164,21 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('Programmatically added force_sync field to screens collection');
     }
 
+    if (!sFields.some((f: any) => f.name === 'restart_playlist')) {
+      sFields.push({
+        id: 'boolrestartplaylistid',
+        name: 'restart_playlist',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Restart loop playlist from start',
+        hidden: false,
+        presentable: false
+      });
+      screensUpdated = true;
+      console.log('Programmatically added restart_playlist field to screens collection');
+    }
+
     if (!sFields.some((f: any) => f.name === 'onlineSince')) {
       sFields.push({
         id: 'txtonlinesinceid',

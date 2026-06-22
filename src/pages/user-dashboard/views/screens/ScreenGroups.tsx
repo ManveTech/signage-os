@@ -85,52 +85,89 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
     setIsScheduledEdit(!!group.schedulePlaylist);
   };
 
-  const [assignLibraryDirectTo, setAssignLibraryDirectTo] = useState<ScreenGroup | null>(null);
-  const [scheduleLibraryTo, setScheduleLibraryTo] = useState<ScreenGroup | null>(null);
-  const [libraryToAssign, setLibraryToAssign] = useState('');
-  const [libraryAssignDate, setLibraryAssignDate] = useState('');
-  const [libraryAssignTime, setLibraryAssignTime] = useState('');
+  const [assignPlaylistDirectTo, setAssignPlaylistDirectTo] = useState<ScreenGroup | null>(null);
+  const [schedulePlaylistTo, setSchedulePlaylistTo] = useState<ScreenGroup | null>(null);
+  const [playlistToAssign, setPlaylistToAssign] = useState('');
+  const [playlistAssignDate, setPlaylistAssignDate] = useState('');
+  const [playlistAssignTime, setPlaylistAssignTime] = useState('');
 
-  const handleStartLibraryAssignDirect = (group: ScreenGroup) => {
-    setAssignLibraryDirectTo(group);
-    setLibraryToAssign(group.library || '');
+  const handleStartPlaylistAssignDirect = (group: ScreenGroup) => {
+    setAssignPlaylistDirectTo(group);
+    setPlaylistToAssign(group.playlist || '');
   };
 
-  const handleStartLibrarySchedule = (group: ScreenGroup) => {
-    setScheduleLibraryTo(group);
-    setLibraryToAssign(group.scheduleLibrary || '');
-    setLibraryAssignDate(group.libraryAssignedDate || new Date().toISOString().split('T')[0]);
-    setLibraryAssignTime(group.libraryAssignedTime || new Date().toTimeString().split(' ')[0].substring(0, 5));
+  const handleStartPlaylistSchedule = (group: ScreenGroup) => {
+    setSchedulePlaylistTo(group);
+    setPlaylistToAssign(group.schedulePlaylist || '');
+    setPlaylistAssignDate(group.scheduleDate || new Date().toISOString().split('T')[0]);
+    setPlaylistAssignTime(group.scheduleTime || new Date().toTimeString().split(' ')[0].substring(0, 5));
   };
 
-  const handleSaveLibraryDirect = () => {
-    if (!assignLibraryDirectTo) return;
-    const updated = groups.map(g => g.id === assignLibraryDirectTo.id ? {
+  const handleSavePlaylistDirect = () => {
+    if (!assignPlaylistDirectTo) return;
+    const playlistName = playlistToAssign;
+    const updated = groups.map(g => g.id === assignPlaylistDirectTo.id ? {
       ...g,
-      library: libraryToAssign || undefined
+      playlist: playlistName || ''
     } : g);
     setGroups(updated);
     localStorage.setItem('signageos_groups', JSON.stringify(updated));
-    const grp = updated.find(g => g.id === assignLibraryDirectTo.id);
-    if (grp) pushToDatabase('screen_groups', assignLibraryDirectTo.id, grp, 'PUT');
-    setAssignLibraryDirectTo(null);
-    addToast(`Library assigned immediately for "${assignLibraryDirectTo.name}"`);
+    const grp = updated.find(g => g.id === assignPlaylistDirectTo.id);
+    if (grp) pushToDatabase('screen_groups', assignPlaylistDirectTo.id, grp, 'PUT');
+
+    // ALSO bulk update screens in this group!
+    const updatedScreens = screens.map(s => {
+      if (s.groupId === assignPlaylistDirectTo.id) {
+        const updatedScreen: Screen = {
+          ...s,
+          playlist: playlistName || s.playlist,
+          playlistId: userPlaylists.find(p => p.name === playlistName)?.id || s.playlistId,
+        };
+        pushToDatabase('screens', s.id, updatedScreen, 'PUT');
+        return updatedScreen;
+      }
+      return s;
+    });
+    setScreens(updatedScreens);
+    mediaStore.saveScreens(updatedScreens);
+
+    setAssignPlaylistDirectTo(null);
+    addToast(`Playlist assigned immediately for "${assignPlaylistDirectTo.name}"`);
   };
 
-  const handleSaveLibrarySchedule = () => {
-    if (!scheduleLibraryTo) return;
-    const updated = groups.map(g => g.id === scheduleLibraryTo.id ? {
+  const handleSavePlaylistSchedule = () => {
+    if (!schedulePlaylistTo) return;
+    const playlistName = playlistToAssign;
+    const updated = groups.map(g => g.id === schedulePlaylistTo.id ? {
       ...g,
-      scheduleLibrary: libraryToAssign || undefined,
-      libraryAssignedDate: libraryToAssign ? libraryAssignDate : undefined,
-      libraryAssignedTime: libraryToAssign ? libraryAssignTime : undefined
+      schedulePlaylist: playlistName || undefined,
+      scheduleDate: playlistName ? playlistAssignDate : undefined,
+      scheduleTime: playlistName ? playlistAssignTime : undefined
     } : g);
     setGroups(updated);
     localStorage.setItem('signageos_groups', JSON.stringify(updated));
-    const grp = updated.find(g => g.id === scheduleLibraryTo.id);
-    if (grp) pushToDatabase('screen_groups', scheduleLibraryTo.id, grp, 'PUT');
-    setScheduleLibraryTo(null);
-    addToast(`Library schedule updated for "${scheduleLibraryTo.name}"`);
+    const grp = updated.find(g => g.id === schedulePlaylistTo.id);
+    if (grp) pushToDatabase('screen_groups', schedulePlaylistTo.id, grp, 'PUT');
+
+    // ALSO bulk update screens in this group!
+    const updatedScreens = screens.map(s => {
+      if (s.groupId === schedulePlaylistTo.id) {
+        const updatedScreen: Screen = {
+          ...s,
+          schedulePlaylist: playlistName || undefined,
+          scheduleDate: playlistName ? playlistAssignDate : undefined,
+          scheduleTime: playlistName ? playlistAssignTime : undefined
+        };
+        pushToDatabase('screens', s.id, updatedScreen, 'PUT');
+        return updatedScreen;
+      }
+      return s;
+    });
+    setScreens(updatedScreens);
+    mediaStore.saveScreens(updatedScreens);
+
+    setSchedulePlaylistTo(null);
+    addToast(`Playlist schedule updated for "${schedulePlaylistTo.name}"`);
   };
 
   const addToast = (message: string) => {
@@ -211,14 +248,14 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
 
   const handleDeleteGroup = () => {
     if (!deleteGroup) return;
-    const updatedScreens = screens.map(s => s.groupId === deleteGroup.id ? { ...s, groupId: '' } : s);
+    const updatedScreens = screens.map(s => s.groupId === deleteGroup.id ? { ...s, groupId: null } : s);
     setScreens(updatedScreens);
     mediaStore.saveScreens(updatedScreens);
     
     // Sync screens to DB
     screens.forEach(s => {
       if (s.groupId === deleteGroup.id) {
-        pushToDatabase('screens', s.id, { ...s, groupId: '' }, 'PUT');
+        pushToDatabase('screens', s.id, { ...s, groupId: null }, 'PUT');
       }
     });
 
@@ -250,7 +287,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
   const handleRemoveScreen = (screenId: string, groupName: string) => {
     const screen = screens.find(s => s.id === screenId);
     if (!screen) return;
-    const updatedScreen = { ...screen, groupId: '' };
+    const updatedScreen = { ...screen, groupId: null };
     const updatedScreens = screens.map(s => s.id === screenId ? updatedScreen : s);
     setScreens(updatedScreens);
     mediaStore.saveScreens(updatedScreens);
@@ -258,13 +295,23 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
     addToast(`"${screen.name}" removed from "${groupName}"`);
   };
 
-  const handleBulkRestart = (group: ScreenGroup) => {
+  const handleBulkRestartPlaylist = (group: ScreenGroup) => {
     const groupScreens = screensInGroup(group.id);
     if (groupScreens.length === 0) {
       addToast(`No screens in group "${group.name}"`);
       return;
     }
-    addToast(`Restart signal sent to all screens in "${group.name}"`);
+    const updatedScreens = screens.map(s => {
+      if (s.groupId === group.id) {
+        const updatedScreen = { ...s, restart_playlist: true };
+        pushToDatabase('screens', s.id, updatedScreen, 'PUT');
+        return updatedScreen;
+      }
+      return s;
+    });
+    setScreens(updatedScreens);
+    mediaStore.saveScreens(updatedScreens);
+    addToast(`Playlist restart command sent to all screens in "${group.name}"`);
   };
 
   const handleBulkClearCache = (group: ScreenGroup) => {
@@ -371,34 +418,11 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
                       Scheduled: {group.schedulePlaylist} on {group.scheduleDate} at {group.scheduleTime}
                     </span>
                   )}
-                  {group.library && (
-                    <span className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100 font-medium">
-                      <BookOpen size={11} className="text-blue-500" />
-                      Active Library: {group.library}
-                      <span className="text-[10px] text-emerald-600 font-medium ml-1">
-                        (Assigned Now)
-                      </span>
-                    </span>
-                  )}
-                  {group.scheduleLibrary && (
-                    <span className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60 font-medium">
-                      <Calendar size={11} className="text-amber-500" />
-                      Scheduled Library: {group.scheduleLibrary}
-                      {group.libraryAssignedDate && (
-                        <span className="text-[10px] text-amber-600 font-medium ml-1">
-                          (on {group.libraryAssignedDate} at {group.libraryAssignedTime || '00:00'})
-                        </span>
-                      )}
-                    </span>
-                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100">
                   <button onClick={() => setAddScreensTo(group.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium">
                     <UserPlus size={12} /> Add Screens
-                  </button>
-                  <button onClick={() => handleBulkRestart(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                    <RefreshCw size={12} /> Bulk Restart
                   </button>
                   <button onClick={() => handleBulkClearCache(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-purple-650 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors font-medium">
                     <Eraser size={12} /> Bulk Clear Cache
@@ -406,11 +430,11 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
                   <button onClick={() => handleBulkForceSync(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-650 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors font-medium">
                     <RefreshCw size={12} /> Bulk Force Sync
                   </button>
-                  <button onClick={() => handleStartLibraryAssignDirect(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                    <BookOpen size={12} /> Assign Library
+                  <button onClick={() => handleStartPlaylistAssignDirect(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium">
+                    <List size={12} /> Assign Playlist
                   </button>
-                  <button onClick={() => handleStartLibrarySchedule(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                    <Calendar size={12} className="text-amber-500" /> Schedule Library
+                  <button onClick={() => handleStartPlaylistSchedule(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                    <Calendar size={12} className="text-amber-500" /> Schedule Playlist
                   </button>
                 </div>
               </div>
@@ -828,67 +852,67 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
           </div>
         </div>
       )}
-      {/* Assign Library Modal (Direct) */}
-      {assignLibraryDirectTo && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAssignLibraryDirectTo(null)}>
+      {/* Assign Playlist Modal (Direct) */}
+      {assignPlaylistDirectTo && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAssignPlaylistDirectTo(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Assign Library</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Assign media library to <strong>{assignLibraryDirectTo.name}</strong> immediately</p>
+                <h2 className="text-base font-semibold text-gray-900">Assign Playlist</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Assign playlist to <strong>{assignPlaylistDirectTo.name}</strong> immediately</p>
               </div>
-              <button onClick={() => setAssignLibraryDirectTo(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
+              <button onClick={() => setAssignPlaylistDirectTo(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Select Library</label>
-                <select value={libraryToAssign} onChange={e => setLibraryToAssign(e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Select Playlist</label>
+                <select value={playlistToAssign} onChange={e => setPlaylistToAssign(e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
                   <option value="">None</option>
-                  {LIBRARIES.map(lib => <option key={lib} value={lib}>{lib}</option>)}
+                  {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
                 </select>
               </div>
             </div>
             <div className="flex gap-3 px-5 pb-5">
-              <button onClick={() => setAssignLibraryDirectTo(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={handleSaveLibraryDirect} className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Check size={15} /> Save Assignment</button>
+              <button onClick={() => setAssignPlaylistDirectTo(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={handleSavePlaylistDirect} className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Check size={15} /> Save Assignment</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Schedule Library Modal */}
-      {scheduleLibraryTo && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setScheduleLibraryTo(null)}>
+      {/* Schedule Playlist Modal */}
+      {schedulePlaylistTo && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSchedulePlaylistTo(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Schedule Library</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Schedule media library for <strong>{scheduleLibraryTo.name}</strong></p>
+                <h2 className="text-base font-semibold text-gray-900">Schedule Playlist</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Schedule playlist for <strong>{schedulePlaylistTo.name}</strong></p>
               </div>
-              <button onClick={() => setScheduleLibraryTo(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
+              <button onClick={() => setSchedulePlaylistTo(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Select Library</label>
-                <select value={libraryToAssign} onChange={e => setLibraryToAssign(e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Select Playlist</label>
+                <select value={playlistToAssign} onChange={e => setPlaylistToAssign(e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
                   <option value="">None</option>
-                  {LIBRARIES.map(lib => <option key={lib} value={lib}>{lib}</option>)}
+                  {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assignment Date</label>
-                  <input type="date" value={libraryAssignDate} onChange={e => setLibraryAssignDate(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+                  <input type="date" value={playlistAssignDate} onChange={e => setPlaylistAssignDate(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assignment Time</label>
-                  <input type="time" value={libraryAssignTime} onChange={e => setLibraryAssignTime(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+                  <input type="time" value={playlistAssignTime} onChange={e => setPlaylistAssignTime(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
                 </div>
               </div>
             </div>
             <div className="flex gap-3 px-5 pb-5">
-              <button onClick={() => setScheduleLibraryTo(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={handleSaveLibrarySchedule} className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Check size={15} /> Save Schedule</button>
+              <button onClick={() => setSchedulePlaylistTo(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={handleSavePlaylistSchedule} className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Check size={15} /> Save Schedule</button>
             </div>
           </div>
         </div>

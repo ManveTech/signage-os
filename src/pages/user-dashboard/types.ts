@@ -17,7 +17,7 @@ export type Screen = {
   playerVersion: string;
   storageUsed: number;
   thumbnail: string;
-  groupId?: string;
+  groupId?: string | null;
   schedulePlaylist?: string;
   scheduleDate?: string;
   scheduleTime?: string;
@@ -26,6 +26,7 @@ export type Screen = {
   volume?: number;
   onlineSince?: string;
   force_sync?: boolean;
+  restart_playlist?: boolean;
 };
 
 export type ScreenGroup = {

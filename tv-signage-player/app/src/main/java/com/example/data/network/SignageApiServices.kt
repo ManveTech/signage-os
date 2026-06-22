@@ -42,6 +42,7 @@ data class PocketBaseScreenResponse(
     val clear_cache: Boolean? = null,
     val volume: Int? = null,
     val force_sync: Boolean? = null,
+    val restart_playlist: Boolean? = null,
     val whiteLabel: Boolean? = null,
     val websiteLogo: String? = null,
     val websiteName: String? = null
