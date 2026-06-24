@@ -1,5 +1,6 @@
 import React from 'react';
 import AdminLogin from './components/AdminLogin';
+import { ToastContainer } from './components/Toast';
 
 // Clear old localStorage demo data once on startup to avoid cached mock records
 if (!localStorage.getItem('signageos_cleared_demo_v2')) {
@@ -27,6 +28,7 @@ export default function App() {
   return (
     <div className="relative w-full min-h-screen bg-slate-950 font-sans text-slate-900 selection:bg-accent selection:text-primary">
       <AdminLogin />
+      <ToastContainer />
     </div>
   );
 }

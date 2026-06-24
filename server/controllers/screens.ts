@@ -1,5 +1,68 @@
 import { pb } from '../db';
 import { syncScreenSchedule } from '../scheduler';
+import { redis, isRedisReady, acquireLock, releaseLock } from '../redis';
+
+async function logServerError(screenId: string, screenName: string, email: string, event: string, detail: string) {
+  try {
+    await pb.collection('screen_logs').create({
+      screenId: screenId || 'system',
+      screenName: screenName || 'System',
+      assignedToUserEmail: email || '',
+      event: event,
+      type: 'error',
+      detail: detail
+    });
+  } catch (err: any) {
+    console.error('Failed to log server error to database:', err.message);
+  }
+}
+
+export async function getLiveScreenMetrics(screen: any) {
+  let totalUptime = screen.cumulativeUptime || 0;
+  let loopsPlayed = screen.cumulativeLoops || 0;
+  const isOnline = screen.status === 'online' || screen.status === 'active';
+  if (isOnline && screen.onlineSince) {
+    const sessionSeconds = Math.floor((Date.now() - new Date(screen.onlineSince).getTime()) / 1000);
+    if (sessionSeconds > 0) {
+      totalUptime += sessionSeconds;
+      
+      let playlistLength = 10; // default/fallback
+      try {
+        let playlist = null;
+        if (screen.playlistId) {
+          playlist = await pb.collection('playlists').getOne(screen.playlistId).catch(() => null);
+        }
+        if (playlist && playlist.slides && playlist.slides.length > 0) {
+          playlistLength = playlist.slides.reduce((acc: number, slide: any) => acc + (slide.duration || 10), 0);
+        }
+      } catch (_) {}
+      if (playlistLength > 0) {
+        loopsPlayed += Math.floor(sessionSeconds / playlistLength);
+      }
+    }
+  }
+  return { totalUptime, loopsPlayed };
+}
+
+async function getScreenPlaylistLength(latestScreen: any): Promise<number> {
+  try {
+    let playlist = null;
+    if (latestScreen.playlistId) {
+      playlist = await pb.collection('playlists').getOne(latestScreen.playlistId).catch(() => null);
+    }
+    if (!playlist && latestScreen.playlist) {
+      playlist = await pb.collection('playlists').getFirstListItem(pb.filter('name = {:playlist}', { playlist: latestScreen.playlist })).catch(() => null);
+    }
+    if (playlist && playlist.slides && playlist.slides.length > 0) {
+      const length = playlist.slides.reduce((acc: number, slide: any) => acc + (slide.duration || 10), 0);
+      if (length > 0) return length;
+    }
+  } catch (err: any) {
+    console.error(`Error calculating playlist length for screen ${latestScreen.id}:`, err.message);
+  }
+  return 10; // Fallback to 10 seconds per slide / default loop length if no playlist or slides found
+}
+
 
 export async function getPairingCode(req: any, res: any) {
   try {
@@ -64,6 +127,7 @@ export async function getPairingCode(req: any, res: any) {
     });
   } catch (error: any) {
     console.error('Error generating pairing code:', error);
+    await logServerError('system', 'System', '', 'Pairing code generation error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error generating pairing code' });
   }
 }
@@ -159,7 +223,9 @@ export async function pairScreen(req: any, res: any) {
       assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
       event: 'Screen paired',
       type: 'online',
-      detail: `Device paired successfully. License: ${updatedScreen.license_id || 'None'}, Playlist: ${updatedScreen.playlist || 'None'}`
+      detail: `Device paired successfully. License: ${updatedScreen.license_id || 'None'}, Playlist: ${updatedScreen.playlist || 'None'}`,
+      totalUptime: updatedScreen.cumulativeUptime || 0,
+      loopsPlayed: updatedScreen.cumulativeLoops || 0
     }).catch(err => console.error('Error logging pairing:', err));
 
     res.status(200).json({
@@ -174,123 +240,435 @@ export async function pairScreen(req: any, res: any) {
     });
   } catch (error: any) {
     console.error('Error pairing screen:', error);
+    await logServerError('system', req.body?.name || 'System', req.body?.assignedToUserEmail || '', 'Pairing screen error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error pairing screen' });
   }
 }
 
-export async function checkDeviceStatuses() {
-  try {
-    const screensResult = await pb.collection('screens').getList(1, 500, {
-      filter: 'status = "online" || status = "active"'
-    });
-    const screens = screensResult.items;
-    const now = Date.now();
-    for (const screen of screens) {
-      const lastHeartbeatTime = screen.lastHeartbeat ? new Date(screen.lastHeartbeat).getTime() : 0;
-      if (now - lastHeartbeatTime > 2 * 60 * 1000) {
-        console.log(`Screen "${screen.name}" (${screen.id}) missed heartbeat. Marking offline.`);
-        
-        let additionalUptime = 0;
-        if (screen.onlineSince) {
-          const onlineTime = new Date(screen.onlineSince).getTime();
-          if (onlineTime > 0 && now > onlineTime) {
-            additionalUptime = Math.floor((now - onlineTime) / 1000);
-          }
-        }
-        const updatedCumulativeUptime = (screen.cumulativeUptime || 0) + additionalUptime;
+class AsyncMutex {
+  private promise: Promise<void> = Promise.resolve();
 
-        await pb.collection('screens').update(screen.id, {
-          status: 'offline',
-          cumulativeUptime: updatedCumulativeUptime
+  async acquire(): Promise<() => void> {
+    let resolve: () => void;
+    const nextPromise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    const currentPromise = this.promise;
+    this.promise = nextPromise;
+    await currentPromise;
+    return resolve!;
+  }
+}
+
+const screenLocks = new Map<string, AsyncMutex>();
+
+function getScreenLock(screenId: string): AsyncMutex {
+  let lock = screenLocks.get(screenId);
+  if (!lock) {
+    lock = new AsyncMutex();
+    screenLocks.set(screenId, lock);
+  }
+  return lock;
+}
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delayMs = 100
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries <= 0) throw error;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return retryWithBackoff(fn, retries - 1, delayMs * 2);
+  }
+}
+
+async function runWithConcurrencyLimit<T>(
+  limit: number,
+  items: T[],
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  const executing: Promise<void>[] = [];
+  for (const item of items) {
+    const p = fn(item).then(() => {
+      executing.splice(executing.indexOf(p), 1);
+    });
+    executing.push(p);
+    if (executing.length >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  await Promise.all(executing);
+}
+
+const DB_WRITE_THROTTLE_MS = 30000; // 30 seconds
+const STATUS_CHECK_CONCURRENCY = 10;
+
+export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolean }) {
+  const startTime = Date.now();
+  let devicesCheckedCount = 0;
+  let markedOfflineCount = 0;
+
+  try {
+    if (isRedisReady()) {
+      // --- REDIS PATH ---
+      const now = Date.now();
+      const threshold = now - 90 * 1000; // 90 seconds timeout threshold
+      const zsetKey = 'presence:active_screens';
+      
+      const staleScreenIds = await redis.zrangebyscore(zsetKey, 0, threshold);
+      devicesCheckedCount = staleScreenIds.length;
+
+      if (devicesCheckedCount > 0) {
+        console.log(`[Status Checker] Redis found ${devicesCheckedCount} stale screens. Transitioning to offline...`);
+
+        await runWithConcurrencyLimit(STATUS_CHECK_CONCURRENCY, staleScreenIds, async (screenId) => {
+          const lockToken = await acquireLock(`offline:${screenId}`, 10000);
+          if (!lockToken) return; // Skip if another instance is already processing
+
+          try {
+            // Double check presence hasn't updated while we got the lock
+            const isOnline = await redis.exists(`presence:screen:${screenId}`);
+            if (isOnline) {
+              await redis.zadd(zsetKey, Date.now(), screenId); // Reset/push forward score
+              return;
+            }
+
+            const latestScreen = await pb.collection('screens').getOne(screenId).catch(() => null);
+            if (!latestScreen) return;
+
+            const details = await redis.hgetall(`heartbeat:screen:${screenId}`);
+            const lastHeartbeatTime = details.lastHeartbeat ? parseInt(details.lastHeartbeat) : (latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : 0);
+
+            // Calculate additional session metrics
+            let additionalUptime = 0;
+            let additionalLoops = 0;
+            if (latestScreen.onlineSince && lastHeartbeatTime > 0) {
+              const onlineTime = new Date(latestScreen.onlineSince).getTime();
+              const sessionEnd = lastHeartbeatTime;
+              if (onlineTime > 0 && sessionEnd > onlineTime) {
+                additionalUptime = Math.floor((sessionEnd - onlineTime) / 1000);
+                const playlistLength = await getScreenPlaylistLength(latestScreen);
+                additionalLoops = Math.floor(additionalUptime / playlistLength);
+              }
+            }
+
+            const updatedCumulativeUptime = (latestScreen.cumulativeUptime || 0) + additionalUptime;
+            const updatedCumulativeLoops = (latestScreen.cumulativeLoops || 0) + additionalLoops;
+
+            // Remove from Redis presence structures
+            await redis.pipeline()
+              .zrem(zsetKey, screenId)
+              .del(`heartbeat:screen:${screenId}`)
+              .del(`presence:screen:${screenId}`)
+              .exec();
+
+            // Sync offline state to PocketBase
+            await retryWithBackoff(() => pb.collection('screens').update(latestScreen.id, {
+              status: 'offline',
+              cumulativeUptime: updatedCumulativeUptime,
+              cumulativeLoops: updatedCumulativeLoops,
+              onlineSince: ""
+            }));
+
+            // Clear cache keys
+            await redis.pipeline()
+              .del(`cache:screen:${screenId}`)
+              .del(`cache:screen_uuid:${latestScreen.hardware_uuid || ''}`)
+              .exec();
+
+            markedOfflineCount++;
+            console.log(`[Status Checker] 🔴 OFFLINE: Screen "${latestScreen.name}" (ID: ${latestScreen.id}) missed heartbeat. Marked offline in database (Redis detection).`);
+
+            await retryWithBackoff(() => pb.collection('screen_logs').create({
+              screenId: latestScreen.id,
+              screenName: latestScreen.name,
+              assignedToUserEmail: latestScreen.assignedToUserEmail || '',
+              event: 'Screen went offline',
+              type: 'offline',
+              detail: `No heartbeat received. (Redis detection).`,
+              totalUptime: updatedCumulativeUptime,
+              loopsPlayed: updatedCumulativeLoops
+            })).catch(err => console.error('Error logging screen offline:', err));
+
+          } catch (err: any) {
+            console.error(`[Status Checker] Error processing screen ${screenId}:`, err.message);
+          } finally {
+            await releaseLock(`offline:${screenId}`, lockToken);
+          }
         });
-        await pb.collection('screen_logs').create({
-          screenId: screen.id,
-          screenName: screen.name,
-          assignedToUserEmail: screen.assignedToUserEmail || '',
-          event: 'Screen went offline',
-          type: 'offline',
-          detail: `No heartbeat received since ${screen.lastHeartbeat || 'pairing'}.`
-        }).catch(err => console.error('Error logging screen offline:', err));
+      }
+    } else {
+      // --- FALLBACK (DIRECT POCKETBASE PATH IF REDIS OFFLINE) ---
+      const thresholdTime = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const filter = `(status = "online" || status = "active") && (lastHeartbeat < "${thresholdTime}" || lastHeartbeat = null || lastHeartbeat = "")`;
+      
+      const screensResult = await pb.collection('screens').getList(1, 500, {
+        filter: filter
+      });
+      
+      const staleScreens = screensResult.items;
+      devicesCheckedCount = staleScreens.length;
+
+      if (devicesCheckedCount > 0) {
+        console.log(`[Status Checker] Fallback found ${devicesCheckedCount} stale screens. Processing status updates...`);
+        
+        await runWithConcurrencyLimit(STATUS_CHECK_CONCURRENCY, staleScreens, async (screen) => {
+          const release = await getScreenLock(screen.id).acquire();
+          try {
+            const latestScreen = await retryWithBackoff(() => pb.collection('screens').getOne(screen.id)).catch(() => null);
+            if (!latestScreen) return;
+
+            const lastHeartbeatTime = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : 0;
+            const now = Date.now();
+            if (now - lastHeartbeatTime <= 2 * 60 * 1000 && lastHeartbeatTime > 0) {
+              console.log(`[Status Checker] Screen "${latestScreen.name}" (${latestScreen.id}) received a heartbeat recently. Skipping offline status update.`);
+              return;
+            }
+
+            if (latestScreen.status === 'offline') {
+              return;
+            }
+
+            console.log(`[Status Checker] 🔴 OFFLINE: Screen "${latestScreen.name}" (ID: ${latestScreen.id}) missed heartbeat. Marked offline in database (Fallback detection).`);
+            
+            let additionalUptime = 0;
+            let additionalLoops = 0;
+            if (latestScreen.onlineSince && latestScreen.lastHeartbeat) {
+              const onlineTime = new Date(latestScreen.onlineSince).getTime();
+              const sessionEnd = new Date(latestScreen.lastHeartbeat).getTime();
+              if (onlineTime > 0 && sessionEnd > onlineTime) {
+                additionalUptime = Math.floor((sessionEnd - onlineTime) / 1000);
+                const playlistLength = await getScreenPlaylistLength(latestScreen);
+                additionalLoops = Math.floor(additionalUptime / playlistLength);
+              }
+            }
+            const updatedCumulativeUptime = (latestScreen.cumulativeUptime || 0) + additionalUptime;
+            const updatedCumulativeLoops = (latestScreen.cumulativeLoops || 0) + additionalLoops;
+
+            await retryWithBackoff(() => pb.collection('screens').update(latestScreen.id, {
+              status: 'offline',
+              cumulativeUptime: updatedCumulativeUptime,
+              cumulativeLoops: updatedCumulativeLoops,
+              onlineSince: ""
+            }));
+
+            markedOfflineCount++;
+
+            await retryWithBackoff(() => pb.collection('screen_logs').create({
+              screenId: latestScreen.id,
+              screenName: latestScreen.name,
+              assignedToUserEmail: latestScreen.assignedToUserEmail || '',
+              event: 'Screen went offline',
+              type: 'offline',
+              detail: `No heartbeat received since ${latestScreen.lastHeartbeat || 'pairing'}.`,
+              totalUptime: updatedCumulativeUptime,
+              loopsPlayed: updatedCumulativeLoops
+            })).catch(err => console.error('Error logging screen offline:', err));
+
+          } catch (err: any) {
+            console.error(`[Status Checker] Error processing screen ${screen.id}:`, err.message);
+          } finally {
+            release();
+          }
+        });
       }
     }
   } catch (err) {
     console.error('Error in checkDeviceStatuses:', err);
+  } finally {
+    const duration = Date.now() - startTime;
+    if (!options?.silentIfNoChanges || devicesCheckedCount > 0 || markedOfflineCount > 0) {
+      console.log(`[Status Checker] Checked ${devicesCheckedCount} stale screens. Marked ${markedOfflineCount} offline. Duration: ${duration}ms`);
+    }
   }
 }
 
 export async function recordHeartbeat(req: any, res: any) {
+  const startTime = Date.now();
+  let hardwareUuid = '';
+  let isThrottled = false;
+  let screenId = '';
+  let screenRecord: any = null;
+  let transitionStatus = 'ALREADY_ONLINE';
+  
   try {
-    const { hardwareUuid, cpuTemp, currentPlayingAsset, storageUsedBytes, storageAvailableBytes } = req.body;
+    const { cpuTemp, currentPlayingAsset, storageUsedBytes, storageAvailableBytes } = req.body;
+    hardwareUuid = req.body.hardwareUuid;
     if (!hardwareUuid) {
       return res.status(400).json({ message: 'hardwareUuid is required.' });
     }
 
-    // Find screen by hardware_uuid
-    const screens = await pb.collection('screens').getList(1, 1, {
-      filter: pb.filter('hardware_uuid = {:hardwareUuid}', { hardwareUuid })
-    });
+    // 1. Resolve screen details via Redis Cache or PocketBase read-through
+    const cacheKey = `cache:screen_uuid:${hardwareUuid}`;
+    
+    if (isRedisReady()) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        screenRecord = JSON.parse(cached);
+      }
+    }
 
-    if (screens.items.length > 0) {
-      const screenRecord = screens.items[0];
+    if (!screenRecord) {
+      const screens = await pb.collection('screens').getList(1, 1, {
+        filter: pb.filter('hardware_uuid = {:hardwareUuid}', { hardwareUuid })
+      });
+      if (screens.items.length > 0) {
+        screenRecord = screens.items[0];
+        if (isRedisReady()) {
+          await redis.set(cacheKey, JSON.stringify(screenRecord), 'EX', 3600);
+          await redis.set(`cache:screen:${screenRecord.id}`, JSON.stringify(screenRecord), 'EX', 3600);
+        }
+      }
+    }
+
+    if (screenRecord) {
+      screenId = screenRecord.id;
       const storageUsed = storageAvailableBytes 
         ? Math.round((storageUsedBytes / (storageUsedBytes + storageAvailableBytes)) * 100) 
         : 15;
       
-      const wasOffline = screenRecord.status === 'offline' || screenRecord.status === 'pairing';
-      const lastHeartbeatTime = screenRecord.lastHeartbeat ? new Date(screenRecord.lastHeartbeat).getTime() : 0;
-      const isStale = (Date.now() - lastHeartbeatTime) > 2 * 60 * 1000;
-
-      const updateData: any = {
-        lastHeartbeat: new Date().toISOString(),
-        status: 'online',
-        storageUsed: storageUsed
-      };
-
       const now = Date.now();
-      const lastSyncTime = lastBrandingSync.get(screenRecord.id) || 0;
-      if (now - lastSyncTime > 5 * 60 * 1000) {
-        lastBrandingSync.set(screenRecord.id, now);
-        syncScreenBrandingFromOrg(screenRecord).catch(err => {
-          console.error('[Heartbeat Branding] Error syncing screen branding:', err);
+
+      if (isRedisReady()) {
+        // --- REDIS PATH ---
+        const presenceKey = `presence:screen:${screenId}`;
+        const wasOffline = screenRecord.status === 'offline' || screenRecord.status === 'pairing' || !screenRecord.onlineSince;
+
+        // Pipeline standard diagnostics update
+        const pipeline = redis.pipeline();
+        pipeline.set(presenceKey, 'online', 'EX', 90);
+        pipeline.zadd('presence:active_screens', now, screenId);
+        pipeline.hmset(`heartbeat:screen:${screenId}`, {
+          lastHeartbeat: now.toString(),
+          cpuTemp: String(cpuTemp || 0),
+          currentPlayingAsset: currentPlayingAsset || 'None',
+          storageUsed: String(storageUsed || 15)
         });
-      }
+        pipeline.expire(`heartbeat:screen:${screenId}`, 86400);
+        await pipeline.exec();
 
-      // Only accumulate previous session uptime + reset onlineSince when the
-      // server has confirmed the screen was offline (status = 'offline' or 'pairing').
-      // Skipping the stale-based reset prevents double-counting uptime that
-      // checkDeviceStatuses() already accumulated when it marked the screen offline.
-      if (wasOffline || !screenRecord.onlineSince) {
-        if (wasOffline && screenRecord.onlineSince && screenRecord.lastHeartbeat) {
-          // Accumulate time from onlineSince → lastHeartbeat (the last confirmed alive moment)
-          const prevOnlineTime = new Date(screenRecord.onlineSince).getTime();
-          const sessionEnd = new Date(screenRecord.lastHeartbeat).getTime();
-          let additionalUptime = Math.floor((sessionEnd - prevOnlineTime) / 1000);
-          if (additionalUptime < 0) additionalUptime = 0;
-          updateData.cumulativeUptime = (screenRecord.cumulativeUptime || 0) + additionalUptime;
-        } else {
-          updateData.cumulativeUptime = screenRecord.cumulativeUptime || 0;
+        // Check if white label branding needs sync
+        const lastSyncTime = lastBrandingSync.get(screenId) || 0;
+        if (now - lastSyncTime > 5 * 60 * 1000) {
+          lastBrandingSync.set(screenId, now);
+          syncScreenBrandingFromOrg(screenRecord).catch(err => {
+            console.error('[Heartbeat Branding] Error syncing screen branding:', err);
+          });
         }
-        updateData.onlineSince = new Date().toISOString();
 
-        await pb.collection('screen_logs').create({
-          screenId: screenRecord.id,
-          screenName: screenRecord.name,
-          assignedToUserEmail: screenRecord.assignedToUserEmail || '',
-          event: 'Screen came online',
-          type: 'online',
-          detail: `Heartbeat received. CPU Temp: ${cpuTemp || 'N/A'}°C, Current Asset: ${currentPlayingAsset || 'None'}`
-        }).catch(err => console.error('Error logging screen online:', err));
+        if (wasOffline) {
+          transitionStatus = 'CAME_ONLINE';
+          // Transition online in PB
+          const release = await getScreenLock(screenId).acquire();
+          try {
+            const latest = await pb.collection('screens').getOne(screenId);
+            const updateData = {
+              status: 'online',
+              onlineSince: new Date().toISOString(),
+              lastHeartbeat: new Date().toISOString(),
+              storageUsed: storageUsed
+            };
+
+            await retryWithBackoff(() => pb.collection('screens').update(screenId, updateData));
+            
+            // Re-cache updated screen
+            const updated = { ...latest, ...updateData };
+            await redis.set(cacheKey, JSON.stringify(updated), 'EX', 3600);
+            await redis.set(`cache:screen:${screenId}`, JSON.stringify(updated), 'EX', 3600);
+
+            const metrics = await getLiveScreenMetrics(latest);
+            await retryWithBackoff(() => pb.collection('screen_logs').create({
+              screenId: screenId,
+              screenName: screenRecord.name,
+              assignedToUserEmail: screenRecord.assignedToUserEmail || '',
+              event: 'Screen came online',
+              type: 'online',
+              detail: `Heartbeat received (reconnected). CPU Temp: ${cpuTemp || 'N/A'}°C`,
+              totalUptime: metrics.totalUptime,
+              loopsPlayed: metrics.loopsPlayed
+            })).catch(err => console.error('Error logging screen online:', err));
+          } finally {
+            release();
+          }
+        }
+      } else {
+        // --- FALLBACK (DIRECT POCKETBASE PATH IF REDIS OFFLINE) ---
+        const release = await getScreenLock(screenRecord.id).acquire();
+        try {
+          const latestScreen = await retryWithBackoff(() => pb.collection('screens').getOne(screenRecord.id));
+          const wasOffline = latestScreen.status === 'offline' || latestScreen.status === 'pairing';
+          const lastHeartbeatTime = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : 0;
+
+          if (!wasOffline && latestScreen.onlineSince && (now - lastHeartbeatTime) < DB_WRITE_THROTTLE_MS && storageUsed === latestScreen.storageUsed) {
+            isThrottled = true;
+            transitionStatus = 'THROTTLED';
+            return res.status(204).end();
+          }
+
+          const updateData: any = {
+            lastHeartbeat: new Date().toISOString(),
+            status: 'online',
+            storageUsed: storageUsed
+          };
+
+          const lastSyncTime = lastBrandingSync.get(latestScreen.id) || 0;
+          if (now - lastSyncTime > 5 * 60 * 1000) {
+            lastBrandingSync.set(latestScreen.id, now);
+            syncScreenBrandingFromOrg(latestScreen).catch(err => {
+              console.error('[Heartbeat Branding] Error syncing screen branding:', err);
+            });
+          }
+
+          if (wasOffline || !latestScreen.onlineSince) {
+            transitionStatus = 'CAME_ONLINE';
+            updateData.onlineSince = new Date().toISOString();
+
+            const metrics = await getLiveScreenMetrics(latestScreen);
+            await retryWithBackoff(() => pb.collection('screen_logs').create({
+              screenId: latestScreen.id,
+              screenName: latestScreen.name,
+              assignedToUserEmail: latestScreen.assignedToUserEmail || '',
+              event: 'Screen came online',
+              type: 'online',
+              detail: `Heartbeat received. CPU Temp: ${cpuTemp || 'N/A'}°C, Current Asset: ${currentPlayingAsset || 'None'}`,
+              totalUptime: metrics.totalUptime,
+              loopsPlayed: metrics.loopsPlayed
+            })).catch(err => console.error('Error logging screen online:', err));
+          }
+
+          await retryWithBackoff(() => pb.collection('screens').update(latestScreen.id, updateData));
+        } finally {
+          release();
+        }
       }
-
-      await pb.collection('screens').update(screenRecord.id, updateData);
     } else {
+      transitionStatus = 'UNKNOWN_DEVICE';
       console.log(`Heartbeat received for unknown hardwareUuid: ${hardwareUuid}`);
     }
 
     res.status(204).end();
   } catch (error: any) {
     console.error('Error recording heartbeat:', error);
+    await logServerError(screenId || 'system', 'System', '', 'Heartbeat recording error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error recording heartbeat' });
+  } finally {
+    const duration = Date.now() - startTime;
+    let logMsg = '';
+    if (transitionStatus === 'CAME_ONLINE') {
+      logMsg = `[Heartbeat] 🟢 ONLINE (TRANSITION): Screen "${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid}) reconnected.`;
+    } else if (transitionStatus === 'ALREADY_ONLINE') {
+      logMsg = `[Heartbeat] 🟢 ONLINE (ACTIVE): Screen "${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid}) sent heartbeat.`;
+    } else if (transitionStatus === 'THROTTLED') {
+      logMsg = `[Heartbeat] 🟢 ONLINE (THROTTLED): Screen "${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid}) sent heartbeat (DB write throttled).`;
+    } else if (transitionStatus === 'UNKNOWN_DEVICE') {
+      logMsg = `[Heartbeat] ⚠️ UNKNOWN: Heartbeat received for unregistered hardwareUuid: ${hardwareUuid}.`;
+    } else {
+      logMsg = `[Heartbeat] Processed heartbeat for screen "${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid}). Status: ${transitionStatus}.`;
+    }
+    console.log(`${logMsg} Duration: ${duration}ms`);
   }
 }
 
@@ -330,6 +708,11 @@ export async function reconnectScreen(req: any, res: any) {
       return res.status(403).json({ message: 'Unauthorized: You do not own this screen.' });
     }
 
+    // Enforce exclusivity: check if another device is already connected to this screen slot
+    if (existingScreen.hardware_uuid && existingScreen.hardware_uuid !== pairingScreen.hardware_uuid) {
+      return res.status(400).json({ message: 'This screen is already connected to another device.' });
+    }
+
     // 3. Update the existing screen with the hardware_uuid and new device details
     const updatedScreen = await pb.collection('screens').update(existingScreen.id, {
       hardware_uuid: pairingScreen.hardware_uuid,
@@ -352,12 +735,15 @@ export async function reconnectScreen(req: any, res: any) {
       assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
       event: 'Screen reconnected',
       type: 'online',
-      detail: `Device reconnected. Hardware UUID updated to ${updatedScreen.hardware_uuid}.`
+      detail: `Device reconnected. Hardware UUID updated to ${updatedScreen.hardware_uuid}.`,
+      totalUptime: updatedScreen.cumulativeUptime || 0,
+      loopsPlayed: updatedScreen.cumulativeLoops || 0
     }).catch(err => console.error('Error logging reconnect:', err));
 
     res.status(200).json(updatedScreen);
   } catch (error: any) {
     console.error('Error reconnecting screen:', error);
+    await logServerError(req.body?.screenId || 'system', 'System', '', 'Reconnecting screen error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error reconnecting screen' });
   }
 }
@@ -378,18 +764,22 @@ export async function assignPlaylistToScreen(req: any, res: any) {
     // Sync scheduling on direct playlist assignment
     syncScreenSchedule(updatedScreen);
 
+    const metrics = await getLiveScreenMetrics(updatedScreen);
     await pb.collection('screen_logs').create({
       screenId: updatedScreen.id,
       screenName: updatedScreen.name,
       assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
       event: 'Playlist assigned',
       type: 'sync',
-      detail: `Playlist "${playlistName || 'Normal'}" (${playlistId || 'none'}) assigned to screen.`
+      detail: `Playlist "${playlistName || 'Normal'}" (${playlistId || 'none'}) assigned to screen.`,
+      totalUptime: metrics.totalUptime,
+      loopsPlayed: metrics.loopsPlayed
     }).catch((err: any) => console.error('Error logging playlist assignment:', err));
 
     res.status(200).json(updatedScreen);
   } catch (error: any) {
     console.error('Error assigning playlist to screen:', error);
+    await logServerError(req.params?.screenId || 'system', 'System', '', 'Assign playlist error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error assigning playlist' });
   }
 }
@@ -465,6 +855,7 @@ export async function syncScreenBrandingFromOrg(screenRecord: any) {
 }
 
 export async function reportOffline(req: any, res: any) {
+  let screenRecord: any = null;
   try {
     const { hardwareUuid, reason } = req.body;
     if (!hardwareUuid) {
@@ -476,39 +867,112 @@ export async function reportOffline(req: any, res: any) {
     });
 
     if (screens.items.length > 0) {
-      const screen = screens.items[0];
-      if (screen.status === 'online' || screen.status === 'active') {
-        const now = Date.now();
-        let additionalUptime = 0;
-        if (screen.onlineSince) {
-          const onlineTime = new Date(screen.onlineSince).getTime();
-          if (onlineTime > 0 && now > onlineTime) {
-            additionalUptime = Math.floor((now - onlineTime) / 1000);
-          }
-        }
-        const updatedCumulativeUptime = (screen.cumulativeUptime || 0) + additionalUptime;
+      screenRecord = screens.items[0];
+      const screenId = screenRecord.id;
+      
+      // Clean presence and caches in Redis immediately
+      if (isRedisReady()) {
+        await redis.pipeline()
+          .del(`presence:screen:${screenId}`)
+          .zrem('presence:active_screens', screenId)
+          .del(`heartbeat:screen:${screenId}`)
+          .del(`cache:screen:${screenId}`)
+          .del(`cache:screen_uuid:${hardwareUuid}`)
+          .exec();
+      }
 
-        await pb.collection('screens').update(screen.id, {
-          status: 'offline',
-          cumulativeUptime: updatedCumulativeUptime
-        });
-
-        await pb.collection('screen_logs').create({
-          screenId: screen.id,
-          screenName: screen.name,
-          assignedToUserEmail: screen.assignedToUserEmail || '',
-          event: 'Screen went offline',
-          type: 'offline',
-          detail: reason || 'App was closed by the user.'
-        }).catch(err => console.error('Error logging screen offline:', err));
+      const release = await getScreenLock(screenId).acquire();
+      try {
+        const latestScreen = await retryWithBackoff(() => pb.collection('screens').getOne(screenId));
         
-        console.log(`Screen "${screen.name}" (${screen.id}) marked offline immediately. Reason: ${reason || 'App closed'}`);
+        if (latestScreen.status === 'online' || latestScreen.status === 'active') {
+          let additionalUptime = 0;
+          let additionalLoops = 0;
+          const sessionEnd = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : Date.now();
+          if (latestScreen.onlineSince) {
+            const onlineTime = new Date(latestScreen.onlineSince).getTime();
+            if (onlineTime > 0 && sessionEnd > onlineTime) {
+              additionalUptime = Math.floor((sessionEnd - onlineTime) / 1000);
+              const playlistLength = await getScreenPlaylistLength(latestScreen);
+              additionalLoops = Math.floor(additionalUptime / playlistLength);
+            }
+          }
+          const updatedCumulativeUptime = (latestScreen.cumulativeUptime || 0) + additionalUptime;
+          const updatedCumulativeLoops = (latestScreen.cumulativeLoops || 0) + additionalLoops;
+
+          await retryWithBackoff(() => pb.collection('screens').update(latestScreen.id, {
+            status: 'offline',
+            cumulativeUptime: updatedCumulativeUptime,
+            cumulativeLoops: updatedCumulativeLoops,
+            onlineSince: ""
+          }));
+
+          await retryWithBackoff(() => pb.collection('screen_logs').create({
+            screenId: latestScreen.id,
+            screenName: latestScreen.name,
+            assignedToUserEmail: latestScreen.assignedToUserEmail || '',
+            event: 'Screen went offline',
+            type: 'offline',
+            detail: reason || 'App was closed by the user.',
+            totalUptime: updatedCumulativeUptime,
+            loopsPlayed: updatedCumulativeLoops
+          })).catch(err => console.error('Error logging screen offline:', err));
+          
+          console.log(`Screen "${latestScreen.name}" (${latestScreen.id}) marked offline immediately. Reason: ${reason || 'App closed'}`);
+        }
+      } finally {
+        release();
       }
     }
 
     res.status(204).end();
   } catch (error: any) {
     console.error('Error recording screen offline:', error);
+    await logServerError(screenRecord?.id || 'system', 'System', '', 'Report offline error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error recording screen offline' });
+  }
+}
+
+export async function clearAllScreenLogs(req: any, res: any) {
+  try {
+    const userRole = req.user?.role;
+    const authUserEmail = req.user?.email;
+    
+    // Read from header first to avoid sending email on URL query, fallback to query for compatibility
+    let targetEmail = req.headers['x-assigned-to-user-email'] || req.query.assignedToUserEmail;
+    
+    // Enforce security
+    if (userRole !== 'admin') {
+      targetEmail = authUserEmail;
+    }
+
+    let filter = '';
+    if (targetEmail && targetEmail !== 'all') {
+      filter = pb.filter('assignedToUserEmail = {:email}', { email: targetEmail });
+    }
+
+    const logs = await pb.collection('screen_logs').getFullList({
+      filter: filter || undefined,
+      fields: 'id'
+    });
+
+    console.log(`[Logs Clear] Deleting ${logs.length} logs for filter: "${filter || 'all'}"`);
+
+    // Delete in concurrency batches
+    const concurrency = 20;
+    for (let i = 0; i < logs.length; i += concurrency) {
+      const batch = logs.slice(i, i + concurrency);
+      await Promise.all(
+        batch.map(log =>
+          retryWithBackoff(() => pb.collection('screen_logs').delete(log.id))
+            .catch(err => console.error(`Failed to delete log ${log.id}:`, err.message))
+        )
+      );
+    }
+
+    res.status(200).json({ success: true, message: `Successfully cleared ${logs.length} logs.` });
+  } catch (error: any) {
+    console.error('Error clearing screen logs:', error);
+    res.status(500).json({ error: error.message || 'Error clearing logs' });
   }
 }

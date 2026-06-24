@@ -41,12 +41,16 @@ export function authenticateToken(req: any, res: any, next: any) {
     path === '/devices/sync' || 
     path === '/devices/heartbeat' || 
     path === '/devices/pairing-code' ||
+    path === '/devices/offline' ||
     path === '/api/v1/devices/sync' || 
     path === '/api/v1/devices/heartbeat' || 
     path === '/api/v1/devices/pairing-code' ||
+    path === '/api/v1/devices/offline' ||
     path.endsWith('/devices/sync') ||
     path.endsWith('/devices/heartbeat') ||
-    path.endsWith('/devices/pairing-code')
+    path.endsWith('/devices/pairing-code') ||
+    path.endsWith('/devices/offline') ||
+    (req.method === 'POST' && (path === '/screen_logs' || path === '/api/v1/screen_logs' || path.endsWith('/screen_logs')))
   ) {
     return next();
   }

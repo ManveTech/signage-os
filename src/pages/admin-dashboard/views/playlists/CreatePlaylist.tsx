@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
+import { toast } from '../../../../components/Toast';
 
 type PlaylistItem = {
   id: string;
@@ -483,15 +484,15 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   // -------------------------------------------------------------
   const handleSavePlaylist = () => {
     if (totalFilesToUpload > 0) {
-      alert('Please wait for all uploads to complete before saving the playlist.');
+      toast.warning('Please wait for all uploads to complete before saving the playlist.');
       return;
     }
     if (!playlistName.trim()) {
-      alert('Please enter a playlist name.');
+      toast.warning('Please enter a playlist name.');
       return;
     }
     if (playlistItems.length === 0) {
-      alert('Please add at least one media slide to the sequence.');
+      toast.warning('Please add at least one media slide to the sequence.');
       return;
     }
 

@@ -136,6 +136,12 @@ interface SignageApiService {
         @Body fields: Map<String, String>
     ): Response<Unit>
 
+    @POST
+    suspend fun postLog(
+        @Url url: String,
+        @Body fields: Map<String, String>
+    ): Response<Unit>
+
     @GET
     suspend fun getScreenRecord(
         @Url url: String

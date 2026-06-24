@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { pb, ensurePBAuth } from './db';
-import { checkDeviceStatuses } from './controllers/screens';
+import { checkDeviceStatuses, getLiveScreenMetrics } from './controllers/screens';
 
 // In-memory map of active screen cron tasks: screenId -> ScheduledTask
 const activeJobs = new Map<string, any>();
@@ -74,6 +74,7 @@ async function activateScheduledPlaylist(screen: any) {
 
     // Log the event to screen_logs
     try {
+      const metrics = await getLiveScreenMetrics(screen);
       await pb.collection('screen_logs').create({
         screenId: screen.id,
         screenName: screen.name,
@@ -81,6 +82,8 @@ async function activateScheduledPlaylist(screen: any) {
         event: 'Scheduled playlist activated',
         type: 'sync',
         detail: `Playlist "${screen.schedulePlaylist}" was automatically activated on schedule (${screen.scheduleDate} ${screen.scheduleTime}).`,
+        totalUptime: metrics.totalUptime,
+        loopsPlayed: metrics.loopsPlayed
       });
     } catch (logErr: any) {
       console.warn('[Scheduler] Could not write to screen_logs:', logErr.message);

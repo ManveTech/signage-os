@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Wifi, WifiOff, RefreshCw, AlertTriangle, Cpu, Terminal, Clock, FileText, Filter } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, AlertTriangle, Cpu, Terminal, Clock, FileText, Filter, Trash2 } from 'lucide-react';
+import { toast } from '../../../../components/Toast';
 import { mediaStore } from '../../../../lib/mediaStore';
+import { syncCollection } from '../../../../lib/syncHelper';
 
 interface ScreenLog {
   id: string;
@@ -10,6 +12,8 @@ interface ScreenLog {
   event: string;
   type: string; // 'online' | 'offline' | 'sync' | 'clear_cache' | 'error' | etc.
   detail: string;
+  totalUptime?: number;
+  loopsPlayed?: number;
   created: string; // ISO timestamp from PocketBase
 }
 
@@ -48,6 +52,8 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const loadMoreRef = useRef<HTMLTableRowElement | null>(null);
 
@@ -59,10 +65,18 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
     }
     
     // Load local screens, groups, and playlists synchronously from mediaStore cache
-    const localScreens = mediaStore.getScreens();
-    setScreens(localScreens);
+    setScreens(mediaStore.getScreens());
     setGroups(mediaStore.getScreenGroups());
     setPlaylists(mediaStore.getPlaylists());
+
+    // Sync screens and playlists from server to get fresh uptime/loops
+    syncCollection('screens', 'signageos_screens').then(serverScreens => {
+      setScreens(serverScreens);
+    }).catch(err => console.error('Failed to sync screens on logs view:', err));
+
+    syncCollection('playlists', 'signageos_playlists').then(serverPlaylists => {
+      setPlaylists(serverPlaylists);
+    }).catch(err => console.error('Failed to sync playlists on logs view:', err));
 
     const params = new URLSearchParams();
     params.set('page', '1');
@@ -72,23 +86,21 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
       params.set('type', typeFilter);
     }
     
-    if (mode === 'all') {
-      if (selectedUserFilter !== 'all') {
-        params.set('assignedToUserEmail', selectedUserFilter);
-      }
-    } else {
-      params.set('assignedToUserEmail', userEmail);
-    }
+    const targetEmail = mode === 'all' ? selectedUserFilter : userEmail;
 
     fetch(`${API_BASE}/screen_logs?${params.toString()}`, {
-      headers: getHeaders()
+      headers: {
+        ...getHeaders(),
+        'X-Assigned-To-User-Email': targetEmail
+      }
     })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch logs');
         return res.json();
       })
       .then(data => {
-        setLogs(data);
+        const sorted = [...data].sort((a, b) => new Date(b.created || 0).getTime() - new Date(a.created || 0).getTime());
+        setLogs(sorted);
         setPage(1);
         setHasMore(data.length === 50);
         setLoading(false);
@@ -112,16 +124,13 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
       params.set('type', typeFilter);
     }
     
-    if (mode === 'all') {
-      if (selectedUserFilter !== 'all') {
-        params.set('assignedToUserEmail', selectedUserFilter);
-      }
-    } else {
-      params.set('assignedToUserEmail', userEmail);
-    }
+    const targetEmail = mode === 'all' ? selectedUserFilter : userEmail;
 
     fetch(`${API_BASE}/screen_logs?${params.toString()}`, {
-      headers: getHeaders()
+      headers: {
+        ...getHeaders(),
+        'X-Assigned-To-User-Email': targetEmail
+      }
     })
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch logs');
@@ -129,7 +138,10 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
       })
       .then(data => {
         if (data.length > 0) {
-          setLogs(prev => [...prev, ...data]);
+          setLogs(prev => {
+            const combined = [...prev, ...data];
+            return combined.sort((a, b) => new Date(b.created || 0).getTime() - new Date(a.created || 0).getTime());
+          });
           setPage(nextPage);
           setHasMore(data.length === 50);
         } else {
@@ -175,6 +187,37 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
     loadInitialLogs(true);
   };
 
+  const handleClearLogs = async () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      setTimeout(() => setConfirmClear(false), 3000);
+      return;
+    }
+
+    setConfirmClear(false);
+    setClearing(true);
+    try {
+      const emailQuery = mode === 'all' ? selectedUserFilter : userEmail;
+      const res = await fetch(`${API_BASE}/screen_logs`, {
+        method: 'DELETE',
+        headers: {
+          ...getHeaders(),
+          'X-Assigned-To-User-Email': emailQuery
+        }
+      });
+
+      if (!res.ok) throw new Error('Failed to clear logs');
+      
+      toast.success('Successfully cleared screen logs.');
+      handleRefresh();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Error clearing logs.');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const getUniqueEmails = () => {
     const storedUsers = localStorage.getItem('signageos_users');
     const allUsersList = storedUsers ? JSON.parse(storedUsers) : [];
@@ -208,7 +251,7 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
   };
 
   const getScreenTotalUptime = (screen: any) => {
-    if (!screen) return 'Offline';
+    if (!screen) return 'N/A (Deleted)';
     let totalSeconds = screen.cumulativeUptime || 0;
     const isOnline = screen.status === 'online' || screen.status === 'active';
     if (isOnline && screen.onlineSince) {
@@ -221,9 +264,11 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
   };
 
   const calculateLoops = (screen: any, groupsList: any[], playlistsList: any[]) => {
-    if (!screen.onlineSince || (screen.status !== 'online' && screen.status !== 'active')) return 0;
+    if (!screen) return 'N/A';
+    const baseLoops = screen.cumulativeLoops || 0;
+    if (!screen.onlineSince || (screen.status !== 'online' && screen.status !== 'active')) return baseLoops;
     const seconds = Math.floor((Date.now() - new Date(screen.onlineSince).getTime()) / 1000);
-    if (seconds < 0) return 0;
+    if (seconds < 0) return baseLoops;
 
     let playlistName = 'Normal';
     if (screen.groupId) {
@@ -243,11 +288,11 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
       playlist = playlistsList.find(p => p.name === playlistName);
     }
 
-    if (!playlist || !playlist.slides || playlist.slides.length === 0) return 0;
+    if (!playlist || !playlist.slides || playlist.slides.length === 0) return baseLoops;
     const playlistLength = playlist.slides.reduce((acc: number, slide: any) => acc + (slide.duration || 10), 0);
-    if (playlistLength <= 0) return 0;
+    if (playlistLength <= 0) return baseLoops;
 
-    return Math.floor(seconds / playlistLength);
+    return baseLoops + Math.floor(seconds / playlistLength);
   };
 
   const totalColumns = showAssignedTo ? 7 : 6;
@@ -259,16 +304,30 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
           <h1 className="text-xl font-bold text-gray-950">System Logs</h1>
           <p className="text-sm text-gray-500 mt-0.5">Real-time TV screen heartbeat events, pairing, and sync logs</p>
         </div>
-        <button 
-          onClick={handleRefresh} 
-          className="flex items-center gap-2 px-3.5 py-2 border border-slate-200 hover:border-slate-350 bg-white rounded-xl text-xs font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer animate-fadeIn"
-        >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh Logs
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            disabled={clearing}
+            onClick={handleClearLogs}
+            className={`flex items-center gap-2 px-3.5 py-2 border rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer ${
+              confirmClear 
+                ? 'border-red-300 bg-red-50 hover:bg-red-100 text-red-700 animate-pulse' 
+                : 'border-slate-200 hover:border-slate-350 bg-white text-slate-700'
+            }`}
+          >
+            <Trash2 size={13} className={clearing ? 'animate-spin' : ''} />
+            {clearing ? 'Clearing...' : confirmClear ? 'Confirm Clear?' : 'Clear Logs'}
+          </button>
+          <button 
+            onClick={handleRefresh} 
+            className="flex items-center gap-2 px-3.5 py-2 border border-slate-200 hover:border-slate-350 bg-white rounded-xl text-xs font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer animate-fadeIn"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh Logs
+          </button>
+        </div>
       </div>
 
       {/* Log Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
         <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap gap-2">
             {['all', 'online', 'offline', 'sync', 'clear_cache', 'error'].map(f => (
@@ -302,20 +361,20 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
         </div>
         
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-150 text-slate-455 uppercase font-black tracking-wider text-[10px]">
-                <th className="text-left px-5 py-3.5">Event</th>
-                <th className="text-left px-5 py-3.5">Screen Name</th>
-                <th className="text-left px-5 py-3.5">Log Details</th>
-                <th className="text-left px-5 py-3.5">Screen Uptime</th>
+          <table className="w-full border-collapse text-sm">
+            <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <tr>
+                <th className="text-left px-5 py-3.5">Activity Event</th>
+                <th className="text-left px-5 py-3.5">Target Screen</th>
+                <th className="text-left px-5 py-3.5">Log Parameters & Detail</th>
+                <th className="text-left px-5 py-3.5">Total Uptime</th>
                 <th className="text-left px-5 py-3.5">Loops Played</th>
-                {showAssignedTo && <th className="text-left px-5 py-3.5">Assigned To</th>}
-                <th className="text-left px-5 py-3.5">Event Time</th>
+                {showAssignedTo && <th className="text-left px-5 py-3.5">Owner</th>}
+                <th className="text-right px-5 py-3.5">Log Timestamp</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
-              {loading ? (
+            <tbody className="divide-y divide-slate-100">
+              {loading && filtered.length === 0 ? (
                 <tr>
                   <td colSpan={totalColumns} className="px-5 py-12 text-center text-slate-400 font-medium">
                     <RefreshCw size={24} className="animate-spin mx-auto text-slate-300 mb-2" />
@@ -335,8 +394,12 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
                     const tc = typeConfig[log.type] ?? typeConfig.other;
                     const screen = screens.find(s => s.id === log.screenId);
                     const isScreenActive = screen && (screen.status === 'online' || screen.status === 'active');
-                    const uptimeStr = getScreenTotalUptime(screen);
-                    const loopsPlayed = isScreenActive ? calculateLoops(screen, groups, playlists) : 0;
+                    const uptimeStr = log.totalUptime !== undefined && log.totalUptime !== null
+                      ? formatDuration(log.totalUptime)
+                      : getScreenTotalUptime(screen);
+                    const loopsPlayed = log.loopsPlayed !== undefined && log.loopsPlayed !== null
+                      ? log.loopsPlayed
+                      : calculateLoops(screen, groups, playlists);
 
                     return (
                       <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
@@ -350,16 +413,12 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
                         <td className="px-5 py-3.5 font-mono text-[10px] text-slate-500 max-w-xs truncate" title={log.detail}>{log.detail}</td>
                         <td className="px-5 py-3.5 font-bold text-slate-700">{uptimeStr}</td>
                         <td className="px-5 py-3.5">
-                          {isScreenActive ? (
-                            <span className="font-bold bg-emerald-600 text-white px-1.5 py-0.5 rounded-md font-mono text-[10px]">
-                              {loopsPlayed}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-semibold font-mono">0</span>
-                          )}
+                          <span className={`font-bold px-1.5 py-0.5 rounded-md font-mono text-[10px] ${isScreenActive ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+                            {loopsPlayed}
+                          </span>
                         </td>
                         {showAssignedTo && <td className="px-5 py-3.5 font-bold text-slate-600">{log.assignedToUserEmail}</td>}
-                        <td className="px-5 py-3.5 text-slate-400 font-semibold flex items-center gap-1.5">
+                        <td className="px-5 py-3.5 text-slate-400 font-semibold flex items-center justify-end gap-1.5">
                           <Clock size={11} />
                           {formatLogTime(log.created)}
                         </td>

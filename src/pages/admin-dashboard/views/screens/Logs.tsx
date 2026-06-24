@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, WifiOff, RefreshCw, AlertTriangle, Cpu, Terminal, Clock, FileText, Filter } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, AlertTriangle, Cpu, Terminal, Clock, FileText, Filter, Trash2 } from 'lucide-react';
 import { syncCollection } from '../../../../lib/syncHelper';
 import { mediaStore } from '../../../../lib/mediaStore';
+import { toast } from '../../../../components/Toast';
+
+const API_BASE = 'http://localhost:5000/api/v1';
+
+function getHeaders() {
+  const token = localStorage.getItem('signageos_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+}
 
 interface ScreenLog {
   id: string;
@@ -11,6 +22,8 @@ interface ScreenLog {
   event: string;
   type: string; // 'online' | 'offline' | 'sync' | 'clear_cache' | 'error' | etc.
   detail: string;
+  totalUptime?: number;
+  loopsPlayed?: number;
   created: string; // ISO timestamp from PocketBase
 }
 
@@ -36,6 +49,8 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
   const [typeFilter, setTypeFilter] = useState('all');
   const [selectedUserFilter, setSelectedUserFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const showAssignedTo = mode === 'all';
 
@@ -50,6 +65,15 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
     setScreens(mediaStore.getScreens());
     setGroups(mediaStore.getScreenGroups());
     setPlaylists(mediaStore.getPlaylists());
+
+    // Sync screens and playlists from server to get fresh uptime/loops
+    syncCollection('screens', 'signageos_screens').then(serverScreens => {
+      setScreens(serverScreens);
+    }).catch(err => console.error('Failed to sync screens on logs view:', err));
+
+    syncCollection('playlists', 'signageos_playlists').then(serverPlaylists => {
+      setPlaylists(serverPlaylists);
+    }).catch(err => console.error('Failed to sync playlists on logs view:', err));
 
     syncCollection('screen_logs', 'signageos_logs').then(serverLogs => {
       // Sort logs by creation time descending (newest first)
@@ -67,6 +91,37 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
       console.error('Error loading screen logs:', err);
       setLoading(false);
     });
+  };
+
+  const handleClearLogs = async () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      setTimeout(() => setConfirmClear(false), 3000);
+      return;
+    }
+
+    setConfirmClear(false);
+    setClearing(true);
+    try {
+      const emailQuery = mode === 'all' ? selectedUserFilter : userEmail;
+      const res = await fetch(`${API_BASE}/screen_logs`, {
+        method: 'DELETE',
+        headers: {
+          ...getHeaders(),
+          'X-Assigned-To-User-Email': emailQuery
+        }
+      });
+
+      if (!res.ok) throw new Error('Failed to clear logs');
+      
+      toast.success('Successfully cleared screen logs.');
+      loadLogs();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Error clearing logs.');
+    } finally {
+      setClearing(false);
+    }
   };
 
   const getUniqueEmails = () => {
@@ -106,7 +161,7 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
   };
 
   const getScreenTotalUptime = (screen: any) => {
-    if (!screen) return 'Offline';
+    if (!screen) return 'N/A (Deleted)';
     let totalSeconds = screen.cumulativeUptime || 0;
     const isOnline = screen.status === 'online' || screen.status === 'active';
     if (isOnline && screen.onlineSince) {
@@ -119,9 +174,11 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
   };
 
   const calculateLoops = (screen: any, groupsList: any[], playlistsList: any[]) => {
-    if (!screen.onlineSince || (screen.status !== 'online' && screen.status !== 'active')) return 0;
+    if (!screen) return 'N/A';
+    const baseLoops = screen.cumulativeLoops || 0;
+    if (!screen.onlineSince || (screen.status !== 'online' && screen.status !== 'active')) return baseLoops;
     const seconds = Math.floor((Date.now() - new Date(screen.onlineSince).getTime()) / 1000);
-    if (seconds < 0) return 0;
+    if (seconds < 0) return baseLoops;
 
     let playlistName = 'Normal';
     if (screen.groupId) {
@@ -141,11 +198,11 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
       playlist = playlistsList.find(p => p.name === playlistName);
     }
 
-    if (!playlist || !playlist.slides || playlist.slides.length === 0) return 0;
+    if (!playlist || !playlist.slides || playlist.slides.length === 0) return baseLoops;
     const playlistLength = playlist.slides.reduce((acc: number, slide: any) => acc + (slide.duration || 10), 0);
-    if (playlistLength <= 0) return 0;
+    if (playlistLength <= 0) return baseLoops;
 
-    return Math.floor(seconds / playlistLength);
+    return baseLoops + Math.floor(seconds / playlistLength);
   };
 
   const totalColumns = showAssignedTo ? 7 : 6;
@@ -157,12 +214,26 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
           <h1 className="text-xl font-bold text-gray-950">System Logs</h1>
           <p className="text-sm text-gray-500 mt-0.5">Real-time TV screen heartbeat events, pairing, and sync logs</p>
         </div>
-        <button 
-          onClick={loadLogs} 
-          className="flex items-center gap-2 px-3.5 py-2 border border-slate-200 hover:border-slate-350 bg-white rounded-xl text-xs font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer animate-fadeIn"
-        >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh Logs
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            disabled={clearing}
+            onClick={handleClearLogs}
+            className={`flex items-center gap-2 px-3.5 py-2 border rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer ${
+              confirmClear 
+                ? 'border-red-300 bg-red-50 hover:bg-red-100 text-red-700 animate-pulse' 
+                : 'border-slate-200 hover:border-slate-350 bg-white text-slate-700'
+            }`}
+          >
+            <Trash2 size={13} className={clearing ? 'animate-spin' : ''} />
+            {clearing ? 'Clearing...' : confirmClear ? 'Confirm Clear?' : 'Clear Logs'}
+          </button>
+          <button 
+            onClick={loadLogs} 
+            className="flex items-center gap-2 px-3.5 py-2 border border-slate-200 hover:border-slate-350 bg-white rounded-xl text-xs font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer animate-fadeIn"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh Logs
+          </button>
+        </div>
       </div>
 
       {/* Log Table Container */}
@@ -232,8 +303,12 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
                   const tc = typeConfig[log.type] ?? typeConfig.other;
                   const screen = screens.find(s => s.id === log.screenId);
                   const isScreenActive = screen && (screen.status === 'online' || screen.status === 'active');
-                  const uptimeStr = getScreenTotalUptime(screen);
-                  const loopsPlayed = isScreenActive ? calculateLoops(screen, groups, playlists) : 0;
+                  const uptimeStr = log.totalUptime !== undefined && log.totalUptime !== null
+                    ? formatDuration(log.totalUptime)
+                    : getScreenTotalUptime(screen);
+                  const loopsPlayed = log.loopsPlayed !== undefined && log.loopsPlayed !== null
+                    ? log.loopsPlayed
+                    : calculateLoops(screen, groups, playlists);
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
@@ -247,13 +322,9 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'my' }: Prop
                       <td className="px-5 py-3.5 font-mono text-[10px] text-slate-500 max-w-xs truncate" title={log.detail}>{log.detail}</td>
                       <td className="px-5 py-3.5 font-bold text-slate-700">{uptimeStr}</td>
                       <td className="px-5 py-3.5">
-                        {isScreenActive ? (
-                          <span className="font-bold bg-emerald-600 text-white px-1.5 py-0.5 rounded-md font-mono text-[10px]">
-                            {loopsPlayed}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 font-semibold font-mono">0</span>
-                        )}
+                        <span className={`font-bold px-1.5 py-0.5 rounded-md font-mono text-[10px] ${isScreenActive ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+                          {loopsPlayed}
+                        </span>
                       </td>
                       {showAssignedTo && <td className="px-5 py-3.5 font-bold text-slate-600">{log.assignedToUserEmail}</td>}
                       <td className="px-5 py-3.5 text-slate-400 font-semibold flex items-center gap-1.5">

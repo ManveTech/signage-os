@@ -14,6 +14,41 @@ import {
 export const pb = new PocketBase(PB_URL);
 pb.autoCancellation(false);
 
+export function redactSensitiveData(text: string): string {
+  if (!text) return text;
+  let result = text;
+  try {
+    if (PB_URL) {
+      const escapedPBUrl = PB_URL.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      result = result.replace(new RegExp(escapedPBUrl, 'gi'), '[POCKETBASE_URL]');
+      
+      const pbUrlObj = new URL(PB_URL);
+      if (pbUrlObj.hostname) {
+        const escapedHost = pbUrlObj.hostname.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        result = result.replace(new RegExp(escapedHost, 'gi'), '[POCKETBASE_HOST]');
+      }
+    }
+  } catch (_) {}
+  return result;
+}
+
+// Wrap PocketBase SDK collection create method for screen_logs to automatically redact sensitive URLs
+const originalCollection = pb.collection.bind(pb);
+pb.collection = function (idOrName: string) {
+  const collection = originalCollection(idOrName);
+  if (idOrName === 'screen_logs') {
+    const originalCreate = collection.create.bind(collection);
+    collection.create = function (body: any, query?: any) {
+      if (body) {
+        if (body.event) body.event = redactSensitiveData(body.event);
+        if (body.detail) body.detail = redactSensitiveData(body.detail);
+      }
+      return originalCreate(body, query);
+    };
+  }
+  return collection;
+} as any;
+
 export async function setupDatabaseAndSMTP(): Promise<void> {
   try {
     // 1. Ensure firstTimeLogin exists in users collection fields
@@ -209,6 +244,23 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       });
       screensUpdated = true;
       console.log('Programmatically added cumulativeUptime field to screens collection');
+    }
+
+    if (!sFields.some((f: any) => f.name === 'cumulativeLoops')) {
+      sFields.push({
+        id: 'numcumulativeloopsid',
+        name: 'cumulativeLoops',
+        type: 'number',
+        required: false,
+        system: false,
+        help: 'Cumulative screen loops played',
+        hidden: false,
+        presentable: false,
+        onlyInt: true,
+        min: 0
+      });
+      screensUpdated = true;
+      console.log('Programmatically added cumulativeLoops field to screens collection');
     }
 
     if (!sFields.some((f: any) => f.name === 'whiteLabel')) {
@@ -561,6 +613,30 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
               system: false
             },
             {
+              id: 'numlogtotaluptimeid',
+              name: 'totalUptime',
+              type: 'number',
+              required: false,
+              system: false,
+              help: 'Total screen uptime at time of log',
+              hidden: false,
+              presentable: false,
+              onlyInt: true,
+              min: 0
+            },
+            {
+              id: 'numlogloopsplayedid',
+              name: 'loopsPlayed',
+              type: 'number',
+              required: false,
+              system: false,
+              help: 'Loops played at time of log',
+              hidden: false,
+              presentable: false,
+              onlyInt: true,
+              min: 0
+            },
+            {
               id: 'autodatecreatedid',
               name: 'created',
               type: 'autodate',
@@ -598,6 +674,40 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
           emailField.required = false;
           logsUpdated = true;
           console.log('Making assignedToUserEmail optional in screen_logs');
+        }
+
+        if (!fields.some((f: any) => f.name === 'totalUptime')) {
+          fields.push({
+            id: 'numlogtotaluptimeid',
+            name: 'totalUptime',
+            type: 'number',
+            required: false,
+            system: false,
+            help: 'Total screen uptime at time of log',
+            hidden: false,
+            presentable: false,
+            onlyInt: true,
+            min: 0
+          });
+          logsUpdated = true;
+          console.log('Programmatically added totalUptime field to screen_logs');
+        }
+
+        if (!fields.some((f: any) => f.name === 'loopsPlayed')) {
+          fields.push({
+            id: 'numlogloopsplayedid',
+            name: 'loopsPlayed',
+            type: 'number',
+            required: false,
+            system: false,
+            help: 'Loops played at time of log',
+            hidden: false,
+            presentable: false,
+            onlyInt: true,
+            min: 0
+          });
+          logsUpdated = true;
+          console.log('Programmatically added loopsPlayed field to screen_logs');
         }
 
         if (!fields.some((f: any) => f.name === 'created')) {
@@ -793,16 +903,32 @@ Notes:
   }
 }
 
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delayMs = 250
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const isNetworkError = !error.status || error.status === 0 || error.message?.includes('fetch failed') || error.message?.includes('timeout') || error.message?.includes('ENOTFOUND') || error.code === 'ENOTFOUND';
+    if (retries <= 0 || !isNetworkError) throw error;
+    console.warn(`[PocketBase Conn] Transient connection error: ${error.message || 'timeout'}. Retrying in ${delayMs}ms... (${retries} retries left)`);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return retryWithBackoff(fn, retries - 1, delayMs * 2);
+  }
+}
+
 export async function authenticatePBAdmin(): Promise<boolean> {
   try {
-    await pb.admins.authWithPassword(PB_ADMIN_EMAIL, PB_ADMIN_PASSWORD);
+    await retryWithBackoff(() => pb.admins.authWithPassword(PB_ADMIN_EMAIL, PB_ADMIN_PASSWORD));
     console.log('PocketBase authenticated as superadmin');
     await setupDatabaseAndSMTP();
     return true;
   } catch (err: any) {
     console.warn('PocketBase superadmin auth failed, will try superusers:', err.message);
     try {
-      await pb.collection('_superusers').authWithPassword(PB_ADMIN_EMAIL, PB_ADMIN_PASSWORD);
+      await retryWithBackoff(() => pb.collection('_superusers').authWithPassword(PB_ADMIN_EMAIL, PB_ADMIN_PASSWORD));
       console.log('PocketBase authenticated via _superusers');
       await setupDatabaseAndSMTP();
       return true;

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Upload, Film, Image, Layout, Youtube, AlignLeft, Plus, Trash2, Trash, HardDrive, Clock, Tag, CheckCircle, Play, X } from 'lucide-react';
 import { mediaStore, MediaItem } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
+import { toast } from '../../../../components/Toast';
 
 const typeIcons: Record<string, React.ReactNode> = {
   video: <Film size={13} />,
@@ -92,7 +93,7 @@ export default function MediaLibrary({ userEmail }: Props) {
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (filesArray.length === 0) {
-      alert("Please select at least one file.");
+      toast.warning("Please select at least one file.");
       return;
     }
 
@@ -102,7 +103,7 @@ export default function MediaLibrary({ userEmail }: Props) {
       const limitBytes = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
       const limitMb = isVideo ? 50 : 5;
       if (file.size > limitBytes) {
-        alert(`Upload cancelled: The file "${file.name}" is larger than ${limitMb}MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). All uploaded ${isVideo ? 'video' : 'image'} files must be under ${limitMb}MB.`);
+        toast.error(`Upload cancelled: The file "${file.name}" is larger than ${limitMb}MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). All uploaded ${isVideo ? 'video' : 'image'} files must be under ${limitMb}MB.`);
         return;
       }
     }
@@ -111,7 +112,7 @@ export default function MediaLibrary({ userEmail }: Props) {
     const totalSize = filesArray.reduce((acc, f) => acc + f.size, 0);
     const limitBytes = storageLimitGb * 1024 * 1024 * 1024;
     if (storageUsedBytes + totalSize > limitBytes) {
-      alert(`Upload Failed: This upload of ${(totalSize / (1024 * 1024)).toFixed(1)} MB exceeds your storage limit of ${storageLimitGb} GB.`);
+      toast.error(`Upload Failed: This upload of ${(totalSize / (1024 * 1024)).toFixed(1)} MB exceeds your storage limit of ${storageLimitGb} GB.`);
       return;
     }
 
@@ -237,7 +238,7 @@ export default function MediaLibrary({ userEmail }: Props) {
         });
       } catch (err) {
         console.error("Single file upload error", err);
-        alert(`Error uploading file "${file.name}": ` + (err instanceof Error ? err.message : String(err)));
+        toast.error(`Error uploading file "${file.name}": ` + (err instanceof Error ? err.message : String(err)));
       }
       setUploadProgress((count / filesArray.length) * 100);
     }

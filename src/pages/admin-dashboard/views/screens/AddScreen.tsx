@@ -3,6 +3,7 @@ import { ChevronRight, Monitor, MapPin, LinkIcon, Check, RefreshCw, Building2, K
 import { mediaStore } from '../../../../lib/mediaStore';
 import { licensingStore, License } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
+import { toast } from '../../../../components/Toast';
 
 const steps = [
   { id: 1, label: 'Hardware Details', icon: <Monitor size={16} /> },
@@ -100,7 +101,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
 
   const handlePairScreen = async () => {
     if (!enteredCode.trim()) {
-      alert('Please enter a pairing code.');
+      toast.warning('Please enter a pairing code.');
       return;
     }
 
@@ -134,7 +135,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        alert(errData.message || 'Failed to pair device. Please check the code.');
+        toast.error(errData.message || 'Failed to pair device. Please check the code.');
         return;
       }
 
@@ -142,7 +143,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
       setIsPaired(true);
     } catch (err) {
       console.error('Error during screen pairing:', err);
-      alert('Network error trying to pair screen. Please make sure the backend server is running.');
+      toast.error('Network error trying to pair screen. Please make sure the backend server is running.');
     }
   };
 
@@ -485,7 +486,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
             <button
               onClick={() => {
                 if (!form.name.trim()) {
-                  alert('Please enter a screen name.');
+                  toast.warning('Please enter a screen name.');
                   return;
                 }
                 setIsCreated(true);

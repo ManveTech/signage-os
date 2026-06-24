@@ -8,6 +8,7 @@ import mediaItemsRouter from './media_items';
 import organizationsRouter from './organizations';
 import { createCrudRouter } from '../controllers/crud';
 import { authenticateToken } from '../middleware/auth';
+import { clearAllScreenLogs } from '../controllers/screens';
 
 const apiRouter = express.Router();
 
@@ -28,6 +29,7 @@ apiRouter.use('/organizations', organizationsRouter);
 // 4. Mount Generic PocketBase CRUD Collection Routers
 apiRouter.use('/screens', createCrudRouter('screens'));
 apiRouter.use('/screen_groups', createCrudRouter('screen_groups'));
+apiRouter.delete('/screen_logs', clearAllScreenLogs);
 apiRouter.use('/screen_logs', createCrudRouter('screen_logs'));
 apiRouter.use('/media_items', createCrudRouter('media_items'));
 apiRouter.use('/playlists', createCrudRouter('playlists'));

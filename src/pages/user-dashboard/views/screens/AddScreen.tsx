@@ -3,6 +3,7 @@ import { ChevronRight, Monitor, MapPin, LinkIcon, Check, RefreshCw, Building2, K
 import { mediaStore } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
+import { toast } from '../../../../components/Toast';
 
 const steps = [
   { id: 1, label: 'Hardware Details', icon: <Monitor size={16} /> },
@@ -60,11 +61,11 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
 
   const handleRegisterScreen = async () => {
     if (!form.name.trim()) {
-      alert('Please enter a screen name.');
+      toast.warning('Please enter a screen name.');
       return;
     }
     if (!inputPairingCode.trim()) {
-      alert('Please enter the pairing code from your TV screen.');
+      toast.warning('Please enter the pairing code from your TV screen.');
       return;
     }
     
@@ -96,13 +97,13 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        alert(errData.message || 'Failed to pair device. Please check the code.');
+        toast.error(errData.message || 'Failed to pair device. Please check the code.');
         return;
       }
 
       await syncCollection('screens', 'signageos_screens');
 
-      alert(`Screen "${form.name}" has been successfully paired and added to your license!`);
+      toast.success(`Screen "${form.name}" has been successfully paired and added to your license!`);
       if (onNavigate) {
         onNavigate('my-screens-list');
       } else {
@@ -116,7 +117,7 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
       }
     } catch (err) {
       console.error('Error during screen pairing:', err);
-      alert('Network error trying to pair screen. Please make sure the backend server is running.');
+      toast.error('Network error trying to pair screen. Please make sure the backend server is running.');
     }
   };
 

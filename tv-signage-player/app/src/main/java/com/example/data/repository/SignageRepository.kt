@@ -40,7 +40,8 @@ data class DownloadState(
     val totalFiles: Int = 0,
     val completedFiles: Int = 0,
     val currentFileProgress: Float = 0.0f,
-    val currentFileName: String = ""
+    val currentFileName: String = "",
+    val errorMessage: String? = null
 )
 
 class SignageRepository(private val context: Context) {
@@ -57,6 +58,7 @@ class SignageRepository(private val context: Context) {
         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .addInterceptor(ErrorLoggingInterceptor(context))
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         })
@@ -127,6 +129,7 @@ class SignageRepository(private val context: Context) {
             Result.success(updatedConfig)
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error requesting pairing code", e)
+            logErrorToServer("Pairing Request Failure", e.message ?: "Unknown pairing error")
             Result.failure(e)
         }
     }
@@ -254,9 +257,11 @@ class SignageRepository(private val context: Context) {
                 clearCache()
             }
             Log.e("SignageRepository", "HTTP error syncing screen status with backend", e)
+            logErrorToServer("Sync Status HTTP Error", "HTTP ${e.code()}: ${e.message()}")
             Result.failure(e)
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error syncing screen status with backend", e)
+            logErrorToServer("Sync Status Failure", e.message ?: "Unknown error")
             
             // Check if it has been offline (unable to sync) for more than 24 hours
             val currentConfig = getOrCreateConfig()
@@ -289,6 +294,7 @@ class SignageRepository(private val context: Context) {
             Log.d("SignageRepository", "Successfully cleared device assets and cache directory files")
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error purging local assets", e)
+            logErrorToServer("Clear Assets Failure", e.message ?: "Unknown error")
         }
     }
 
@@ -456,7 +462,7 @@ class SignageRepository(private val context: Context) {
                 return@withContext
             }
 
-            val actualId = if (playlistId.length != 15 || !playlistId.all { it.isLowerCase() || it.isDigit() }) {
+            val actualId = if (playlistId.length != 15 || !playlistId.all { it.isLetterOrDigit() }) {
                 val queryUrl = "${resolveUrl(pocketbaseUrl, pocketbaseUrl, serverUrl)}/api/collections/playlists/records?filter=name=\"$playlistId\""
                 val listResponse = apiService.getPlaylistList(queryUrl)
                 listResponse.items.firstOrNull()?.id ?: ""
@@ -551,7 +557,7 @@ class SignageRepository(private val context: Context) {
                                     id = slideId,
                                     url = finalUrl,
                                     filename = filename,
-                                    localPath = cacheFile.absolutePath,
+                                    localPath = if (cacheFile.exists()) cacheFile.absolutePath else null,
                                     mediaType = mediaItem.type.lowercase(),
                                     duration = slide.duration,
                                     sortOrder = index,
@@ -584,7 +590,7 @@ class SignageRepository(private val context: Context) {
                             id = "${playlistId}_${pbAsset.id}_$index",
                             url = assetUrl,
                             filename = pbAsset.filename,
-                            localPath = cacheFile.absolutePath,
+                            localPath = if (cacheFile.exists()) cacheFile.absolutePath else null,
                             mediaType = pbAsset.mediaType.lowercase(),
                             duration = pbAsset.duration,
                             sortOrder = index,
@@ -612,7 +618,7 @@ class SignageRepository(private val context: Context) {
                             id = fileId,
                             url = resolveUrl(fileUrl, pocketbaseUrl, serverUrl),
                             filename = fileName,
-                            localPath = cacheFile.absolutePath,
+                            localPath = if (cacheFile.exists()) cacheFile.absolutePath else null,
                             mediaType = "image",
                             duration = 10,
                             sortOrder = index
@@ -656,7 +662,7 @@ class SignageRepository(private val context: Context) {
                                     id = slideId,
                                     url = finalUrl,
                                     filename = filename,
-                                    localPath = cacheFile.absolutePath,
+                                    localPath = if (cacheFile.exists()) cacheFile.absolutePath else null,
                                     mediaType = mediaItem.type.lowercase(),
                                     duration = mediaItem.duration,
                                     sortOrder = index,
@@ -756,7 +762,8 @@ class SignageRepository(private val context: Context) {
 
         val assets = assetDao.getAllAssets()
         val pending = assets.filter {
-            it.mediaType != "youtube" && (it.localPath.isNullOrEmpty() || !File(it.localPath).exists())
+            (it.mediaType.equals("image", ignoreCase = true) || it.mediaType.equals("video", ignoreCase = true)) &&
+            (it.localPath.isNullOrEmpty() || !File(it.localPath).exists())
         }
         
         if (pending.isEmpty() && !logoNeedsDownload) {
@@ -764,41 +771,52 @@ class SignageRepository(private val context: Context) {
             return@withContext
         }
 
-        val totalToDownload = pending.size + (if (logoNeedsDownload) 1 else 0)
-
-        // Immediately set downloading to true so the bar appears as soon as the download starts
+        // Reset download state and clear errors at start of loop
         downloadStateFlow.value = DownloadState(
             isDownloading = true,
-            totalFiles = totalToDownload,
+            totalFiles = pending.size,
             completedFiles = 0,
             currentFileProgress = 0f,
-            currentFileName = if (logoNeedsDownload) "Brand Logo" else pending.firstOrNull()?.filename ?: ""
+            currentFileName = "Initializing...",
+            errorMessage = null
         )
 
-        // Download whitelabel logo first if enabled and missing/changed
+        // 1. Download whitelabel logo first if enabled and missing/changed
         if (logoNeedsDownload) {
             Log.d("SignageRepository", "Whitelabel enabled. Downloading brand logo...")
+            downloadStateFlow.value = DownloadState(
+                isDownloading = true,
+                totalFiles = pending.size,
+                completedFiles = 0,
+                currentFileProgress = 0f,
+                currentFileName = "Brand Logo",
+                errorMessage = null
+            )
+            
             val localPath = downloadWhiteLabelLogo(
                 config.whiteLabelLogoUrl!!,
-                totalFilesForProgress = totalToDownload,
+                totalFilesForProgress = 0,
                 completedFilesForProgress = 0
             )
             if (localPath != null) {
                 val updated = getOrCreateConfig().copy(whiteLabelLogoPath = localPath)
                 configDao.saveConfig(updated)
                 Log.d("SignageRepository", "Whitelabel logo cached at: $localPath")
+            } else {
+                downloadStateFlow.value = downloadStateFlow.value.copy(
+                    errorMessage = "Failed to download brand logo"
+                )
             }
-            // Mark logo download as completed (progress = 1.0f equivalent)
-            downloadStateFlow.value = DownloadState(
-                isDownloading = true,
-                totalFiles = totalToDownload,
-                completedFiles = 1,
-                currentFileProgress = 0f,
-                currentFileName = pending.firstOrNull()?.filename ?: ""
-            )
         }
 
-        val startIndex = if (logoNeedsDownload) 1 else 0
+        if (pending.isEmpty()) {
+            val currentError = downloadStateFlow.value.errorMessage
+            downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = currentError)
+            return@withContext
+        }
+
+        val totalToDownload = pending.size
+        val startIndex = 0
 
         pending.forEachIndexed { index, asset ->
             Log.d("SignageRepository", "Downloading playlist asset: ${asset.url}")
@@ -807,7 +825,8 @@ class SignageRepository(private val context: Context) {
                 totalFiles = totalToDownload,
                 completedFiles = startIndex + index,
                 currentFileProgress = 0.0f,
-                currentFileName = asset.filename
+                currentFileName = asset.filename,
+                errorMessage = downloadStateFlow.value.errorMessage
             )
 
             val localFile = if (!asset.localPath.isNullOrEmpty()) {
@@ -848,7 +867,8 @@ class SignageRepository(private val context: Context) {
                             totalFiles = totalToDownload,
                             completedFiles = startIndex + index + 1,
                             currentFileProgress = 0.0f,
-                            currentFileName = asset.filename
+                            currentFileName = asset.filename,
+                            errorMessage = downloadStateFlow.value.errorMessage
                         )
                         Log.d("SignageRepository", "Base64 asset cached successfully to: ${localFile.absolutePath}")
                     } else {
@@ -879,7 +899,8 @@ class SignageRepository(private val context: Context) {
                                                 totalFiles = totalToDownload,
                                                 completedFiles = startIndex + index,
                                                 currentFileProgress = progress.coerceIn(0f, 1f),
-                                                currentFileName = asset.filename
+                                                currentFileName = asset.filename,
+                                                errorMessage = downloadStateFlow.value.errorMessage
                                             )
                                         }
                                     }
@@ -910,7 +931,8 @@ class SignageRepository(private val context: Context) {
                         totalFiles = totalToDownload,
                         completedFiles = startIndex + index + 1,
                         currentFileProgress = 0.0f,
-                        currentFileName = asset.filename
+                        currentFileName = asset.filename,
+                        errorMessage = downloadStateFlow.value.errorMessage
                     )
                     Log.d("SignageRepository", "Asset cached successfully to: ${localFile.absolutePath}")
                 }
@@ -925,13 +947,15 @@ class SignageRepository(private val context: Context) {
                     totalFiles = totalToDownload,
                     completedFiles = startIndex + index + 1,
                     currentFileProgress = 0.0f,
-                    currentFileName = asset.filename
+                    currentFileName = asset.filename,
+                    errorMessage = e.message ?: "Unknown download error"
                 )
                 // Send diagnostics heartbeat with error status for playing/download failure tracking
                 sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
             }
         }
-        downloadStateFlow.value = DownloadState(isDownloading = false)
+        val currentError = downloadStateFlow.value.errorMessage
+        downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = currentError)
     }
 
     private fun calculateSHA256(file: File): String {
@@ -1136,44 +1160,48 @@ class SignageRepository(private val context: Context) {
 
     // Direct helper to inject simulated assets for demonstration / preview mode in emulator!
     suspend fun injectDemoPlaylist() = withContext(Dispatchers.IO) {
-        val cacheDir = File(context.filesDir, "signage_cache")
-        val demoAssets = listOf(
-            PlaylistAsset(
-                id = "demo_img_1",
-                url = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000",
-                filename = "sneaker_ad_banner.jpg",
-                localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000", "sneaker_ad_banner.jpg")).absolutePath,
-                mediaType = "image",
-                duration = 8,
-                sortOrder = 0
-            ),
-            PlaylistAsset(
-                id = "demo_img_2",
-                url = "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000",
-                filename = "audio_headphone_promotion.jpg",
-                localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000", "audio_headphone_promotion.jpg")).absolutePath,
-                mediaType = "image",
-                duration = 6,
-                sortOrder = 1
-            ),
-            PlaylistAsset(
-                id = "demo_img_3",
-                url = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1000",
-                filename = "smartwatch_sleek_promo.jpg",
-                localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1000", "smartwatch_sleek_promo.jpg")).absolutePath,
-                mediaType = "image",
-                duration = 7,
-                sortOrder = 2
+        try {
+            val cacheDir = File(context.filesDir, "signage_cache")
+            val demoAssets = listOf(
+                PlaylistAsset(
+                    id = "demo_img_1",
+                    url = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000",
+                    filename = "sneaker_ad_banner.jpg",
+                    localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000", "sneaker_ad_banner.jpg")).absolutePath,
+                    mediaType = "image",
+                    duration = 8,
+                    sortOrder = 0
+                ),
+                PlaylistAsset(
+                    id = "demo_img_2",
+                    url = "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000",
+                    filename = "audio_headphone_promotion.jpg",
+                    localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000", "audio_headphone_promotion.jpg")).absolutePath,
+                    mediaType = "image",
+                    duration = 6,
+                    sortOrder = 1
+                ),
+                PlaylistAsset(
+                    id = "demo_img_3",
+                    url = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1000",
+                    filename = "smartwatch_sleek_promo.jpg",
+                    localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1000", "smartwatch_sleek_promo.jpg")).absolutePath,
+                    mediaType = "image",
+                    duration = 7,
+                    sortOrder = 2
+                )
             )
-        )
-        // Clear and insert
-        assetDao.clearAllAssets()
-        assetDao.insertAssets(demoAssets)
-        
-        // Mark status as active for demonstrating looping playback
-        val current = getOrCreateConfig()
-        configDao.saveConfig(current.copy(status = "active"))
-        
+            // Clear and insert
+            assetDao.clearAllAssets()
+            assetDao.insertAssets(demoAssets)
+            
+            // Mark status as active for demonstrating looping playback
+            val current = getOrCreateConfig()
+            configDao.saveConfig(current.copy(status = "active"))
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Error injecting demo playlist", e)
+            logErrorToServer("Inject Demo Playlist Failure", e.message ?: "Unknown error")
+        }
     }
 
     suspend fun updateDeviceVolume(volume: Int) = withContext(Dispatchers.IO) {
@@ -1189,6 +1217,7 @@ class SignageRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e("SignageRepository", "Failed to update device volume", e)
+            logErrorToServer("Update Volume Failure", e.message ?: "Unknown error")
         }
     }
 
@@ -1223,5 +1252,96 @@ class SignageRepository(private val context: Context) {
             if (isEmulator()) "10.0.2.2" else "127.0.0.1"
         }
     }
+
+    suspend fun logErrorToServer(event: String, detail: String) {
+        try {
+            val config = getOrCreateConfig()
+            if (config.screenId.isEmpty()) return
+            val url = "${config.serverUrl}/api/v1/screen_logs"
+            val fields = mapOf(
+                "screenId" to config.screenId,
+                "screenName" to config.screenName,
+                "event" to redactText(event, config.pocketbaseUrl, config.serverUrl),
+                "type" to "error",
+                "detail" to redactText(detail, config.pocketbaseUrl, config.serverUrl)
+            )
+            apiService.postLog(url, fields)
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Failed to send error log to server: ${e.message}", e)
+        }
+    }
+}
+
+class ErrorLoggingInterceptor(private val context: Context) : okhttp3.Interceptor {
+    override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+        val request = chain.request()
+        val path = request.url.encodedPath
+        if (path.contains("/screen_logs") || path.contains("/offline") || path.contains("/realtime")) {
+            return chain.proceed(request)
+        }
+
+        try {
+            val response = chain.proceed(request)
+            if (!response.isSuccessful) {
+                val errorMsg = "HTTP Error: ${response.code} ${response.message}"
+                logRequestFailure(request, errorMsg)
+            }
+            return response
+        } catch (e: Exception) {
+            val errorMsg = "Network Error: ${e.message ?: e.javaClass.simpleName}"
+            logRequestFailure(request, errorMsg)
+            throw e
+        }
+    }
+
+    private fun logRequestFailure(request: Request, errorMsg: String) {
+        val db = AppDatabase.getDatabase(context)
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val config = db.screenConfigDao().getConfig() ?: return@launch
+                if (config.screenId.isEmpty()) return@launch
+                
+                val client = OkHttpClient()
+                val fields = mapOf(
+                    "screenId" to config.screenId,
+                    "screenName" to config.screenName,
+                    "event" to redactText("Request Failure: ${request.method} ${request.url}", config.pocketbaseUrl, config.serverUrl),
+                    "type" to "error",
+                    "detail" to redactText(errorMsg, config.pocketbaseUrl, config.serverUrl)
+                )
+                val mapType = com.squareup.moshi.Types.newParameterizedType(Map::class.java, String::class.java, String::class.java)
+                val json = Moshi.Builder()
+                    .addLast(KotlinJsonAdapterFactory())
+                    .build()
+                    .adapter<Map<String, String>>(mapType)
+                    .toJson(fields)
+                
+                val body = json.toRequestBody("application/json".toMediaTypeOrNull())
+                val logRequest = Request.Builder()
+                    .url("${config.serverUrl}/api/v1/screen_logs")
+                    .post(body)
+                    .build()
+                
+                client.newCall(logRequest).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.e("ErrorLoggingInterceptor", "Failed to send request failure log: ${response.code}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ErrorLoggingInterceptor", "Error logging request failure", e)
+            }
+        }
+    }
+}
+
+private fun redactText(text: String, pocketbaseUrl: String, serverUrl: String): String {
+    var result = text
+    if (pocketbaseUrl.isNotEmpty()) {
+        result = result.replace(pocketbaseUrl, "[POCKETBASE_URL]")
+    }
+    if (serverUrl.isNotEmpty()) {
+        result = result.replace(serverUrl, "[SERVER_URL]")
+    }
+    return result
 }
 

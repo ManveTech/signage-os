@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
 import { syncCollection } from '../../../lib/syncHelper';
+import { toast } from '../../../components/Toast';
 
 type Tab = 'management' | 'payments' | 'expirations' | 'invoices';
 
@@ -120,7 +121,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   const handleCreateLicense = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLicId || !newLicName) {
-      alert('Please fill out ID and Name');
+      toast.warning('Please fill out ID and Name');
       return;
     }
 

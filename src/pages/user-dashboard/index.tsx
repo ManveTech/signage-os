@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
+import { toast } from '../../components/Toast';
 import Header from './components/Header';
 import Dashboard from './views/Dashboard';
 import AllScreens from './views/screens/AllScreens';
@@ -222,11 +223,11 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                 checkLicense();
               } else {
                 const err = await verifyRes.json().catch(() => ({}));
-                alert(`Payment verification failed: ${err.message || 'Signature mismatch'}`);
+                toast.error(`Payment verification failed: ${err.message || 'Signature mismatch'}`);
               }
             } catch (err) {
               console.error(err);
-              alert('Network error verifying payment.');
+              toast.error('Network error verifying payment.');
             } finally {
               setPaymentLoading(false);
             }
@@ -255,7 +256,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
       }
     } catch (error: any) {
       console.error('Error initiating payment:', error);
-      alert('Failed to initiate payment. Please try again.');
+      toast.error('Failed to initiate payment. Please try again.');
       setPaymentLoading(false);
     }
   };
@@ -326,7 +327,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
           checkLicense();
         }, 1500);
       } else {
-        alert('Simulated payment verification failed on server.');
+        toast.error('Simulated payment verification failed on server.');
         setRzpStep('methods');
       }
     } catch (err) {

@@ -128,9 +128,11 @@ export async function deleteMediaItem(req: any, res: any) {
     if (S3_ENABLED && urlToDelete) {
       const key = getKeyFromUrl(urlToDelete);
       if (key) {
-        console.log(`Deleting R2 object: ${key}`);
-        await deleteFromR2(key).catch(err => {
-          console.warn('R2 delete failed (non-fatal):', err.message);
+        console.log(`[R2] Deleting object key: ${key}`);
+        await deleteFromR2(key).then(() => {
+          console.log(`[R2] Successfully deleted object key: ${key}`);
+        }).catch(err => {
+          console.warn(`[R2] R2 deletion failed for key ${key}:`, err.message);
         });
       }
     }

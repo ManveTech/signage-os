@@ -150,33 +150,33 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.downloadStateFlow.collectLatest { downloadState ->
                 _uiState.update {
-                    val progressMessage = if (downloadState.isDownloading) {
-                        val displayCompleted = if (downloadState.completedFiles >= downloadState.totalFiles) {
-                            downloadState.totalFiles
-                        } else {
-                            downloadState.completedFiles + 1
-                        }
-                        "Downloading ${downloadState.currentFileName} ($displayCompleted/${downloadState.totalFiles})"
+                    val totalAssets = it.playlist.size
+
+                    val progressMessage = if (downloadState.isDownloading && downloadState.totalFiles > 0) {
+                        val alreadyCached = (totalAssets - downloadState.totalFiles).coerceAtLeast(0)
+                        val displayCompleted = (alreadyCached + downloadState.completedFiles + 1).coerceAtMost(totalAssets)
+                        "Downloading ${downloadState.currentFileName} ($displayCompleted/$totalAssets)"
                     } else {
                         ""
                     }
                     
-                    val overallProgress = if (it.playlist.isNotEmpty() || (it.isWhiteLabel && !it.whiteLabelLogoPath.isNullOrEmpty())) {
-                        val hasWhiteLabelLogo = it.isWhiteLabel && !it.whiteLabelLogoUrl.isNullOrEmpty()
-                        val logoExists = hasWhiteLabelLogo && !it.whiteLabelLogoPath.isNullOrEmpty() && java.io.File(it.whiteLabelLogoPath!!).exists()
-                        
-                        val totalAssets = it.playlist.size + (if (hasWhiteLabelLogo) 1 else 0)
+                    val overallProgress = if (it.playlist.isNotEmpty()) {
+                        val totalAssets = it.playlist.size
                         val alreadyDownloaded = it.playlist.count { asset ->
                             asset.mediaType.equals("youtube", ignoreCase = true) || 
                             (!asset.localPath.isNullOrEmpty() && java.io.File(asset.localPath).exists())
-                        } + (if (logoExists) 1 else 0)
+                        }
                         
-                        if (downloadState.isDownloading && downloadState.totalFiles > 0) {
-                            val pendingCount = downloadState.totalFiles
-                            val initialDownloadedCount = totalAssets - pendingCount
-                            ((initialDownloadedCount.toFloat() + downloadState.completedFiles + downloadState.currentFileProgress) / totalAssets).coerceIn(0f, 1f)
+                        if (totalAssets > 0) {
+                            if (downloadState.isDownloading && downloadState.totalFiles > 0) {
+                                val pendingCount = downloadState.totalFiles
+                                val initialDownloadedCount = totalAssets - pendingCount
+                                ((initialDownloadedCount.toFloat() + downloadState.completedFiles + downloadState.currentFileProgress) / totalAssets).coerceIn(0f, 1f)
+                            } else {
+                                (alreadyDownloaded.toFloat() / totalAssets).coerceIn(0f, 1f)
+                            }
                         } else {
-                            (alreadyDownloaded.toFloat() / totalAssets).coerceIn(0f, 1f)
+                            0f
                         }
                     } else {
                         0f
@@ -185,7 +185,8 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         isDownloading = downloadState.isDownloading,
                         downloadProgressMessage = progressMessage,
-                        downloadProgressFraction = overallProgress
+                        downloadProgressFraction = overallProgress,
+                        errorMessage = downloadState.errorMessage
                     )
                 }
             }
@@ -358,32 +359,47 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveServerUrls(serverUrl: String, pocketbaseUrl: String) {
         viewModelScope.launch {
-            repository.updateServerUrls(serverUrl, pocketbaseUrl)
-            hideAdminOverlay()
-            repository.startRealtimeSync()
-            // Reset state and re-request code
-            requestPairingCode()
+            try {
+                repository.updateServerUrls(serverUrl, pocketbaseUrl)
+                hideAdminOverlay()
+                repository.startRealtimeSync()
+                // Reset state and re-request code
+                requestPairingCode()
+            } catch (e: Exception) {
+                Log.e("SignageViewModel", "Failed to save server URLs", e)
+                repository.logErrorToServer("Save Server URLs Failure", e.message ?: "Unknown error")
+            }
         }
     }
 
     fun saveVolumeSettings(volume: Int) {
         viewModelScope.launch {
-            repository.updateDeviceVolume(volume)
+            try {
+                repository.updateDeviceVolume(volume)
+            } catch (e: Exception) {
+                Log.e("SignageViewModel", "Failed to save volume settings", e)
+                repository.logErrorToServer("Save Volume Failure", e.message ?: "Unknown error")
+            }
         }
     }
 
     fun purgeCacheAndReset() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isSyncing = true, statusMessage = "Purging offline database..." ) }
-            repository.clearCache()
-            _uiState.update {
-                it.copy(
-                    isSyncing = false,
-                    currentAssetIndex = 0,
-                    statusMessage = "Cleared. Ready to pair."
-                )
+            try {
+                _uiState.update { it.copy(isSyncing = true, statusMessage = "Purging offline database..." ) }
+                repository.clearCache()
+                _uiState.update {
+                    it.copy(
+                        isSyncing = false,
+                        currentAssetIndex = 0,
+                        statusMessage = "Cleared. Ready to pair."
+                    )
+                }
+                requestPairingCode()
+            } catch (e: Exception) {
+                Log.e("SignageViewModel", "Failed to purge cache and reset", e)
+                repository.logErrorToServer("Purge Cache & Reset Failure", e.message ?: "Unknown error")
             }
-            requestPairingCode()
         }
     }
 
@@ -397,32 +413,50 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
 
     fun testWithSimulatedDemo() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isSyncing = true, statusMessage = "Injecting sample promotional files..." ) }
-            repository.injectDemoPlaylist()
-            _uiState.update {
-                it.copy(
-                    isSyncing = false,
-                    status = "active",
-                    statusMessage = "Demo Active"
-                )
+            try {
+                _uiState.update { it.copy(isSyncing = true, statusMessage = "Injecting sample promotional files..." ) }
+                repository.injectDemoPlaylist()
+                _uiState.update {
+                    it.copy(
+                        isSyncing = false,
+                        status = "active",
+                        statusMessage = "Demo Active"
+                    )
+                }
+                restartAssetRotation()
+            } catch (e: Exception) {
+                Log.e("SignageViewModel", "Failed to inject demo playlist", e)
+                repository.logErrorToServer("Inject Demo Playlist Failure", e.message ?: "Unknown error")
             }
-            restartAssetRotation()
         }
     }
     
     fun simulateLicenceSuspended() {
         viewModelScope.launch {
-            _uiState.update { it.copy(status = "suspended", statusMessage = "License suspended simulation" ) }
+            try {
+                _uiState.update { it.copy(status = "suspended", statusMessage = "License suspended simulation" ) }
+            } catch (e: Exception) {
+                Log.e("SignageViewModel", "Failed to simulate license suspend", e)
+            }
         }
     }
 
     fun triggerPendingDownloads() {
-        repository.startDownloadingPendingAssets()
+        try {
+            repository.startDownloadingPendingAssets()
+        } catch (e: Exception) {
+            Log.e("SignageViewModel", "Failed to trigger pending downloads", e)
+        }
     }
 
     fun reportPlaybackError(assetName: String, errorDetails: String) {
         viewModelScope.launch {
-            repository.sendDiagnosticsHeartbeat("Playback Error: $assetName ($errorDetails)")
+            try {
+                repository.sendDiagnosticsHeartbeat("Playback Error: $assetName ($errorDetails)")
+                repository.logErrorToServer("Playback Error", "Asset: $assetName, Detail: $errorDetails")
+            } catch (e: Exception) {
+                Log.e("SignageViewModel", "Failed to report playback error", e)
+            }
         }
     }
 

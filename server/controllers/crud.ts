@@ -1,7 +1,23 @@
 import express from 'express';
 import { pb, ensurePBAuth } from '../db';
-import { checkDeviceStatuses } from './screens';
+import { checkDeviceStatuses, getLiveScreenMetrics } from './screens';
 import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '../scheduler';
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delayMs = 250
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const isNetworkError = !error.status || error.status === 0 || error.message?.includes('fetch failed') || error.message?.includes('timeout') || error.message?.includes('ENOTFOUND') || error.code === 'ENOTFOUND';
+    if (retries <= 0 || !isNetworkError) throw error;
+    console.warn(`[CRUD PocketBase] Connection error: ${error.message || 'timeout'}. Retrying in ${delayMs}ms... (${retries} retries left)`);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return retryWithBackoff(fn, retries - 1, delayMs * 2);
+  }
+}
 
 export function createCrudRouter(collectionName: string) {
   const router = express.Router();
@@ -23,7 +39,7 @@ export function createCrudRouter(collectionName: string) {
   router.get('/', async (req: any, res: any) => {
     try {
       if (collectionName === 'screens' || collectionName === 'screen_logs') {
-        await checkDeviceStatuses();
+        await checkDeviceStatuses({ silentIfNoChanges: true });
       }
       
       const filters: string[] = [];
@@ -40,23 +56,50 @@ export function createCrudRouter(collectionName: string) {
           page = parseInt(raw as string) || 1;
         } else if (key === 'perPage') {
           perPage = parseInt(raw as string) || 500;
+        } else if (key === 'assignedToUserEmail') {
+          // Skip raw query parameter to enforce security
+          return;
         } else if (SAFE_KEY.test(key)) {
           filters.push(`${key} = {:${key}}`);
           filterParams[key] = String(raw);
         }
-        // silently drop keys with special characters
       });
+
+      // Security: Extract and enforce user tenancy
+      const userRole = req.user?.role;
+      const userEmail = req.user?.email;
+      let targetEmail = req.headers['x-assigned-to-user-email'] || req.query.assignedToUserEmail;
+
+      if (userRole !== 'admin') {
+        targetEmail = userEmail; // Enforce logged-in user's tenancy
+      }
+
+      if (targetEmail && targetEmail !== 'all') {
+        if (collectionName === 'screens' || collectionName === 'screen_logs') {
+          filters.push(`assignedToUserEmail = {:assignedToUserEmail}`);
+          filterParams['assignedToUserEmail'] = String(targetEmail);
+        } else if (collectionName === 'playlists') {
+          filters.push(`createdBy = {:createdBy}`);
+          filterParams['createdBy'] = String(targetEmail);
+        }
+      } else if (userRole !== 'admin') {
+        if (collectionName === 'screens' || collectionName === 'screen_logs') {
+          filters.push(`assignedToUserEmail = {:assignedToUserEmail}`);
+          filterParams['assignedToUserEmail'] = String(userEmail);
+        } else if (collectionName === 'playlists') {
+          filters.push(`createdBy = {:createdBy}`);
+          filterParams['createdBy'] = String(userEmail);
+        }
+      }
       const filterStr = filters.length > 0 ? pb.filter(filters.join(' && '), filterParams) : '';
 
       // Use getList instead of getFullList to avoid sending skipTotal=1.
-      // Sort by '-id' instead of '-created' — on this PocketBase instance,
-      // sorting by created/updated returns 400. PocketBase IDs are time-ordered
-      // so '-id' gives newest-first ordering.
+      // Sort by '-created' to ensure correct chronological ordering (newest-first).
       const fetchRecords = async () => {
-        const result = await pb.collection(collectionName).getList(page, perPage, {
+        const result = await retryWithBackoff(() => pb.collection(collectionName).getList(page, perPage, {
           filter: filterStr || undefined,
-          sort: '-id'
-        });
+          sort: '-created'
+        }));
         return result.items;
       };
 
@@ -83,7 +126,16 @@ export function createCrudRouter(collectionName: string) {
   // GET ONE
   router.get('/:id', async (req: any, res: any) => {
     try {
-      const record = await pb.collection(collectionName).getOne(req.params.id);
+      const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
+      
+      // Enforce security tenancy
+      if (req.user?.role !== 'admin') {
+        const ownerEmail = record.assignedToUserEmail || record.createdBy;
+        if (ownerEmail && ownerEmail !== req.user?.email) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+
       res.json(record);
     } catch (error: any) {
       console.error(`Error fetching record from ${collectionName}:`, error);
@@ -104,7 +156,34 @@ export function createCrudRouter(collectionName: string) {
       if (body.id && !/^[a-z0-9]{15}$/.test(body.id)) {
         delete body.id;
       }
-      const record = await pb.collection(collectionName).create(body);
+
+      // Enrich screen logs with owner tenancy and live metrics at time of creation
+      if (collectionName === 'screen_logs' && body.screenId) {
+        try {
+          const screen = await retryWithBackoff(() => pb.collection('screens').getOne(body.screenId));
+          if (screen) {
+            if (screen.assignedToUserEmail) {
+              body.assignedToUserEmail = screen.assignedToUserEmail;
+            }
+            const metrics = await getLiveScreenMetrics(screen);
+            body.totalUptime = metrics.totalUptime;
+            body.loopsPlayed = metrics.loopsPlayed;
+          }
+        } catch (e: any) {
+          console.warn(`[CrudController] Could not enrich screen_log:`, e.message);
+        }
+      }
+
+      // Enforce security tenancy on creation
+      if (req.user?.role !== 'admin') {
+        if (collectionName === 'screens') {
+          body.assignedToUserEmail = req.user?.email;
+        } else if (collectionName === 'playlists' || collectionName === 'screen_groups') {
+          body.createdBy = req.user?.email;
+        }
+      }
+
+      const record = await retryWithBackoff(() => pb.collection(collectionName).create(body));
 
       // Sync scheduling on creation
       if (collectionName === 'screens') {
@@ -125,6 +204,18 @@ export function createCrudRouter(collectionName: string) {
   // Shared handler for PUT and PATCH (both perform a full or partial update)
   async function handleUpdate(req: any, res: any) {
     try {
+      // Enforce security tenancy
+      if (req.user?.role !== 'admin') {
+        const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
+        const ownerEmail = record.assignedToUserEmail || record.createdBy;
+        if (ownerEmail && ownerEmail !== req.user?.email) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        // Client cannot update tenancy properties
+        delete req.body.assignedToUserEmail;
+        delete req.body.createdBy;
+      }
+
       const body = { ...req.body };
       delete body.id;
       delete body.collectionId;
@@ -133,7 +224,7 @@ export function createCrudRouter(collectionName: string) {
       delete body.createdAt;
       delete body.created;
       delete body.updated;
-      const record = await pb.collection(collectionName).update(req.params.id, body);
+      const record = await retryWithBackoff(() => pb.collection(collectionName).update(req.params.id, body));
 
       if (collectionName === 'screens') {
         syncScreenSchedule(record);
@@ -156,15 +247,24 @@ export function createCrudRouter(collectionName: string) {
   // DELETE
   router.delete('/:id', async (req: any, res: any) => {
     try {
+      // Enforce security tenancy
+      if (req.user?.role !== 'admin') {
+        const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
+        const ownerEmail = record.assignedToUserEmail || record.createdBy;
+        if (ownerEmail && ownerEmail !== req.user?.email) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+
       let playlistName = '';
       if (collectionName === 'playlists') {
         try {
-          const pl = await pb.collection('playlists').getOne(req.params.id);
+          const pl = await retryWithBackoff(() => pb.collection('playlists').getOne(req.params.id));
           playlistName = pl.name;
         } catch (_) { /* ignore */ }
       }
 
-      await pb.collection(collectionName).delete(req.params.id);
+      await retryWithBackoff(() => pb.collection(collectionName).delete(req.params.id));
 
       // Cancel cron job if screen is deleted
       if (collectionName === 'screens') {

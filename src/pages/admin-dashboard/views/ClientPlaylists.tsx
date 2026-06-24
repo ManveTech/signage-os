@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { mediaStore, Playlist, MediaItem, Screen } from '../../../lib/mediaStore';
 import { licensingStore, License } from '../../../lib/licensingStore';
+import { toast } from '../../../components/Toast';
 
 const scheduleColors: Record<string, string> = {
   Running: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -179,7 +180,7 @@ export default function ClientPlaylists({ onNavigate }: Props) {
 
   const handleOpenMediaPicker = () => {
     if (!selectedClientEmail) {
-      alert('Please select a client organization first.');
+      toast.warning('Please select a client organization first.');
       return;
     }
     setTempSelectedIds(playlistItems.map(item => item.mediaId));
@@ -205,7 +206,7 @@ export default function ClientPlaylists({ onNavigate }: Props) {
     e.preventDefault();
     if (!uploadTitle || !selectedClientEmail) return;
     if (uploadSizeMb > 5) {
-      alert("All uploaded files must be under 5MB.");
+      toast.warning("All uploaded files must be under 5MB.");
       return;
     }
 
@@ -217,7 +218,7 @@ export default function ClientPlaylists({ onNavigate }: Props) {
     const limitBytes = limitGb * 1024 * 1024 * 1024;
 
     if (bytesUsed + newSizeBytes > limitBytes) {
-      alert(`Upload Failed: This upload exceeds the client's storage limit of ${limitGb} GB.`);
+      toast.error(`Upload Failed: This upload exceeds the client's storage limit of ${limitGb} GB.`);
       return;
     }
 
@@ -256,11 +257,11 @@ export default function ClientPlaylists({ onNavigate }: Props) {
 
   const handleSaveFormSubmit = () => {
     if (!playlistName) {
-      alert('Please enter a playlist name.');
+      toast.warning('Please enter a playlist name.');
       return;
     }
     if (playlistItems.length === 0) {
-      alert('Please add at least one media item to the sequence.');
+      toast.warning('Please add at least one media item to the sequence.');
       return;
     }
 
