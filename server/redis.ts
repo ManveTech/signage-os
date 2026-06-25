@@ -101,10 +101,12 @@ async function startRedisServer(): Promise<void> {
   const child = spawn(redisBin, [
     '--port', redisPort.toString(),
     '--maxmemory', maxMemory.toString(),
-    '--maxmemory-policy', 'allkeys-lru'
+    '--maxmemory-policy', 'allkeys-lru',
+    '--dir', '/tmp',
+    '--protected-mode', 'no'
   ], {
     detached: true,
-    stdio: 'ignore'
+    stdio: 'inherit' // let it print error logs to the container stdout/stderr if it fails
   });
 
   child.unref();

@@ -14,7 +14,7 @@ services:
       - PB_ADMIN_PASSWORD=${PB_ADMIN_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
       - PORT=${PORT:-5000}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USERNAME=${SMTP_USERNAME}
