@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { API_BASE } from '../../../../config';
 import { Wifi, WifiOff, RefreshCw, AlertTriangle, Cpu, Terminal, Clock, FileText, Filter, Trash2 } from 'lucide-react';
 import { toast } from '../../../../components/Toast';
 import { mediaStore } from '../../../../lib/mediaStore';
@@ -31,7 +32,7 @@ interface Props {
   mode?: 'my' | 'all';
 }
 
-const API_BASE = 'http://localhost:5000/api/v1';
+// API_BASE is imported from config
 
 function getHeaders() {
   const token = localStorage.getItem('signageos_token');

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../../config';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './views/Dashboard';
@@ -110,7 +111,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
       const userId = localStorage.getItem('signageos_user_id');
       const token = localStorage.getItem('signageos_token');
 
-      const res = await fetch(`http://localhost:5000/api/v1/users/${userId}`, {
+      const res = await fetch(`${API_BASE}/users/${userId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

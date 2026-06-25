@@ -13,30 +13,7 @@ export async function login(req: any, res: any) {
 
     const lowerEmail = email.toLowerCase().trim();
 
-    // DEV ONLY: hardcoded admin shortcut — disabled in production
-    if (
-      process.env.NODE_ENV !== 'production' &&
-      (
-        (lowerEmail === 'admin@demo.com' && password === 'admin123') ||
-        (lowerEmail === 'admin' && password === 'admin')
-      )
-    ) {
-      const token = signJwt({
-        id: 'admin_sys_usr',
-        email: 'admin@demo.com',
-        role: 'admin'
-      });
-      return res.status(200).json({
-        token,
-        user: {
-          id: 'admin_sys_usr',
-          email: 'admin@demo.com',
-          name: 'Super Admin',
-          role: 'admin',
-          organizationId: null
-        }
-      });
-    }
+
 
     // Query PocketBase 'users' collection
     try {
@@ -62,27 +39,7 @@ export async function login(req: any, res: any) {
     } catch (pbErr: any) {
       console.log('PocketBase auth failed, checking fallback:', pbErr.message);
       
-      // DEV ONLY: offline fallback demo users — disabled in production
-      if (process.env.NODE_ENV !== 'production') {
-        const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
-        if (clientEmails.includes(lowerEmail) && password === 'admin123') {
-          const token = signJwt({
-            id: `client_${lowerEmail}`,
-            email: lowerEmail,
-            role: 'client'
-          });
-          return res.status(200).json({
-            token,
-            user: {
-              id: `client_${lowerEmail}`,
-              email: lowerEmail,
-              name: 'Client User',
-              role: 'client',
-              organizationId: null
-            }
-          });
-        }
-      }
+
       return res.status(401).json({ message: 'Invalid access credentials.' });
     }
   } catch (error: any) {
@@ -109,23 +66,7 @@ export async function forgotPassword(req: any, res: any) {
       console.log('User lookup in PocketBase failed or not found:', pbErr.message);
     }
 
-    // 2. Check offline fallbacks if not found in PocketBase
-    if (!user) {
-      const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
-      if (clientEmails.includes(lowerEmail)) {
-        user = {
-          id: `client_${lowerEmail}`,
-          email: lowerEmail,
-          name: 'Client User'
-        };
-      } else if (lowerEmail === 'admin@demo.com') {
-        user = {
-          id: 'admin_sys_usr',
-          email: 'admin@demo.com',
-          name: 'Super Admin'
-        };
-      }
-    }
+
 
     if (!user) {
       return res.status(404).json({ message: 'No user registered with this email address.' });
@@ -181,11 +122,7 @@ export async function resetPassword(req: any, res: any) {
       return res.status(400).json({ message: 'Invalid token parameters.' });
     }
 
-    // Check if it's a fallback user or real user
-    if (userId.startsWith('client_') || userId === 'admin_sys_usr') {
-      console.log(`[SIMULATED PASSWORD RESET] Successfully reset password for fallback user: ${userId} to: ${password}`);
-      return res.status(200).json({ message: 'Password has been reset successfully (simulated).' });
-    }
+
 
     // PocketBase user reset
     await ensurePBAuth();

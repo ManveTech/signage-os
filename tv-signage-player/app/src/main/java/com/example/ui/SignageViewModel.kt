@@ -23,8 +23,8 @@ data class SignageUiState(
     val pairingCode: String = "",
     val status: String = "pairing", // "pairing", "active", "suspended"
     val screenName: String = "Digital Signage",
-    val serverUrl: String = "http://10.0.2.2:5000",
-    val pocketbaseUrl: String = "http://10.0.2.2:8090",
+    val serverUrl: String = com.example.AppConfig.SERVER_URL,
+    val pocketbaseUrl: String = com.example.AppConfig.POCKETBASE_URL,
     val lastSyncedAt: Long = 0L,
     val playlist: List<PlaylistAsset> = emptyList(),
     val currentAssetIndex: Int = 0,
@@ -357,20 +357,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun saveServerUrls(serverUrl: String, pocketbaseUrl: String) {
-        viewModelScope.launch {
-            try {
-                repository.updateServerUrls(serverUrl, pocketbaseUrl)
-                hideAdminOverlay()
-                repository.startRealtimeSync()
-                // Reset state and re-request code
-                requestPairingCode()
-            } catch (e: Exception) {
-                Log.e("SignageViewModel", "Failed to save server URLs", e)
-                repository.logErrorToServer("Save Server URLs Failure", e.message ?: "Unknown error")
-            }
-        }
-    }
+
 
     fun saveVolumeSettings(volume: Int) {
         viewModelScope.launch {
@@ -403,43 +390,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun toggleAdminOverlay() {
-        _uiState.update { it.copy(showAdminOverlay = !it.showAdminOverlay) }
-    }
 
-    fun hideAdminOverlay() {
-        _uiState.update { it.copy(showAdminOverlay = false) }
-    }
-
-    fun testWithSimulatedDemo() {
-        viewModelScope.launch {
-            try {
-                _uiState.update { it.copy(isSyncing = true, statusMessage = "Injecting sample promotional files..." ) }
-                repository.injectDemoPlaylist()
-                _uiState.update {
-                    it.copy(
-                        isSyncing = false,
-                        status = "active",
-                        statusMessage = "Demo Active"
-                    )
-                }
-                restartAssetRotation()
-            } catch (e: Exception) {
-                Log.e("SignageViewModel", "Failed to inject demo playlist", e)
-                repository.logErrorToServer("Inject Demo Playlist Failure", e.message ?: "Unknown error")
-            }
-        }
-    }
-    
-    fun simulateLicenceSuspended() {
-        viewModelScope.launch {
-            try {
-                _uiState.update { it.copy(status = "suspended", statusMessage = "License suspended simulation" ) }
-            } catch (e: Exception) {
-                Log.e("SignageViewModel", "Failed to simulate license suspend", e)
-            }
-        }
-    }
 
     fun triggerPendingDownloads() {
         try {

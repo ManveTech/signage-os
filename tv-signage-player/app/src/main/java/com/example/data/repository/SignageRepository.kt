@@ -65,7 +65,7 @@ class SignageRepository(private val context: Context) {
         .build()
 
     private val retrofit = Retrofit.Builder()
-        .baseUrl("http://10.0.2.2:5000/") // Fallback/dummy base URL, as we use dynamic @Url
+        .baseUrl(com.example.AppConfig.SERVER_URL + "/") // Hardcoded base URL
         .client(okHttpClient)
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
@@ -91,6 +91,15 @@ class SignageRepository(private val context: Context) {
             val randomUuid = UUID.randomUUID().toString()
             config = ScreenConfig(hardwareUuid = randomUuid)
             configDao.saveConfig(config)
+        } else {
+            // Force override stored URLs to use AppConfig hardcoded constants
+            if (config.serverUrl != com.example.AppConfig.SERVER_URL || config.pocketbaseUrl != com.example.AppConfig.POCKETBASE_URL) {
+                config = config.copy(
+                    serverUrl = com.example.AppConfig.SERVER_URL,
+                    pocketbaseUrl = com.example.AppConfig.POCKETBASE_URL
+                )
+                configDao.saveConfig(config)
+            }
         }
         config
     }
@@ -1158,51 +1167,7 @@ class SignageRepository(private val context: Context) {
         }
     }
 
-    // Direct helper to inject simulated assets for demonstration / preview mode in emulator!
-    suspend fun injectDemoPlaylist() = withContext(Dispatchers.IO) {
-        try {
-            val cacheDir = File(context.filesDir, "signage_cache")
-            val demoAssets = listOf(
-                PlaylistAsset(
-                    id = "demo_img_1",
-                    url = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000",
-                    filename = "sneaker_ad_banner.jpg",
-                    localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1000", "sneaker_ad_banner.jpg")).absolutePath,
-                    mediaType = "image",
-                    duration = 8,
-                    sortOrder = 0
-                ),
-                PlaylistAsset(
-                    id = "demo_img_2",
-                    url = "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000",
-                    filename = "audio_headphone_promotion.jpg",
-                    localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1000", "audio_headphone_promotion.jpg")).absolutePath,
-                    mediaType = "image",
-                    duration = 6,
-                    sortOrder = 1
-                ),
-                PlaylistAsset(
-                    id = "demo_img_3",
-                    url = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1000",
-                    filename = "smartwatch_sleek_promo.jpg",
-                    localPath = File(cacheDir, getCacheFileName("https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1000", "smartwatch_sleek_promo.jpg")).absolutePath,
-                    mediaType = "image",
-                    duration = 7,
-                    sortOrder = 2
-                )
-            )
-            // Clear and insert
-            assetDao.clearAllAssets()
-            assetDao.insertAssets(demoAssets)
-            
-            // Mark status as active for demonstrating looping playback
-            val current = getOrCreateConfig()
-            configDao.saveConfig(current.copy(status = "active"))
-        } catch (e: Exception) {
-            Log.e("SignageRepository", "Error injecting demo playlist", e)
-            logErrorToServer("Inject Demo Playlist Failure", e.message ?: "Unknown error")
-        }
-    }
+
 
     suspend fun updateDeviceVolume(volume: Int) = withContext(Dispatchers.IO) {
         try {

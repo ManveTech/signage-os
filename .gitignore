@@ -120,5 +120,6 @@ dist
 
 # Local Redis
 redis-local/
+dump.rdb
 
 # End of https://mrkandreev.name/snippets/gitignore-generator/#Node

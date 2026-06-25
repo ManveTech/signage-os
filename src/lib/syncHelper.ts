@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://dem1.manve.co/api/v1';
+import { API_BASE } from '../config';
 
 function getHeaders() {
   const token = localStorage.getItem('signageos_token');

@@ -94,13 +94,20 @@ export function PlaylistsTab({
   const getFilteredAndSortedMedia = () => {
     let list = [...mediaList];
     if (mediaSearchQuery.trim() !== '') {
-      list = list.filter(m => m.name.toLowerCase().includes(mediaSearchQuery.toLowerCase()));
+      list = list.filter(m => {
+        const name = m.name || m.title || '';
+        return name.toLowerCase().includes(mediaSearchQuery.toLowerCase());
+      });
     }
     if (mediaFilterType !== 'All') {
       list = list.filter(m => m.type === mediaFilterType);
     }
     if (mediaSortBy === 'Name') {
-      list.sort((a, b) => a.name.localeCompare(b.name));
+      list.sort((a, b) => {
+        const nameA = a.name || a.title || '';
+        const nameB = b.name || b.title || '';
+        return nameA.localeCompare(nameB);
+      });
     } else if (mediaSortBy === 'Size') {
       list.sort((a, b) => {
         const sizeA = parseFloat(a.size) || 0;

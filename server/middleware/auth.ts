@@ -62,18 +62,7 @@ export function authenticateToken(req: any, res: any, next: any) {
     return res.status(401).json({ message: 'Access token is required.' });
   }
 
-  // Simulated fallback tokens — DEV ONLY, never active in production
-  if (process.env.NODE_ENV !== 'production') {
-    if (token === 'offline_simulated_admin_token') {
-      req.user = { id: 'admin_sys_usr', email: 'admin@demo.com', role: 'admin' };
-      return next();
-    }
-    if (token.startsWith('offline_simulated_client_token_')) {
-      const email = token.substring('offline_simulated_client_token_'.length);
-      req.user = { id: `client_${email}`, email, role: 'client' };
-      return next();
-    }
-  }
+
 
   const payload = verifyJwt(token);
   if (!payload) {

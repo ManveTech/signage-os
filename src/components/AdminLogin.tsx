@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../config';
 import AdminDashboard from '../pages/admin-dashboard';
 import UserDashboard from '../pages/user-dashboard';
 import logoImg from '../assets/BS-main-Logo.png';
@@ -104,7 +105,7 @@ export default function AdminLogin() {
 
     const lowerEmail = email.toLowerCase().trim();
 
-    fetch('http://localhost:5000/api/v1/auth/login', {
+    fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: lowerEmail, password })
@@ -139,30 +140,7 @@ export default function AdminLogin() {
       })
       .catch((err) => {
         console.error('Server connection error:', err);
-        // Offline fallback: Accept simple demo credentials for easy offline/standalone testing
-        const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
-        if (
-          (lowerEmail === 'admin@demo.com' && password === 'admin123') ||
-          (lowerEmail === 'admin' && password === 'admin')
-        ) {
-          const mockToken = 'offline_simulated_admin_token';
-          localStorage.setItem('signageos_token', mockToken);
-          localStorage.setItem('signageos_user_id', 'admin_sys_usr');
-          localStorage.setItem('signageos_user_email', 'admin@demo.com');
-          localStorage.setItem('signageos_user_role', 'admin');
-          setLoggedInUser({ email: 'admin@demo.com', role: 'admin' });
-          setErrorMessage('');
-        } else if (clientEmails.includes(lowerEmail)) {
-          const mockToken = `offline_simulated_client_token_${lowerEmail}`;
-          localStorage.setItem('signageos_token', mockToken);
-          localStorage.setItem('signageos_user_id', `client_${lowerEmail}`);
-          localStorage.setItem('signageos_user_email', lowerEmail);
-          localStorage.setItem('signageos_user_role', 'client');
-          setLoggedInUser({ email: lowerEmail, role: 'client' });
-          setErrorMessage('');
-        } else {
-          setErrorMessage('Server offline. Use admin/admin or admin@demo.com/admin123 offline.');
-        }
+        setErrorMessage('Server connection error. Please verify the server is running and accessible.');
       });
   };
 
@@ -178,7 +156,7 @@ export default function AdminLogin() {
 
     const lowerEmail = email.toLowerCase().trim();
 
-    fetch('http://localhost:5000/api/v1/auth/forgot-password', {
+    fetch(`${API_BASE}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: lowerEmail })
@@ -195,17 +173,7 @@ export default function AdminLogin() {
       })
       .catch((err) => {
         console.error('Forgot password connection error:', err);
-        const clientEmails = ['priya@demo.com', 'rahul@demo.com', 'karan@demo.com', 'anil@demo.com'];
-        if (clientEmails.includes(lowerEmail) || lowerEmail === 'admin@demo.com') {
-          const mockToken = 'offline_simulated_reset_token';
-          setSuccessMessage('Offline simulated recovery triggered. Check the server terminal logs.');
-          console.log('\n============================= [SIMULATED RESET LINK] =============================');
-          console.log(`URL: http://localhost:3000/?token=${mockToken}&userId=${lowerEmail === 'admin@demo.com' ? 'admin_sys_usr' : 'client_' + lowerEmail}`);
-          console.log('==================================================================================\n');
-          setEmail('');
-        } else {
-          setErrorMessage('Server offline. Reset only works for registered database or fallback emails.');
-        }
+        setErrorMessage('Server connection error. Unable to request password recovery.');
       });
   };
 
@@ -223,7 +191,7 @@ export default function AdminLogin() {
     setErrorMessage('');
     setSuccessMessage('');
 
-    fetch('http://localhost:5000/api/v1/auth/reset-password', {
+    fetch(`${API_BASE}/auth/reset-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -248,17 +216,7 @@ export default function AdminLogin() {
       })
       .catch((err) => {
         console.error('Reset password connection error:', err);
-        if (resetToken === 'offline_simulated_reset_token') {
-          setSuccessMessage('Simulated reset succeeded. Redirecting to login view...');
-          setNewPassword('');
-          setConfirmPassword('');
-          setTimeout(() => {
-            setView('login');
-            setSuccessMessage('');
-          }, 2500);
-        } else {
-          setErrorMessage('Server offline. Password reset request failed.');
-        }
+        setErrorMessage('Server connection error. Password reset request failed.');
       });
   };
 

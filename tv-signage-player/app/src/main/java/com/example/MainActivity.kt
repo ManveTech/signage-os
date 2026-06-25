@@ -136,13 +136,13 @@ fun SignagePlayerApp(
                 if (uiState.playlist.isEmpty()) {
                     StandbyScreen(
                         uiState = uiState,
-                        onOpenAdmin = { viewModel.toggleAdminOverlay() }
+                        onOpenAdmin = {}
                     )
                 } else if (!allAssetsDownloaded) {
                     DownloadProgressScreen(
                         uiState = uiState,
                         onTriggerDownloads = { viewModel.triggerPendingDownloads() },
-                        onOpenAdmin = { viewModel.toggleAdminOverlay() }
+                        onOpenAdmin = {}
                     )
                 } else {
                     PlaybackLoopScreen(
@@ -151,7 +151,7 @@ fun SignagePlayerApp(
                         orientation = uiState.playlistOrientation,
                         playlistLoop = uiState.playlistLoop,
                         transitionName = uiState.playlistTransition,
-                        onOpenAdmin = { viewModel.toggleAdminOverlay() },
+                        onOpenAdmin = {},
                         onVideoCompleted = { viewModel.advanceToNextAsset() },
                         volumePercent = uiState.playlistVolume
                     )
@@ -214,14 +214,14 @@ fun SignagePlayerApp(
             }
             "suspended" -> {
                 SuspendedScreen(
-                    onOpenAdmin = { viewModel.toggleAdminOverlay() }
+                    onOpenAdmin = {}
                 )
             }
             else -> { // "pairing" status or default
                 PairingSetupScreen(
                     uiState = uiState,
                     onRefreshCode = { viewModel.requestPairingCode() },
-                    onOpenAdmin = { viewModel.toggleAdminOverlay() }
+                    onOpenAdmin = {}
                 )
             }
         }
@@ -279,20 +279,7 @@ fun SignagePlayerApp(
             }
         }
 
-        // Admin Custom Server Settings Drawer / Dialog Window
-        if (uiState.showAdminOverlay) {
-            AdminSettingsDialog(
-                uiState = uiState,
-                onSave = { server, pb, vol -> 
-                    viewModel.saveServerUrls(server, pb)
-                    viewModel.saveVolumeSettings(vol)
-                },
-                onDismiss = { viewModel.hideAdminOverlay() },
-                onReset = { viewModel.purgeCacheAndReset() },
-                onInjectDemo = { viewModel.testWithSimulatedDemo() },
-                onSimulateSuspended = { viewModel.simulateLicenceSuspended() }
-            )
-        }
+
     }
     }
 }
@@ -619,7 +606,7 @@ fun PairingSetupScreen(
                             contentColor = Color(0xFFD0BCFF)
                         ),
                         modifier = Modifier
-                            .weight(1.0f)
+                            .fillMaxWidth()
                             .border(1.dp, Color(0xFF49454F), RoundedCornerShape(12.dp))
                     ) {
                         Icon(
@@ -629,24 +616,6 @@ fun PairingSetupScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Refresh", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Button(
-                        onClick = onOpenAdmin,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF381E72),
-                            contentColor = Color(0xFFEADDFF)
-                        ),
-                        modifier = Modifier.weight(1.2f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Configure URLs",
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Admin Demo", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -821,44 +790,23 @@ fun PairingSetupScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Direct button targets for fast manual configuration & refreshing
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.padding(vertical = 12.dp)
+            // Direct button target for refreshing
+            FilledTonalButton(
+                onClick = onRefreshCode,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = Color(0xFF2B2930),
+                    contentColor = Color(0xFFD0BCFF)
+                ),
+                modifier = Modifier.padding(vertical = 12.dp).border(1.dp, Color(0xFF49454F), RoundedCornerShape(14.dp))
             ) {
-                FilledTonalButton(
-                    onClick = onRefreshCode,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF2B2930),
-                        contentColor = Color(0xFFD0BCFF)
-                    ),
-                    modifier = Modifier.border(1.dp, Color(0xFF49454F), RoundedCornerShape(14.dp))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh Code Icon",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Refresh Code", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                Button(
-                    onClick = onOpenAdmin,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF381E72),
-                        contentColor = Color(0xFFEADDFF)
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Configure URLs",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Admin Demo Tools", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Refresh Code Icon",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Refresh Code", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -1088,12 +1036,7 @@ fun PlaybackLoopScreen(
             }
         }
 
-        // Invisible touch overlay to toggle admin configurations Dialog
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable { onOpenAdmin() }
-        )
+
 
         // Overlay element displaying active asset name and playback progress (bottom-right edge, clean)
         Box(
@@ -1219,7 +1162,6 @@ fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF070709))
-                .clickable { onOpenAdmin() }
                 .padding(48.dp),
             horizontalArrangement = Arrangement.spacedBy(40.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -1281,7 +1223,6 @@ fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF070709))
-                .clickable { onOpenAdmin() }
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -1394,15 +1335,7 @@ fun SuspendedScreen(onOpenAdmin: () -> Unit) {
                     lineHeight = 18.sp
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Button(
-                    onClick = onOpenAdmin,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Admin Controls / Settings", fontSize = 12.sp)
-                }
+                // Settings button removed
             }
         }
     } else {
@@ -1456,197 +1389,12 @@ fun SuspendedScreen(onOpenAdmin: () -> Unit) {
                 lineHeight = 18.sp
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Button(
-                onClick = onOpenAdmin,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Admin Controls / Settings", fontSize = 13.sp)
-            }
+            // Settings button removed
         }
     }
 }
 
-@Composable
-fun AdminSettingsDialog(
-    uiState: SignageUiState,
-    onSave: (String, String, Int) -> Unit,
-    onDismiss: () -> Unit,
-    onReset: () -> Unit,
-    onInjectDemo: () -> Unit,
-    onSimulateSuspended: () -> Unit
-) {
-    var serverInput by remember(uiState.serverUrl) { mutableStateOf(uiState.serverUrl) }
-    var pbInput by remember(uiState.pocketbaseUrl) { mutableStateOf(uiState.pocketbaseUrl) }
-    var volumeInput by remember(uiState.screenVolume) { mutableStateOf(uiState.screenVolume) }
-    val scrollState = rememberScrollState()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = null,
-                    tint = Color(0xFF90CAF9),
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Screen Administrative Tooling",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState)
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Text(
-                    text = "Configure connectivity coordinates. Local host computers can typically be reached from the Android emulator at '10.0.2.2'.",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp
-                )
-
-                OutlinedTextField(
-                    value = serverInput,
-                    onValueChange = { serverInput = it },
-                    label = { Text("CMS Server URL Location") },
-                    textStyle = LocalTextStyle.current.copy(color = Color.White),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("server_url_input"),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF64B5F6),
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f)
-                    )
-                )
-
-                OutlinedTextField(
-                    value = pbInput,
-                    onValueChange = { pbInput = it },
-                    label = { Text("Pocketbase Server URL Location") },
-                    textStyle = LocalTextStyle.current.copy(color = Color.White),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("pb_url_input"),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF64B5F6),
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f)
-                    )
-                )
-
-                Text(
-                    text = "SCREEN VOLUME ($volumeInput%)",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF90CAF9),
-                    letterSpacing = 1.sp
-                )
-
-                Slider(
-                    value = volumeInput.toFloat(),
-                    onValueChange = { volumeInput = it.toInt() },
-                    valueRange = 0f..100f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFFD0BCFF),
-                        activeTrackColor = Color(0xFFD0BCFF),
-                        inactiveTrackColor = Color(0xFF49454F)
-                    ),
-                    modifier = Modifier.fillMaxWidth().testTag("volume_slider")
-                )
-
-                Divider(
-                    color = Color.White.copy(alpha = 0.15f),
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-
-                Text(
-                    text = "SIMULATOR PREVIEWS & SANDBOXING",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF90CAF9),
-                    letterSpacing = 1.sp
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    FilledTonalButton(
-                        onClick = onInjectDemo,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("sim_playback_btn"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0x3B64B5F6),
-                            contentColor = Color(0xFF94D2FC)
-                        )
-                    ) {
-                        Text("Sim Playback", fontSize = 11.sp)
-                    }
-
-                    FilledTonalButton(
-                        onClick = onSimulateSuspended,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0x3BEF5350),
-                            contentColor = Color(0xFFFFB2B0)
-                        )
-                    ) {
-                        Text("Sim Suspend", fontSize = 11.sp)
-                    }
-                }
-
-                Button(
-                    onClick = onReset,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("purge_and_reset_btn"),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C)),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Purge Cache & Clear Pairing", fontSize = 12.sp)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onSave(serverInput, pbInput, volumeInput) },
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A5F))
-            ) {
-                Text("Apply Settings")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Dismiss", color = Color.White.copy(alpha = 0.7f))
-            }
-        },
-        containerColor = Color(0xFF13151D),
-        shape = RoundedCornerShape(20.dp)
-    )
-}
 
 class WipeShape(private val fraction: Float) : androidx.compose.ui.graphics.Shape {
     override fun createOutline(
@@ -1838,36 +1586,13 @@ fun DownloadProgressScreen(
 
                         if (!uiState.isDownloading) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Button(
-                                    onClick = onTriggerDownloads,
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF381E72)),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Retry Download", color = Color(0xFFEADDFF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Button(
-                                    onClick = onOpenAdmin,
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2930)),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Admin Tools", color = Color(0xFFCAC4D0), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        } else {
-                            Spacer(modifier = Modifier.height(16.dp))
                             Button(
-                                onClick = onOpenAdmin,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2930)),
+                                onClick = onTriggerDownloads,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF381E72)),
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Admin Tools", color = Color(0xFFCAC4D0), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Retry Download", color = Color(0xFFEADDFF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -1883,14 +1608,7 @@ fun DownloadProgressScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "Press Admin Tools to configure screen settings",
-                    color = Color(0xFF49454F),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
-                )
+                // Settings hint text removed
             }
         }
     } else {
@@ -2012,36 +1730,13 @@ fun DownloadProgressScreen(
 
                     if (!uiState.isDownloading) {
                         Spacer(modifier = Modifier.height(24.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = onTriggerDownloads,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF381E72)),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Retry Download", color = Color(0xFFEADDFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Button(
-                                onClick = onOpenAdmin,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2930)),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Admin Tools", color = Color(0xFFCAC4D0), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.height(24.dp))
                         Button(
-                            onClick = onOpenAdmin,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B2930)),
+                            onClick = onTriggerDownloads,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF381E72)),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Admin Tools", color = Color(0xFFCAC4D0), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Retry Download", color = Color(0xFFEADDFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -2057,15 +1752,7 @@ fun DownloadProgressScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
-
-            // Small indicator showing admin tools tap hint
-            Text(
-                text = "Press Admin Tools to configure screen settings",
-                color = Color(0xFF49454F),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
-            )
+            // Settings hint text removed
         }
     }
 }

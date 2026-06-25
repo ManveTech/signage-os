@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { API_BASE } from '../../../../config';
 import { ChevronRight, Monitor, MapPin, LinkIcon, Check, RefreshCw, Building2, Key, CheckCircle, AlertCircle } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { licensingStore, License } from '../../../../lib/licensingStore';
@@ -117,7 +118,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
 
     try {
       const token = localStorage.getItem('signageos_token');
-      const response = await fetch('http://localhost:5000/api/v1/screens/pair', {
+      const response = await fetch(`${API_BASE}/screens/pair`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

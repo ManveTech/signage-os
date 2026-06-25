@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../../../config';
 import { 
   User, Lock, Shield, Key, LogOut, Eye, EyeOff, Copy, RefreshCw, 
   Camera, CheckCircle, CreditCard, Mail, Phone, ShieldAlert
@@ -31,7 +32,7 @@ export default function Profile() {
   // Load Razorpay config on mount
   useEffect(() => {
     const token = localStorage.getItem('signageos_token');
-    fetch('http://localhost:5000/api/v1/payments/config', {
+    fetch(`${API_BASE}/payments/config`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -90,7 +91,7 @@ export default function Profile() {
     localStorage.setItem('signageos_admin_rzp_secret', rzpKeySecret);
 
     const token = localStorage.getItem('signageos_token');
-    fetch('http://localhost:5000/api/v1/payments/config', {
+    fetch(`${API_BASE}/payments/config`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

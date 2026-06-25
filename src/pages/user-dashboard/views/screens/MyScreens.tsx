@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE } from '../../../../config';
 import {
   Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit,
   Clock, Monitor, X, Check, CheckCircle, MapPin,
@@ -267,7 +268,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
       addToast('Please enter a pairing code', 'error');
       return;
     }
-    fetch('http://localhost:5000/api/v1/screens/reconnect', {
+    fetch(`${API_BASE}/screens/reconnect`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -384,7 +385,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
     const allScreens = mediaStore.getScreens();
     setScreens(allScreens.filter(s => s.assignedToUserEmail === userEmail));
     // Also push to server
-    fetch(`http://localhost:5000/api/v1/screens/${assignScreen.id}/assign-playlist`, {
+    fetch(`${API_BASE}/screens/${assignScreen.id}/assign-playlist`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

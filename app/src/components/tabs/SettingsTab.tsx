@@ -42,6 +42,9 @@ import {
   Filter
 } from 'iconsax-react-native';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE } from '../../config';
+
 export type SettingsTabProps = {
   screen: 'splash' | 'login' | 'user' | 'admin';
   settingsUsers: any[];
@@ -73,6 +76,8 @@ export type SettingsTabProps = {
   rzpKeySecret: string;
   setRzpKeySecret: (val: string) => void;
   isAdmin?: boolean;
+  syncAppState: () => Promise<void>;
+  handleLogout: () => Promise<void>;
 };
 
 type SettingSubTab = 'menu' | 'profile' | 'billing' | 'support' | 'adminConfig' | 'licensing' | 'organizations';
@@ -106,6 +111,8 @@ export function SettingsTab({
   rzpKeySecret,
   setRzpKeySecret,
   isAdmin = false,
+  syncAppState,
+  handleLogout,
 }: SettingsTabProps) {
   const [activeSubTab, setActiveSubTab] = useState<SettingSubTab>('menu');
   
@@ -134,6 +141,12 @@ export function SettingsTab({
   // Active view modals
   const [selectedTxn, setSelectedTxn] = useState<any | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+
+  // Razorpay simulated payment states
+  const [showRzpModal, setShowRzpModal] = useState(false);
+  const [rzpStep, setRzpStep] = useState<'methods' | 'processing' | 'success'>('methods');
+  const [selectedMethod, setSelectedMethod] = useState<'upi' | 'card' | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   // Invite User states
   const [newUserName, setNewUserName] = useState('');
@@ -470,6 +483,74 @@ export function SettingsTab({
     Alert.alert('User Invited', `Successfully invited ${newUserName} as ${newUserRole}.`);
   };
 
+  const handleInitiatePayment = (invoice: any) => {
+    setSelectedInvoice(null); // Close details modal
+    setSelectedMethod(null);
+    setRzpStep('methods');
+    setShowRzpModal(true);
+  };
+
+  const handlePaymentSuccess = async () => {
+    if (!selectedInvoice) return;
+    setPaymentLoading(true);
+    setRzpStep('processing');
+
+    try {
+      const token = await AsyncStorage.getItem('signageos_token');
+      
+      // 1. Create order
+      const orderRes = await fetch(`${API_BASE}/payments/create-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ licenseId: selectedInvoice.licenseId })
+      });
+
+      if (!orderRes.ok) {
+        throw new Error('Failed to create payment order on server');
+      }
+
+      const orderData = await orderRes.json();
+      const orderId = orderData.orderId;
+
+      // Generate random simulated payment ID
+      const paymentId = 'pay_' + Math.random().toString(36).substring(2, 11);
+
+      // 2. Verify payment
+      const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          razorpayPaymentId: paymentId,
+          razorpayOrderId: orderId,
+          razorpaySignature: 'simulated_sig',
+          licenseId: selectedInvoice.licenseId
+        })
+      });
+
+      if (verifyRes.ok) {
+        setRzpStep('success');
+        // Refresh full app state from server
+        await syncAppState();
+      } else {
+        const errData = await verifyRes.json().catch(() => ({}));
+        Alert.alert('Payment Failed', errData.message || 'Signature mismatch verification failed.');
+        setRzpStep('methods');
+      }
+    } catch (err: any) {
+      console.error('Payment error:', err);
+      Alert.alert('Payment Error', err.message || 'Network error executing Razorpay checkout.');
+      setRzpStep('methods');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Back button for detail views */}
@@ -611,6 +692,29 @@ export function SettingsTab({
               </TouchableOpacity>
             </>
           )}
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              Alert.alert(
+                'Log Out',
+                'Are you sure you want to log out of your session?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Log Out', style: 'destructive', onPress: () => handleLogout() }
+                ]
+              );
+            }}
+          >
+            <View style={[styles.menuItemIconWrapper, { backgroundColor: '#fef2f2' }]}>
+              <Trash size={22} color="#dc2626" variant="Bulk" />
+            </View>
+            <View style={styles.menuItemContent}>
+              <Text style={[styles.menuItemTitle, { color: '#dc2626' }]}>Log Out</Text>
+              <Text style={styles.menuItemDesc}>Sign out of your active console session</Text>
+            </View>
+            <ArrowRight size={18} color="#fca5a5" />
+          </TouchableOpacity>
         </View>
       )}
 
@@ -1406,10 +1510,201 @@ export function SettingsTab({
               </View>
             )}
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.submitButton} onPress={() => setSelectedInvoice(null)}>
-                <Text style={styles.submitButtonText}>Close</Text>
+              {selectedInvoice && selectedInvoice.status === 'unpaid' && (
+                <TouchableOpacity 
+                  style={[styles.submitButton, { backgroundColor: '#7c3aed', marginBottom: 8 }]} 
+                  onPress={() => handleInitiatePayment(selectedInvoice)}
+                >
+                  <Text style={styles.submitButtonText}>Pay Securely via Razorpay</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setSelectedInvoice(null)}>
+                <Text style={styles.cancelButtonText}>Close</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* SIMULATED RAZORPAY CHECKOUT MODAL */}
+      <Modal visible={showRzpModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalContent, { padding: 0, overflow: 'hidden' }]}>
+            {/* Modal Header */}
+            <View style={{
+              paddingHorizontal: 20,
+              paddingVertical: 16,
+              backgroundColor: '#0EA5E9',
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 6,
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '900', fontStyle: 'italic' }}>R</Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5 }}>RAZORPAY CHECKOUT</Text>
+                  <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)' }}>SignageOS Technologies Ltd.</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setShowRzpModal(false)}>
+                <Text style={{ color: '#ffffff', fontSize: 16, fontWeight: 'bold' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {rzpStep === 'methods' && (
+              <View style={{ padding: 20, gap: 16 }}>
+                {/* Amount display */}
+                <View style={{
+                  alignItems: 'center',
+                  paddingVertical: 14,
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                }}>
+                  <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#64748b', letterSpacing: 0.8 }}>TOTAL PAYABLE AMOUNT</Text>
+                  <Text style={{ fontSize: 26, fontWeight: '900', color: '#0ea5e9', marginTop: 4 }}>
+                    ₹{selectedInvoice ? (selectedInvoice.amount || 0).toLocaleString() : '0'}
+                  </Text>
+                  <Text style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>Testing Mode — GST Included</Text>
+                </View>
+
+                <View style={{ gap: 8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#94a3b8', letterSpacing: 0.5 }}>SELECT PAYMENT METHOD</Text>
+
+                  {/* UPI */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedMethod('upi')}
+                    style={[{
+                      padding: 14,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }, selectedMethod === 'upi' && {
+                      backgroundColor: '#f0f9ff',
+                      borderColor: '#0ea5e9',
+                      borderWidth: 2,
+                    }]}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#1e293b' }}>UPI — Paytm / Google Pay</Text>
+                      <Text style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>Pay instantly via QR code or UPI ID</Text>
+                    </View>
+                    <View style={[{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 8,
+                      borderWidth: 2,
+                      borderColor: '#cbd5e1',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }, selectedMethod === 'upi' && { borderColor: '#0ea5e9' }]}>
+                      {selectedMethod === 'upi' && (
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#0ea5e9' }} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Card */}
+                  <TouchableOpacity
+                    onPress={() => setSelectedMethod('card')}
+                    style={[{
+                      padding: 14,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      backgroundColor: '#f8fafc',
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }, selectedMethod === 'card' && {
+                      backgroundColor: '#f0f9ff',
+                      borderColor: '#0ea5e9',
+                      borderWidth: 2,
+                    }]}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#1e293b' }}>Credit / Debit Card</Text>
+                      <Text style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>Visa, Mastercard, RuPay, Maestro</Text>
+                    </View>
+                    <View style={[{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 8,
+                      borderWidth: 2,
+                      borderColor: '#cbd5e1',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }, selectedMethod === 'card' && { borderColor: '#0ea5e9' }]}>
+                      {selectedMethod === 'card' && (
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#0ea5e9' }} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  disabled={!selectedMethod || paymentLoading}
+                  onPress={handlePaymentSuccess}
+                  style={[{
+                    paddingVertical: 14,
+                    borderRadius: 12,
+                    backgroundColor: '#cbd5e1',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }, selectedMethod && {
+                    backgroundColor: '#0ea5e9',
+                  }]}
+                >
+                  <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '800' }}>
+                    PAY SECURELY VIA RAZORPAY
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {rzpStep === 'processing' && (
+              <View style={{ padding: 40, alignItems: 'center', gap: 16 }}>
+                <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#0ea5e9' }}>🕒</Text>
+                <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#1e293b' }}>Processing Payment...</Text>
+                <Text style={{ fontSize: 11, color: '#64748b' }}>Please do not close this modal or refresh.</Text>
+              </View>
+            )}
+
+            {rzpStep === 'success' && (
+              <View style={{ padding: 30, alignItems: 'center', gap: 16 }}>
+                <Text style={{ fontSize: 32, color: '#10b981' }}>✓</Text>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#10b981' }}>Payment Successful!</Text>
+                <Text style={{ fontSize: 11, color: '#64748b', textAlign: 'center', lineHeight: 16 }}>
+                  Your transaction has been processed and verified. Your license is now active.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowRzpModal(false)}
+                  style={{
+                    paddingHorizontal: 24,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    backgroundColor: '#10b981',
+                    marginTop: 8,
+                  }}
+                >
+                  <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: 'bold' }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </Modal>

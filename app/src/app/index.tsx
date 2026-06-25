@@ -30,7 +30,8 @@ import {
 } from 'iconsax-react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { syncAllFromDatabase, pushToDatabase, API_BASE } from '../lib/syncHelper';
+import { syncAllFromDatabase, pushToDatabase } from '../lib/syncHelper';
+import { API_BASE } from '../config';
 
 // Import modular tab components
 import { DashboardTab } from '../components/tabs/DashboardTab';
@@ -150,156 +151,18 @@ function AppContent() {
   const [rzpKeySecret, setRzpKeySecret] = useState('sec_live_92a01b19ff82a17b0193');
 
   // Shared Data States
-  const [screensList, setScreensList] = useState([
-    { 
-      id: '1', 
-      name: 'North Lobby Screen 01', 
-      location: 'New Delhi, India', 
-      type: 'my', 
-      status: 'online', 
-      orientation: 'landscape', 
-      playlist: 'Corporate Branding',
-      storageUsed: '1.2 GB',
-      storageTotal: '5 GB',
-      lastSeen: '2 mins ago',
-      version: 'v2.4.1',
-      thumbnail: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCPudAKFAY4ns4u3PJ1XnNZ5IzmwJUmjon6J2x91Cm9eCNjwkT4vWSclyoa81L7VIw4u3cfH95f1pIz_5OqeD8eHEaIKDDMIdz0zsgHSyNBAbVGDezjBVto7bJ02-af4M6oPL0qxi767HZu5NrzI8mELXBsh2sR3kr1kFqWRg-QviPYAPUlG5HXeISDTFoBZpk3S52jIQo9Bjc8Q_FMgZnbbGmPh-5MRaKzZlZrq7NyU78Syv6aRNdcemvf83BCDdc22627fTZpnq0'
-    },
-    { 
-      id: '2', 
-      name: 'Cafeteria Menu Display', 
-      location: 'Mumbai, India', 
-      type: 'my', 
-      status: 'offline', 
-      orientation: 'portrait', 
-      playlist: 'Lunch Specials',
-      storageUsed: '4.8 GB',
-      storageTotal: '5 GB',
-      lastSeen: '4 hours ago',
-      version: 'v2.3.8',
-      thumbnail: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCCUNnyrSUs_LdfsY_hF2vDexj4K53_SNFVL4hI2MlqfQWTj7FX9oH6W7UEzuJz6LBy9YJF7-izQZxKrDfevB1tjDS2rcaQd1snnkjkBDxVlJTKQ56o-rsvZJS6RuwnV1idxAI7ECMDZCnzcn-aAmIGvluc7BMpaRgn1jaAQCwtKDfgbAtAb7uYe1tHM1MH1H4XrIVcRKtrHnzNqJNMJUaeF1vdcekoBQgXn6g16P1MfZjJVMZaus-AEq4fTuCwfudahda1cTrFN5g'
-    },
-    { 
-      id: '3', 
-      name: 'CEO Office Portrait', 
-      location: 'New York, USA', 
-      type: 'client', 
-      status: 'warning', 
-      orientation: 'portrait', 
-      playlist: 'Corporate Branding',
-      warning: 'Firmware update required',
-      storageUsed: '2.1 GB',
-      storageTotal: '5 GB',
-      lastSeen: '1 min ago',
-      version: 'v2.1.0',
-      thumbnail: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBYEiWQICT3LO2ZD8ENUEo1n8XiK1tXjtWgzPny0gIGSXEHArIke-EFjmI5ywmdI9HbJAXdoKGGDe5Y5jjDheN4IbTczIvEfO-tnQtY0vxggRwqKb9F4gBxdim6-Wgu-51M8XlPFKCGu-wF-7bDtl5mQ57WAk6l1ieR09Yasmd4rG-vOIth6AjzymLQuIqRZCn09Axd6uHfeKYRFMFps8d9ygK3qkL1cqRMqYdBdGt8-XO9KYN-meIQdal_MYtdm06jnPSt0pgwAG0'
-    },
-    { 
-      id: '4', 
-      name: 'Outdoor Entrance Display', 
-      location: 'Chennai, India', 
-      type: 'client', 
-      status: 'offline', 
-      orientation: 'landscape', 
-      playlist: 'Standard Corporate Loop',
-      storageUsed: '3.5 GB',
-      storageTotal: '5 GB',
-      lastSeen: '1 day ago',
-      version: 'v2.3.8',
-      thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800'
-    },
-  ]);
-
-  const [groupsList, setGroupsList] = useState([
-    { 
-      id: '1', 
-      name: 'Retail Zone', 
-      description: 'North Zone Stores - Terminal 1',
-      accentColor: '#7c3aed',
-      screensCount: 12,
-      playlist: 'Summer Playlist',
-      tags: ['Retail Assets'],
-      progress: null
-    },
-  ]);
-
-  const [playlistsList, setPlaylistsList] = useState([
-    {
-      id: 'p1',
-      name: 'Corporate Branding',
-      type: 'my' as const,
-      slides: [
-        { id: 'slide1', mediaId: 'pres1', duration: 15 },
-        { id: 'slide2', mediaId: 'pres2', duration: 10 }
-      ],
-      widget: 'Clock (Top-Right)',
-      syncStatus: 'synced' as const,
-      orientation: 'horizontal'
-    },
-    {
-      id: 'p2',
-      name: 'Lunch Specials',
-      type: 'my' as const,
-      slides: [
-        { id: 'slide3', mediaId: 'pres3', duration: 20 }
-      ],
-      widget: 'None',
-      syncStatus: 'pending' as const,
-      orientation: 'horizontal'
-    }
-  ]);
-
-  const [mediaList, setMediaList] = useState([
-    { id: 'pres1', name: 'corporate_welcome_4k.mp4', type: 'Video' as const, size: '42.5MB', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&auto=format&fit=crop&q=80' },
-    { id: 'pres2', name: 'seasonal_promo_spring.jpg', type: 'Image' as const, size: '2.8MB', url: 'https://images.unsplash.com/photo-1513151233558-d860c5398176?w=800&auto=format&fit=crop&q=80' },
-    { id: 'pres3', name: 'cafeteria_lunch_board.layout', type: 'Layout' as const, size: '24KB', url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80' }
-  ]);
-
-  const [settingsUsers, setSettingsUsers] = useState([
-    { name: 'Priya Reddy', email: 'priya@demo.com', role: 'org_admin', mobile: '+91 99999 99999', address: '123 Tech Park, Bangalore', company: 'ManveTech', license: 'SOS-NORTH-9982', screens: 3, status: 'Active' },
-    { name: 'Kevin Durant', email: 'kevin@demo.com', role: 'org_admin', mobile: '+1 555-0199', address: '789 Broad St, NY', company: 'KD Enterprises', license: 'SOS-EAST-1142', screens: 5, status: 'Active' },
-    { name: 'System Admin', email: 'admin@demo.com', role: 'Administrator', mobile: '+91 88888 88888', address: 'Office 402, Mumbai', company: 'SignageOS HQ', license: 'SOS-HQ-0001', screens: 12, status: 'Active' }
-  ]);
-
-  const [availableLicenses, setAvailableLicenses] = useState([
-    { id: 'SOS-NORTH-9982', name: 'North Lobby Premium', deviceLimit: 10, tenure: 'Annual', expiryDate: '2027-06-30', price: 12000, assignedUserEmail: 'priya@demo.com', assignedOrgName: 'ManveTech', storageLimit: 20, status: 'active' },
-    { id: 'SOS-CAF-4482', name: 'Cafeteria Standard', deviceLimit: 5, tenure: 'Monthly', expiryDate: '2026-07-15', price: 1000, assignedUserEmail: '', assignedOrgName: '', storageLimit: 5, status: 'active' },
-    { id: 'SOS-EAST-1142', name: 'East Wing Standard', deviceLimit: 5, tenure: 'Annual', expiryDate: '2027-02-28', price: 8000, assignedUserEmail: 'kevin@demo.com', assignedOrgName: 'KD Enterprises', storageLimit: 10, status: 'active' },
-    { id: 'SOS-WEST-7761', name: 'West Gate Promo', deviceLimit: 2, tenure: 'Trial', expiryDate: '2026-08-01', price: 0, assignedUserEmail: '', assignedOrgName: '', storageLimit: 2, status: 'active' },
-  ]);
-
-  const [mobTransactions, setMobTransactions] = useState([
-    { id: 'TXN-9840192', licenseId: 'SOS-NORTH-9982', licenseName: 'North Lobby Premium', clientName: 'ManveTech', clientEmail: 'priya@demo.com', amount: 14160, paymentDate: '2026-06-01', status: 'success', razorpayPaymentId: 'pay_Pz9201a093', razorpayOrderId: 'order_Oz92019482' },
-    { id: 'TXN-7391038', licenseId: 'SOS-EAST-1142', licenseName: 'East Wing Standard', clientName: 'KD Enterprises', clientEmail: 'kevin@demo.com', amount: 9440, paymentDate: '2026-05-15', status: 'success', razorpayPaymentId: 'pay_Kz8201a829', razorpayOrderId: 'order_Kz82019381' }
-  ]);
-
-  const [mobInvoices, setMobInvoices] = useState([
-    { id: 'INV-4019', licenseId: 'SOS-NORTH-9982', licenseName: 'North Lobby Premium', clientName: 'ManveTech', clientEmail: 'priya@demo.com', amount: 14160, dueDate: '2026-07-30', status: 'paid', issuedDate: '2026-06-01' },
-    { id: 'INV-1930', licenseId: 'SOS-EAST-1142', licenseName: 'East Wing Standard', clientName: 'KD Enterprises', clientEmail: 'kevin@demo.com', amount: 9440, dueDate: '2026-06-15', status: 'paid', issuedDate: '2026-05-15' },
-    { id: 'INV-7731', licenseId: 'SOS-WEST-7761', licenseName: 'West Gate Promo', clientName: 'Indiv Client', clientEmail: 'billing@client.com', amount: 0, dueDate: '2026-08-01', status: 'unpaid', issuedDate: '2026-06-20' }
-  ]);
-
-  const [mobOrgs, setMobOrgs] = useState([
-    { id: 'ORG-1', name: 'ManveTech', adminName: 'Priya Reddy', email: 'priya@demo.com', planType: 'Enterprise', screensAllowed: 20, storageLimit: 50, subscriptionStatus: 'active' as const, renewalDate: '2027-06-30' },
-    { id: 'ORG-2', name: 'KD Enterprises', adminName: 'Kevin Durant', email: 'kevin@demo.com', planType: 'Business', screensAllowed: 10, storageLimit: 25, subscriptionStatus: 'active' as const, renewalDate: '2027-02-28' }
-  ]);
-
-  const [mobTickets, setMobTickets] = useState([
-    { id: 'TCK-4819', subject: 'Display HDMI flickering on Samsung Tizen', description: 'After playing video content, screen flashes black every few minutes.', severity: 'Medium', status: 'In Progress', createdDate: '2026-06-20' },
-    { id: 'TCK-2291', subject: 'Billing subscription invoice double charge', description: 'My card was charged twice for SOS-NORTH-9982 license key renewal.', severity: 'High', status: 'Resolved', createdDate: '2026-06-15' }
-  ]);
-
-  const [mobFaqs, setMobFaqs] = useState([
-    { id: 'FAQ-1', question: 'How do I pair a new screen?', answer: "Go to the Screens tab, click '+' or 'Register', and enter the 6-digit pairing code shown on your TV screen." },
-    { id: 'FAQ-2', question: 'Why is my screen status Offline?', answer: "Make sure the player device is powered on, connected to the internet, and the SignageOS player app is active." },
-    { id: 'FAQ-3', question: 'How do I update screen content?', answer: "Assign a playlist to the screen or group from the Playlists tab, then click Publish/Sync to push updates." },
-    { id: 'FAQ-4', question: 'What media formats are supported?', answer: "We support standard images (JPG, PNG), video formats (MP4, WebM), and custom layout templates." }
-  ]);
-
-  const [mobDocs, setMobDocs] = useState([
-    { id: 'DOC-1', title: 'Setting Up Dual HDMI Displays', category: 'Screens', content: 'Draft the helper documentation article detailing setup procedures...', youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', createdDate: '2026-06-18' },
-    { id: 'DOC-2', title: 'LG webOS Signage Configuration', category: 'Screens', content: 'Step-by-step display setup checklist and webOS package install instructions...', youtubeUrl: '', createdDate: '2026-06-19' }
-  ]);
+  const [screensList, setScreensList] = useState<any[]>([]);
+  const [groupsList, setGroupsList] = useState<any[]>([]);
+  const [playlistsList, setPlaylistsList] = useState<any[]>([]);
+  const [mediaList, setMediaList] = useState<any[]>([]);
+  const [settingsUsers, setSettingsUsers] = useState<any[]>([]);
+  const [availableLicenses, setAvailableLicenses] = useState<any[]>([]);
+  const [mobTransactions, setMobTransactions] = useState<any[]>([]);
+  const [mobInvoices, setMobInvoices] = useState<any[]>([]);
+  const [mobOrgs, setMobOrgs] = useState<any[]>([]);
+  const [mobTickets, setMobTickets] = useState<any[]>([]);
+  const [mobFaqs, setMobFaqs] = useState<any[]>([]);
+  const [mobDocs, setMobDocs] = useState<any[]>([]);
 
   function createLiveSetter<T>(
     oldList: T[],
@@ -307,7 +170,13 @@ function AppContent() {
     collectionPath: string
   ) {
     return async (newVal: React.SetStateAction<T[]>) => {
-      const resolvedList = typeof newVal === 'function' ? (newVal as Function)(oldList) : newVal;
+      let resolvedList = typeof newVal === 'function' ? (newVal as Function)(oldList) : newVal;
+      if (collectionPath === 'media_items') {
+        resolvedList = resolvedList.map((item: any) => ({
+          ...item,
+          name: item.name || item.title || 'Untitled Asset'
+        }));
+      }
       setter(resolvedList);
 
       try {
@@ -401,7 +270,13 @@ function AppContent() {
     if (dbData.signageos_screens) setScreensList(dbData.signageos_screens);
     if (dbData.signageos_groups) setGroupsList(dbData.signageos_groups);
     if (dbData.signageos_playlists) setPlaylistsList(dbData.signageos_playlists);
-    if (dbData.signageos_media) setMediaList(dbData.signageos_media);
+    if (dbData.signageos_media) {
+      const mappedMedia = dbData.signageos_media.map((item: any) => ({
+        ...item,
+        name: item.name || item.title || 'Untitled Asset'
+      }));
+      setMediaList(mappedMedia);
+    }
     if (dbData.signageos_users) setSettingsUsers(dbData.signageos_users);
     if (dbData.signageos_licenses) setAvailableLicenses(dbData.signageos_licenses);
     if (dbData.signageos_payments) setMobTransactions(dbData.signageos_payments);
@@ -410,6 +285,15 @@ function AppContent() {
     if (dbData.signageos_faqs) setMobFaqs(dbData.signageos_faqs);
     if (dbData.signageos_docs) setMobDocs(dbData.signageos_docs);
     if (dbData.signageos_organizations) setMobOrgs(dbData.signageos_organizations);
+  };
+
+  const syncAppState = async () => {
+    try {
+      const dbData = await syncAllFromDatabase();
+      loadSyncedData(dbData);
+    } catch (err) {
+      console.error('Error syncing app state:', err);
+    }
   };
 
   // Login handler
@@ -452,37 +336,9 @@ function AppContent() {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || 'Invalid credentials.');
       }
-    } catch (err) {
-      console.warn('Network error logging in, attempting offline simulation...', err);
-      // Offline simulation fallback
-      const lowerPass = password.toLowerCase();
-      if (lowerUser === 'admin' && lowerPass === 'admin') {
-        const mockToken = 'offline_admin_token';
-        await AsyncStorage.setItem('signageos_token', mockToken);
-        await AsyncStorage.setItem('signageos_user_id', 'admin_sys_usr');
-        await AsyncStorage.setItem('signageos_user_email', 'admin@demo.com');
-        await AsyncStorage.setItem('signageos_user_role', 'admin');
-        await AsyncStorage.setItem('signageos_user_name', 'Super Admin');
-        
-        setProfileName('Super Admin');
-        setProfileEmail('admin@demo.com');
-        setScreen('admin');
-        setActiveTab('dashboard');
-      } else if ((lowerUser === 'user' || lowerUser === 'priya@demo.com') && lowerPass === 'user') {
-        const mockToken = 'offline_user_token';
-        await AsyncStorage.setItem('signageos_token', mockToken);
-        await AsyncStorage.setItem('signageos_user_id', 'user_usr');
-        await AsyncStorage.setItem('signageos_user_email', 'priya@demo.com');
-        await AsyncStorage.setItem('signageos_user_role', 'user');
-        await AsyncStorage.setItem('signageos_user_name', 'Priya Reddy');
-        
-        setProfileName('Priya Reddy');
-        setProfileEmail('priya@demo.com');
-        setScreen('user');
-        setActiveTab('dashboard');
-      } else {
-        setError('Network offline. Use admin/admin or user/user simulated logins.');
-      }
+    } catch (err: any) {
+      console.error('Network error logging in:', err);
+      setError(`Connection error: ${err?.message || err}`);
     }
   };
 
@@ -600,12 +456,7 @@ function AppContent() {
             <TouchableOpacity 
               style={styles.googleButton} 
               onPress={() => {
-                setProfileName('Priya Reddy');
-                setProfileEmail('priya@demo.com');
-                setProfilePhone('+91 99999 99999');
-                setScreen('user');
-                setActiveTab('dashboard');
-                Alert.alert('Google Sign-In', 'Logged in successfully as Priya Reddy (priya@demo.com).');
+                Alert.alert('Google Sign-In', 'Google Sign-In is not configured for this device. Please sign in using your Console credentials.');
               }}
             >
               <Image 
@@ -691,7 +542,17 @@ function AppContent() {
           }}
         >
           {activeTab === 'dashboard' && (
-            <DashboardTab opMode={opMode} setOpMode={setOpMode} isAdmin={isAdmin} />
+            <DashboardTab
+              opMode={opMode}
+              setOpMode={setOpMode}
+              isAdmin={isAdmin}
+              screensList={screensList}
+              playlistsList={playlistsList}
+              mediaList={mediaList}
+              availableLicenses={availableLicenses}
+              mobInvoices={mobInvoices}
+              profileEmail={profileEmail}
+            />
           )}
 
           {activeTab === 'screens' && (
@@ -746,6 +607,8 @@ function AppContent() {
               rzpKeySecret={rzpKeySecret}
               setRzpKeySecret={setRzpKeySecret}
               isAdmin={isAdmin}
+              syncAppState={syncAppState}
+              handleLogout={handleLogout}
             />
           )}
         </ScrollView>

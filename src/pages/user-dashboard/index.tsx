@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from '../../config';
 import Sidebar from './components/Sidebar';
 import { toast } from '../../components/Toast';
 import Header from './components/Header';
@@ -168,7 +169,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
       setPaymentLoading(true);
 
       const token = localStorage.getItem('signageos_token');
-      const response = await fetch('http://localhost:5000/api/v1/payments/create-order', {
+      const response = await fetch(`${API_BASE}/payments/create-order`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -194,7 +195,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
           handler: async function (response: any) {
             setPaymentLoading(true);
             try {
-              const verifyRes = await fetch('http://localhost:5000/api/v1/payments/verify', {
+              const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -271,7 +272,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     const razorpayOrderId = 'order_' + Math.random().toString(36).substring(2, 11);
 
     try {
-      const verifyRes = await fetch('http://localhost:5000/api/v1/payments/verify', {
+      const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -364,7 +365,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
       const userId = localStorage.getItem('signageos_user_id');
       const token = localStorage.getItem('signageos_token');
 
-      const res = await fetch(`http://localhost:5000/api/v1/users/${userId}`, {
+      const res = await fetch(`${API_BASE}/users/${userId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
