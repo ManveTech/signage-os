@@ -49,7 +49,23 @@ export function isRedisReady(): boolean {
   return isRedisConnected;
 }
 
-function checkRedisPort(port: number = 6379): Promise<boolean> {
+let redisHost = '127.0.0.1';
+let redisPort = 6379;
+try {
+  const parsed = new URL(REDIS_URL);
+  redisHost = parsed.hostname || '127.0.0.1';
+  redisPort = parsed.port ? parseInt(parsed.port, 10) : 6379;
+} catch (e) {
+  const match = REDIS_URL.match(/redis:\/\/([^:]+)(?::(\d+))?/);
+  if (match) {
+    redisHost = match[1];
+    if (match[2]) {
+      redisPort = parseInt(match[2], 10);
+    }
+  }
+}
+
+function checkRedisPort(host: string, port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     socket.setTimeout(500);
@@ -65,7 +81,7 @@ function checkRedisPort(port: number = 6379): Promise<boolean> {
       socket.destroy();
       resolve(false);
     });
-    socket.connect(port, '127.0.0.1');
+    socket.connect(port, host);
   });
 }
 
@@ -83,7 +99,7 @@ async function startRedisServer(): Promise<void> {
   console.log(`[Redis Boot] Capping memory to 5% of system RAM: ${Math.floor(maxMemory / (1024 * 1024))} MB (${maxMemory} bytes)`);
 
   const child = spawn(redisBin, [
-    '--port', '6379',
+    '--port', redisPort.toString(),
     '--maxmemory', maxMemory.toString(),
     '--maxmemory-policy', 'allkeys-lru'
   ], {
@@ -96,8 +112,8 @@ async function startRedisServer(): Promise<void> {
   // Wait for Redis to start listening (up to 5 seconds)
   for (let i = 0; i < 25; i++) {
     await new Promise((resolve) => setTimeout(resolve, 200));
-    if (await checkRedisPort()) {
-      console.log('[Redis Boot] Redis started successfully and is listening on port 6379.');
+    if (await checkRedisPort(redisHost, redisPort)) {
+      console.log(`[Redis Boot] Redis started successfully and is listening on port ${redisPort}.`);
       return;
     }
   }
@@ -105,13 +121,20 @@ async function startRedisServer(): Promise<void> {
 }
 
 export async function ensureRedisRunning(): Promise<void> {
-  const isPortOpen = await checkRedisPort();
+  const isPortOpen = await checkRedisPort(redisHost, redisPort);
   if (isPortOpen) {
-    console.log('[Redis Boot] Redis port 6379 is already open. Connection will proceed.');
+    console.log(`[Redis Boot] Redis port ${redisPort} on ${redisHost} is already open. Connection will proceed.`);
     return;
   }
 
-  console.log('[Redis Boot] Redis port 6379 is closed. Attempting to start local Redis server...');
+  // Only attempt to start a local Redis server if configured to localhost/127.0.0.1
+  const isLocal = redisHost === '127.0.0.1' || redisHost === 'localhost';
+  if (!isLocal) {
+    console.log(`[Redis Boot] Redis is configured to remote host ${redisHost}:${redisPort}. Skipping local server startup.`);
+    return;
+  }
+
+  console.log(`[Redis Boot] Redis port ${redisPort} is closed. Attempting to start local Redis server...`);
   await startRedisServer();
 }
 
