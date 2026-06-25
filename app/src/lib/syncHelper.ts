@@ -11,7 +11,7 @@ const getLocalIP = () => {
   return 'localhost';
 };
 
-export const API_BASE = `http://${getLocalIP()}:5000/api/v1`;
+export const API_BASE = 'https://dem1.manve.co/api/v1';
 
 async function getHeaders() {
   const token = await AsyncStorage.getItem('signageos_token');

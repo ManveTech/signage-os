@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:5000/api/v1';
+const API_BASE = 'https://dem1.manve.co/api/v1';
 
 function getHeaders() {
   const token = localStorage.getItem('signageos_token');
