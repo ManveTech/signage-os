@@ -43,6 +43,11 @@ app.use((err: any, req: any, res: any, next: any) => {
   next(err);
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // Mount all API endpoints under /api/v1
 app.use('/api/v1', apiRouter);
 
