@@ -115,13 +115,14 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
     const grp = updated.find(g => g.id === assignPlaylistDirectTo.id);
     if (grp) pushToDatabase('screen_groups', assignPlaylistDirectTo.id, grp, 'PUT');
 
-    // ALSO bulk update screens in this group!
+    // ALSO bulk update screens in this group — set restart_playlist so TV player stops current media
     const updatedScreens = screens.map(s => {
       if (s.groupId === assignPlaylistDirectTo.id) {
         const updatedScreen: Screen = {
           ...s,
           playlist: playlistName || s.playlist,
           playlistId: userPlaylists.find(p => p.name === playlistName)?.id || s.playlistId,
+          restart_playlist: true,
         };
         pushToDatabase('screens', s.id, updatedScreen, 'PUT');
         return updatedScreen;
@@ -271,12 +272,17 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
     const targetScreen = screens.find(s => s.id === screenId);
     if (!targetScreen) return;
     const gp = groups.find(g => g.id === groupId);
+    const newPlaylistId = userPlaylists.find(p => p.name === (gp?.playlist || ''))?.id || targetScreen.playlistId;
+    const isAlreadyOnline = targetScreen.status === 'online' || targetScreen.status === 'active';
+    const playlistChanging = gp?.playlist && gp.playlist !== targetScreen.playlist;
     const updatedScreen = { 
       ...targetScreen, 
       groupId,
       playlist: gp?.playlist || targetScreen.playlist,
-      playlistId: userPlaylists.find(p => p.name === (gp?.playlist || ''))?.id || targetScreen.playlistId,
+      playlistId: newPlaylistId,
       volume: gp?.volume !== undefined ? gp.volume : targetScreen.volume,
+      // Signal the TV player to restart playback if the screen is online and playlist will change
+      restart_playlist: isAlreadyOnline && playlistChanging ? true : targetScreen.restart_playlist,
     };
     const updatedScreens = screens.map(s => s.id === screenId ? updatedScreen : s);
     setScreens(updatedScreens);

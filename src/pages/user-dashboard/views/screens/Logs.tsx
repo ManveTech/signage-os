@@ -271,22 +271,25 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
     const seconds = Math.floor((Date.now() - new Date(screen.onlineSince).getTime()) / 1000);
     if (seconds < 0) return baseLoops;
 
-    let playlistName = 'Normal';
-    if (screen.groupId) {
-      const gp = groupsList.find(g => g.id === screen.groupId);
-      if (gp) {
-        playlistName = gp.playlist || 'Normal';
-      }
-    } else {
-      playlistName = screen.playlist || 'Normal';
-    }
+    // Try direct playlistId match first (most reliable, works even for newly grouped screens)
+    let playlist = screen.playlistId ? playlistsList.find((p: any) => p.id === screen.playlistId) : null;
 
-    let playlist = playlistsList.find(p => p.name === playlistName && p.createdBy === screen.assignedToUserEmail);
-    if (!playlist && screen.playlistId) {
-      playlist = playlistsList.find(p => p.id === screen.playlistId);
-    }
+    // Fall back to name-based lookup using group or screen playlist name
     if (!playlist) {
-      playlist = playlistsList.find(p => p.name === playlistName);
+      let playlistName = 'Normal';
+      if (screen.groupId) {
+        const gp = groupsList.find((g: any) => g.id === screen.groupId);
+        if (gp) {
+          playlistName = gp.playlist || 'Normal';
+        }
+      } else {
+        playlistName = screen.playlist || 'Normal';
+      }
+
+      playlist = playlistsList.find((p: any) => p.name === playlistName && p.createdBy === screen.assignedToUserEmail);
+      if (!playlist) {
+        playlist = playlistsList.find((p: any) => p.name === playlistName);
+      }
     }
 
     if (!playlist || !playlist.slides || playlist.slides.length === 0) return baseLoops;

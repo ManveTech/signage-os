@@ -9,8 +9,10 @@ import {
   Alert,
   Text,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
+import * as DocumentPicker from 'expo-document-picker';
 import { ThemedText } from '../themed-text';
 import {
   ProfileCircle,
@@ -166,6 +168,89 @@ export function SettingsTab({
   // White-label custom branding states
   const [companyName, setCompanyName] = useState('SignageOS');
   const [companyLogo, setCompanyLogo] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  const handleUploadLogo = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const file = result.assets[0];
+      const { name, mimeType, uri } = file;
+      const resolvedName = name || uri.split('/').pop() || 'logo.png';
+
+      setIsUploadingLogo(true);
+
+      // Read as base64 using fetch+FileReader (works on all platforms and URI schemes)
+      let base64 = '';
+      try {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const b64 = (reader.result as string).split(',')[1];
+            if (b64) resolve(b64); else reject(new Error('No base64 data'));
+          };
+          reader.onerror = () => reject(new Error('FileReader failed'));
+          reader.readAsDataURL(blob);
+        });
+      } catch (readErr: any) {
+        setIsUploadingLogo(false);
+        Alert.alert('Error', `Could not read image: ${readErr.message}`);
+        return;
+      }
+
+      const token = await AsyncStorage.getItem('signageos_token');
+      const userEmail = await AsyncStorage.getItem('signageos_user_email') || '';
+
+      const res = await fetch(`${API_BASE}/media_items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          title: resolvedName.replace(/\.[^/.]+$/, '') + '_logo',
+          type: 'image',
+          duration: 10,
+          resolution: '512x512',
+          fileSize: 'Unknown',
+          fileSizeBytes: 0,
+          uploadedBy: userEmail,
+          expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          tags: ['logo', 'white-label'],
+          width: 512,
+          height: 512,
+          mimeType: mimeType || 'image/png',
+          fileData: base64,
+          fileName: resolvedName,
+        })
+      });
+
+      if (res.ok) {
+        const record = await res.json();
+        const logoUrl = record.fileUrl || record.thumbnail || record.url || '';
+        if (logoUrl) {
+          setCompanyLogo(logoUrl);
+          Alert.alert('Logo Uploaded', 'Company logo uploaded successfully!');
+        } else {
+          Alert.alert('Warning', 'Logo uploaded but no URL returned. Please enter the URL manually.');
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert('Upload Failed', err.error || err.message || 'Failed to upload logo.');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', `Logo upload error: ${err.message || err}`);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
 
   // Edit User states
   const [editingUser, setEditingUser] = useState<any | null>(null);
@@ -792,14 +877,46 @@ export function SettingsTab({
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Company Logo URL</Text>
+                <Text style={styles.inputLabel}>Company Logo</Text>
+                {/* Preview */}
+                {!!companyLogo && (
+                  <View style={{ alignItems: 'center', marginBottom: 10 }}>
+                    <Image
+                      source={{ uri: companyLogo }}
+                      style={{ width: 120, height: 60, borderRadius: 10, backgroundColor: '#f1f5f9' }}
+                      contentFit="contain"
+                    />
+                  </View>
+                )}
+                {/* Upload button */}
+                <TouchableOpacity
+                  onPress={handleUploadLogo}
+                  disabled={isUploadingLogo}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                    gap: 8, paddingVertical: 12, borderRadius: 14,
+                    backgroundColor: isUploadingLogo ? '#e9d5ff' : '#7c3aed',
+                    marginBottom: 8,
+                  }}
+                >
+                  {isUploadingLogo ? (
+                    <ActivityIndicator size="small" color="#7c3aed" />
+                  ) : (
+                    <NoteAdd size={18} color="#ffffff" variant="Linear" />
+                  )}
+                  <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14 }}>
+                    {isUploadingLogo ? 'Uploading…' : companyLogo ? 'Change Logo' : 'Upload Logo'}
+                  </Text>
+                </TouchableOpacity>
+                {/* Manual URL fallback */}
                 <TextInput
                   value={companyLogo}
                   onChangeText={setCompanyLogo}
-                  style={styles.textInput}
-                  placeholder="e.g. https://domain.com/logo.png"
+                  style={[styles.textInput, { fontSize: 11, color: '#64748b' }]}
+                  placeholder="Or paste logo URL manually"
                 />
               </View>
+
 
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Theme Accent Color</Text>

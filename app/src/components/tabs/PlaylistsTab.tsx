@@ -173,28 +173,23 @@ export function PlaylistsTab({
         if (Platform.OS === 'web' && (file as any).file) {
           resolvedSize = (file as any).file.size;
         } else if (Platform.OS !== 'web') {
-          const info = await FileSystem.getInfoAsync(uri);
-          if (info.exists) {
-            resolvedSize = info.size;
-          }
+          try {
+            const info = await FileSystem.getInfoAsync(uri);
+            if (info.exists) resolvedSize = info.size;
+          } catch (_) {}
         }
       }
 
-      if (!resolvedSize) {
-        Alert.alert('Error', 'Unable to resolve file size');
-        return;
-      }
-
-      const isVideo = mimeType?.startsWith('video/') || 
+      const isVideo = mimeType?.startsWith('video/') ||
                       ((file as any).file?.type?.startsWith('video/')) ||
-                      uri.toLowerCase().endsWith('.mp4') || 
-                      uri.toLowerCase().endsWith('.mov') || 
+                      uri.toLowerCase().endsWith('.mp4') ||
+                      uri.toLowerCase().endsWith('.mov') ||
                       uri.toLowerCase().endsWith('.webm');
-                      
+
       const limitBytes = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
       const limitMb = isVideo ? 50 : 5;
 
-      if (resolvedSize > limitBytes) {
+      if (resolvedSize && resolvedSize > limitBytes) {
         Alert.alert(
           'File Too Large',
           `The selected file "${resolvedName}" is ${(resolvedSize / (1024 * 1024)).toFixed(1)} MB. ${isVideo ? 'Video' : 'Image'} files must be under ${limitMb}MB.`
@@ -202,45 +197,57 @@ export function PlaylistsTab({
         return;
       }
 
-      // Read file content as Base64 safely across Web and Mobile
+      // Show uploading indicator
+      Alert.alert('Uploading...', `Preparing "${resolvedName}" for upload. Please wait.`, [], { cancelable: false });
+
+      // Read file content as Base64 using fetch + FileReader.
+      // This works for both file:// and content:// URIs on all platforms.
       let base64 = '';
-      if (Platform.OS === 'web') {
+      try {
         const response = await fetch(uri);
         const blob = await response.blob();
         base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => {
             const resultStr = reader.result as string;
-            const base64Data = resultStr.split(',')[1];
-            resolve(base64Data);
+            // Result is "data:<mime>;base64,<data>"
+            const b64 = resultStr.split(',')[1];
+            if (b64) resolve(b64);
+            else reject(new Error('Failed to extract base64 data'));
           };
-          reader.onerror = reject;
+          reader.onerror = () => reject(new Error('FileReader error reading file'));
           reader.readAsDataURL(blob);
         });
-      } else {
-        base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: 'base64',
-        });
+      } catch (readErr: any) {
+        Alert.alert('Read Error', `Could not read the file: ${readErr.message || readErr}`);
+        return;
+      }
+
+      if (!base64 || base64.length === 0) {
+        Alert.alert('Error', 'File content could not be read. Please try again with a different file.');
+        return;
       }
 
       const token = await AsyncStorage.getItem('signageos_token');
       const userEmail = await AsyncStorage.getItem('signageos_user_email') || 'priya@demo.com';
+
+      const resolvedMime = mimeType || ((file as any).file?.type) || (isVideo ? 'video/mp4' : 'image/jpeg');
 
       const body = {
         title: resolvedName.replace(/\.[^/.]+$/, ""),
         type: isVideo ? 'video' : 'image',
         duration: isVideo ? 15 : 10,
         resolution: '1920x1080',
-        fileSize: `${(resolvedSize / (1024 * 1024)).toFixed(1)} MB`,
-        fileSizeBytes: resolvedSize,
+        fileSize: resolvedSize ? `${(resolvedSize / (1024 * 1024)).toFixed(1)} MB` : 'Unknown',
+        fileSizeBytes: resolvedSize || 0,
         uploadedBy: userEmail,
         expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         tags: ['uploaded', isVideo ? 'video' : 'image'],
         width: isVideo ? 1920 : 1080,
         height: isVideo ? 1080 : 1920,
-        mimeType: mimeType || ((file as any).file?.type) || (isVideo ? 'video/mp4' : 'image/jpeg'),
+        mimeType: resolvedMime,
         fileData: base64,
-        fileName: resolvedName
+        fileName: resolvedName,
       };
 
       const res = await fetch(`${API_BASE}/media_items`, {
@@ -269,7 +276,7 @@ export function PlaylistsTab({
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        Alert.alert('Upload Failed', err.error || err.message || 'Failed to upload media to backend.');
+        Alert.alert('Upload Failed', err.error || err.message || `Server responded with status ${res.status}.`);
       }
     } catch (err: any) {
       Alert.alert('Error', `Upload error: ${err.message || err}`);
