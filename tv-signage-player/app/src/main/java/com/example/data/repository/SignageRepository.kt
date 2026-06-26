@@ -1235,6 +1235,32 @@ class SignageRepository(private val context: Context) {
             Log.e("SignageRepository", "Failed to send error log to server: ${e.message}", e)
         }
     }
+
+    suspend fun disconnectDevice(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val config = getOrCreateConfig()
+            if (config.hardwareUuid.isEmpty()) {
+                return@withContext Result.failure(IllegalStateException("No hardware UUID available"))
+            }
+
+            val url = "${config.serverUrl}/api/v1/screens/disconnect"
+            val response = apiService.disconnectScreen(url, mapOf("hardwareUuid" to config.hardwareUuid))
+            if (response.isSuccessful) {
+                val updatedConfig = config.copy(
+                    status = "pairing",
+                    pairingCode = ""
+                )
+                configDao.saveConfig(updatedConfig)
+                clearDeviceAssets()
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Failed to disconnect from server: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Error disconnecting device", e)
+            Result.failure(e)
+        }
+    }
 }
 
 class ErrorLoggingInterceptor(private val context: Context) : okhttp3.Interceptor {

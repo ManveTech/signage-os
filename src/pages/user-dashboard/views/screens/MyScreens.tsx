@@ -250,6 +250,34 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
     addToast(`"${deleteScreen.name}" removed from your screens`);
   };
 
+  const handleDisconnectDevice = async (screen: any) => {
+    const confirm = window.confirm(`Are you sure you want to disconnect "${screen.name}"? The player will return to the pairing screen.`);
+    if (!confirm) return;
+
+    try {
+      const token = localStorage.getItem('signageos_token');
+      const res = await fetch(`${API_BASE}/screens/disconnect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ screenId: screen.id })
+      });
+      if (res.ok) {
+        addToast(`Successfully disconnected "${screen.name}"`, 'success');
+        const allScreens = mediaStore.getScreens().map(s => s.id === screen.id ? { ...s, status: 'pairing' as any, assignedToUserEmail: '' } : s);
+        mediaStore.saveScreens(allScreens);
+        setScreens(prev => prev.filter(s => s.id !== screen.id));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        addToast(`Failed to disconnect screen: ${err.message || 'Unknown error'}`, 'error');
+      }
+    } catch (e: any) {
+      addToast(`Error disconnecting screen: ${e.message}`, 'error');
+    }
+  };
+
   const handleDeleteSelected = () => {
     const allScreens = mediaStore.getScreens();
     const updated = allScreens.filter(s => !selectedIds.includes(s.id));
@@ -761,6 +789,13 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                       </button>
                     )}
                     <button
+                      onClick={() => handleDisconnectDevice(screen)}
+                      className="p-1 text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-lg transition-colors cursor-pointer"
+                      title="Disconnect Device"
+                    >
+                      <WifiOff size={13} />
+                    </button>
+                    <button
                       onClick={() => setDeleteScreen(screen)}
                       className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer"
                       title="Remove Screen"
@@ -935,6 +970,13 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                             <FolderMinus size={13} />
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDisconnectDevice(screen)}
+                          className="p-1 text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-lg transition-colors cursor-pointer"
+                          title="Disconnect Device"
+                        >
+                          <WifiOff size={13} />
+                        </button>
                         <button
                           onClick={() => setDeleteScreen(screen)}
                           className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer"

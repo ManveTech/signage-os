@@ -13,7 +13,7 @@ import { authenticatePBAdmin, startAuthKeepAlive } from './db';
 import apiRouter from './routes';
 import { startScheduler } from './scheduler';
 import { listenToCollectionChanges } from './cache_invalidator';
-import { ensureRedisRunning } from './redis';
+import { ensureRedisRunning, isRedisReady, redis } from './redis';
 
 const app = express();
 
@@ -44,8 +44,28 @@ app.use((err: any, req: any, res: any, next: any) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+app.get('/health', async (req, res) => {
+  let redisStatus = 'disconnected';
+  let redisPing = 'error';
+
+  if (isRedisReady()) {
+    try {
+      const pong = await redis.ping();
+      redisStatus = 'connected';
+      redisPing = pong;
+    } catch (err: any) {
+      redisStatus = 'error';
+      redisPing = err.message || 'unknown error';
+    }
+  }
+
+  res.status(200).json({
+    status: 'OK',
+    redis: {
+      status: redisStatus,
+      ping: redisPing
+    }
+  });
 });
 
 // Mount all API endpoints under /api/v1

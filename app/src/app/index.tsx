@@ -30,7 +30,7 @@ import {
 } from 'iconsax-react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { syncAllFromDatabase, pushToDatabase } from '../lib/syncHelper';
+import { syncAllFromDatabase, pushToDatabase, syncCollection } from '../lib/syncHelper';
 import { API_BASE } from '../config';
 
 // Import modular tab components
@@ -150,6 +150,10 @@ function AppContent() {
   const [rzpKeyId, setRzpKeyId] = useState('rzp_live_59c82b184a8219');
   const [rzpKeySecret, setRzpKeySecret] = useState('sec_live_92a01b19ff82a17b0193');
 
+  // Client branding states
+  const [clientLogo, setClientLogo] = useState('');
+  const [clientName, setClientName] = useState('');
+
   // Shared Data States
   const [screensList, setScreensList] = useState<any[]>([]);
   const [groupsList, setGroupsList] = useState<any[]>([]);
@@ -174,7 +178,9 @@ function AppContent() {
       if (collectionPath === 'media_items') {
         resolvedList = resolvedList.map((item: any) => ({
           ...item,
-          name: item.name || item.title || 'Untitled Asset'
+          name: item.name || item.title || 'Untitled Asset',
+          size: item.size || item.fileSize || '0 B',
+          url: item.url || item.thumbnail || item.fileUrl || ''
         }));
       }
       setter(resolvedList);
@@ -192,7 +198,9 @@ function AppContent() {
           const itemId = (item as any).id || (item as any).email;
           const oldItem = oldList.find((o: any) => (o.id || o.email) === itemId);
           if (!oldItem) {
-            await pushToDatabase(collectionPath, itemId, item, 'POST');
+            if (collectionPath !== 'screens') {
+              await pushToDatabase(collectionPath, itemId, item, 'POST');
+            }
           } else if (JSON.stringify(oldItem) !== JSON.stringify(item)) {
             await pushToDatabase(collectionPath, itemId, item, 'PUT');
           }
@@ -244,7 +252,12 @@ function AppContent() {
           const storedEmail = await AsyncStorage.getItem('signageos_user_email');
           const storedRole = await AsyncStorage.getItem('signageos_user_role');
           const storedName = await AsyncStorage.getItem('signageos_user_name');
+          const storedLogo = await AsyncStorage.getItem('signageos_client_logo');
+          const storedClientName = await AsyncStorage.getItem('signageos_client_name');
           
+          if (storedLogo) setClientLogo(storedLogo);
+          if (storedClientName) setClientName(storedClientName);
+
           if (token && storedEmail && storedRole) {
             setProfileName(storedName || (storedRole === 'admin' ? 'Super Admin' : 'Client User'));
             setProfileEmail(storedEmail);
@@ -253,7 +266,7 @@ function AppContent() {
             
             // Sync database cache to AsyncStorage and state
             const dbData = await syncAllFromDatabase();
-            loadSyncedData(dbData);
+            loadSyncedData(dbData, storedEmail);
           } else {
             setScreen('login');
           }
@@ -266,14 +279,18 @@ function AppContent() {
     }
   }, [screen]);
 
-  const loadSyncedData = (dbData: Record<string, any[]>) => {
+  const loadSyncedData = (dbData: Record<string, any[]>, userEmail?: string) => {
+    const targetEmail = (userEmail || profileEmail || '').toLowerCase().trim();
+
     if (dbData.signageos_screens) setScreensList(dbData.signageos_screens);
     if (dbData.signageos_groups) setGroupsList(dbData.signageos_groups);
     if (dbData.signageos_playlists) setPlaylistsList(dbData.signageos_playlists);
     if (dbData.signageos_media) {
       const mappedMedia = dbData.signageos_media.map((item: any) => ({
         ...item,
-        name: item.name || item.title || 'Untitled Asset'
+        name: item.name || item.title || 'Untitled Asset',
+        size: item.size || item.fileSize || '0 B',
+        url: item.url || item.thumbnail || item.fileUrl || ''
       }));
       setMediaList(mappedMedia);
     }
@@ -285,16 +302,76 @@ function AppContent() {
     if (dbData.signageos_faqs) setMobFaqs(dbData.signageos_faqs);
     if (dbData.signageos_docs) setMobDocs(dbData.signageos_docs);
     if (dbData.signageos_organizations) setMobOrgs(dbData.signageos_organizations);
+
+    // Resolve custom branding details
+    if (targetEmail) {
+      const userLicenses = dbData.signageos_licenses || [];
+      const activeWhiteLabelLicense = userLicenses.find((lic: any) => 
+        lic.assignedUserEmail?.toLowerCase().trim() === targetEmail && 
+        lic.status === 'active' && 
+        lic.whiteLabel === true
+      );
+
+      let logo = '';
+      let name = '';
+
+      if (activeWhiteLabelLicense) {
+        const orgId = activeWhiteLabelLicense.assignedOrgId;
+        const orgs = dbData.signageos_organizations || [];
+        const org = orgs.find((o: any) => o.id === orgId);
+        if (org) {
+          logo = org.websiteLogo || '';
+          name = org.websiteName || '';
+        }
+      }
+
+      setClientLogo(logo);
+      setClientName(name);
+
+      if (logo) {
+        AsyncStorage.setItem('signageos_client_logo', logo).catch(() => {});
+      } else {
+        AsyncStorage.removeItem('signageos_client_logo').catch(() => {});
+      }
+      if (name) {
+        AsyncStorage.setItem('signageos_client_name', name).catch(() => {});
+      } else {
+        AsyncStorage.removeItem('signageos_client_name').catch(() => {});
+      }
+    }
   };
 
   const syncAppState = async () => {
     try {
       const dbData = await syncAllFromDatabase();
-      loadSyncedData(dbData);
+      const storedEmail = await AsyncStorage.getItem('signageos_user_email');
+      loadSyncedData(dbData, storedEmail || profileEmail);
     } catch (err) {
       console.error('Error syncing app state:', err);
     }
   };
+
+  // Periodic light sync for screens & screen_groups to keep statuses updated
+  useEffect(() => {
+    if (screen !== 'user' && screen !== 'admin') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const screens = await syncCollection('screens', 'signageos_screens');
+        if (screens && Array.isArray(screens)) {
+          setScreensList(screens);
+        }
+        const groups = await syncCollection('screen_groups', 'signageos_groups');
+        if (groups && Array.isArray(groups)) {
+          setGroupsList(groups);
+        }
+      } catch (err) {
+        console.error('Background sync failed:', err);
+      }
+    }, 10000); // sync screens and groups status every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [screen]);
 
   // Login handler
   const handleLogin = async () => {
@@ -330,7 +407,7 @@ function AppContent() {
 
           // Sync database cache to AsyncStorage and state
           const dbData = await syncAllFromDatabase();
-          loadSyncedData(dbData);
+          loadSyncedData(dbData, data.user.email);
         }
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -348,6 +425,10 @@ function AppContent() {
     await AsyncStorage.removeItem('signageos_user_email');
     await AsyncStorage.removeItem('signageos_user_role');
     await AsyncStorage.removeItem('signageos_user_name');
+    await AsyncStorage.removeItem('signageos_client_logo');
+    await AsyncStorage.removeItem('signageos_client_name');
+    setClientLogo('');
+    setClientName('');
     setScreen('login');
     setUsername('');
     setPassword('');
@@ -360,13 +441,13 @@ function AppContent() {
         <Animated.View style={[styles.splashContent, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
           <View style={styles.logoWrapper}>
             <Image 
-              source={{ uri: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400' }} 
+              source={{ uri: clientLogo || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400' }} 
               style={styles.splashLogo} 
               contentFit="cover"
             />
           </View>
           <View style={{ alignItems: 'center', marginTop: 24 }}>
-            <ThemedText style={styles.splashTitle}>SignageOS</ThemedText>
+            <ThemedText style={styles.splashTitle}>{clientName || 'SignageOS'}</ThemedText>
             <ThemedText style={styles.splashSubtitle}>Enterprise CMS Console</ThemedText>
           </View>
         </Animated.View>
@@ -401,13 +482,13 @@ function AppContent() {
             <View style={styles.loginHeader}>
               <View style={styles.loginLogoWrapper}>
                 <Image 
-                  source={{ uri: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400' }} 
+                  source={{ uri: clientLogo || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400' }} 
                   style={styles.loginLogo} 
                   contentFit="cover"
                 />
               </View>
               <ThemedText style={styles.loginTitle}>Welcome Back</ThemedText>
-              <ThemedText style={styles.loginSubtitle}>Sign in to your signage terminal</ThemedText>
+              <ThemedText style={styles.loginSubtitle}>Sign in to your {clientName || 'signage'} terminal</ThemedText>
             </View>
 
             {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
@@ -564,6 +645,8 @@ function AppContent() {
               setGroupsList={liveGroupsSetter}
               playlistsList={playlistsList}
               isAdmin={isAdmin}
+              profileEmail={profileEmail}
+              onRefresh={syncAppState}
             />
           )}
 

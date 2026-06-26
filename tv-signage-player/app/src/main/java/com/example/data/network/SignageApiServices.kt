@@ -167,6 +167,12 @@ interface SignageApiService {
     suspend fun getMediaItemRecord(
         @Url url: String
     ): PocketBaseMediaItemResponse
+
+    @POST
+    suspend fun disconnectScreen(
+        @Url url: String,
+        @Body request: @JvmSuppressWildcards Map<String, String>
+    ): Response<Unit>
 }
 
 @JsonClass(generateAdapter = true)

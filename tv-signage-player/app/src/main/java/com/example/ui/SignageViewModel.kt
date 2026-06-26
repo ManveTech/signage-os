@@ -131,15 +131,19 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 }
                 val oldPlaylist = _uiState.value.playlist
                 val structurallyEqual = isPlaylistStructurallyEqual(oldPlaylist, filteredAssets)
+                val downloadsJustFinished = !areAllAssetsDownloaded(oldPlaylist) && areAllAssetsDownloaded(filteredAssets)
+
                 _uiState.update { 
                     it.copy(
                         playlist = filteredAssets,
-                        currentAssetIndex = if (!structurallyEqual) 0 else it.currentAssetIndex
+                        currentAssetIndex = if (!structurallyEqual || downloadsJustFinished) 0 else it.currentAssetIndex
                     )
                 }
-                if (!structurallyEqual) {
+                if (!structurallyEqual || downloadsJustFinished) {
                     restartAssetRotation(force = true)
-                    repository.startDownloadingPendingAssets()
+                    if (!structurallyEqual) {
+                        repository.startDownloadingPendingAssets()
+                    }
                 } else {
                     restartAssetRotation(force = false)
                 }
@@ -300,6 +304,14 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun areAllAssetsDownloaded(playlist: List<com.example.data.database.PlaylistAsset>): Boolean {
+        if (playlist.isEmpty()) return false
+        return playlist.all { asset ->
+            asset.mediaType.equals("youtube", ignoreCase = true) ||
+            (!asset.localPath.isNullOrEmpty() && java.io.File(asset.localPath).exists())
+        }
+    }
+
     private fun isPlaylistStructurallyEqual(list1: List<PlaylistAsset>, list2: List<PlaylistAsset>): Boolean {
         if (list1.size != list2.size) return false
         for (i in list1.indices) {
@@ -321,11 +333,21 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         if (playlist.isEmpty() || (_uiState.value.status != "active" && _uiState.value.status != "online" && _uiState.value.status != "offline")) {
             return
         }
+        if (!areAllAssetsDownloaded(playlist)) {
+            return
+        }
 
         assetRotationJob = viewModelScope.launch {
             while (isActive) {
-                val currentIndex = _uiState.value.currentAssetIndex
-                val currentAsset = playlist.getOrNull(currentIndex) ?: break
+                // Always read live state to avoid stale snapshot
+                val state = _uiState.value
+                val livePlaylist = state.playlist
+                val currentIndex = state.currentAssetIndex
+
+                if (livePlaylist.isEmpty()) break
+                if (state.status != "active" && state.status != "online" && state.status != "offline") break
+
+                val currentAsset = livePlaylist.getOrNull(currentIndex) ?: break
 
                 if (currentAsset.mediaType.equals("video", ignoreCase = true)) {
                     // Wait for video player completion callback to trigger advanceToNextAsset
@@ -334,13 +356,14 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 val durationMs = (currentAsset.duration * 1000L).coerceAtLeast(3000L) // Min 3 seconds
-
                 delay(durationMs)
 
-                // Advance to the next playlist asset looping
-                _uiState.update {
-                    val nextIndex = if (playlist.isNotEmpty()) (it.currentAssetIndex + 1) % playlist.size else 0
-                    it.copy(currentAssetIndex = nextIndex)
+                // Advance to next, wrapping around (always loop)
+                _uiState.update { s ->
+                    val livePl = s.playlist
+                    if (livePl.isEmpty()) return@update s
+                    val nextIndex = (s.currentAssetIndex + 1) % livePl.size
+                    s.copy(currentAssetIndex = nextIndex)
                 }
             }
         }
@@ -386,6 +409,35 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 Log.e("SignageViewModel", "Failed to purge cache and reset", e)
                 repository.logErrorToServer("Purge Cache & Reset Failure", e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    fun disconnectDevice() {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isSyncing = true, statusMessage = "Disconnecting device...") }
+                val result = repository.disconnectDevice()
+                _uiState.update { state ->
+                    if (result.isSuccess) {
+                        state.copy(
+                            isSyncing = false,
+                            status = "pairing",
+                            pairingCode = "",
+                            statusMessage = "Disconnected successfully."
+                        )
+                    } else {
+                        state.copy(
+                            isSyncing = false,
+                            errorMessage = "Disconnect failed: " + result.exceptionOrNull()?.message,
+                            statusMessage = "Disconnect failed"
+                        )
+                    }
+                }
+                requestPairingCode()
+            } catch (e: Exception) {
+                Log.e("SignageViewModel", "Failed to disconnect device", e)
+                _uiState.update { it.copy(isSyncing = false, errorMessage = e.message) }
             }
         }
     }

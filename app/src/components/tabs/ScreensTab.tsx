@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { View, ScrollView, TextInput, TouchableOpacity, Text, StyleSheet, Modal, Alert, SafeAreaView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE } from '../../config';
 import { ThemedText } from '../themed-text';
 import { Image } from 'expo-image';
 import {
@@ -13,6 +15,10 @@ import {
   Edit2,
   Refresh,
   VideoPlay,
+  Eraser,
+  StopCircle,
+  FolderMinus,
+  FolderAdd,
 } from 'iconsax-react-native';
 
 export type ScreensTabProps = {
@@ -23,7 +29,33 @@ export type ScreensTabProps = {
   setGroupsList: React.Dispatch<React.SetStateAction<any[]>>;
   playlistsList: any[];
   isAdmin?: boolean;
+  profileEmail: string;
+  onRefresh?: () => Promise<void>;
 };
+
+// Format seconds into human-readable uptime string
+function formatUptime(seconds: number): string {
+  if (!seconds || seconds <= 0) return '—';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+// Calculate live uptime = cumulative + current session (if online)
+function getLiveUptime(screen: any): number {
+  let total = screen.cumulativeUptime || 0;
+  const isOnline = screen.status === 'online' || screen.status === 'active';
+  if (isOnline && screen.onlineSince) {
+    const sessionMs = Date.now() - new Date(screen.onlineSince).getTime();
+    if (sessionMs > 0) total += Math.floor(sessionMs / 1000);
+  }
+  return total;
+}
 
 export function ScreensTab({
   opMode,
@@ -33,7 +65,10 @@ export function ScreensTab({
   setGroupsList,
   playlistsList,
   isAdmin = true,
+  profileEmail,
+  onRefresh,
 }: ScreensTabProps) {
+  const [isRefreshing, setIsRefreshing] = useState(false);
   // Local Screen Tab States
   const [screensSubTab, setScreensSubTab] = useState<'screens' | 'groups'>('screens');
   const [screenSearch, setScreenSearch] = useState('');
@@ -41,9 +76,12 @@ export function ScreensTab({
   const [ungroupedExpanded, setUngroupedExpanded] = useState(false);
 
   // Modal States
-  const [activeModal, setActiveModal] = useState<null | 'add-screen' | 'create-group' | 'pairing-code' | 'pairing-success' | 'edit-group'>(null);
+  const [activeModal, setActiveModal] = useState<null | 'add-screen' | 'create-group' | 'pairing-code' | 'pairing-success' | 'edit-group' | 'reconnect-screen' | 'add-screens-to-group'>(null);
   const [activeStep, setActiveStep] = useState(1);
   const [selectedScreen, setSelectedScreen] = useState<any | null>(null);
+  const [reconnectScreen, setReconnectScreen] = useState<any | null>(null);
+  const [reconnectPairingCode, setReconnectPairingCode] = useState('');
+  const [addScreensToGroupId, setAddScreensToGroupId] = useState<string | null>(null);
   const [detailSelectedPlaylist, setDetailSelectedPlaylist] = useState('');
   const [detailScheduleEnabled, setDetailScheduleEnabled] = useState(false);
   const [detailSchedulePlaylist, setDetailSchedulePlaylist] = useState('');
@@ -194,49 +232,172 @@ export function ScreensTab({
     setEditingGroupId(null);
   };
 
-  const handlePairDevice = () => {
-    if (screenPairingCode.length < 4) {
+  const [isPairing, setIsPairing] = useState(false);
+
+  const handlePairDevice = async () => {
+    const code = screenPairingCode.trim().toUpperCase();
+    if (code.length < 4) {
       Alert.alert('Error', 'Please enter a valid pairing code');
       return;
     }
-    const newScreen = {
-      id: Date.now().toString(),
-      name: screenName,
-      location: [screenCity, screenState, screenCountry].filter(Boolean).join(', ') || 'Unknown Location',
-      type: (isAdmin && opMode) ? 'client' : 'my',
-      status: 'online' as const,
-      orientation: screenOrientation || 'landscape',
-      screenSize: screenSize,
-      resolution: screenResolution,
-      os: screenOs,
-      timezone: screenTimezone,
-      address: screenAddress,
-      zip: screenZip,
-      groupId: screenGroup || undefined,
-      playlist: screenGroup ? (groupsList.find(g => g.id === screenGroup)?.playlist || 'Normal') : (screenPlaylist || 'Normal'),
-      lastSeen: '1 min ago',
-      version: 'v2.4.1',
-      thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800'
-    };
-    setScreensList(prev => [...prev, newScreen]);
-    setActiveModal('pairing-success');
+    if (!screenName.trim()) {
+      Alert.alert('Error', 'Please enter a screen name first');
+      return;
+    }
+    setIsPairing(true);
+    try {
+      const token = await AsyncStorage.getItem('signageos_token');
+      const location = [screenCity, screenState, screenCountry].filter(Boolean).join(', ') || 'Unknown Location';
+      const res = await fetch(`${API_BASE}/screens/pair`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          pairingCode: code,
+          name: screenName,
+          location,
+          groupId: screenGroup || undefined,
+          playlist: screenPlaylist || undefined,
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        // Add the newly paired screen to local state so it appears immediately
+        const newScreen = {
+          id: data.id || Date.now().toString(),
+          name: data.name || screenName,
+          location,
+          assignedToUserEmail: data.assignedToUserEmail || profileEmail,
+          status: data.status || 'online',
+          orientation: screenOrientation || 'landscape',
+          screenSize: screenSize,
+          resolution: screenResolution,
+          os: screenOs,
+          timezone: screenTimezone,
+          address: screenAddress,
+          zip: screenZip,
+          groupId: screenGroup || undefined,
+          playlist: data.playlist || screenPlaylist || 'Normal',
+          lastSeen: 'Just now',
+          version: 'v2.4.1',
+          thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800'
+        };
+        setScreensList(prev => {
+          // Replace if already exists (by id), otherwise append
+          const exists = prev.some(s => s.id === newScreen.id);
+          return exists ? prev.map(s => s.id === newScreen.id ? newScreen : s) : [...prev, newScreen];
+        });
+        setActiveModal('pairing-success');
+      } else {
+        Alert.alert('Pairing Failed', data.message || 'Invalid pairing code or license limit reached.');
+      }
+    } catch (e: any) {
+      Alert.alert('Connection Error', 'Could not reach the server. Please check your network.');
+    } finally {
+      setIsPairing(false);
+    }
+  };
+
+  const handleReconnectDevice = async () => {
+    const code = reconnectPairingCode.trim().toUpperCase();
+    if (code.length < 4) {
+      Alert.alert('Error', 'Please enter a valid pairing code');
+      return;
+    }
+    if (!reconnectScreen) return;
+    setIsPairing(true);
+    try {
+      const token = await AsyncStorage.getItem('signageos_token');
+      const res = await fetch(`${API_BASE}/screens/reconnect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          screenId: reconnectScreen.id,
+          pairingCode: code,
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        Alert.alert('Success', `Successfully reconnected "${reconnectScreen.name}"!`);
+        setScreensList(prev => prev.map(s => s.id === reconnectScreen.id ? {
+          ...s,
+          hardware_uuid: data.hardware_uuid || s.hardware_uuid,
+          status: 'online',
+          lastSeen: 'Just now'
+        } : s));
+        setActiveModal(null);
+        setSelectedScreen(null);
+        setReconnectScreen(null);
+        setReconnectPairingCode('');
+      } else {
+        Alert.alert('Reconnect Failed', data.message || 'Invalid pairing code or connection failure.');
+      }
+    } catch (e: any) {
+      Alert.alert('Connection Error', 'Could not reach the server. Please check your network.');
+    } finally {
+      setIsPairing(false);
+    }
+  };
+
+  const handleDisconnectDevice = async (screen: any) => {
+    Alert.alert(
+      'Disconnect Screen',
+      `Are you sure you want to disconnect "${screen.name}"? The TV player will go back to the pairing setup screen.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('signageos_token');
+              const res = await fetch(`${API_BASE}/screens/disconnect`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ screenId: screen.id })
+              });
+              if (res.ok) {
+                Alert.alert('Success', `Successfully disconnected "${screen.name}".`);
+                setScreensList(prev => prev.filter(item => item.id !== screen.id));
+                setSelectedScreen(null);
+              } else {
+                const err = await res.json().catch(() => ({}));
+                Alert.alert('Error', err.message || 'Failed to disconnect screen');
+              }
+            } catch (e: any) {
+              Alert.alert('Error', `Network error: ${e.message}`);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Filtered Screens
   const filteredScreens = screensList.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(screenSearch.toLowerCase()) ||
-      s.location.toLowerCase().includes(screenSearch.toLowerCase());
+    const name = (s.name || '').toLowerCase();
+    const location = (s.location || '').toLowerCase();
+    const matchesSearch = name.includes(screenSearch.toLowerCase()) ||
+      location.includes(screenSearch.toLowerCase());
     const matchesFilter = screenFilter === 'all' || s.status === screenFilter;
+    // Admins in non-opMode see their own screens; in opMode see client screens
+    // Non-admins only see their own screens
+    const isMyScreen = s.assignedToUserEmail === profileEmail;
     const matchesMode = isAdmin 
-      ? (opMode ? s.type === 'client' : s.type === 'my')
-      : s.type === 'my';
+      ? (opMode ? !isMyScreen : true)  // admin: opMode = client screens, else all
+      : isMyScreen;
     return matchesSearch && matchesFilter && matchesMode;
   });
 
-  const ungroupedScreensList = [
-    { id: 'ung1', name: 'West Corridor Display', mac: '00:1A:2B:3C:4D:5E' },
-    { id: 'ung2', name: 'Billing Desk Screen 2', mac: '00:1A:2B:3C:4D:6F' }
-  ];
+  const ungroupedScreensList = screensList.filter(s => !s.groupId);
 
   return (
     <View style={styles.innerTabContent}>
@@ -277,6 +438,29 @@ export function ScreensTab({
           <ThemedText style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 13 }}>
             {screensSubTab === 'screens' ? 'Register' : 'Create'}
           </ThemedText>
+        </TouchableOpacity>
+        {/* Refresh Button */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#f1f3fe',
+            width: 42,
+            height: 42,
+            borderRadius: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: isRefreshing ? 0.6 : 1,
+            borderWidth: 1,
+            borderColor: '#dde0f7'
+          }}
+          onPress={async () => {
+            if (isRefreshing || !onRefresh) return;
+            setIsRefreshing(true);
+            await onRefresh();
+            setIsRefreshing(false);
+          }}
+          disabled={isRefreshing || !onRefresh}
+        >
+          <Refresh size={18} color={isRefreshing ? '#a0aec0' : '#7c3aed'} />
         </TouchableOpacity>
       </View>
 
@@ -420,6 +604,15 @@ export function ScreensTab({
                     {/* A. Group Quick Actions Row */}
                     <ThemedText style={{ fontSize: 10, fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Group Actions</ThemedText>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setAddScreensToGroupId(g.id);
+                          setActiveModal('add-screens-to-group');
+                        }}
+                        style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#f1f5f9', borderStyle: 'solid', borderWidth: 1, borderColor: '#e2e8f0' }}
+                      >
+                        <ThemedText style={{ fontSize: 11, fontWeight: 'bold', color: '#475569' }}>+ Add Screens</ThemedText>
+                      </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => setGroupActionTab(groupActionTab === 'assign' ? null : 'assign')}
                         style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, backgroundColor: groupActionTab === 'assign' ? '#7c3aed' : '#f1f5f9', borderStyle: 'solid', borderWidth: 1, borderColor: '#e2e8f0' }}
@@ -621,12 +814,36 @@ export function ScreensTab({
                       <ThemedText style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>No screens assigned yet</ThemedText>
                     ) : (
                       groupScreens.map(screen => (
-                        <View key={screen.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View key={screen.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
                             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: screen.status === 'online' ? '#10B981' : '#ef4444' }} />
-                            <ThemedText style={{ fontSize: 13, color: '#334155', fontWeight: '600' }}>{screen.name}</ThemedText>
+                            <View style={{ flex: 1 }}>
+                              <ThemedText style={{ fontSize: 13, color: '#334155', fontWeight: '600' }}>{screen.name}</ThemedText>
+                              <ThemedText style={{ fontSize: 11, color: '#64748b' }}>{screen.location || 'No location'}</ThemedText>
+                            </View>
                           </View>
-                          <ThemedText style={{ fontSize: 12, color: '#64748b' }}>{screen.location}</ThemedText>
+                          <TouchableOpacity
+                            onPress={() => {
+                              Alert.alert(
+                                'Remove from Group',
+                                `Remove "${screen.name}" from this group?`,
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  {
+                                    text: 'Remove',
+                                    style: 'destructive',
+                                    onPress: () => {
+                                      setScreensList(prev => prev.map(s => s.id === screen.id ? { ...s, groupId: undefined } : s));
+                                      Alert.alert('Success', `"${screen.name}" removed from group`);
+                                    }
+                                  }
+                                ]
+                              );
+                            }}
+                            style={{ padding: 6 }}
+                          >
+                            <Trash size={15} color="#ef4444" />
+                          </TouchableOpacity>
                         </View>
                       ))
                     )}
@@ -651,22 +868,36 @@ export function ScreensTab({
 
             {ungroupedExpanded && (
               <View style={{ gap: 12, marginTop: 16 }}>
-                {ungroupedScreensList.map(us => (
-                  <View key={us.id} style={{ backgroundColor: '#ffffff', borderRadius: 16, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderStyle: 'solid', borderWidth: 1, borderColor: '#e0e2ed' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, marginRight: 8 }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(124, 58, 237, 0.08)', alignItems: 'center', justifyContent: 'center' }}>
-                        <Monitor size={18} color="#7c3aed" />
+                {ungroupedScreensList.length === 0 ? (
+                  <ThemedText style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic', textAlign: 'center' }}>No ungrouped screens</ThemedText>
+                ) : (
+                  ungroupedScreensList.map(us => (
+                    <TouchableOpacity
+                      key={us.id}
+                      onPress={() => {
+                        setSelectedScreen(us);
+                        setDetailSelectedPlaylist(us.playlist || 'Normal');
+                        setDetailScheduleEnabled(false);
+                        setPlaylistSearch('');
+                        setPlaylistPage(0);
+                      }}
+                      style={{ backgroundColor: '#ffffff', borderRadius: 16, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderStyle: 'solid', borderWidth: 1, borderColor: '#e0e2ed' }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, marginRight: 8 }}>
+                        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(124, 58, 237, 0.08)', alignItems: 'center', justifyContent: 'center' }}>
+                          <Monitor size={18} color="#7c3aed" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <ThemedText style={{ fontSize: 14, fontWeight: 'bold', color: '#181c23' }}>{us.name}</ThemedText>
+                          <ThemedText style={{ fontSize: 11, color: '#717786', marginTop: 2 }}>{us.location || 'No location set'}</ThemedText>
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <ThemedText style={{ fontSize: 14, fontWeight: 'bold', color: '#181c23' }}>{us.name}</ThemedText>
-                        <ThemedText style={{ fontSize: 11, color: '#717786', marginTop: 2 }}>MAC: {us.mac}</ThemedText>
+                      <View style={{ backgroundColor: us.status === 'online' ? '#e6f4ea' : '#f1f3fe', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                        <ThemedText style={{ color: us.status === 'online' ? '#137333' : '#414755', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>{us.status || 'offline'}</ThemedText>
                       </View>
-                    </View>
-                    <TouchableOpacity style={{ backgroundColor: 'rgba(124, 58, 237, 0.08)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }}>
-                      <ThemedText style={{ color: '#7c3aed', fontSize: 12, fontWeight: 'bold' }}>+ Add</ThemedText>
                     </TouchableOpacity>
-                  </View>
-                ))}
+                  ))
+                )}
               </View>
             )}
           </View>
@@ -701,6 +932,19 @@ export function ScreensTab({
                     <ThemedText style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>Location</ThemedText>
                     <ThemedText style={{ fontWeight: 'bold', color: '#0f172a', fontSize: 13 }}>{selectedScreen.location}</ThemedText>
                   </View>
+                  {/* Group Info Row */}
+                  {(() => {
+                    const grp = groupsList.find(g => g.id === selectedScreen.groupId);
+                    return grp ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <ThemedText style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>Group</ThemedText>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: grp.accentColor || '#7c3aed' }} />
+                          <ThemedText style={{ fontWeight: 'bold', color: '#0f172a', fontSize: 13 }}>{grp.name}</ThemedText>
+                        </View>
+                      </View>
+                    ) : null;
+                  })()}
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <ThemedText style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>Status</ThemedText>
                     <View style={{ backgroundColor: selectedScreen.status === 'online' ? '#dcfce7' : '#fee2e2', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 8 }}>
@@ -713,33 +957,105 @@ export function ScreensTab({
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <ThemedText style={{ color: '#64748b', fontSize: 13, fontWeight: '600' }}>Last Heartbeat</ThemedText>
-                    <ThemedText style={{ fontWeight: 'bold', color: '#0f172a', fontSize: 13 }}>{selectedScreen.lastSeen || 'Just now'}</ThemedText>
+                    <ThemedText style={{ fontWeight: 'bold', color: '#0f172a', fontSize: 13 }}>{selectedScreen.lastSeen || selectedScreen.lastHeartbeat || 'Just now'}</ThemedText>
+                  </View>
+                  {/* Uptime & Loops Metrics */}
+                  <View style={{ borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12, gap: 10, marginTop: 2 }}>
+                    <ThemedText style={{ fontSize: 10, fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Performance Metrics</ThemedText>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <View style={{ flex: 1, backgroundColor: 'rgba(124, 58, 237, 0.05)', borderWidth: 1, borderColor: 'rgba(124, 58, 237, 0.12)', borderRadius: 14, padding: 12, alignItems: 'center' }}>
+                        <ThemedText style={{ fontSize: 10, color: '#7c3aed', fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Total Uptime</ThemedText>
+                        <ThemedText style={{ fontSize: 16, fontWeight: '900', color: '#0f172a' }}>{formatUptime(getLiveUptime(selectedScreen))}</ThemedText>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: 'rgba(16, 185, 129, 0.05)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.12)', borderRadius: 14, padding: 12, alignItems: 'center' }}>
+                        <ThemedText style={{ fontSize: 10, color: '#059669', fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 }}>Loops Played</ThemedText>
+                        <ThemedText style={{ fontSize: 16, fontWeight: '900', color: '#0f172a' }}>{(selectedScreen.cumulativeLoops || 0).toLocaleString()}</ThemedText>
+                      </View>
+                    </View>
                   </View>
                 </View>
 
                 {/* 2. Device Controls Section */}
                 <ThemedText style={{ fontSize: 11, fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Device Controls</ThemedText>
-                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, force_sync: true } : s));
-                      Alert.alert('Success', 'Sync signal sent to screen!');
-                    }}
-                    style={{ flex: 1, flexDirection: 'row', backgroundColor: '#faf5ff', borderStyle: 'solid', borderWidth: 1, borderColor: '#e9d5ff', paddingVertical: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                  >
-                    <Refresh size={16} color="#7c3aed" />
-                    <ThemedText style={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 13 }}>Force Sync</ThemedText>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, restart_playlist: true } : s));
-                      Alert.alert('Success', 'Playback restart signal sent successfully!');
-                    }}
-                    style={{ flex: 1, flexDirection: 'row', backgroundColor: '#faf5ff', borderStyle: 'solid', borderWidth: 1, borderColor: '#e9d5ff', paddingVertical: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                  >
-                    <VideoPlay size={16} color="#7c3aed" />
-                    <ThemedText style={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 13 }}>Restart</ThemedText>
-                  </TouchableOpacity>
+                <View style={{ gap: 10, marginBottom: 20 }}>
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, force_sync: true } : s));
+                        Alert.alert('Success', 'Sync signal sent to screen!');
+                      }}
+                      style={{ flex: 1, flexDirection: 'row', backgroundColor: '#faf5ff', borderStyle: 'solid', borderWidth: 1, borderColor: '#e9d5ff', paddingVertical: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    >
+                      <Refresh size={16} color="#7c3aed" />
+                      <ThemedText style={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 13 }}>Force Sync</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, restart_playlist: true } : s));
+                        Alert.alert('Success', 'Playback restart signal sent successfully!');
+                      }}
+                      style={{ flex: 1, flexDirection: 'row', backgroundColor: '#faf5ff', borderStyle: 'solid', borderWidth: 1, borderColor: '#e9d5ff', paddingVertical: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    >
+                      <VideoPlay size={16} color="#7c3aed" />
+                      <ThemedText style={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 13 }}>Restart</ThemedText>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, clear_cache: true } : s));
+                        Alert.alert('Success', 'Cache purge command sent to screen!');
+                      }}
+                      style={{ flex: 1, flexDirection: 'row', backgroundColor: '#faf5ff', borderStyle: 'solid', borderWidth: 1, borderColor: '#e9d5ff', paddingVertical: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    >
+                      <Eraser size={16} color="#7c3aed" />
+                      <ThemedText style={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 13 }}>Clear Cache</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (selectedScreen.groupId) {
+                          Alert.alert('Info', 'Stop playback is not available for screens in a group. Manage group playlist instead.');
+                          return;
+                        }
+                        setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, playlist: 'None', playlistId: '' } : s));
+                        setSelectedScreen(prev => prev ? { ...prev, playlist: 'None', playlistId: '' } : null);
+                        setDetailSelectedPlaylist('None');
+                        Alert.alert('Success', 'Playback stopped for screen!');
+                      }}
+                      style={{
+                        flex: 1,
+                        flexDirection: 'row',
+                        backgroundColor: selectedScreen.groupId ? '#f1f5f9' : '#fff5f5',
+                        borderStyle: 'solid',
+                        borderWidth: 1,
+                        borderColor: selectedScreen.groupId ? '#e2e8f0' : '#fee2e2',
+                        paddingVertical: 12,
+                        borderRadius: 14,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        opacity: selectedScreen.groupId ? 0.5 : 1
+                      }}
+                    >
+                      <StopCircle size={16} color={selectedScreen.groupId ? '#94a3b8' : '#ef4444'} />
+                      <ThemedText style={{ color: selectedScreen.groupId ? '#94a3b8' : '#ef4444', fontWeight: 'bold', fontSize: 13 }}>Stop Playback</ThemedText>
+                    </TouchableOpacity>
+                  </View>
+
+                  {selectedScreen.groupId && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, groupId: undefined } : s));
+                        setSelectedScreen(prev => prev ? { ...prev, groupId: undefined } : null);
+                        Alert.alert('Success', 'Screen removed from group successfully!');
+                      }}
+                      style={{ width: '100%', flexDirection: 'row', backgroundColor: '#fffbeb', borderStyle: 'solid', borderWidth: 1, borderColor: '#fde68a', paddingVertical: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                    >
+                      <FolderMinus size={16} color="#d97706" />
+                      <ThemedText style={{ color: '#d97706', fontWeight: 'bold', fontSize: 13 }}>Remove from Group</ThemedText>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* 3. Assign Playlist Section */}
@@ -926,12 +1242,28 @@ export function ScreensTab({
                 </View>
               </ScrollView>
 
-              <View style={{ flexDirection: 'row', gap: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 16 }}>
+              <View style={{ flexDirection: 'row', gap: 8, borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 16, flexWrap: 'wrap' }}>
                 <TouchableOpacity
                   onPress={() => handleEditScreen(selectedScreen)}
-                  style={{ flex: 1, borderStyle: 'solid', borderWidth: 1.5, borderColor: '#7c3aed', height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
+                  style={{ flex: 1, minWidth: 90, borderStyle: 'solid', borderWidth: 1.5, borderColor: '#7c3aed', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <ThemedText style={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 14 }}>Edit Details</ThemedText>
+                  <ThemedText style={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 12 }}>Edit Details</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setReconnectScreen(selectedScreen);
+                    setReconnectPairingCode('');
+                    setActiveModal('reconnect-screen');
+                  }}
+                  style={{ flex: 1, minWidth: 90, backgroundColor: '#10B981', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <ThemedText style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 12 }}>Reconnect</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleDisconnectDevice(selectedScreen)}
+                  style={{ flex: 1, minWidth: 90, backgroundColor: '#f97316', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <ThemedText style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 12 }}>Disconnect</ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -939,9 +1271,9 @@ export function ScreensTab({
                     setSelectedScreen(null);
                     Alert.alert('Success', 'Signage display unlinked successfully!');
                   }}
-                  style={{ flex: 1, backgroundColor: '#ef4444', height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
+                  style={{ flex: 1, minWidth: 90, backgroundColor: '#ef4444', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <ThemedText style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 14 }}>Unregister Device</ThemedText>
+                  <ThemedText style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 12 }}>Unregister</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1258,10 +1590,10 @@ export function ScreensTab({
               value={screenPairingCode}
               onChangeText={setScreenPairingCode}
             />
-            <TouchableOpacity style={styles.pairButton} onPress={handlePairDevice}>
-              <ThemedText style={styles.pairButtonText}>Link Display</ThemedText>
+            <TouchableOpacity style={[styles.pairButton, isPairing && { opacity: 0.7 }]} onPress={handlePairDevice} disabled={isPairing}>
+              <ThemedText style={styles.pairButtonText}>{isPairing ? 'Pairing...' : 'Link Display'}</ThemedText>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.skipButton} onPress={() => setActiveModal(null)}>
+            <TouchableOpacity style={styles.skipButton} onPress={() => setActiveModal(null)} disabled={isPairing}>
               <ThemedText style={styles.skipButtonText}>Pair Later</ThemedText>
             </TouchableOpacity>
           </View>
@@ -1290,6 +1622,97 @@ export function ScreensTab({
               }}
             >
               <ThemedText style={styles.pairButtonText}>Done</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ================= MODAL 4: RECONNECT DEVICE CODE POPUP ================= */}
+      <Modal visible={activeModal === 'reconnect-screen'} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.pairingCard}>
+            <ThemedText type="smallBold" style={{ fontSize: 20, textAlign: 'center', marginBottom: 8, color: '#181c23' }}>Reconnect Screen</ThemedText>
+            <ThemedText style={{ textAlign: 'center', color: '#8F9BB3', fontSize: 13, marginBottom: 20 }}>
+              Enter the pairing code shown on your display hardware screen to reconnect it to "{reconnectScreen?.name}"
+            </ThemedText>
+            <TextInput
+              style={[styles.pairingCodeInput, { color: '#181c23', borderColor: '#7c3aed' }]}
+              placeholder="SO-XXXX"
+              placeholderTextColor="#8F9BB3"
+              maxLength={7}
+              autoCapitalize="characters"
+              value={reconnectPairingCode}
+              onChangeText={setReconnectPairingCode}
+            />
+            <TouchableOpacity style={[styles.pairButton, isPairing && { opacity: 0.7 }]} onPress={handleReconnectDevice} disabled={isPairing}>
+              <ThemedText style={styles.pairButtonText}>{isPairing ? 'Reconnecting...' : 'Reconnect Display'}</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.skipButton} onPress={() => { setActiveModal(null); setReconnectScreen(null); }} disabled={isPairing}>
+              <ThemedText style={styles.skipButtonText}>Cancel</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ================= MODAL 5: ADD SCREENS TO GROUP ================= */}
+      <Modal visible={activeModal === 'add-screens-to-group'} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={{ width: '90%', maxWidth: 360, backgroundColor: '#ffffff', borderRadius: 28, padding: 24, maxHeight: '80%', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingBottom: 12 }}>
+              <View>
+                <ThemedText style={{ fontSize: 18, fontWeight: 'bold', color: '#7c3aed' }}>Add Screens to Group</ThemedText>
+                <ThemedText style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Only showing ungrouped screens</ThemedText>
+              </View>
+              <TouchableOpacity onPress={() => { setActiveModal(null); setAddScreensToGroupId(null); }}>
+                <ThemedText style={{ fontSize: 18, fontWeight: 'bold', color: '#717786' }}>✕</ThemedText>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ marginBottom: 20 }} showsVerticalScrollIndicator={false}>
+              {(() => {
+                const ungrouped = screensList.filter(s => !s.groupId);
+                if (ungrouped.length === 0) {
+                  return (
+                    <ThemedText style={{ fontSize: 13, color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', marginVertical: 30 }}>
+                      No ungrouped screens available
+                    </ThemedText>
+                  );
+                }
+                return (
+                  <View style={{ gap: 12 }}>
+                    {ungrouped.map(us => (
+                      <View key={us.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#f8fafc', borderRadius: 14, borderStyle: 'solid', borderWidth: 1, borderColor: '#e2e8f0' }}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <ThemedText style={{ fontSize: 13, fontWeight: 'bold', color: '#1f2937' }}>{us.name}</ThemedText>
+                          <ThemedText style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{us.location || 'No location'}</ThemedText>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => {
+                            const gp = groupsList.find(g => g.id === addScreensToGroupId);
+                            const updatedScreen = {
+                              ...us,
+                              groupId: addScreensToGroupId,
+                              playlist: gp?.playlist || us.playlist,
+                            };
+                            setScreensList(prev => prev.map(s => s.id === us.id ? updatedScreen : s));
+                            Alert.alert('Success', `"${us.name}" added to group!`);
+                          }}
+                          style={{ backgroundColor: '#7c3aed', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                        >
+                          <ThemedText style={{ color: '#ffffff', fontSize: 11, fontWeight: 'bold' }}>+ Add</ThemedText>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })()}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={{ backgroundColor: '#7c3aed', paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => { setActiveModal(null); setAddScreensToGroupId(null); }}
+            >
+              <ThemedText style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 14 }}>Done</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

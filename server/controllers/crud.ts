@@ -157,7 +157,7 @@ export function createCrudRouter(collectionName: string) {
         delete body.id;
       }
 
-      // Enrich screen logs with owner tenancy and live metrics at time of creation
+      // Enrich screen logs with owner tenancy, live metrics, and group context at time of creation
       if (collectionName === 'screen_logs' && body.screenId) {
         try {
           const screen = await retryWithBackoff(() => pb.collection('screens').getOne(body.screenId));
@@ -168,6 +168,14 @@ export function createCrudRouter(collectionName: string) {
             const metrics = await getLiveScreenMetrics(screen);
             body.totalUptime = metrics.totalUptime;
             body.loopsPlayed = metrics.loopsPlayed;
+            // Enrich with group info
+            if (screen.groupId) {
+              body.groupId = screen.groupId;
+              if (!body.groupName) {
+                const grp = await pb.collection('screen_groups').getOne(screen.groupId).catch(() => null);
+                body.groupName = grp?.name || '';
+              }
+            }
           }
         } catch (e: any) {
           console.warn(`[CrudController] Could not enrich screen_log:`, e.message);

@@ -1,5 +1,11 @@
 {
-  "plugins": [
-    "expo-router"
-  ]
+  "expo": {
+    "name": "signage-os-app",
+    "slug": "signage-os-app",
+    "version": "1.0.0",
+    "scheme": "signageos",
+    "plugins": [
+      "expo-router"
+    ]
+  }
 }

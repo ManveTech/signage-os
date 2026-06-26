@@ -37,32 +37,34 @@ export function signJwt(payload: any): string {
 
 export function authenticateToken(req: any, res: any, next: any) {
   const path = req.path || '';
-  if (
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  const isBypassedPath = 
     path === '/devices/sync' || 
     path === '/devices/heartbeat' || 
     path === '/devices/pairing-code' ||
     path === '/devices/offline' ||
+    path === '/screens/disconnect' ||
     path === '/api/v1/devices/sync' || 
     path === '/api/v1/devices/heartbeat' || 
     path === '/api/v1/devices/pairing-code' ||
     path === '/api/v1/devices/offline' ||
+    path === '/api/v1/screens/disconnect' ||
     path.endsWith('/devices/sync') ||
     path.endsWith('/devices/heartbeat') ||
     path.endsWith('/devices/pairing-code') ||
     path.endsWith('/devices/offline') ||
-    (req.method === 'POST' && (path === '/screen_logs' || path === '/api/v1/screen_logs' || path.endsWith('/screen_logs')))
-  ) {
+    path.endsWith('/screens/disconnect') ||
+    (req.method === 'POST' && (path === '/screen_logs' || path === '/api/v1/screen_logs' || path.endsWith('/screen_logs')));
+
+  if (isBypassedPath && !token) {
     return next();
   }
-  
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
     return res.status(401).json({ message: 'Access token is required.' });
   }
-
-
 
   const payload = verifyJwt(token);
   if (!payload) {

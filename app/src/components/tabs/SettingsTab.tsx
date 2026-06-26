@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -434,7 +434,27 @@ export function SettingsTab({
     (org) => isAdmin || org.email === profileEmail
   );
 
+  // Initialize branding inputs when organization list loads or changes
+  useEffect(() => {
+    if (isWhiteLabelEnabled && userFilteredOrgs.length > 0) {
+      const userOrg = userFilteredOrgs[0];
+      if (userOrg) {
+        if (userOrg.websiteName) setCompanyName(userOrg.websiteName);
+        if (userOrg.websiteLogo) setCompanyLogo(userOrg.websiteLogo);
+      }
+    }
+  }, [mobOrgs, isWhiteLabelEnabled, profileEmail]);
+
   const handleSaveProfile = () => {
+    if (isWhiteLabelEnabled && userFilteredOrgs.length > 0) {
+      const userOrg = userFilteredOrgs[0];
+      const updatedOrg = {
+        ...userOrg,
+        websiteName: companyName,
+        websiteLogo: companyLogo,
+      };
+      setMobOrgs(prev => prev.map(o => o.id === userOrg.id ? updatedOrg : o));
+    }
     Alert.alert('Profile Saved', 'Your configuration settings have been successfully updated.');
   };
 

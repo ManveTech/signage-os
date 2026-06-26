@@ -132,78 +132,83 @@ fun SignagePlayerApp(
             AppSplashScreen(uiState = uiState)
         } else {
             when (uiState.status) {
-            "active", "online", "offline" -> {
-                if (uiState.playlist.isEmpty()) {
-                    StandbyScreen(
-                        uiState = uiState,
-                        onOpenAdmin = {}
-                    )
-                } else if (!allAssetsDownloaded) {
-                    DownloadProgressScreen(
-                        uiState = uiState,
-                        onTriggerDownloads = { viewModel.triggerPendingDownloads() },
-                        onOpenAdmin = {}
-                    )
-                } else {
-                    PlaybackLoopScreen(
-                        playlist = uiState.playlist,
-                        currentIndex = uiState.currentAssetIndex,
-                        orientation = uiState.playlistOrientation,
-                        playlistLoop = uiState.playlistLoop,
-                        transitionName = uiState.playlistTransition,
-                        onOpenAdmin = {},
-                        onVideoCompleted = { viewModel.advanceToNextAsset() },
-                        volumePercent = uiState.playlistVolume
-                    )
-
-                    // Global Widget Overlay display
-                    val widgetType = uiState.widgetType
-                    val widgetLink = uiState.widgetLink ?: ""
-                    if (!widgetType.isNullOrEmpty()) {
-                        val alignment = when (uiState.widgetPlacement) {
-                            "top-left" -> Alignment.TopStart
-                            "top-right" -> Alignment.TopEnd
-                            "bottom-left" -> Alignment.BottomStart
-                            "bottom-right" -> Alignment.BottomEnd
-                            else -> Alignment.TopEnd
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(24.dp),
-                            contentAlignment = alignment
-                        ) {
-                            if (widgetType == "qrcode") {
-                                val encodedLink = try {
-                                    java.net.URLEncoder.encode(widgetLink, "UTF-8")
-                                } catch (e: Exception) {
-                                    widgetLink
-                                }
-                                AsyncImage(
-                                    model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
-                                    contentDescription = "Scan QR Code Widget Overlay",
-                                    modifier = Modifier.size(120.dp),
-                                    contentScale = ContentScale.Fit
+                "active", "online", "offline" -> {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (uiState.playlist.isEmpty()) {
+                                StandbyScreen(
+                                    uiState = uiState,
+                                    onOpenAdmin = {}
+                                )
+                            } else if (!allAssetsDownloaded) {
+                                DownloadProgressScreen(
+                                    uiState = uiState,
+                                    onTriggerDownloads = { viewModel.triggerPendingDownloads() },
+                                    onOpenAdmin = {}
                                 )
                             } else {
-                                Card(
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = Color(0xCC111827) // Premium translucent dark HUD card
-                                    ),
-                                    shape = RoundedCornerShape(16.dp),
-                                    modifier = Modifier
-                                        .width(200.dp)
-                                        .padding(14.dp)
-                                ) {
-                                    when (widgetType) {
-                                        "weather" -> {
-                                            WeatherWidget(location = widgetLink.ifEmpty { "Bengaluru" })
-                                        }
-                                        "clock" -> {
-                                            ClockWidget(header = widgetLink.ifEmpty { "Lobby Clock" })
-                                        }
-                                        "rss" -> {
-                                            RssTickerWidget(tickerText = widgetLink)
+                                PlaybackLoopScreen(
+                                    playlist = uiState.playlist,
+                                    currentIndex = uiState.currentAssetIndex,
+                                    orientation = uiState.playlistOrientation,
+                                    playlistLoop = uiState.playlistLoop,
+                                    transitionName = uiState.playlistTransition,
+                                    onOpenAdmin = {},
+                                    onVideoCompleted = { viewModel.advanceToNextAsset() },
+                                    volumePercent = uiState.playlistVolume
+                                )
+
+                                // Global Widget Overlay display
+                                val widgetType = uiState.widgetType
+                                val widgetLink = uiState.widgetLink ?: ""
+                                if (!widgetType.isNullOrEmpty()) {
+                                    val alignment = when (uiState.widgetPlacement) {
+                                        "top-left" -> Alignment.TopStart
+                                        "top-right" -> Alignment.TopEnd
+                                        "bottom-left" -> Alignment.BottomStart
+                                        "bottom-right" -> Alignment.BottomEnd
+                                        else -> Alignment.TopEnd
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(24.dp),
+                                        contentAlignment = alignment
+                                    ) {
+                                        if (widgetType == "qrcode") {
+                                            val encodedLink = try {
+                                                java.net.URLEncoder.encode(widgetLink, "UTF-8")
+                                            } catch (e: Exception) {
+                                                widgetLink
+                                            }
+                                            AsyncImage(
+                                                model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
+                                                contentDescription = "Scan QR Code Widget Overlay",
+                                                modifier = Modifier.size(120.dp),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        } else {
+                                            Card(
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = Color(0xCC111827) // Premium translucent dark HUD card
+                                                ),
+                                                shape = RoundedCornerShape(16.dp),
+                                                modifier = Modifier
+                                                    .width(200.dp)
+                                                    .padding(14.dp)
+                                            ) {
+                                                when (widgetType) {
+                                                    "weather" -> {
+                                                        WeatherWidget(location = widgetLink.ifEmpty { "Bengaluru" })
+                                                    }
+                                                    "clock" -> {
+                                                        ClockWidget(header = widgetLink.ifEmpty { "Lobby Clock" })
+                                                    }
+                                                    "rss" -> {
+                                                        RssTickerWidget(tickerText = widgetLink)
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -211,23 +216,24 @@ fun SignagePlayerApp(
                         }
                     }
                 }
-            }
-            "suspended" -> {
-                SuspendedScreen(
-                    onOpenAdmin = {}
-                )
-            }
-            else -> { // "pairing" status or default
-                PairingSetupScreen(
-                    uiState = uiState,
-                    onRefreshCode = { viewModel.requestPairingCode() },
-                    onOpenAdmin = {}
-                )
+                "suspended" -> {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        SuspendedScreen(
+                            onOpenAdmin = {}
+                        )
+                    }
+                }
+                else -> { // "pairing" status or default
+                    PairingSetupScreen(
+                        uiState = uiState,
+                        onRefreshCode = { viewModel.requestPairingCode() },
+                        onOpenAdmin = {}
+                    )
+                }
             }
         }
-
         // Floating download progress card overlaid at the bottom-left of the screen
-        if (uiState.isDownloading) {
+        if (uiState.isDownloading && allAssetsDownloaded) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -280,7 +286,6 @@ fun SignagePlayerApp(
         }
 
 
-    }
     }
 }
 
@@ -1110,6 +1115,7 @@ fun LocalVideoRenderer(
         sharedExoPlayer.stop()
         sharedExoPlayer.clearMediaItems()
         sharedExoPlayer.setMediaItem(mediaItem)
+        sharedExoPlayer.seekTo(0L)
         sharedExoPlayer.prepare()
         sharedExoPlayer.playWhenReady = true
     }
@@ -1572,17 +1578,6 @@ fun DownloadProgressScreen(
                             lineHeight = 16.sp
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        LinearProgressIndicator(
-                            progress = { uiState.downloadProgressFraction },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(CircleShape),
-                            color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
-                            trackColor = Color(0xFF49454F)
-                        )
 
                         if (!uiState.isDownloading) {
                             Spacer(modifier = Modifier.height(16.dp))
@@ -1715,18 +1710,6 @@ fun DownloadProgressScreen(
                         lineHeight = 18.sp
                     )
 
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Detailed horizontal progress bar
-                    LinearProgressIndicator(
-                        progress = { uiState.downloadProgressFraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(CircleShape),
-                        color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
-                        trackColor = Color(0xFF49454F)
-                    )
 
                     if (!uiState.isDownloading) {
                         Spacer(modifier = Modifier.height(24.dp))

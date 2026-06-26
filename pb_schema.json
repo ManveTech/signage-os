@@ -1545,6 +1545,36 @@
         "onlyInt": true
       },
       {
+        "help": "Group ID the screen belongs to at time of log",
+        "hidden": false,
+        "id": "textloggroupidid",
+        "name": "groupId",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "text",
+        "autogeneratePattern": "",
+        "max": 0,
+        "min": 0,
+        "pattern": "",
+        "primaryKey": false
+      },
+      {
+        "help": "Group name the screen belongs to at time of log",
+        "hidden": false,
+        "id": "textloggroupnameid",
+        "name": "groupName",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "text",
+        "autogeneratePattern": "",
+        "max": 0,
+        "min": 0,
+        "pattern": "",
+        "primaryKey": false
+      },
+      {
         "hidden": false,
         "id": "autodatecreatedid",
         "name": "created",

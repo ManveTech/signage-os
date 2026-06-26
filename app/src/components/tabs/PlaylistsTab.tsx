@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, ScrollView, TextInput, TouchableOpacity, Text, StyleSheet, Modal, Alert } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE } from '../../config';
 import { ThemedText } from '../themed-text';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -75,9 +79,26 @@ export function PlaylistsTab({
   const [previewPlaylist, setPreviewPlaylist] = useState<any | null>(null);
   const [previewSlideIndex, setPreviewSlideIndex] = useState(0);
 
+  // Autoplay/looping timer for the playlist preview simulator
+  useEffect(() => {
+    if (activeModal !== 'preview-playlist' || !previewPlaylist || !previewPlaylist.slides || previewPlaylist.slides.length <= 1) {
+      return;
+    }
+
+    const currentSlide = previewPlaylist.slides[previewSlideIndex];
+    // Use slide duration in seconds (converted to ms), fallback to 5 seconds
+    const slideDuration = (currentSlide?.duration * 1000) || 5000;
+
+    const timer = setTimeout(() => {
+      setPreviewSlideIndex(idx => (idx + 1) % previewPlaylist.slides.length);
+    }, slideDuration);
+
+    return () => clearTimeout(timer);
+  }, [activeModal, previewPlaylist, previewSlideIndex]);
+
   const getMediaUrl = (mediaId: string) => {
     const media = mediaList.find(m => m.id === mediaId);
-    return media ? media.url : 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800';
+    return media ? (media.thumbnail || media.fileUrl || media.url || '') : 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800';
   };
 
   const getStorageUsedMB = () => {
@@ -129,36 +150,92 @@ export function PlaylistsTab({
     setCreatedSlides(prev => [...prev, newSlide]);
   };
 
-  const handleDirectUploadMedia = () => {
-    const randomUrls = [
-      'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800',
-      'https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=800',
-      'https://images.unsplash.com/photo-1472851294608-062f824d296e?w=800',
-      'https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=800'
-    ];
-    const url = randomUrls[Math.floor(Math.random() * randomUrls.length)];
-    const newId = 'm' + (mediaList.length + 1);
-    const newMedia = {
-      id: newId,
-      name: `Promo_Asset_${mediaList.length + 1}.jpg`,
-      size: '1.8MB',
-      type: 'Image',
-      url: url
-    };
-    
-    // Add to mediaList
-    setMediaList(prev => [...prev, newMedia]);
-    
-    // Also directly add to sequence timeline!
-    const newSlide = {
-      id: `slide_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      mediaId: newId,
-      duration: 10,
-      layoutType: 'Single' as const,
-      secondMediaId: '',
-    };
-    setCreatedSlides(prev => [...prev, newSlide]);
-    Alert.alert('Asset Added', 'A new promotional image asset has been generated and added to your sequence timeline.');
+  const handleDirectUploadMedia = async (addToPlaylist: boolean = false) => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'video/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const file = result.assets[0];
+      const { name, size, mimeType, uri } = file;
+
+      if (!size) {
+        Alert.alert('Error', 'Unable to resolve file size');
+        return;
+      }
+
+      const isVideo = mimeType?.startsWith('video/') || uri.toLowerCase().endsWith('.mp4') || uri.toLowerCase().endsWith('.mov') || uri.toLowerCase().endsWith('.webm');
+      const limitBytes = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+      const limitMb = isVideo ? 50 : 5;
+
+      if (size > limitBytes) {
+        Alert.alert(
+          'File Too Large',
+          `The selected file "${name}" is ${(size / (1024 * 1024)).toFixed(1)} MB. ${isVideo ? 'Video' : 'Image'} files must be under ${limitMb}MB.`
+        );
+        return;
+      }
+
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+
+      const token = await AsyncStorage.getItem('signageos_token');
+      const userEmail = await AsyncStorage.getItem('signageos_user_email') || 'priya@demo.com';
+
+      const body = {
+        title: name.replace(/\.[^/.]+$/, ""),
+        type: isVideo ? 'video' : 'image',
+        duration: isVideo ? 15 : 10,
+        resolution: '1920x1080',
+        fileSize: `${(size / (1024 * 1024)).toFixed(1)} MB`,
+        fileSizeBytes: size,
+        uploadedBy: userEmail,
+        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        tags: ['uploaded', isVideo ? 'video' : 'image'],
+        width: isVideo ? 1920 : 1080,
+        height: isVideo ? 1080 : 1920,
+        mimeType: mimeType || (isVideo ? 'video/mp4' : 'image/jpeg'),
+        fileData: base64,
+        fileName: name
+      };
+
+      const res = await fetch(`${API_BASE}/media_items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        const newMedia = await res.json();
+        const normalized = {
+          ...newMedia,
+          name: newMedia.name || newMedia.title || 'Untitled Asset',
+          size: newMedia.size || newMedia.fileSize || '0 B',
+          url: newMedia.url || newMedia.thumbnail || newMedia.fileUrl || ''
+        };
+
+        setMediaList(prev => [...prev, normalized]);
+        Alert.alert('Success', `Successfully uploaded "${normalized.name}".`);
+
+        if (addToPlaylist) {
+          handleAddSlideToCreatedPlaylist(normalized.id);
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert('Upload Failed', err.message || 'Failed to upload media to backend.');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', `Upload error: ${err.message || err}`);
+    }
   };
 
   const handleUpdateCreatedSlide = (id: string, updates: any) => {
@@ -244,6 +321,7 @@ export function PlaylistsTab({
     const playlistData = {
       name: playlistName,
       description: playlistDescription || 'Signage Playlist Loop',
+      loop: true,
       slides: createdSlides.map(s => ({
         id: s.id,
         mediaId: s.mediaId,
@@ -345,7 +423,14 @@ export function PlaylistsTab({
               />
               <View style={{ flex: 1, marginLeft: 14, marginRight: 8 }}>
                 <ThemedText style={{ fontSize: 14, fontWeight: '900', color: '#181c23' }}>{p.name}</ThemedText>
-                <ThemedText style={{ fontSize: 12, color: '#717786', marginTop: 2 }}>{p.slides.length} Slides • {p.slides.length * 3}:00 Duration</ThemedText>
+                <ThemedText style={{ fontSize: 12, color: '#717786', marginTop: 2 }}>
+                  {p.slides.length} Slides • {(() => {
+                    const totalSec = p.slides.reduce((acc: number, s: any) => acc + (parseInt(s.duration) || 10), 0);
+                    const mins = Math.floor(totalSec / 60);
+                    const secs = totalSec % 60;
+                    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                  })()} Duration
+                </ThemedText>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TouchableOpacity
@@ -491,7 +576,7 @@ export function PlaylistsTab({
                 {/* Row 1: Add Media, Asset 0, Asset 1 */}
                 <View style={styles.assetsGridRow}>
                   <TouchableOpacity
-                    onPress={handleDirectUploadMedia}
+                    onPress={() => handleDirectUploadMedia(true)}
                     style={[styles.mediaBoxGrid, styles.uploadMediaCard]}
                   >
                     <Add size={20} color="#7c3aed" variant="Linear" />
@@ -846,9 +931,7 @@ export function PlaylistsTab({
                 </View>
               </View>
               <TouchableOpacity
-                onPress={() => {
-                  setShowAddMediaPopup(true);
-                }}
+                onPress={() => handleDirectUploadMedia(false)}
                 style={{ height: 40, paddingHorizontal: 16, borderRadius: 12, backgroundColor: '#7c3aed', flexDirection: 'row', alignItems: 'center', gap: 6 }}
               >
                 <Add size={16} color="#ffffff" variant="Linear" />

@@ -17,6 +17,39 @@ async function logServerError(screenId: string, screenName: string, email: strin
   }
 }
 
+// Cache group names in-process for 5 minutes to avoid repeated PB lookups
+const groupNameCache = new Map<string, { name: string; expires: number }>();
+
+async function resolveGroupInfo(groupId: string | null | undefined): Promise<{ groupId: string; groupName: string }> {
+  if (!groupId) return { groupId: '', groupName: '' };
+  const now = Date.now();
+  const cached = groupNameCache.get(groupId);
+  if (cached && cached.expires > now) return { groupId, groupName: cached.name };
+  try {
+    const group = await pb.collection('screen_groups').getOne(groupId).catch(() => null);
+    const name = group?.name || '';
+    groupNameCache.set(groupId, { name, expires: now + 5 * 60 * 1000 });
+    return { groupId, groupName: name };
+  } catch {
+    return { groupId, groupName: '' };
+  }
+}
+
+// Build an enriched screen_log payload with group context + metrics
+async function buildScreenLog(screen: any, extra: Record<string, any>): Promise<Record<string, any>> {
+  const { groupId, groupName } = await resolveGroupInfo(screen.groupId);
+  return {
+    screenId: screen.id,
+    screenName: screen.name,
+    assignedToUserEmail: screen.assignedToUserEmail || '',
+    groupId,
+    groupName,
+    ...extra,
+  };
+}
+
+
+
 export async function getLiveScreenMetrics(screen: any) {
   let totalUptime = screen.cumulativeUptime || 0;
   let loopsPlayed = screen.cumulativeLoops || 0;
@@ -217,16 +250,15 @@ export async function pairScreen(req: any, res: any) {
     await syncScreenBrandingFromOrg(updatedScreen);
 
     // Log pairing to screen_logs
-    await pb.collection('screen_logs').create({
-      screenId: updatedScreen.id,
-      screenName: updatedScreen.name,
-      assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
-      event: 'Screen paired',
-      type: 'online',
-      detail: `Device paired successfully. License: ${updatedScreen.license_id || 'None'}, Playlist: ${updatedScreen.playlist || 'None'}`,
-      totalUptime: updatedScreen.cumulativeUptime || 0,
-      loopsPlayed: updatedScreen.cumulativeLoops || 0
-    }).catch(err => console.error('Error logging pairing:', err));
+    pb.collection('screen_logs').create(
+      await buildScreenLog(updatedScreen, {
+        event: 'Screen paired',
+        type: 'online',
+        detail: `Device paired successfully. License: ${updatedScreen.license_id || 'None'}, Playlist: ${updatedScreen.playlist || 'None'}, Group: ${updatedScreen.groupId || 'None'}`,
+        totalUptime: updatedScreen.cumulativeUptime || 0,
+        loopsPlayed: updatedScreen.cumulativeLoops || 0
+      })
+    ).catch(err => console.error('Error logging pairing:', err));
 
     res.status(200).json({
       id: updatedScreen.id,
@@ -382,16 +414,15 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
             markedOfflineCount++;
             console.log(`[Status Checker] 🔴 OFFLINE: Screen "${latestScreen.name}" (ID: ${latestScreen.id}) missed heartbeat. Marked offline in database (Redis detection).`);
 
-            await retryWithBackoff(() => pb.collection('screen_logs').create({
-              screenId: latestScreen.id,
-              screenName: latestScreen.name,
-              assignedToUserEmail: latestScreen.assignedToUserEmail || '',
-              event: 'Screen went offline',
-              type: 'offline',
-              detail: `No heartbeat received. (Redis detection).`,
-              totalUptime: updatedCumulativeUptime,
-              loopsPlayed: updatedCumulativeLoops
-            })).catch(err => console.error('Error logging screen offline:', err));
+            retryWithBackoff(async () => pb.collection('screen_logs').create(
+              await buildScreenLog(latestScreen, {
+                event: 'Screen went offline',
+                type: 'offline',
+                detail: `No heartbeat received. (Redis detection).`,
+                totalUptime: updatedCumulativeUptime,
+                loopsPlayed: updatedCumulativeLoops
+              })
+            )).catch(err => console.error('Error logging screen offline:', err));
 
           } catch (err: any) {
             console.error(`[Status Checker] Error processing screen ${screenId}:`, err.message);
@@ -457,16 +488,15 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
 
             markedOfflineCount++;
 
-            await retryWithBackoff(() => pb.collection('screen_logs').create({
-              screenId: latestScreen.id,
-              screenName: latestScreen.name,
-              assignedToUserEmail: latestScreen.assignedToUserEmail || '',
-              event: 'Screen went offline',
-              type: 'offline',
-              detail: `No heartbeat received since ${latestScreen.lastHeartbeat || 'pairing'}.`,
-              totalUptime: updatedCumulativeUptime,
-              loopsPlayed: updatedCumulativeLoops
-            })).catch(err => console.error('Error logging screen offline:', err));
+            retryWithBackoff(async () => pb.collection('screen_logs').create(
+              await buildScreenLog(latestScreen, {
+                event: 'Screen went offline',
+                type: 'offline',
+                detail: `No heartbeat received since ${latestScreen.lastHeartbeat || 'pairing'}.`,
+                totalUptime: updatedCumulativeUptime,
+                loopsPlayed: updatedCumulativeLoops
+              })
+            )).catch(err => console.error('Error logging screen offline:', err));
 
           } catch (err: any) {
             console.error(`[Status Checker] Error processing screen ${screen.id}:`, err.message);
@@ -580,16 +610,15 @@ export async function recordHeartbeat(req: any, res: any) {
             await redis.set(`cache:screen:${screenId}`, JSON.stringify(updated), 'EX', 3600);
 
             const metrics = await getLiveScreenMetrics(latest);
-            await retryWithBackoff(() => pb.collection('screen_logs').create({
-              screenId: screenId,
-              screenName: screenRecord.name,
-              assignedToUserEmail: screenRecord.assignedToUserEmail || '',
-              event: 'Screen came online',
-              type: 'online',
-              detail: `Heartbeat received (reconnected). CPU Temp: ${cpuTemp || 'N/A'}°C`,
-              totalUptime: metrics.totalUptime,
-              loopsPlayed: metrics.loopsPlayed
-            })).catch(err => console.error('Error logging screen online:', err));
+            retryWithBackoff(async () => pb.collection('screen_logs').create(
+              await buildScreenLog(screenRecord, {
+                event: 'Screen came online',
+                type: 'online',
+                detail: `Heartbeat received (reconnected). CPU Temp: ${cpuTemp || 'N/A'}°C`,
+                totalUptime: metrics.totalUptime,
+                loopsPlayed: metrics.loopsPlayed
+              })
+            )).catch(err => console.error('Error logging screen online:', err));
           } finally {
             release();
           }
@@ -627,16 +656,15 @@ export async function recordHeartbeat(req: any, res: any) {
             updateData.onlineSince = new Date().toISOString();
 
             const metrics = await getLiveScreenMetrics(latestScreen);
-            await retryWithBackoff(() => pb.collection('screen_logs').create({
-              screenId: latestScreen.id,
-              screenName: latestScreen.name,
-              assignedToUserEmail: latestScreen.assignedToUserEmail || '',
-              event: 'Screen came online',
-              type: 'online',
-              detail: `Heartbeat received. CPU Temp: ${cpuTemp || 'N/A'}°C, Current Asset: ${currentPlayingAsset || 'None'}`,
-              totalUptime: metrics.totalUptime,
-              loopsPlayed: metrics.loopsPlayed
-            })).catch(err => console.error('Error logging screen online:', err));
+            retryWithBackoff(async () => pb.collection('screen_logs').create(
+              await buildScreenLog(latestScreen, {
+                event: 'Screen came online',
+                type: 'online',
+                detail: `Heartbeat received. CPU Temp: ${cpuTemp || 'N/A'}°C, Current Asset: ${currentPlayingAsset || 'None'}`,
+                totalUptime: metrics.totalUptime,
+                loopsPlayed: metrics.loopsPlayed
+              })
+            )).catch(err => console.error('Error logging screen online:', err));
           }
 
           await retryWithBackoff(() => pb.collection('screens').update(latestScreen.id, updateData));
@@ -729,16 +757,15 @@ export async function reconnectScreen(req: any, res: any) {
     }
 
     // 5. Log the reconnect event to screen_logs
-    await pb.collection('screen_logs').create({
-      screenId: updatedScreen.id,
-      screenName: updatedScreen.name,
-      assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
-      event: 'Screen reconnected',
-      type: 'online',
-      detail: `Device reconnected. Hardware UUID updated to ${updatedScreen.hardware_uuid}.`,
-      totalUptime: updatedScreen.cumulativeUptime || 0,
-      loopsPlayed: updatedScreen.cumulativeLoops || 0
-    }).catch(err => console.error('Error logging reconnect:', err));
+    pb.collection('screen_logs').create(
+      await buildScreenLog(updatedScreen, {
+        event: 'Screen reconnected',
+        type: 'online',
+        detail: `Device reconnected. Hardware UUID updated to ${updatedScreen.hardware_uuid}.`,
+        totalUptime: updatedScreen.cumulativeUptime || 0,
+        loopsPlayed: updatedScreen.cumulativeLoops || 0
+      })
+    ).catch(err => console.error('Error logging reconnect:', err));
 
     res.status(200).json(updatedScreen);
   } catch (error: any) {
@@ -765,16 +792,15 @@ export async function assignPlaylistToScreen(req: any, res: any) {
     syncScreenSchedule(updatedScreen);
 
     const metrics = await getLiveScreenMetrics(updatedScreen);
-    await pb.collection('screen_logs').create({
-      screenId: updatedScreen.id,
-      screenName: updatedScreen.name,
-      assignedToUserEmail: updatedScreen.assignedToUserEmail || '',
-      event: 'Playlist assigned',
-      type: 'sync',
-      detail: `Playlist "${playlistName || 'Normal'}" (${playlistId || 'none'}) assigned to screen.`,
-      totalUptime: metrics.totalUptime,
-      loopsPlayed: metrics.loopsPlayed
-    }).catch((err: any) => console.error('Error logging playlist assignment:', err));
+    pb.collection('screen_logs').create(
+      await buildScreenLog(updatedScreen, {
+        event: 'Playlist assigned',
+        type: 'sync',
+        detail: `Playlist "${playlistName || 'Normal'}" (${playlistId || 'none'}) assigned to screen.`,
+        totalUptime: metrics.totalUptime,
+        loopsPlayed: metrics.loopsPlayed
+      })
+    ).catch((err: any) => console.error('Error logging playlist assignment:', err));
 
     res.status(200).json(updatedScreen);
   } catch (error: any) {
@@ -907,16 +933,15 @@ export async function reportOffline(req: any, res: any) {
             onlineSince: ""
           }));
 
-          await retryWithBackoff(() => pb.collection('screen_logs').create({
-            screenId: latestScreen.id,
-            screenName: latestScreen.name,
-            assignedToUserEmail: latestScreen.assignedToUserEmail || '',
-            event: 'Screen went offline',
-            type: 'offline',
-            detail: reason || 'App was closed by the user.',
-            totalUptime: updatedCumulativeUptime,
-            loopsPlayed: updatedCumulativeLoops
-          })).catch(err => console.error('Error logging screen offline:', err));
+          retryWithBackoff(async () => pb.collection('screen_logs').create(
+            await buildScreenLog(latestScreen, {
+              event: 'Screen went offline',
+              type: 'offline',
+              detail: reason || 'App was closed by the user.',
+              totalUptime: updatedCumulativeUptime,
+              loopsPlayed: updatedCumulativeLoops
+            })
+          )).catch(err => console.error('Error logging screen offline:', err));
           
           console.log(`Screen "${latestScreen.name}" (${latestScreen.id}) marked offline immediately. Reason: ${reason || 'App closed'}`);
         }
@@ -974,5 +999,93 @@ export async function clearAllScreenLogs(req: any, res: any) {
   } catch (error: any) {
     console.error('Error clearing screen logs:', error);
     res.status(500).json({ error: error.message || 'Error clearing logs' });
+  }
+}
+
+export async function disconnectScreen(req: any, res: any) {
+  try {
+    const { screenId, hardwareUuid } = req.body;
+    if (!screenId && !hardwareUuid) {
+      return res.status(400).json({ message: 'screenId or hardwareUuid is required.' });
+    }
+
+    let screenRecord = null;
+
+    if (screenId) {
+      screenRecord = await pb.collection('screens').getOne(screenId).catch(() => null);
+      if (!screenRecord) {
+        return res.status(404).json({ message: 'Screen not found.' });
+      }
+
+      const user = req.user;
+      if (user) {
+        const isSuperAdmin = user.role === 'super_admin' || user.role === 'admin';
+        if (screenRecord.assignedToUserEmail !== user.email && !isSuperAdmin) {
+          return res.status(403).json({ message: 'Unauthorized: You do not own this screen.' });
+        }
+      }
+    } else if (hardwareUuid) {
+      const list = await pb.collection('screens').getList(1, 1, {
+        filter: pb.filter('hardware_uuid = {:hardwareUuid}', { hardwareUuid })
+      });
+      if (list.items.length === 0) {
+        return res.status(404).json({ message: 'Screen device not found.' });
+      }
+      screenRecord = list.items[0];
+    }
+
+    if (!screenRecord) {
+      return res.status(404).json({ message: 'Screen record not found.' });
+    }
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let pairingCode = '';
+    for (let i = 0; i < 6; i++) {
+      pairingCode += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const pairingCodeExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+    const updatedScreen = await pb.collection('screens').update(screenRecord.id, {
+      status: 'pairing',
+      pairing_code: pairingCode,
+      pairing_code_expires: pairingCodeExpires,
+      assignedToUserEmail: '',
+      license_id: '',
+      groupId: null,
+      playlist: '',
+      playlistId: '',
+      onlineSince: ''
+    });
+
+    if (isRedisReady()) {
+      await redis.pipeline()
+        .zrem('presence:active_screens', screenRecord.id)
+        .del(`heartbeat:screen:${screenRecord.id}`)
+        .del(`presence:screen:${screenRecord.id}`)
+        .del(`cache:screen:${screenRecord.id}`)
+        .del(`cache:screen_uuid:${screenRecord.hardware_uuid || ''}`)
+        .exec();
+    }
+
+    // Use screenRecord (pre-disconnect) for group info, since groupId is cleared on disconnect
+    pb.collection('screen_logs').create(
+      await buildScreenLog(screenRecord, {
+        event: 'Screen disconnected',
+        type: 'offline',
+        detail: `Device disconnected/unpaired. Status reset to pairing.`,
+        totalUptime: updatedScreen.cumulativeUptime || 0,
+        loopsPlayed: updatedScreen.cumulativeLoops || 0
+      })
+    ).catch(err => console.error('Error logging unpairing:', err));
+
+    res.status(200).json({
+      message: 'Screen disconnected successfully.',
+      id: updatedScreen.id,
+      status: updatedScreen.status,
+      pairingCode: updatedScreen.pairing_code
+    });
+  } catch (error: any) {
+    console.error('Error disconnecting screen:', error);
+    res.status(500).json({ message: error.message || 'Error disconnecting screen' });
   }
 }
