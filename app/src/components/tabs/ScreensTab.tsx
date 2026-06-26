@@ -160,6 +160,12 @@ export function ScreensTab({
   };
 
   const handleEditScreenSave = () => {
+    const resolvedPlaylistName = screenGroup 
+      ? (groupsList.find(g => g.id === screenGroup)?.playlist || 'Normal') 
+      : (screenPlaylist || 'Normal');
+    const matchedPlaylist = playlistsList.find(p => p.name === resolvedPlaylistName);
+    const resolvedPlaylistId = resolvedPlaylistName === 'Normal' || resolvedPlaylistName === 'None' ? '' : (matchedPlaylist ? matchedPlaylist.id : '');
+
     const screenData = {
       name: screenName,
       location: [screenCity, screenState, screenCountry].filter(Boolean).join(', ') || 'Unknown Location',
@@ -171,7 +177,8 @@ export function ScreensTab({
       address: screenAddress,
       zip: screenZip,
       groupId: screenGroup || undefined,
-      playlist: screenGroup ? (groupsList.find(g => g.id === screenGroup)?.playlist || 'Normal') : (screenPlaylist || 'Normal'),
+      playlist: resolvedPlaylistName,
+      playlistId: resolvedPlaylistId,
     };
     
     setScreensList(prev => prev.map(s => s.id === editingScreenId ? { ...s, ...screenData } : s));
@@ -265,6 +272,10 @@ export function ScreensTab({
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         // Add the newly paired screen to local state so it appears immediately
+        const pairedPlaylistName = data.playlist || screenPlaylist || 'Normal';
+        const matchedPlaylist = playlistsList.find(p => p.name === pairedPlaylistName);
+        const pairedPlaylistId = pairedPlaylistName === 'Normal' || pairedPlaylistName === 'None' ? '' : (matchedPlaylist ? matchedPlaylist.id : '');
+
         const newScreen = {
           id: data.id || Date.now().toString(),
           name: data.name || screenName,
@@ -279,7 +290,8 @@ export function ScreensTab({
           address: screenAddress,
           zip: screenZip,
           groupId: screenGroup || undefined,
-          playlist: data.playlist || screenPlaylist || 'Normal',
+          playlist: pairedPlaylistName,
+          playlistId: data.playlistId || pairedPlaylistId,
           lastSeen: 'Just now',
           version: 'v2.4.1',
           thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800'
@@ -679,8 +691,10 @@ export function ScreensTab({
                                 <TouchableOpacity
                                   key={pName}
                                   onPress={() => {
+                                    const matchedPlaylist = playlistsList.find(p => p.name === pName);
+                                    const playlistIdVal = pName === 'Normal' || pName === 'None' ? '' : (matchedPlaylist ? matchedPlaylist.id : '');
                                     setGroupsList(prev => prev.map(item => item.id === g.id ? { ...item, playlist: pName } : item));
-                                    setScreensList(prev => prev.map(s => s.groupId === g.id ? { ...s, playlist: pName } : s));
+                                    setScreensList(prev => prev.map(s => s.groupId === g.id ? { ...s, playlist: pName, playlistId: playlistIdVal } : s));
                                     setGroupActionTab(null);
                                     Alert.alert('Success', `Playlist "${pName}" assigned to all screens in group!`);
                                   }}
@@ -1101,8 +1115,10 @@ export function ScreensTab({
                               key={pName}
                               onPress={() => {
                                 setDetailSelectedPlaylist(pName);
-                                setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, playlist: pName } : s));
-                                setSelectedScreen(prev => prev ? { ...prev, playlist: pName } : null);
+                                const matchedPlaylist = playlistsList.find(p => p.name === pName);
+                                const playlistIdVal = pName === 'Normal' || pName === 'None' ? '' : (matchedPlaylist ? matchedPlaylist.id : '');
+                                setScreensList(prev => prev.map(s => s.id === selectedScreen.id ? { ...s, playlist: pName, playlistId: playlistIdVal } : s));
+                                setSelectedScreen(prev => prev ? { ...prev, playlist: pName, playlistId: playlistIdVal } : null);
                               }}
                               style={{
                                 backgroundColor: detailSelectedPlaylist === pName ? '#7c3aed' : '#f8fafc',
@@ -1689,10 +1705,14 @@ export function ScreensTab({
                         <TouchableOpacity
                           onPress={() => {
                             const gp = groupsList.find(g => g.id === addScreensToGroupId);
+                            const inheritedPlaylistName = gp?.playlist || us.playlist;
+                            const matchedPlaylist = playlistsList.find(p => p.name === inheritedPlaylistName);
+                            const playlistIdVal = inheritedPlaylistName === 'Normal' || inheritedPlaylistName === 'None' ? '' : (matchedPlaylist ? matchedPlaylist.id : '');
                             const updatedScreen = {
                               ...us,
                               groupId: addScreensToGroupId,
-                              playlist: gp?.playlist || us.playlist,
+                              playlist: inheritedPlaylistName,
+                              playlistId: playlistIdVal,
                             };
                             setScreensList(prev => prev.map(s => s.id === us.id ? updatedScreen : s));
                             Alert.alert('Success', `"${us.name}" added to group!`);

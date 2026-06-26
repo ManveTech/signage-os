@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, TextInput, TouchableOpacity, Text, StyleSheet, Modal, Alert } from 'react-native';
+import { View, ScrollView, TextInput, TouchableOpacity, Text, StyleSheet, Modal, Alert, Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../../config';
 import { ThemedText } from '../themed-text';
@@ -164,45 +164,83 @@ export function PlaylistsTab({
       const file = result.assets[0];
       const { name, size, mimeType, uri } = file;
 
-      if (!size) {
+      // Extract filename safely
+      const resolvedName = name || uri.split('/').pop() || 'media_item';
+
+      // Resolve size safely across Web and Mobile
+      let resolvedSize = size;
+      if (!resolvedSize) {
+        if (Platform.OS === 'web' && (file as any).file) {
+          resolvedSize = (file as any).file.size;
+        } else if (Platform.OS !== 'web') {
+          const info = await FileSystem.getInfoAsync(uri);
+          if (info.exists) {
+            resolvedSize = info.size;
+          }
+        }
+      }
+
+      if (!resolvedSize) {
         Alert.alert('Error', 'Unable to resolve file size');
         return;
       }
 
-      const isVideo = mimeType?.startsWith('video/') || uri.toLowerCase().endsWith('.mp4') || uri.toLowerCase().endsWith('.mov') || uri.toLowerCase().endsWith('.webm');
+      const isVideo = mimeType?.startsWith('video/') || 
+                      ((file as any).file?.type?.startsWith('video/')) ||
+                      uri.toLowerCase().endsWith('.mp4') || 
+                      uri.toLowerCase().endsWith('.mov') || 
+                      uri.toLowerCase().endsWith('.webm');
+                      
       const limitBytes = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
       const limitMb = isVideo ? 50 : 5;
 
-      if (size > limitBytes) {
+      if (resolvedSize > limitBytes) {
         Alert.alert(
           'File Too Large',
-          `The selected file "${name}" is ${(size / (1024 * 1024)).toFixed(1)} MB. ${isVideo ? 'Video' : 'Image'} files must be under ${limitMb}MB.`
+          `The selected file "${resolvedName}" is ${(resolvedSize / (1024 * 1024)).toFixed(1)} MB. ${isVideo ? 'Video' : 'Image'} files must be under ${limitMb}MB.`
         );
         return;
       }
 
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64',
-      });
+      // Read file content as Base64 safely across Web and Mobile
+      let base64 = '';
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const resultStr = reader.result as string;
+            const base64Data = resultStr.split(',')[1];
+            resolve(base64Data);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: 'base64',
+        });
+      }
 
       const token = await AsyncStorage.getItem('signageos_token');
       const userEmail = await AsyncStorage.getItem('signageos_user_email') || 'priya@demo.com';
 
       const body = {
-        title: name.replace(/\.[^/.]+$/, ""),
+        title: resolvedName.replace(/\.[^/.]+$/, ""),
         type: isVideo ? 'video' : 'image',
         duration: isVideo ? 15 : 10,
         resolution: '1920x1080',
-        fileSize: `${(size / (1024 * 1024)).toFixed(1)} MB`,
-        fileSizeBytes: size,
+        fileSize: `${(resolvedSize / (1024 * 1024)).toFixed(1)} MB`,
+        fileSizeBytes: resolvedSize,
         uploadedBy: userEmail,
         expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         tags: ['uploaded', isVideo ? 'video' : 'image'],
         width: isVideo ? 1920 : 1080,
         height: isVideo ? 1080 : 1920,
-        mimeType: mimeType || (isVideo ? 'video/mp4' : 'image/jpeg'),
+        mimeType: mimeType || ((file as any).file?.type) || (isVideo ? 'video/mp4' : 'image/jpeg'),
         fileData: base64,
-        fileName: name
+        fileName: resolvedName
       };
 
       const res = await fetch(`${API_BASE}/media_items`, {
@@ -231,7 +269,7 @@ export function PlaylistsTab({
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        Alert.alert('Upload Failed', err.message || 'Failed to upload media to backend.');
+        Alert.alert('Upload Failed', err.error || err.message || 'Failed to upload media to backend.');
       }
     } catch (err: any) {
       Alert.alert('Error', `Upload error: ${err.message || err}`);
@@ -318,10 +356,15 @@ export function PlaylistsTab({
       return;
     }
 
+    const slideMediaIds = createdSlides.map(s => s.mediaId).filter(Boolean);
     const playlistData = {
       name: playlistName,
       description: playlistDescription || 'Signage Playlist Loop',
       loop: true,
+      active: true,
+      scheduleStatus: 'Running',
+      mediaIds: slideMediaIds,
+      mediaCount: slideMediaIds.length,
       slides: createdSlides.map(s => ({
         id: s.id,
         mediaId: s.mediaId,
