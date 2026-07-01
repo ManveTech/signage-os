@@ -416,7 +416,13 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-11 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                          <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
+                          {screen.thumbnail ? (
+                            <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                              <Monitor size={14} />
+                            </div>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900">{screen.name}</p>

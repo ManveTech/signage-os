@@ -198,7 +198,13 @@ export default function AssignScreens() {
                       className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer flex-shrink-0"
                     />
                     <div className="w-10 h-7 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                      <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
+                      {screen.thumbnail ? (
+                        <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                          <Monitor size={14} />
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{screen.name}</p>
@@ -322,7 +328,13 @@ export default function AssignScreens() {
               return (
                 <div key={a.screenId} className="flex items-center gap-3 px-4 py-3">
                   <div className="w-10 h-7 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                    <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
+                    {screen.thumbnail ? (
+                      <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                        <Monitor size={14} />
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{screen.name}</p>

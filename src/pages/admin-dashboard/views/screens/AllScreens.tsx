@@ -68,6 +68,15 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
     const data = localStorage.getItem('signageos_groups');
     return data ? JSON.parse(data) : [];
   });
+  const [organizations, setOrganizations] = useState<any[]>(() => {
+    const data = localStorage.getItem('signageos_organizations');
+    return data ? JSON.parse(data) : [];
+  });
+  const [licenses, setLicenses] = useState<any[]>(() => {
+    const data = localStorage.getItem('signageos_licenses');
+    return data ? JSON.parse(data) : [];
+  });
+  const [orgFilter, setOrgFilter] = useState<string>('all');
 
   useEffect(() => {
     syncCollection('screens', 'signageos_screens').then(serverScreens => {
@@ -81,7 +90,23 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
         setGroups(serverGroups);
       }
     });
+    syncCollection('organizations', 'signageos_organizations').then(serverOrgs => {
+      if (serverOrgs.length > 0) setOrganizations(serverOrgs);
+    });
+    syncCollection('licenses', 'signageos_licenses').then(serverLicenses => {
+      if (serverLicenses.length > 0) setLicenses(serverLicenses);
+    });
   }, []);
+
+  const getScreenOrgName = (screen: Screen) => {
+    const org = organizations.find(o => o.email === screen.assignedToUserEmail);
+    if (org) return org.name;
+    const lic = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
+    if (lic?.assignedOrgName) return lic.assignedOrgName;
+    if (screen.assignedToUserEmail === 'admin@demo.com') return 'Admin Org';
+    return screen.assignedToUserEmail || 'None';
+  };
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
@@ -110,7 +135,8 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || s.status === statusFilter;
     const matchGroup = groupFilter === 'all' ? true : (groupFilter === 'none' ? !s.groupId : s.groupId === groupFilter);
-    return matchSearch && matchStatus && matchGroup;
+    const matchOrg = orgFilter === 'all' || getScreenOrgName(s) === orgFilter;
+    return matchSearch && matchStatus && matchGroup && matchOrg;
   });
 
   const addToast = (message: string, type: Toast['type'] = 'success') => {
@@ -266,6 +292,19 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>
+          <select
+            value={orgFilter}
+            onChange={e => setOrgFilter(e.target.value)}
+            className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
+          >
+            <option value="all">All Organizations</option>
+            {Array.from(new Set(organizations.map(o => o.name)))
+              .filter(name => name && name !== 'x')
+              .map(orgName => (
+                <option key={orgName} value={orgName}>{orgName}</option>
+              ))
+            }
+          </select>
           {(['all', 'online', 'offline', 'warning'] as const).map(f => (
             <button key={f} onClick={() => setStatusFilter(f)} className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors capitalize ${
               statusFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
@@ -310,7 +349,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Playlist</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Location</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">License</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Heartbeat</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Organization</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
@@ -332,11 +371,19 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                          <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
+                          {screen.thumbnail ? (
+                            <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                              <Monitor size={16} />
+                            </div>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900">{screen.name}</p>
-                          <p className="text-xs text-gray-400">v{screen.playerVersion}</p>
+                          {screen.playerVersion && (
+                            <p className="text-xs text-gray-400">v{screen.playerVersion}</p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -372,11 +419,8 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                         screen.licenseType === 'Pro' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
                       }`}>{screen.licenseType}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                        <Clock size={11} />
-                        {screen.lastHeartbeat}
-                      </div>
+                    <td className="px-4 py-3 text-sm text-gray-600 max-w-[160px] truncate">
+                      {getScreenOrgName(screen)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1 transition-opacity">

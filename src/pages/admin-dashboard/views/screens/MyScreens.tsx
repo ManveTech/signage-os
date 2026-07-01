@@ -125,6 +125,11 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
   );
   const [licenses, setLicenses] = useState(() => licensingStore.getLicenses());
   const [mediaList, setMediaList] = useState(() => mediaStore.getMedia());
+  const [organizations, setOrganizations] = useState<any[]>(() => {
+    const data = localStorage.getItem('signageos_organizations');
+    return data ? JSON.parse(data) : [];
+  });
+  const [orgFilter, setOrgFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
   const [editScreen, setEditScreen] = useState<Screen | null>(null);
@@ -175,12 +180,25 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     syncCollection('media_items', 'signageos_media').then(serverMedia => {
       if (serverMedia.length > 0) setMediaList(serverMedia);
     });
+    syncCollection('organizations', 'signageos_organizations').then(serverOrgs => {
+      if (serverOrgs.length > 0) setOrganizations(serverOrgs);
+    });
   }, [userEmail]);
+
+  const getScreenOrgName = (screen: Screen) => {
+    const org = organizations.find(o => o.email === screen.assignedToUserEmail);
+    if (org) return org.name;
+    const lic = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
+    if (lic?.assignedOrgName) return lic.assignedOrgName;
+    if (screen.assignedToUserEmail === 'admin@demo.com') return 'Admin Org';
+    return screen.assignedToUserEmail || 'None';
+  };
 
   const filtered = screens.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || s.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchOrg = orgFilter === 'all' || getScreenOrgName(s) === orgFilter;
+    return matchSearch && matchStatus && matchOrg;
   });
 
   const getScreenStorageInfo = (screen: Screen) => {
@@ -522,6 +540,19 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
           />
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={orgFilter}
+            onChange={e => setOrgFilter(e.target.value)}
+            className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
+          >
+            <option value="all">All Organizations</option>
+            {Array.from(new Set(organizations.map(o => o.name)))
+              .filter(name => name && name !== 'x')
+              .map(orgName => (
+                <option key={orgName} value={orgName}>{orgName}</option>
+              ))
+            }
+          </select>
           {(['all', 'online', 'offline', 'warning'] as const).map(f => (
             <button
               key={f}
@@ -812,15 +843,14 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                     </button>
                   </div>
 
-                  {/* Footer Stats: Heartbeat & Version */}
+                  {/* Footer Stats: Organization & Version */}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] font-semibold text-slate-400">
-                    <div className="flex items-center gap-1">
-                      <Clock size={10} />
-                      <span>Seen {screen.lastHeartbeat}</span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-[9px]">
-                      v{screen.playerVersion}
-                    </span>
+                    <span className="truncate max-w-[140px]">{getScreenOrgName(screen)}</span>
+                    {screen.playerVersion && (
+                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-[9px]">
+                        v{screen.playerVersion}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -841,7 +871,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Location</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Playlist</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Heartbeat</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Organization</th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
                 </tr>
               </thead>
@@ -862,11 +892,19 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-12 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                            <img src={screen.thumbnail || null} alt={screen.name} className="w-full h-full object-cover" />
+                            {screen.thumbnail ? (
+                              <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                                <Monitor size={16} />
+                              </div>
+                            )}
                           </div>
                           <div>
                             <p className="text-sm font-medium text-gray-900">{screen.name}</p>
-                            <p className="text-xs text-gray-400">v{screen.playerVersion}</p>
+                            {screen.playerVersion && (
+                              <p className="text-xs text-gray-400">v{screen.playerVersion}</p>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -896,10 +934,8 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                            </div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Clock size={11} />{screen.lastHeartbeat}
-                        </div>
+                      <td className="px-4 py-3 text-sm text-gray-600 max-w-[160px] truncate">
+                        {getScreenOrgName(screen)}
                       </td>
 
                       <td className="px-4 py-3">
