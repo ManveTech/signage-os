@@ -210,13 +210,6 @@ export default function Organizations() {
                     <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider border ${statusColors[org.subscriptionStatus]}`}>
                       {org.subscriptionStatus}
                     </span>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleDeleteOrg(org.id, org.name); }}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-gray-150 rounded-lg transition-colors cursor-pointer"
-                      title="Delete Organization"
-                    >
-                      <X size={15} />
-                    </button>
                     <ChevronRight size={16} className={`text-slate-400 transition-transform ${isActive ? 'rotate-90 text-blue-600' : ''}`} />
                   </div>
                 </div>

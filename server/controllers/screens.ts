@@ -173,41 +173,51 @@ export async function pairScreen(req: any, res: any) {
     }
 
     const clientEmail = req.user?.email || assignedToUserEmail || 'priya@demo.com';
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
 
-    // 1. Verify user's license and slot limits
-    const licensesResult = await pb.collection('licenses').getList(1, 100, {
-      filter: pb.filter('assignedUserEmail = {:clientEmail} && status = "active"', { clientEmail })
-    });
-
-    if (licensesResult.items.length === 0) {
-      return res.status(400).json({ message: 'No active license found for this user.' });
-    }
-
-    // Count currently active/paired screens for this user (status != 'pairing')
-    const activeScreens = await pb.collection('screens').getList(1, 500, {
-      filter: pb.filter('assignedToUserEmail = {:clientEmail} && status != "pairing"', { clientEmail })
-    });
-
-    const totalAllowed = licensesResult.items.reduce((sum, lic) => sum + (lic.deviceLimit || 0), 0);
-    if (activeScreens.items.length >= totalAllowed) {
-      return res.status(400).json({
-        message: `Device limit reached. Your active license(s) only support up to ${totalAllowed} screen(s).`
-      });
-    }
-
-    // Dynamically select a license that has available slots
     let license = null;
-    for (const lic of licensesResult.items) {
-      const assignedCount = activeScreens.items.filter(s => s.license_id === lic.id).length;
-      if (assignedCount < lic.deviceLimit) {
-        license = lic;
-        break;
-      }
-    }
 
-    // Fallback to the first active license if mapping check is bypassed
-    if (!license) {
-      license = licensesResult.items[0];
+    if (!isAdmin) {
+      // 1. Verify user's license and slot limits
+      const licensesResult = await pb.collection('licenses').getList(1, 100, {
+        filter: pb.filter('assignedUserEmail = {:clientEmail} && status = "active"', { clientEmail })
+      });
+
+      if (licensesResult.items.length === 0) {
+        return res.status(400).json({ message: 'No active license found for this user.' });
+      }
+
+      // Count currently active/paired screens for this user (status != 'pairing')
+      const activeScreens = await pb.collection('screens').getList(1, 500, {
+        filter: pb.filter('assignedToUserEmail = {:clientEmail} && status != "pairing"', { clientEmail })
+      });
+
+      const totalAllowed = licensesResult.items.reduce((sum, lic) => sum + (lic.deviceLimit || 0), 0);
+      if (activeScreens.items.length >= totalAllowed) {
+        return res.status(400).json({
+          message: `Device limit reached. Your active license(s) only support up to ${totalAllowed} screen(s).`
+        });
+      }
+
+      // Dynamically select a license that has available slots
+      for (const lic of licensesResult.items) {
+        const assignedCount = activeScreens.items.filter(s => s.license_id === lic.id).length;
+        if (assignedCount < lic.deviceLimit) {
+          license = lic;
+          break;
+        }
+      }
+
+      // Fallback to the first active license if mapping check is bypassed
+      if (!license) {
+        license = licensesResult.items[0];
+      }
+    } else {
+      // Mock an unlimited system license for admin users
+      license = {
+        id: 'system_admin_bypass',
+        whiteLabel: true
+      };
     }
 
     // 2. Locate screen record by pairing code

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Film, Image, Layout, Youtube, AlignLeft, Trash2, Trash, CheckCircle, Filter, HardDrive, User, Mail, ShieldAlert, Building2, Play, X } from 'lucide-react';
 import { mediaStore, MediaItem } from '../../../lib/mediaStore';
 import { licensingStore, License } from '../../../lib/licensingStore';
+import { syncCollection } from '../../../lib/syncHelper';
 
 const typeIcons: Record<string, React.ReactNode> = {
   video: <Film size={13} />,
@@ -45,7 +46,12 @@ export default function ClientMedia() {
   };
 
   useEffect(() => {
-    loadData();
+    Promise.all([
+      syncCollection('licenses', 'signageos_licenses'),
+      syncCollection('media_items', 'signageos_media')
+    ]).finally(() => {
+      loadData();
+    });
   }, []);
 
   const loadData = () => {

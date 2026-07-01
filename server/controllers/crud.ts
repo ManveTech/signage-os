@@ -68,9 +68,10 @@ export function createCrudRouter(collectionName: string) {
       // Security: Extract and enforce user tenancy
       const userRole = req.user?.role;
       const userEmail = req.user?.email;
+      const isAdmin = userRole === 'admin' || userRole === 'super_admin';
       let targetEmail = req.headers['x-assigned-to-user-email'] || req.query.assignedToUserEmail;
 
-      if (userRole !== 'admin') {
+      if (!isAdmin) {
         targetEmail = userEmail; // Enforce logged-in user's tenancy
       }
 
@@ -82,7 +83,7 @@ export function createCrudRouter(collectionName: string) {
           filters.push(`createdBy = {:createdBy}`);
           filterParams['createdBy'] = String(targetEmail);
         }
-      } else if (userRole !== 'admin') {
+      } else if (!isAdmin) {
         if (collectionName === 'screens' || collectionName === 'screen_logs') {
           filters.push(`assignedToUserEmail = {:assignedToUserEmail}`);
           filterParams['assignedToUserEmail'] = String(userEmail);
@@ -128,8 +129,9 @@ export function createCrudRouter(collectionName: string) {
     try {
       const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
       
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
       // Enforce security tenancy
-      if (req.user?.role !== 'admin') {
+      if (!isAdmin) {
         const ownerEmail = record.assignedToUserEmail || record.createdBy;
         if (ownerEmail && ownerEmail !== req.user?.email) {
           return res.status(403).json({ error: 'Access denied' });
@@ -182,8 +184,9 @@ export function createCrudRouter(collectionName: string) {
         }
       }
 
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
       // Enforce security tenancy on creation
-      if (req.user?.role !== 'admin') {
+      if (!isAdmin) {
         if (collectionName === 'screens') {
           body.assignedToUserEmail = req.user?.email;
         } else if (collectionName === 'playlists' || collectionName === 'screen_groups') {
@@ -212,8 +215,9 @@ export function createCrudRouter(collectionName: string) {
   // Shared handler for PUT and PATCH (both perform a full or partial update)
   async function handleUpdate(req: any, res: any) {
     try {
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
       // Enforce security tenancy
-      if (req.user?.role !== 'admin') {
+      if (!isAdmin) {
         const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
         const ownerEmail = record.assignedToUserEmail || record.createdBy;
         if (ownerEmail && ownerEmail !== req.user?.email) {
@@ -255,8 +259,9 @@ export function createCrudRouter(collectionName: string) {
   // DELETE
   router.delete('/:id', async (req: any, res: any) => {
     try {
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
       // Enforce security tenancy
-      if (req.user?.role !== 'admin') {
+      if (!isAdmin) {
         const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
         const ownerEmail = record.assignedToUserEmail || record.createdBy;
         if (ownerEmail && ownerEmail !== req.user?.email) {

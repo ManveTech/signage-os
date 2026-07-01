@@ -299,7 +299,11 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           <p className="text-xs text-slate-500 font-semibold mt-1">Manage billing schedules, Razorpay invoices, and client access limits</p>
         </div>
         <button 
-          onClick={() => setIsCreateModalOpen(true)}
+          onClick={() => {
+            const randomDigits = Math.floor(1000 + Math.random() * 9000);
+            setNewLicId(`LN-BLST-${randomDigits}`);
+            setIsCreateModalOpen(true);
+          }}
           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 shadow-md shadow-blue-600/10 cursor-pointer"
         >
           <Plus size={15} /> Create New License

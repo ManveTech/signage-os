@@ -70,8 +70,7 @@ export async function createOrder(req: any, res: any) {
       console.log('Using default amount for Order creation');
     }
 
-    // For testing: force totalAmount to 1 INR (100 paise)
-    const totalAmount = 1;
+    const totalAmount = amount;
     const rzp = getRazorpayInstance();
 
     if (rzp) {

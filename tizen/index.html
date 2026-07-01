@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SignageOS Player</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div id="splash-screen" class="screen active">
+        <div class="splash-content">
+            <img id="splash-logo" src="https://images.unsplash.com/photo-1542751371-adc38448a05e?w=200&auto=format&fit=crop&q=60" alt="Logo" class="splash-logo">
+            <h1 id="splash-name">SignageOS</h1>
+            <div class="spinner"></div>
+            <p id="splash-status">Initializing system...</p>
+        </div>
+    </div>
+
+    <!-- Pairing Screen -->
+    <div id="pairing-screen" class="screen">
+        <div class="pairing-content">
+            <div class="card">
+                <img id="pairing-logo" class="card-logo" src="https://images.unsplash.com/photo-1542751371-adc38448a05e?w=200&auto=format&fit=crop&q=60" alt="Logo">
+                <h2>Connect Your Display</h2>
+                <p>Enter this 6-character code in your SignageOS Admin Dashboard to link this TV screen.</p>
+                <div id="pairing-code" class="code-display">------</div>
+                <button id="refresh-code-btn" class="btn">Get New Code</button>
+                <p class="small-text">Status: <span id="pairing-status-message">Awaiting pairing from dashboard...</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Standby / Idle Screen -->
+    <div id="standby-screen" class="screen">
+        <div class="standby-content">
+            <div class="card">
+                <img id="standby-logo" class="card-logo" src="https://images.unsplash.com/photo-1542751371-adc38448a05e?w=200&auto=format&fit=crop&q=60" alt="Logo">
+                <h2 id="standby-title">Standby Mode</h2>
+                <p id="standby-desc">No playlist assigned to this screen. Please assign a playlist from the SignageOS Dashboard.</p>
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suspended Screen -->
+    <div id="suspended-screen" class="screen">
+        <div class="suspended-content">
+            <div class="card error">
+                <h2>Device Suspended</h2>
+                <p>This player has been suspended by the administrator or has license billing issues.</p>
+                <p>Contact support or reactivate your license key.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Playback Screen -->
+    <div id="playback-screen" class="screen">
+        <!-- Media Players -->
+        <div id="media-container" class="fullscreen-container">
+            <img id="image-player" class="media-element" style="display: none;" src="" alt="Signage Content">
+            <video id="video-player" class="media-element" style="display: none;" preload="auto" muted></video>
+        </div>
+
+        <!-- Dynamic Overlay Widgets -->
+        <div id="widgets-overlay" class="widgets-overlay-container">
+            <!-- QR Code Widget -->
+            <div id="widget-qrcode" class="widget-item hidden">
+                <img id="qrcode-img" src="" alt="QR Code Link">
+            </div>
+
+            <!-- Weather Widget -->
+            <div id="widget-weather" class="widget-item card hud hidden">
+                <div class="weather-title">Weather</div>
+                <div class="weather-details">
+                    <span class="temp">24°C</span>
+                    <span class="cond">Partly Cloudy</span>
+                </div>
+                <div class="location-name">Bengaluru</div>
+            </div>
+
+            <!-- Clock Widget -->
+            <div id="widget-clock" class="widget-item card hud hidden">
+                <div id="clock-title" class="clock-title">Time</div>
+                <div id="clock-time" class="clock-time">00:00:00</div>
+            </div>
+
+            <!-- RSS Ticker Widget -->
+            <div id="widget-rss" class="rss-ticker-container hidden">
+                <div class="rss-label">NEWS Ticker</div>
+                <div class="rss-scroll-wrapper">
+                    <div id="rss-text" class="rss-scroll-text">Loading updates...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+</body>
+</html>
