@@ -36,7 +36,7 @@ function renderView(view: string, navigate: (v: string) => void) {
     // My Channel
     case 'my-media': return <MediaLibrary onNavigate={navigate} userEmail="admin@demo.com" />;
     case 'my-playlists': return <AllPlaylists onNavigate={navigate} userEmail="admin@demo.com" />;
-    case 'my-create-playlist': return <CreatePlaylist userEmail="admin@demo.com" onNavigate={navigate} />;
+    case 'my-create-playlist': return <CreatePlaylist userEmail="admin@demo.com" onNavigate={navigate} isMyChannel={true} />;
     
     // Client Oversight
     case 'client-media': return <ClientMedia />;

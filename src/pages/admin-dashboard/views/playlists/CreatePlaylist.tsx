@@ -21,11 +21,13 @@ type PlaylistItem = {
 interface Props {
   userEmail: string;
   onNavigate?: (view: string) => void;
+  isMyChannel?: boolean;
 }
 
-export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigate }: Props) {
+export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigate, isMyChannel }: Props) {
   // Target Client User Email for playlist creation
   const [targetUserEmail, setTargetUserEmail] = useState<string>(() => {
+    if (isMyChannel) return 'admin@demo.com';
     const forClient = localStorage.getItem('signageos_create_playlist_for_client');
     if (forClient) {
       if (forClient === 'new') {
@@ -614,7 +616,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       </div>
 
       {/* Target Client Organization Selector (Only for Admin) */}
-      {userEmail === 'admin@demo.com' && (
+      {userEmail === 'admin@demo.com' && !isMyChannel && (
         <div className="bg-blue-50/50 rounded-2xl border border-blue-100 p-4 shadow-xs flex flex-col sm:flex-row gap-4 items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
@@ -735,7 +737,11 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 </button>
 
                 <div className="w-full aspect-video rounded-lg overflow-hidden bg-gray-200 border border-slate-100 relative">
-                  <img src={asset.thumbnail} alt={asset.title} className="w-full h-full object-cover" />
+                  {asset.type === 'video' || asset.thumbnail?.toLowerCase().includes('.mp4') || asset.thumbnail?.toLowerCase().includes('.webm') || asset.thumbnail?.toLowerCase().includes('.mov') || asset.thumbnail?.toLowerCase().includes('video/') ? (
+                    <video src={asset.thumbnail || asset.fileUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                  ) : (
+                    <img src={asset.thumbnail} alt={asset.title} className="w-full h-full object-cover" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold text-slate-800 truncate" title={asset.title}>{asset.title}</p>

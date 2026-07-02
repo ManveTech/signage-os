@@ -660,7 +660,11 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 </button>
 
                 <div className="w-full aspect-video rounded-lg overflow-hidden bg-gray-200 border border-slate-100 relative">
-                  <img src={asset.thumbnail} alt={asset.title} className="w-full h-full object-cover" />
+                  {asset.type === 'video' || asset.thumbnail?.toLowerCase().includes('.mp4') || asset.thumbnail?.toLowerCase().includes('.webm') || asset.thumbnail?.toLowerCase().includes('.mov') || asset.thumbnail?.toLowerCase().includes('video/') ? (
+                    <video src={asset.thumbnail || asset.fileUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                  ) : (
+                    <img src={asset.thumbnail} alt={asset.title} className="w-full h-full object-cover" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold text-slate-800 truncate" title={asset.title}>{asset.title}</p>
