@@ -136,7 +136,7 @@ export default function MediaLibrary({ userEmail }: Props) {
             }
 
             if (fileType === 'image') {
-              const img = new Image();
+              const img = new window.Image();
               img.onload = async () => {
                 const width = img.naturalWidth;
                 const height = img.naturalHeight;
