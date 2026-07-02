@@ -84,7 +84,7 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
     ? groups.filter(g => !g.orgId)
     : (selectedOrgFilter
         ? groups.filter(g => g.orgId === selectedOrgFilter)
-        : groups
+        : groups.filter(g => !!g.orgId)
       );
 
   const getScreenOrgId = (screen: Screen) => {
@@ -541,7 +541,15 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
       {/* Add Screens Modal */}
       {addScreensTo && (() => {
         const group = groups.find(g => g.id === addScreensTo)!;
-        const available = ungroupedScreens;
+        const available = screens.filter(s => {
+          if (s.groupId) return false;
+          const sOrgId = getScreenOrgId(s);
+          if (!group.orgId) {
+            return s.assignedToUserEmail === 'admin@demo.com';
+          } else {
+            return sOrgId === group.orgId;
+          }
+        });
         return (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAddScreensTo(null)}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
@@ -758,48 +766,7 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
-                  <span>Screen Volume (Bulk)</span>
-                  <span className="font-semibold text-blue-600">{(newGroup.volume !== undefined ? newGroup.volume : 80)}%</span>
-                </label>
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="100" 
-                    value={newGroup.volume !== undefined ? newGroup.volume : 80} 
-                    onChange={e => setNewGroup(p => ({ ...p, volume: parseInt(e.target.value) }))} 
-                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                  />
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
-                <div className="flex-1">
-                  <label className="block text-xs font-semibold text-gray-800">Clear Cache (Bulk)</label>
-                  <span className="text-[10px] text-gray-400">Purge cached media files on all group screens on save</span>
-                </div>
-                <input 
-                  type="checkbox"
-                  checked={!!newGroup.clear_cache}
-                  onChange={e => setNewGroup(p => ({ ...p, clear_cache: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
-                <div className="flex-1">
-                  <label className="block text-xs font-semibold text-gray-800">Force Sync (Bulk)</label>
-                  <span className="text-[10px] text-gray-400">Force immediate content check on all group screens on save</span>
-                </div>
-                <input 
-                  type="checkbox"
-                  checked={!!newGroup.force_sync}
-                  onChange={e => setNewGroup(p => ({ ...p, force_sync: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
-                />
-              </div>
               {mode !== 'my' && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Organization</label>
