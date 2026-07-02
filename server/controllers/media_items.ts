@@ -70,8 +70,8 @@ export async function uploadMediaItem(req: any, res: any) {
       formData.append('mimeType', mimeType);
       formData.append('checksum', checksum);
 
-      const fileBlob = new Blob([fileBuffer], { type: mimeType });
-      formData.append('file', fileBlob, fileName);
+      const fileBlob = new File([fileBuffer], fileName, { type: mimeType });
+      formData.append('file', fileBlob);
 
       const record = await pb.collection('media_items').create(formData);
       fileUrl = `${pb.baseUrl}/api/files/media_items/${record.id}/${record.file}`;

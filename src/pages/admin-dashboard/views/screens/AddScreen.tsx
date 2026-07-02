@@ -438,7 +438,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
                 >
                   <option value="">None (Ungrouped)</option>
                   {groups
-                    .filter(g => mode === 'my' ? (!g.orgId) : (!form.organization || g.orgId === form.organization))
+                    .filter(g => mode === 'my' ? (!g.orgId) : (!!g.orgId && (!form.organization || g.orgId === form.organization)))
                     .map(g => (
                       <option key={g.id} value={g.id}>{g.name}</option>
                     ))}

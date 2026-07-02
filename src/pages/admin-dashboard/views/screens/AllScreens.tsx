@@ -533,9 +533,25 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
                 >
                   <option value="">None (Ungrouped)</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
+                  {(() => {
+                    const screenOrgId = (() => {
+                      const org = organizations.find(o => o.email === editScreen.assignedToUserEmail);
+                      if (org) return org.id;
+                      const lic = licenses.find(l => l.assignedUserEmail === editScreen.assignedToUserEmail);
+                      if (lic?.assignedOrgId) return lic.assignedOrgId;
+                      return '';
+                    })();
+                    const filteredGroups = groups.filter(g => {
+                      if (editScreen.assignedToUserEmail === 'admin@demo.com') {
+                        return !g.orgId;
+                      } else {
+                        return g.orgId === screenOrgId;
+                      }
+                    });
+                    return filteredGroups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ));
+                  })()}
                 </select>
               </div>
               {!editScreen.groupId && (
