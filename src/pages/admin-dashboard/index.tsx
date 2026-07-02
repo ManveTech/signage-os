@@ -20,6 +20,7 @@ import Reports from './views/Reports';
 import Users from './views/Users';
 import Licenses from './views/Licenses';
 import Organizations from './views/Organizations';
+import LicenseDecoder from './views/LicenseDecoder';
 import Settings from './views/Settings';
 import Support from './views/Support';
 import Profile from './views/Profile';
@@ -67,6 +68,7 @@ function renderView(view: string, navigate: (v: string) => void) {
     case 'licenses-payments': return <Licenses activeTab="payments" onNavigate={navigate} />;
     case 'licenses-expirations': return <Licenses activeTab="expirations" onNavigate={navigate} />;
     case 'licenses-invoices': return <Licenses activeTab="invoices" onNavigate={navigate} />;
+    case 'licenses-code': return <LicenseDecoder />;
     case 'organizations': return <Organizations />;
     case 'settings-general': return <Settings activeTab="General" />;
     case 'settings-storage': return <Settings activeTab="Storage" />;

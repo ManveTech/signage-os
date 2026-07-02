@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
+import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen, ScreenGroup } from '../../types';
 
@@ -86,12 +87,21 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
         : groups
       );
 
+  const getScreenOrgId = (screen: Screen) => {
+    const org = organizations.find(o => o.email === screen.assignedToUserEmail);
+    if (org) return org.id;
+    const lics = licensingStore.getLicenses();
+    const lic = lics.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
+    if (lic?.assignedOrgId) return lic.assignedOrgId;
+    return '';
+  };
+
   const myScreens = mode === 'my'
     ? screens.filter(s => s.assignedToUserEmail === 'admin@demo.com')
     : screens;
 
   const screensInGroup = (groupId: string) => myScreens.filter(s => s.groupId === groupId);
-  const ungroupedScreens = myScreens.filter(s => !s.groupId);
+  const ungroupedScreens = myScreens.filter(s => !s.groupId && (!selectedOrgFilter || getScreenOrgId(s) === selectedOrgFilter));
 
   const [editGroup, setEditGroup] = useState<ScreenGroup | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<ScreenGroup | null>(null);

@@ -111,3 +111,31 @@
   animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Instant Tooltips */
+.tooltip-trigger {
+  position: relative;
+}
+.tooltip-trigger::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(15, 23, 42, 0.95);
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease, transform 0.1s ease;
+  z-index: 50;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+.tooltip-trigger:hover::after {
+  opacity: 1;
+  transform: translate(-50%, -2px);
+}
+

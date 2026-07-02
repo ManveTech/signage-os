@@ -127,7 +127,6 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
     const data = localStorage.getItem('signageos_organizations');
     return data ? JSON.parse(data) : [];
   });
-  const [orgFilter, setOrgFilter] = useState<string>('all');
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
@@ -196,9 +195,8 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
   const filtered = screens.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || s.status === statusFilter;
-    const matchOrg = orgFilter === 'all' || getScreenOrgName(s) === orgFilter;
     const matchGroup = groupFilter === 'all' ? true : (groupFilter === 'none' ? !s.groupId : s.groupId === groupFilter);
-    return matchSearch && matchStatus && matchOrg && matchGroup;
+    return matchSearch && matchStatus && matchGroup;
   });
 
   const getScreenStorageInfo = (screen: Screen) => {
@@ -535,19 +533,6 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select
-            value={orgFilter}
-            onChange={e => setOrgFilter(e.target.value)}
-            className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
-          >
-            <option value="all">All Organizations</option>
-            {Array.from(new Set(organizations.map(o => o.name)))
-              .filter(name => name && name !== 'x')
-              .map(orgName => (
-                <option key={orgName} value={orgName}>{orgName}</option>
-              ))
-            }
-          </select>
-          <select
             value={groupFilter}
             onChange={e => setGroupFilter(e.target.value)}
             className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
@@ -664,10 +649,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                           </span>
                         )}
                       </div>
-                      <div className="relative z-20 bg-slate-950/90 border-t border-white/5 py-1.5 px-2 flex justify-between items-center text-[8px] text-white/50">
-                        <span className="font-semibold tracking-wider font-mono text-[7px] uppercase bg-white/10 px-1 rounded-xs">
-                          {screen.licenseType || 'PRO'}
-                        </span>
+                      <div className="relative z-20 bg-slate-950/90 border-t border-white/5 py-1.5 px-2 flex justify-end items-center text-[8px] text-white/50">
                         <div className="flex items-center gap-1">
                           <span className="text-[7px] uppercase font-mono text-white/40">{screen.status}</span>
                           <span className={`h-1.5 w-1.5 rounded-full shadow-xs ${

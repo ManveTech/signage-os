@@ -65,7 +65,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
   const myOrgId = myLicense?.assignedOrgId;
 
   const filteredGroups = myOrgId
-    ? groups.filter(g => g.orgId === myOrgId)
+    ? groups.filter(g => g.orgId === myOrgId || !g.orgId)
     : groups;
 
   const myScreens = screens.filter(s => s.assignedToUserEmail === userEmail);

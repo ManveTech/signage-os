@@ -129,7 +129,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const data = localStorage.getItem('signageos_organizations');
     return data ? JSON.parse(data) : [];
   });
-  const [orgFilter, setOrgFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
   const [editScreen, setEditScreen] = useState<Screen | null>(null);
@@ -197,8 +196,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
   const filtered = screens.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || s.status === statusFilter;
-    const matchOrg = orgFilter === 'all' || getScreenOrgName(s) === orgFilter;
-    return matchSearch && matchStatus && matchOrg;
+    return matchSearch && matchStatus;
   });
 
   const getScreenStorageInfo = (screen: Screen) => {
@@ -540,19 +538,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
           />
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={orgFilter}
-            onChange={e => setOrgFilter(e.target.value)}
-            className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
-          >
-            <option value="all">All Organizations</option>
-            {Array.from(new Set(organizations.map(o => o.name)))
-              .filter(name => name && name !== 'x')
-              .map(orgName => (
-                <option key={orgName} value={orgName}>{orgName}</option>
-              ))
-            }
-          </select>
           {(['all', 'online', 'offline', 'warning'] as const).map(f => (
             <button
               key={f}
@@ -652,10 +637,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                           </span>
                         )}
                       </div>
-                      <div className="relative z-20 bg-slate-950/90 border-t border-white/5 py-1.5 px-2 flex justify-between items-center text-[8px] text-white/50">
-                        <span className="font-semibold tracking-wider font-mono text-[7px] uppercase bg-white/10 px-1 rounded-xs">
-                          {screen.licenseType || 'PRO'}
-                        </span>
+                      <div className="relative z-20 bg-slate-950/90 border-t border-white/5 py-1.5 px-2 flex justify-end items-center text-[8px] text-white/50">
                         <div className="flex items-center gap-1">
                           <span className="text-[7px] uppercase font-mono text-white/40">{screen.status}</span>
                           <span className={`h-1.5 w-1.5 rounded-full shadow-xs ${
@@ -754,22 +736,22 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                   <div className="flex flex-wrap items-center gap-1 pt-2 border-t border-slate-100">
                     <button
                       onClick={() => setEditScreen({ ...screen })}
-                      className="p-1 text-blue-600 bg-blue-550/10 hover:bg-blue-550/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer"
-                      title="Edit Screen"
+                      className="p-1 text-blue-600 bg-blue-550/10 hover:bg-blue-550/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                      data-tooltip="Edit Screen"
                     >
                       <Edit size={13} />
                     </button>
                     <button
                       onClick={() => handleSync(screen)}
-                      className="p-1 text-yellow-600 bg-yellow-50 hover:bg-yellow-100 border border-yellow-100 rounded-lg transition-colors cursor-pointer"
-                      title="Sync Device"
+                      className="p-1 text-yellow-600 bg-yellow-50 hover:bg-yellow-100 border border-yellow-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                      data-tooltip="Sync Device"
                     >
                       <RefreshCw size={13} />
                     </button>
                     <button
                       onClick={() => setReconnectScreen(screen)}
-                      className="p-1 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-lg transition-colors cursor-pointer"
-                      title="Reconnect Screen"
+                      className="p-1 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                      data-tooltip="Reconnect Screen"
                     >
                       <Link size={13} />
                     </button>
@@ -780,8 +762,8 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                         setAssignHighlight(0);
                         setTimeout(() => assignInputRef.current?.focus(), 50);
                       }}
-                      className="p-1 text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-lg transition-colors cursor-pointer"
-                      title="Assign Playlist"
+                      className="p-1 text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                      data-tooltip="Assign Playlist"
                     >
                       <ListVideo size={13} />
                     </button>
@@ -794,50 +776,50 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                           scheduleTime: screen.scheduleTime || '12:00'
                         });
                       }}
-                      className="p-1 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg transition-colors cursor-pointer"
-                      title="Schedule Playlist"
+                      className="p-1 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                      data-tooltip="Schedule Playlist"
                     >
                       <Calendar size={13} />
                     </button>
                     <button
                       onClick={() => handleStopPlayback(screen)}
-                      className={`p-1 rounded-lg transition-colors cursor-pointer border ${
+                      className={`p-1 rounded-lg transition-colors cursor-pointer border tooltip-trigger ${
                         screen.groupId
                           ? 'text-gray-400 bg-gray-50 border-gray-100 cursor-not-allowed opacity-50'
                           : 'text-orange-600 bg-orange-50 hover:bg-orange-100 border-orange-100'
                       }`}
-                      title="Stop Playback"
+                      data-tooltip="Stop Playback"
                       disabled={!!screen.groupId}
                     >
                       <Pause size={13} />
                     </button>
                     <button
                       onClick={() => handleClearCache(screen)}
-                      className="p-1 text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-lg transition-colors cursor-pointer"
-                      title="Clear Cache"
+                      className="p-1 text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                      data-tooltip="Clear Cache"
                     >
                       <Eraser size={13} />
                     </button>
                     {screen.groupId && (
                       <button
                         onClick={() => handleRemoveScreenFromGroup(screen)}
-                        className="p-1 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-100 rounded-lg transition-colors cursor-pointer"
-                        title="Remove from group"
+                        className="p-1 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                        data-tooltip="Remove from group"
                       >
                         <FolderMinus size={13} />
                       </button>
                     )}
                     <button
                       onClick={() => handleDisconnectDevice(screen)}
-                      className="p-1 text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-lg transition-colors cursor-pointer"
-                      title="Disconnect Device"
+                      className="p-1 text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                      data-tooltip="Disconnect Device"
                     >
                       <WifiOff size={13} />
                     </button>
                     <button
                       onClick={() => setDeleteScreen(screen)}
-                      className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer"
-                      title="Remove Screen"
+                      className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
+                      data-tooltip="Remove Screen"
                     >
                       <Trash2 size={13} />
                     </button>

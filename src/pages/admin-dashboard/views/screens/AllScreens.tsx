@@ -77,6 +77,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
     return data ? JSON.parse(data) : [];
   });
   const [orgFilter, setOrgFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   useEffect(() => {
     syncCollection('screens', 'signageos_screens').then(serverScreens => {
@@ -130,7 +131,6 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
       setSelectedIds(filtered.map(s => s.id));
     }
   };
-
   const filtered = screens.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'all' || s.status === statusFilter;
@@ -138,6 +138,11 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
     const matchOrg = orgFilter === 'all' || getScreenOrgName(s) === orgFilter;
     return matchSearch && matchStatus && matchGroup && matchOrg;
   });
+
+  const recordsPerPage = 25;
+  const totalPages = Math.ceil(filtered.length / recordsPerPage);
+  const activePage = Math.min(currentPage, totalPages || 1);
+  const paginatedRecords = filtered.slice((activePage - 1) * recordsPerPage, activePage * recordsPerPage);
 
   const addToast = (message: string, type: Toast['type'] = 'success') => {
     const id = Date.now();
@@ -348,13 +353,12 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Group</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Playlist</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Location</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">License</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Organization</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map(screen => {
+              {paginatedRecords.map(screen => {
                 const isSelected = selectedIds.includes(screen.id);
                 return (
                   <tr key={screen.id} className={`hover:bg-gray-50 transition-colors group ${isSelected ? 'bg-blue-50/70 hover:bg-blue-55/70' : ''}`} onClick={() => isSelectionMode && toggleSelect(screen.id)}>
@@ -414,11 +418,6 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 max-w-[160px] truncate">{screen.location}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${
-                        screen.licenseType === 'Pro' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
-                      }`}>{screen.licenseType}</span>
-                    </td>
                     <td className="px-4 py-3 text-sm text-gray-600 max-w-[160px] truncate">
                       {getScreenOrgName(screen)}
                     </td>
@@ -453,6 +452,29 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
               })}
             </tbody>
           </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-5 py-4 border-t border-gray-150 bg-white">
+              <span className="text-xs text-gray-500 font-medium">
+                Showing {((activePage - 1) * recordsPerPage) + 1} to {Math.min(activePage * recordsPerPage, filtered.length)} of {filtered.length} screens
+              </span>
+              <div className="flex gap-2">
+                <button
+                  disabled={activePage === 1}
+                  onClick={() => setCurrentPage(activePage - 1)}
+                  className="px-3 py-1.5 border border-gray-205 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={activePage === totalPages}
+                  onClick={() => setCurrentPage(activePage + 1)}
+                  className="px-3 py-1.5 border border-gray-205 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         {filtered.length === 0 && (
           <div className="py-16 text-center">
@@ -555,13 +577,6 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                   </div>
                 );
               })()}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">License Type</label>
-                <select value={editScreen.licenseType} onChange={e => setEditScreen(p => p && ({ ...p, licenseType: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                  <option value="Lite">Lite</option>
-                  <option value="Pro">Pro</option>
-                </select>
-              </div>
             </div>
             <div className="flex gap-3 px-5 pb-5">
               <button onClick={() => setEditScreen(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>

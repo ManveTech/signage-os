@@ -35,6 +35,7 @@ const activityColorMap: Record<string, string> = {
 export default function Dashboard() {
   const [, setRefreshTick] = useState(0);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [alertsPage, setAlertsPage] = useState<number>(1);
 
   // Sync all collections from server on mount
   useEffect(() => {
@@ -120,6 +121,11 @@ export default function Dashboard() {
     }
   });
 
+  const alertsPerPage = 5;
+  const totalAlertPages = Math.ceil(alerts.length / alertsPerPage);
+  const activeAlertPage = Math.min(alertsPage, totalAlertPages || 1);
+  const paginatedAlerts = alerts.slice((activeAlertPage - 1) * alertsPerPage, activeAlertPage * alertsPerPage);
+
   return (
     <div className="p-6 space-y-6">
       {/* Page title */}
@@ -200,27 +206,52 @@ export default function Dashboard() {
                 All systems active. No critical alerts.
               </div>
             ) : (
-              alerts.map((alert, i) => (
-                <div key={i} className={`p-3 rounded-lg border ${
-                  alert.type === 'error' ? 'bg-red-50 border-red-100' :
-                  alert.type === 'warning' ? 'bg-yellow-50 border-yellow-100' :
-                  'bg-blue-50 border-blue-100'
-                }`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle size={13} className={`mt-0.5 flex-shrink-0 ${
-                        alert.type === 'error' ? 'text-red-500' :
-                        alert.type === 'warning' ? 'text-yellow-500' : 'text-blue-500'
-                      }`} />
-                      <div>
-                        <p className="text-xs font-medium text-gray-900">{alert.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{alert.desc}</p>
+              <>
+                {paginatedAlerts.map((alert, i) => (
+                  <div key={i} className={`p-3 rounded-lg border ${
+                    alert.type === 'error' ? 'bg-red-50 border-red-100' :
+                    alert.type === 'warning' ? 'bg-yellow-50 border-yellow-100' :
+                    'bg-blue-50 border-blue-100'
+                  }`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle size={13} className={`mt-0.5 flex-shrink-0 ${
+                          alert.type === 'error' ? 'text-red-500' :
+                          alert.type === 'warning' ? 'text-yellow-500' : 'text-blue-500'
+                        }`} />
+                        <div>
+                          <p className="text-xs font-medium text-gray-900">{alert.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{alert.desc}</p>
+                        </div>
                       </div>
+                      <span className="text-xs text-gray-400 flex-shrink-0">{alert.time}</span>
                     </div>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{alert.time}</span>
                   </div>
-                </div>
-              ))
+                ))}
+                {totalAlertPages > 1 && (
+                  <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                    <span className="text-[10px] text-gray-400 font-semibold">
+                      Page {activeAlertPage} of {totalAlertPages}
+                    </span>
+                    <div className="flex gap-1.5">
+                      <button
+                        disabled={activeAlertPage === 1}
+                        onClick={() => setAlertsPage(activeAlertPage - 1)}
+                        className="px-2 py-1 border border-gray-200 rounded text-[10px] font-bold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        disabled={activeAlertPage === totalAlertPages}
+                        onClick={() => setAlertsPage(activeAlertPage + 1)}
+                        className="px-2 py-1 border border-gray-200 rounded text-[10px] font-bold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

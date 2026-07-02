@@ -20,7 +20,7 @@ const navSections: NavSection[] = [
     id: 'my-screens', label: 'My Screens', icon: <MonitorPlay size={18} />,
     children: [
       { id: 'my-screens-list', label: 'My Screens' },
-      { id: 'screens-groups-my', label: 'Create Groups' },
+      { id: 'screens-groups-my', label: 'Groups' },
       { id: 'screens-logs', label: 'Logs' },
     ]
   },
@@ -28,7 +28,7 @@ const navSections: NavSection[] = [
     id: 'screens', label: 'All Screens', icon: <Monitor size={18} />,
     children: [
       { id: 'screens-all', label: 'All Screens' },
-      { id: 'screens-groups-all', label: 'Manage Groups' },
+      { id: 'screens-groups-all', label: 'Client Groups' },
       { id: 'screens-logs-all', label: 'All Logs' },
     ]
   },
@@ -57,6 +57,7 @@ const navSections: NavSection[] = [
       { id: 'licenses-payments', label: 'Payment History' },
       { id: 'licenses-expirations', label: 'Upcoming Expirations' },
       { id: 'licenses-invoices', label: 'Invoice Management' },
+      { id: 'licenses-code', label: 'Code' },
     ]
   },
   {
