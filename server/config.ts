@@ -7,7 +7,7 @@ const isDev = process.env.NODE_ENV !== 'production';
 // Hardcoded fallbacks are only active in development to ease local setup.
 function requireEnv(key: string, devFallback: string): string {
   const val = process.env[key];
-  if (val) return val;
+  if (val) return val.trim();
   if (isDev) {
     console.warn(`[Config] WARNING: ${key} not set — using dev fallback. Set it in .env for production.`);
     return devFallback;
@@ -34,11 +34,11 @@ export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_live_demo8392
 export const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 
 // Cloudflare R2 / S3 Storage Configuration
-export const S3_ENABLED = process.env.S3_ENABLED === 'true';
-export const S3_BUCKET = process.env.S3_BUCKET || '';
-export const S3_REGION = process.env.S3_REGION || 'auto';
-export const S3_ENDPOINT = process.env.S3_ENDPOINT || '';
-export const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY || '';
-export const S3_SECRET = process.env.S3_SECRET || '';
+export const S3_ENABLED = (process.env.S3_ENABLED || '').trim() === 'true';
+export const S3_BUCKET = (process.env.S3_BUCKET || '').trim();
+export const S3_REGION = (process.env.S3_REGION || '').trim() || 'auto';
+export const S3_ENDPOINT = (process.env.S3_ENDPOINT || '').trim();
+export const S3_ACCESS_KEY = (process.env.S3_ACCESS_KEY || '').trim();
+export const S3_SECRET = (process.env.S3_SECRET || '').trim();
 
 
