@@ -57,6 +57,7 @@ export default function Organizations() {
   const [screensAllowed, setScreensAllowed] = useState(5);
   const [storageLimit, setStorageLimit] = useState(10);
   const [renewalDate, setRenewalDate] = useState('');
+  const [customDomainInput, setCustomDomainInput] = useState('');
 
   const addToast = (message: string) => {
     const id = Date.now();
@@ -81,7 +82,8 @@ export default function Organizations() {
       screensAllowed: Number(screensAllowed),
       storageLimit: Number(storageLimit),
       subscriptionStatus: 'active',
-      renewalDate: renewalDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      renewalDate: renewalDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      customDomain: customDomainInput.trim()
     };
 
     const updated = [...orgs, newOrg];
@@ -100,6 +102,7 @@ export default function Organizations() {
     setScreensAllowed(5);
     setStorageLimit(10);
     setRenewalDate('');
+    setCustomDomainInput('');
   };
 
   const handleDeleteOrg = (id: string, name: string) => {
@@ -324,6 +327,28 @@ export default function Organizations() {
 
                 </div>
 
+                {/* White Label Configuration */}
+                <div className="space-y-2 pt-3.5 border-t border-gray-150">
+                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">White Label & Custom Domain</h3>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Custom Domain / Hostname</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. cms.clientcompany.com"
+                      value={selectedOrg.customDomain || ''}
+                      onChange={e => {
+                        const updatedDomain = e.target.value;
+                        const updatedOrgs = orgs.map(o => o.id === selectedOrg.id ? { ...o, customDomain: updatedDomain } : o);
+                        setOrgs(updatedOrgs);
+                        localStorage.setItem('signageos_organizations', JSON.stringify(updatedOrgs));
+                        pushToDatabase('organizations', selectedOrg.id, { customDomain: updatedDomain }, 'PUT');
+                      }}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500 bg-slate-50 text-slate-800 font-semibold"
+                    />
+                    <span className="text-[9px] text-gray-400 mt-1 block">Point client's custom CNAME to your server to activate branding.</span>
+                  </div>
+                </div>
+
               </div>
             </div>
           ) : (
@@ -436,6 +461,17 @@ export default function Organizations() {
                     className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Custom Domain (For White-Labeling)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. cms.clientcompany.com"
+                  value={customDomainInput}
+                  onChange={e => setCustomDomainInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-blue-500 bg-slate-50 font-semibold text-slate-800"
+                />
               </div>
 
               <div className="pt-2 flex justify-end gap-2.5">

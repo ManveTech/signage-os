@@ -57,6 +57,32 @@ export default function AdminLogin() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  // Tenant branding state
+  const [branding, setBranding] = useState<{ logoUrl: string | null; companyName: string; primaryColor: string }>({
+    logoUrl: null,
+    companyName: 'SignageOS',
+    primaryColor: '#0EA5E9'
+  });
+
+  useEffect(() => {
+    const host = window.location.hostname;
+    fetch(`${API_BASE}/public/tenant-branding?host=${host}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && (data.logoUrl || data.companyName !== 'SignageOS' || data.primaryColor !== '#0EA5E9')) {
+          setBranding({
+            logoUrl: data.logoUrl,
+            companyName: data.companyName,
+            primaryColor: data.primaryColor
+          });
+          if (data.primaryColor) {
+            document.documentElement.style.setProperty('--color-primary', data.primaryColor);
+          }
+        }
+      })
+      .catch(err => console.error('Failed to load dynamic tenant branding:', err));
+  }, []);
+
   // Recovery views state
   const [view, setView] = useState<'login' | 'forgot' | 'reset'>('login');
   const [resetToken, setResetToken] = useState('');
@@ -280,9 +306,9 @@ export default function AdminLogin() {
 
           {/* Top Company Title */}
           <div className="relative z-10 flex items-center gap-2" id="login-pane-company">
-            <img src={logoImg} className="w-14 h-14 object-contain shrink-0" alt="SignageOS Logo" />
-            <div className="flex flex-col">
-              <span className="text-sm font-black tracking-tight leading-none text-white">SIGNAGEOS</span>
+            <img src={branding.logoUrl || logoImg} className="w-14 h-14 object-contain shrink-0 rounded-lg" alt={`${branding.companyName} Logo`} />
+            <div className="flex flex-col text-left">
+              <span className="text-sm font-black tracking-tight leading-none text-white">{branding.companyName.toUpperCase()}</span>
               <span className="text-[7.5px] font-black tracking-[0.25em] text-cyan-200 leading-none">SYSTEMS</span>
             </div>
           </div>

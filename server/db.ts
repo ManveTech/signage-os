@@ -822,6 +822,21 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         console.log('Programmatically added websiteName field to organizations collection');
       }
 
+      if (!oFields.some((f: any) => f.name === 'customDomain')) {
+        oFields.push({
+          id: 'txtcustomdomainid',
+          name: 'customDomain',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'Custom domain for whitelabel clients (e.g. cms.clientcompany.com)',
+          hidden: false,
+          presentable: false
+        });
+        orgsUpdated = true;
+        console.log('Programmatically added customDomain field to organizations collection');
+      }
+
       if (orgsUpdated) {
         orgsCollection.fields = oFields;
         await pb.collections.update('organizations', orgsCollection);

@@ -15,6 +15,33 @@ const apiRouter = express.Router();
 // 1. Authentication routes (Unprotected)
 apiRouter.use('/auth', authRouter);
 
+// Public dynamic tenant branding lookup
+apiRouter.get('/public/tenant-branding', async (req, res) => {
+  const host = req.query.host;
+  try {
+    const { pb, ensurePBAuth } = await import('../db');
+    const authenticated = await ensurePBAuth();
+    if (!authenticated) {
+      return res.status(200).json({ logoUrl: null, companyName: 'SignageOS', primaryColor: '#0EA5E9' });
+    }
+    const records = await pb.collection('organizations').getFullList({
+      filter: `customDomain = "${host}"`
+    });
+    if (records.length > 0) {
+      const org = records[0];
+      return res.status(200).json({
+        logoUrl: org.websiteLogo || null,
+        companyName: org.websiteName || org.name,
+        primaryColor: org.customColor || '#0EA5E9',
+        orgId: org.id
+      });
+    }
+  } catch (err) {
+    console.error('Error fetching tenant branding:', err);
+  }
+  return res.status(200).json({ logoUrl: null, companyName: 'SignageOS', primaryColor: '#0EA5E9' });
+});
+
 // 2. Token protection middleware for all following API routes
 apiRouter.use(authenticateToken);
 
