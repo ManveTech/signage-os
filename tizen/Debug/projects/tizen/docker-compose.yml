@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  tizen-sssp-server:
+    image: nginx:alpine
+    container_name: tizen_sssp_server
+    ports:
+      - "8089:80"
+    volumes:
+      - ./sssp_config.xml:/usr/share/nginx/html/sssp_config.xml:ro
+      - ./Debug/tizen.wgt:/usr/share/nginx/html/tizen.wgt:ro
+    restart: always
