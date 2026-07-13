@@ -45,6 +45,8 @@
         imagePlayer: document.getElementById('image-player'),
         videoPlayer: document.getElementById('video-player'),
         splashLogo: document.getElementById('splash-logo'),
+        pairingLogo: document.getElementById('pairing-logo'),
+        standbyLogo: document.getElementById('standby-logo'),
         splashName: document.getElementById('splash-name'),
         splashStatus: document.getElementById('splash-status')
     };
@@ -185,13 +187,27 @@
 
     // Render whitelabel branding
     function applyBranding() {
-        if (state.branding && state.branding.isWhiteLabel) {
-            if (state.branding.logoUrl) {
-                views.splashLogo.src = state.branding.logoUrl;
-            }
-            if (state.branding.name) {
-                views.splashName.innerText = state.branding.name;
-            }
+        const defaultLogo = "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=200&auto=format&fit=crop&q=60";
+        const logoUrl = (state.branding && state.branding.isWhiteLabel && state.branding.logoUrl) 
+            ? state.branding.logoUrl 
+            : defaultLogo;
+
+        if (views.splashLogo) views.splashLogo.src = logoUrl;
+        if (views.pairingLogo) views.pairingLogo.src = logoUrl;
+        if (views.standbyLogo) views.standbyLogo.src = logoUrl;
+
+        if (state.branding && state.branding.isWhiteLabel && state.branding.name) {
+            if (views.splashName) views.splashName.innerText = state.branding.name;
+            const standbyTitle = document.getElementById('standby-title');
+            const standbyDesc = document.getElementById('standby-desc');
+            if (standbyTitle) standbyTitle.innerText = `READY FOR ${state.branding.name.toUpperCase()} CONTENT`;
+            if (standbyDesc) standbyDesc.innerText = `To stream promos, assign a playlist schedule of active photos or videos on your ${state.branding.name} CMS.`;
+        } else {
+            if (views.splashName) views.splashName.innerText = "SignageOS";
+            const standbyTitle = document.getElementById('standby-title');
+            const standbyDesc = document.getElementById('standby-desc');
+            if (standbyTitle) standbyTitle.innerText = "Standby Mode";
+            if (standbyDesc) standbyDesc.innerText = "No playlist assigned to this screen. Please assign a playlist from the SignageOS Dashboard.";
         }
     }
 
