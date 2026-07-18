@@ -313,3 +313,31 @@ body {
 .hidden {
     display: none !important;
 }
+
+/* Out of Range Screen Styles */
+#out-of-range-screen {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    width: 100vw;
+    height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+#out-of-range-screen h1 {
+    font-size: 48px;
+    font-weight: bold;
+    color: #ffffff;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+
+#out-of-range-screen p {
+    font-size: 18px;
+    color: #6b7280;
+}
+

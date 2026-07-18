@@ -40,7 +40,6 @@
         suspended: document.getElementById('suspended-screen'),
         playback: document.getElementById('playback-screen'),
         outOfRange: document.getElementById('out-of-range-screen'),
-        outOfRangeText: document.getElementById('out-of-range-detected-size'),
         pairingCodeText: document.getElementById('pairing-code'),
         pairingStatusMsg: document.getElementById('pairing-status-message'),
         refreshCodeBtn: document.getElementById('refresh-code-btn'),
@@ -171,9 +170,6 @@
             if (!result.allowed) {
                 console.warn(`Screen size verification failed. Size: ${result.size} inches. Halting execution.`);
                 state.status = 'out-of-range';
-                if (views.outOfRangeText) {
-                    views.outOfRangeText.innerText = `Detected size: ${result.size}"`;
-                }
                 updateUI();
                 views.splash.classList.remove('active');
                 return;
