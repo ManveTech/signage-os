@@ -888,7 +888,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                       <div className="flex gap-3 items-center min-w-0 flex-1">
                         <div className="w-20 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-slate-200 relative">
                           <img src={media.thumbnail} alt={media.title} className="w-full h-full object-cover" />
-                          <span className="absolute top-1 left-1 bg-blue-650 text-white text-[8px] font-bold px-1 rounded shadow">Zone 1</span>
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-bold text-slate-800 truncate" title={media.title}>{media.title}</p>

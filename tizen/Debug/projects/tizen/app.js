@@ -389,6 +389,7 @@
             idleTimeout = setTimeout(() => {
                 console.log("Inactivity timeout: launching playlist full screen.");
                 state.status = 'active';
+                localStorage.setItem(KEYS.STATUS, 'active');
                 updateUI();
             }, 30000);
         }
