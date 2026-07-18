@@ -304,11 +304,8 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   };
 
   const getDropdownValue = (item: PlaylistItem) => {
-    if (item.scalePercent === 105 && (item.objectFit === 'cover' || !item.objectFit)) return 'zoom-in-5';
-    if (item.scalePercent === 110 && (item.objectFit === 'cover' || !item.objectFit)) return 'zoom-in-10';
-    if (item.scalePercent === 95 && item.objectFit === 'contain') return 'zoom-out-5';
-    if (item.scalePercent === 90 && item.objectFit === 'contain') return 'zoom-out-10';
-    if (item.scalePercent && item.scalePercent !== 100 && item.scalePercent !== 105 && item.scalePercent !== 110 && item.scalePercent !== 95 && item.scalePercent !== 90) return 'custom';
+    if (item.scalePercent && item.scalePercent > 100) return 'zoom-in';
+    if (item.scalePercent && item.scalePercent < 100) return 'zoom-out';
     return item.objectFit || 'cover';
   };
 
@@ -321,16 +318,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       updateItem(itemId, { objectFit: 'fill', scalePercent: 100 });
     } else if (value === 'none') {
       updateItem(itemId, { objectFit: 'none', scalePercent: 100 });
-    } else if (value === 'zoom-in-5') {
+    } else if (value === 'zoom-in') {
       updateItem(itemId, { objectFit: 'cover', scalePercent: 105 });
-    } else if (value === 'zoom-in-10') {
-      updateItem(itemId, { objectFit: 'cover', scalePercent: 110 });
-    } else if (value === 'zoom-out-5') {
+    } else if (value === 'zoom-out') {
       updateItem(itemId, { objectFit: 'contain', scalePercent: 95 });
-    } else if (value === 'zoom-out-10') {
-      updateItem(itemId, { objectFit: 'contain', scalePercent: 90 });
-    } else if (value === 'custom') {
-      updateItem(itemId, { scalePercent: 100 });
     }
   };
 
@@ -975,13 +966,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                                 <option value="contain">Fit to Screen (Contain)</option>
                                 <option value="fill">Stretch to Fill (Fill)</option>
                                 <option value="none">Original Size (None)</option>
-                                <option value="zoom-in-5">Zoom In (105%)</option>
-                                <option value="zoom-in-10">Zoom In (110%)</option>
-                                <option value="zoom-out-5">Zoom Out (95%)</option>
-                                <option value="zoom-out-10">Zoom Out (90%)</option>
-                                <option value="custom">Custom Zoom %</option>
+                                <option value="zoom-in">Zoom In %</option>
+                                <option value="zoom-out">Zoom Out %</option>
                               </select>
-                              {getDropdownValue(item) === 'custom' && (
+                              {(getDropdownValue(item) === 'zoom-in' || getDropdownValue(item) === 'zoom-out') && (
                                 <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 w-20 flex-shrink-0">
                                   <input 
                                     type="number"
