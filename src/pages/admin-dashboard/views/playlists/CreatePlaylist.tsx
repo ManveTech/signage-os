@@ -945,17 +945,19 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                                 <option value="fill">Stretch to Fill (Fill)</option>
                                 <option value="none">Original Size (None)</option>
                               </select>
-                              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 w-20 flex-shrink-0">
-                                <input 
-                                  type="number"
-                                  min={10}
-                                  max={300}
-                                  value={item.scalePercent ?? 100}
-                                  onChange={e => updateItem(item.id, { scalePercent: Math.max(10, parseInt(e.target.value) || 100) })}
-                                  className="w-10 border border-slate-200 rounded bg-white px-1 text-center text-xs font-bold outline-none focus:border-blue-550 text-gray-800"
-                                />
-                                <span className="text-[10px] text-gray-600 font-bold">%</span>
-                              </div>
+                              {item.objectFit && item.objectFit !== 'cover' && (
+                                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 w-20 flex-shrink-0">
+                                  <input 
+                                    type="number"
+                                    min={10}
+                                    max={300}
+                                    value={item.scalePercent ?? 100}
+                                    onChange={e => updateItem(item.id, { scalePercent: Math.max(10, parseInt(e.target.value) || 100) })}
+                                    className="w-10 border border-slate-200 rounded bg-white px-1 text-center text-xs font-bold outline-none focus:border-blue-550 text-gray-800"
+                                  />
+                                  <span className="text-[10px] text-gray-600 font-bold">%</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -1004,49 +1006,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                               </div>
                             </div>
                           )}
-                        </div>
-
-                        {/* Interactive miniature layout preview */}
-                        <div className="flex-shrink-0 flex items-center gap-3">
-                          <div className="flex flex-col items-center justify-center p-1 bg-gray-50 rounded border border-slate-200 w-16 h-16 flex-shrink-0">
-                            <div className={`border border-slate-650 bg-slate-950 rounded relative overflow-hidden transition-all duration-300 ${
-                              playlistOrientation === 'horizontal' ? 'w-10 h-7' : 'w-7 h-10'
-                            }`}>
-                              {item.layoutType === 'single' ? (
-                                <div className="w-full h-full bg-slate-900 overflow-hidden">
-                                  <img src={media.thumbnail} className="w-full h-full object-cover" alt="primary" />
-                                </div>
-                              ) : (
-                                <div className={`w-full h-full flex ${playlistOrientation === 'horizontal' ? 'flex-row' : 'flex-col'}`}>
-                                  <div 
-                                    style={{ 
-                                      width: playlistOrientation === 'horizontal' ? (item.layoutType === '50-50' ? '50%' : item.layoutType === '70-30' ? '70%' : '30%') : '100%',
-                                      height: playlistOrientation === 'vertical' ? (item.layoutType === '50-50' ? '50%' : item.layoutType === '70-30' ? '70%' : '30%') : '100%'
-                                    }} 
-                                    className={`bg-slate-900 overflow-hidden flex-shrink-0 border-slate-800 ${playlistOrientation === 'horizontal' ? 'border-r' : 'border-b'}`}
-                                  >
-                                    <img src={media.thumbnail} className="w-full h-full object-cover" alt="primary" />
-                                  </div>
-                                  <div className="flex-1 bg-slate-850 overflow-hidden">
-                                    {secondMedia ? (
-                                      <img src={secondMedia.thumbnail} className="w-full h-full object-cover" alt="secondary" />
-                                    ) : (
-                                      <div className="w-full h-full bg-slate-900" />
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Render tiny dot representation of widget */}
-                              {playlistWidgetType && (
-                                <div className={`absolute w-2 h-2 rounded-full border border-white/60 bg-blue-600 shadow-sm ${
-                                  playlistWidgetPlacement === 'top-left' ? 'top-0.5 left-0.5' :
-                                  playlistWidgetPlacement === 'top-right' ? 'top-0.5 right-0.5' :
-                                  playlistWidgetPlacement === 'bottom-left' ? 'bottom-0.5 left-0.5' : 'bottom-0.5 right-0.5'
-                                }`} />
-                              )}
-                            </div>
-                          </div>
                         </div>
 
                         {/* Remove Slide Button */}
