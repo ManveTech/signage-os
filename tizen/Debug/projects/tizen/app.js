@@ -39,6 +39,8 @@
         standby: document.getElementById('standby-screen'),
         suspended: document.getElementById('suspended-screen'),
         playback: document.getElementById('playback-screen'),
+        outOfRange: document.getElementById('out-of-range-screen'),
+        outOfRangeText: document.getElementById('out-of-range-detected-size'),
         pairingCodeText: document.getElementById('pairing-code'),
         pairingStatusMsg: document.getElementById('pairing-status-message'),
         refreshCodeBtn: document.getElementById('refresh-code-btn'),
@@ -69,35 +71,129 @@
     let heartbeatInterval = null;
     let clockInterval = null;
 
+    // Detect physical screen diagonal and model name to verify size limit (under 43 inches)
+    function checkScreenSize() {
+        return new Promise((resolve) => {
+            if (!window.tizen || !window.tizen.systeminfo) {
+                console.log("Not in Tizen environment, allowing all sizes.");
+                resolve({ allowed: true, size: 0 });
+                return;
+            }
+
+            let detectedInches = null;
+            let displayDone = false;
+            let buildDone = false;
+
+            function checkDone() {
+                if (displayDone && buildDone) {
+                    if (detectedInches !== null && detectedInches > 43) {
+                        resolve({ allowed: false, size: detectedInches });
+                    } else {
+                        resolve({ allowed: true, size: detectedInches || 0 });
+                    }
+                }
+            }
+
+            // Method 1: Check DISPLAY physical dimensions
+            try {
+                window.tizen.systeminfo.getPropertyValue("DISPLAY", (disp) => {
+                    if (disp.physicalWidth && disp.physicalHeight) {
+                        const widthMm = disp.physicalWidth;
+                        const heightMm = disp.physicalHeight;
+                        const diagonalMm = Math.sqrt(Math.pow(widthMm, 2) + Math.pow(heightMm, 2));
+                        const inches = diagonalMm / 25.4;
+                        console.log(`DISPLAY physical diagonal: ${inches.toFixed(2)} inches`);
+                        if (inches > 0) {
+                            detectedInches = Math.round(inches);
+                        }
+                    }
+                    displayDone = true;
+                    checkDone();
+                }, (err) => {
+                    console.warn("DISPLAY systeminfo fetch error:", err);
+                    displayDone = true;
+                    checkDone();
+                });
+            } catch (e) {
+                console.error("DISPLAY property access exception:", e);
+                displayDone = true;
+                checkDone();
+            }
+
+            // Method 2: Check BUILD model code for size digits (e.g. QB43C, LH55QB, UN65RU...)
+            try {
+                window.tizen.systeminfo.getPropertyValue("BUILD", (build) => {
+                    if (build.model) {
+                        console.log(`BUILD model detected: ${build.model}`);
+                        // Find first sequence of two or more digits in the model name
+                        const matches = build.model.match(/\d{2,}/);
+                        if (matches && matches[0]) {
+                            const sizeFromModel = parseInt(matches[0], 10);
+                            console.log(`Parsed size from model code: ${sizeFromModel} inches`);
+                            if (sizeFromModel > 0 && (!detectedInches || sizeFromModel > detectedInches)) {
+                                detectedInches = sizeFromModel;
+                            }
+                        }
+                    }
+                    buildDone = true;
+                    checkDone();
+                }, (err) => {
+                    console.warn("BUILD systeminfo fetch error:", err);
+                    buildDone = true;
+                    checkDone();
+                });
+            } catch (e) {
+                console.error("BUILD property access exception:", e);
+                buildDone = true;
+                checkDone();
+            }
+        });
+    }
+
     // Initialize application
     function init() {
         console.log("Initializing SignageOS Tizen App...");
         applyBranding();
         bindEvents();
-        updateUI();
 
-        // Clear any pending auto-launch alarms (if we just opened)
-        cancelAutoLaunchAlarm();
-
-        // Listen for visibility changes (background / exit state)
-        document.addEventListener("visibilitychange", handleVisibilityChange);
-
-        // If paired already, immediately query config, else start in pairing mode
-        if (state.screenId) {
-            POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
-            fetchScreenConfig().then(() => {
+        // Run screen size hardware check first
+        checkScreenSize().then((result) => {
+            if (!result.allowed) {
+                console.warn(`Screen size verification failed. Size: ${result.size} inches. Halting execution.`);
+                state.status = 'out-of-range';
+                if (views.outOfRangeText) {
+                    views.outOfRangeText.innerText = `Detected size: ${result.size}"`;
+                }
+                updateUI();
                 views.splash.classList.remove('active');
-            });
-        } else {
-            // Generate/request code
-            requestPairingCode().then(() => {
-                views.splash.classList.remove('active');
-            });
-        }
+                return;
+            }
 
-        // Start periodic sync and heartbeat processes
-        startSyncLoops();
-        startClockWidget();
+            updateUI();
+
+            // Clear any pending auto-launch alarms (if we just opened)
+            cancelAutoLaunchAlarm();
+
+            // Listen for visibility changes (background / exit state)
+            document.addEventListener("visibilitychange", handleVisibilityChange);
+
+            // If paired already, immediately query config, else start in pairing mode
+            if (state.screenId) {
+                POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
+                fetchScreenConfig().then(() => {
+                    views.splash.classList.remove('active');
+                });
+            } else {
+                // Generate/request code
+                requestPairingCode().then(() => {
+                    views.splash.classList.remove('active');
+                });
+            }
+
+            // Start periodic sync and heartbeat processes
+            startSyncLoops();
+            startClockWidget();
+        });
     }
 
     // Handle background transition or exit
@@ -229,6 +325,9 @@
         console.log(`Updating UI state: ${state.status}`);
 
         switch (state.status) {
+            case 'out-of-range':
+                if (views.outOfRange) views.outOfRange.classList.add('active');
+                break;
             case 'pairing':
                 views.pairingCodeText.innerText = state.pairingCode || '------';
                 views.pairing.classList.add('active');
