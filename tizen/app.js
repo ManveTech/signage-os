@@ -594,7 +594,8 @@
                             url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
-                            duration: slide.duration || media.duration || 10
+                            duration: slide.duration || media.duration || 10,
+                            thumbnail: media.thumbnail || rawUrl
                         });
                     }
                 }
@@ -607,7 +608,8 @@
                         url: pbAsset.url + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                         mediaType: pbAsset.mediaType.toLowerCase(),
                         filename: pbAsset.filename,
-                        duration: pbAsset.duration || 10
+                        duration: pbAsset.duration || 10,
+                        thumbnail: pbAsset.thumbnail || pbAsset.url
                     });
                 });
             } 
@@ -620,7 +622,8 @@
                         url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                         mediaType: "image",
                         filename: fileName,
-                        duration: 10
+                        duration: 10,
+                        thumbnail: rawUrl
                     });
                 });
             }
@@ -636,7 +639,8 @@
                             url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
-                            duration: media.duration || 10
+                            duration: media.duration || 10,
+                            thumbnail: media.thumbnail || rawUrl
                         });
                     }
                 }
@@ -729,24 +733,48 @@
         }
 
         if (asset.mediaType === 'video') {
-            views.imagePlayer.style.display = 'none';
-            views.videoPlayer.src = asset.url;
+            // Show video thumbnail on the image player during buffering to avoid blank black screen
+            if (asset.thumbnail) {
+                views.imagePlayer.src = asset.thumbnail;
+                views.imagePlayer.style.display = 'block';
+            }
+
+            views.videoPlayer.style.opacity = '0';
             views.videoPlayer.style.display = 'block';
+            views.videoPlayer.src = asset.url;
             views.videoPlayer.volume = state.volume / 100;
+
+            const handleVideoPlaying = () => {
+                views.videoPlayer.style.opacity = '1';
+                views.imagePlayer.style.display = 'none';
+                views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
+            };
+            views.videoPlayer.addEventListener('playing', handleVideoPlaying);
+
             views.videoPlayer.play().catch(e => {
                 console.warn("Autoplay block / playback error on video", e);
+                views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
                 // Advance automatically if blocked
                 rotationTimeout = setTimeout(advancePlaylist, 5000);
             });
         } else {
-            views.videoPlayer.style.display = 'none';
-            views.videoPlayer.pause();
-            views.imagePlayer.src = asset.url;
-            views.imagePlayer.style.display = 'block';
+            // Preload image to ensure zero flash/blank screens during transition
+            const img = new Image();
+            img.onload = () => {
+                views.videoPlayer.style.display = 'none';
+                views.videoPlayer.pause();
+                views.imagePlayer.src = asset.url;
+                views.imagePlayer.style.display = 'block';
 
-            // Image duration rotation
-            const duration = (asset.duration || 10) * 1000;
-            rotationTimeout = setTimeout(advancePlaylist, duration);
+                // Image duration rotation starts ONLY after image is fully loaded
+                const duration = (asset.duration || 10) * 1000;
+                rotationTimeout = setTimeout(advancePlaylist, duration);
+            };
+            img.onerror = () => {
+                console.error("Failed to preload image:", asset.url);
+                advancePlaylist();
+            };
+            img.src = asset.url;
         }
     }
 

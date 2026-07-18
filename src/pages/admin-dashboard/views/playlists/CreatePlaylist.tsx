@@ -169,11 +169,12 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       }
 
       const allMedia = mediaStore.getMedia();
+      const clientMedia = allMedia.filter(m => m.uploadedBy === play.createdBy);
       if (play.slides && play.slides.length > 0) {
-        const validSlides = play.slides.filter(slide => allMedia.some(m => m.id === slide.mediaId));
+        const validSlides = play.slides.filter(slide => clientMedia.some(m => m.id === slide.mediaId));
         setPlaylistItems(validSlides);
       } else {
-        const validMediaIds = play.mediaIds.filter(mid => allMedia.some(m => m.id === mid));
+        const validMediaIds = play.mediaIds.filter(mid => clientMedia.some(m => m.id === mid));
         const mappedSlides = validMediaIds.map(mid => ({
           id: `slide_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
           mediaId: mid,
