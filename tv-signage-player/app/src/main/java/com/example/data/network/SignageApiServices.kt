@@ -61,7 +61,9 @@ data class PocketBasePlaylistAsset(
     val fileSize: String? = null,
     val fileSizeBytes: Long? = null,
     val mimeType: String? = null,
-    val youtubeVideoId: String? = null
+    val youtubeVideoId: String? = null,
+    val objectFit: String? = null,
+    val scalePercent: Int? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -70,7 +72,9 @@ data class PocketBasePlaylistSlide(
     val mediaId: String,
     val duration: Int = 10,
     val layoutType: String = "single",
-    val secondMediaId: String? = null
+    val secondMediaId: String? = null,
+    val objectFit: String? = null,
+    val scalePercent: Int? = null
 )
 
 @JsonClass(generateAdapter = true)

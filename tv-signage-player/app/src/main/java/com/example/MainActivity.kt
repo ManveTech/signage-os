@@ -1101,14 +1101,28 @@ fun LocalImageRenderer(asset: PlaylistAsset) {
         asset.url
     }
 
+    val contentScale = when (asset.objectFit) {
+        "contain" -> ContentScale.Fit
+        "fill" -> ContentScale.FillBounds
+        "none" -> ContentScale.None
+        else -> ContentScale.Crop
+    }
+
+    val scale = (asset.scalePercent ?: 100).toFloat() / 100f
+
     AsyncImage(
         model = coil.request.ImageRequest.Builder(context)
             .data(imageSource)
             .crossfade(true)
             .build(),
         contentDescription = asset.filename,
-        modifier = Modifier.fillMaxSize(),
-        contentScale = ContentScale.Fit
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale
+            ),
+        contentScale = contentScale
     )
 }
 
@@ -1153,17 +1167,28 @@ fun LocalVideoRenderer(
         }
     }
 
+    val scale = (asset.scalePercent ?: 100).toFloat() / 100f
+
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
                 player = sharedExoPlayer
                 useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                resizeMode = when (asset.objectFit) {
+                    "contain" -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    else -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                }
                 setBackgroundColor(android.graphics.Color.BLACK)
                 playerViewRef = this
             }
         },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale
+            )
     )
 }
 

@@ -36,6 +36,9 @@
         cacheBust: localStorage.getItem('signage_tizen_cache_bust') || ''
     };
 
+    // Inactivity / Idle Auto Launch Timeout
+    let idleTimeout = null;
+
     // Elements
     const views = {
         splash: document.getElementById('splash-screen'),
@@ -180,6 +183,10 @@
 
             // Clear any pending auto-launch alarms (if we just opened)
             cancelAutoLaunchAlarm();
+
+            // Listen for keydown/click to reset the auto-launch idle timer
+            window.addEventListener('keydown', resetIdleTimer);
+            window.addEventListener('click', resetIdleTimer);
 
             // Listen for visibility changes (background / exit state)
             document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -344,6 +351,7 @@
             case 'pairing':
                 views.pairingCodeText.innerText = state.pairingCode || '------';
                 views.pairing.classList.add('active');
+                resetIdleTimer();
                 break;
             case 'suspended':
                 views.suspended.classList.add('active');
@@ -351,6 +359,10 @@
             case 'active':
             case 'online':
             case 'offline':
+                if (idleTimeout) {
+                    clearTimeout(idleTimeout);
+                    idleTimeout = null;
+                }
                 if (!state.playlist || state.playlist.length === 0) {
                     views.standby.classList.add('active');
                 } else {
@@ -362,7 +374,23 @@
                 break;
             default:
                 views.pairing.classList.add('active');
+                resetIdleTimer();
                 break;
+        }
+    }
+
+    // Reset inactivity / idle auto launch timer
+    function resetIdleTimer() {
+        if (idleTimeout) clearTimeout(idleTimeout);
+
+        // Auto-launch playlist if device is already paired and has slides
+        if (state.playlist && state.playlist.length > 0 && state.status !== 'active' && state.status !== 'online' && state.status !== 'offline' && state.status !== 'suspended') {
+            console.log("Inactivity timer started. Auto-launching in 30 seconds.");
+            idleTimeout = setTimeout(() => {
+                console.log("Inactivity timeout: launching playlist full screen.");
+                state.status = 'active';
+                updateUI();
+            }, 30000);
         }
     }
 
@@ -595,7 +623,9 @@
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
                             duration: slide.duration || media.duration || 10,
-                            thumbnail: media.thumbnail || rawUrl
+                            thumbnail: media.thumbnail || rawUrl,
+                            objectFit: slide.objectFit || 'cover',
+                            scalePercent: slide.scalePercent || 100
                         });
                     }
                 }
@@ -609,7 +639,9 @@
                         mediaType: pbAsset.mediaType.toLowerCase(),
                         filename: pbAsset.filename,
                         duration: pbAsset.duration || 10,
-                        thumbnail: pbAsset.thumbnail || pbAsset.url
+                        thumbnail: pbAsset.thumbnail || pbAsset.url,
+                        objectFit: pbAsset.objectFit || 'cover',
+                        scalePercent: pbAsset.scalePercent || 100
                     });
                 });
             } 
@@ -623,7 +655,9 @@
                         mediaType: "image",
                         filename: fileName,
                         duration: 10,
-                        thumbnail: rawUrl
+                        thumbnail: rawUrl,
+                        objectFit: 'cover',
+                        scalePercent: 100
                     });
                 });
             }
@@ -640,7 +674,9 @@
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
                             duration: media.duration || 10,
-                            thumbnail: media.thumbnail || rawUrl
+                            thumbnail: media.thumbnail || rawUrl,
+                            objectFit: 'cover',
+                            scalePercent: 100
                         });
                     }
                 }
@@ -718,6 +754,15 @@
         );
 
         if (asset.mediaType === 'video') {
+            // Apply scale mode configuration
+            views.videoPlayer.style.objectFit = asset.objectFit || 'cover';
+            views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
+
+            // Apply scale zoom configuration
+            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
+            views.videoPlayer.style.transform = scale;
+            views.imagePlayer.style.transform = scale;
+
             // Show video thumbnail on the image player during buffering to avoid blank black screen
             if (asset.thumbnail) {
                 views.imagePlayer.className = 'media-element';
@@ -755,6 +800,13 @@
                 views.videoPlayer.style.display = 'none';
                 views.videoPlayer.pause();
                 
+                // Apply scale mode configuration
+                views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
+
+                // Apply scale zoom configuration
+                const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
+                views.imagePlayer.style.transform = scale;
+
                 // Set source and reset class
                 views.imagePlayer.className = 'media-element';
                 views.imagePlayer.src = asset.url;

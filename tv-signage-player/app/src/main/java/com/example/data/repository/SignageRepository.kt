@@ -576,7 +576,9 @@ class SignageRepository(private val context: Context) {
                                     fileSize = mediaItem.fileSize,
                                     fileSizeBytes = mediaItem.fileSizeBytes,
                                     mimeType = mediaItem.mimeType,
-                                    youtubeVideoId = mediaItem.youtubeVideoId
+                                    youtubeVideoId = mediaItem.youtubeVideoId,
+                                    objectFit = slide.objectFit ?: "cover",
+                                    scalePercent = slide.scalePercent ?: 100
                                 )
                             } catch (e: Exception) {
                                 Log.e("SignageRepository", "Failed to fetch media item details for slide: ${slide.id}", e)
@@ -609,7 +611,9 @@ class SignageRepository(private val context: Context) {
                             fileSize = pbAsset.fileSize,
                             fileSizeBytes = pbAsset.fileSizeBytes,
                             mimeType = pbAsset.mimeType,
-                            youtubeVideoId = pbAsset.youtubeVideoId
+                            youtubeVideoId = pbAsset.youtubeVideoId,
+                            objectFit = pbAsset.objectFit ?: "cover",
+                            scalePercent = pbAsset.scalePercent ?: 100
                         )
                     )
                 }
@@ -719,7 +723,9 @@ class SignageRepository(private val context: Context) {
                             old.fileSize != new.fileSize ||
                             old.fileSizeBytes != new.fileSizeBytes ||
                             old.mimeType != new.mimeType ||
-                            old.youtubeVideoId != new.youtubeVideoId
+                            old.youtubeVideoId != new.youtubeVideoId ||
+                            old.objectFit != new.objectFit ||
+                            old.scalePercent != new.scalePercent
                         }
 
                 if (hasChanged) {

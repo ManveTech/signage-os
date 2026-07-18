@@ -856,6 +856,33 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                             </select>
                           </div>
 
+                          <div>
+                            <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Scale mode & zoom</label>
+                            <div className="flex gap-2 items-center">
+                              <select 
+                                value={item.objectFit || 'cover'}
+                                onChange={e => updateItem(item.id, { objectFit: e.target.value as any })}
+                                className="flex-1 text-xs border border-slate-200 bg-white rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400 cursor-pointer font-bold text-slate-700 shadow-xs"
+                              >
+                                <option value="cover">Fill Screen (Cover)</option>
+                                <option value="contain">Fit to Screen (Contain)</option>
+                                <option value="fill">Stretch to Fill (Fill)</option>
+                                <option value="none">Original Size (None)</option>
+                              </select>
+                              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 w-20 flex-shrink-0">
+                                <input 
+                                  type="number"
+                                  min={10}
+                                  max={300}
+                                  value={item.scalePercent ?? 100}
+                                  onChange={e => updateItem(item.id, { scalePercent: Math.max(10, parseInt(e.target.value) || 100) })}
+                                  className="w-10 border border-slate-200 rounded bg-white px-1 text-center text-xs font-bold outline-none focus:border-blue-550 text-gray-800"
+                                />
+                                <span className="text-[10px] text-gray-600 font-bold">%</span>
+                              </div>
+                            </div>
+                          </div>
+
                           {item.layoutType !== 'single' && (
                             <div className="space-y-1">
                               <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Zone 2 Secondary File</label>

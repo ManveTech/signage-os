@@ -49,7 +49,7 @@ interface PlaylistAssetDao {
     suspend fun clearAllAssets()
 }
 
-@Database(entities = [ScreenConfig::class, PlaylistAsset::class], version = 8, exportSchema = false)
+@Database(entities = [ScreenConfig::class, PlaylistAsset::class], version = 9, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun screenConfigDao(): ScreenConfigDao
     abstract fun playlistAssetDao(): PlaylistAssetDao

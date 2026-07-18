@@ -18,5 +18,7 @@ data class PlaylistAsset(
     val fileSize: String? = null,
     val fileSizeBytes: Long? = null,
     val mimeType: String? = null,
-    val youtubeVideoId: String? = null
+    val youtubeVideoId: String? = null,
+    val objectFit: String? = "cover",
+    val scalePercent: Int? = 100
 )
