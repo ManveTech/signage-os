@@ -132,10 +132,13 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         setTickerParagraphs(['']);
       }
 
+      const allMedia = mediaStore.getMedia();
       if (play.slides && play.slides.length > 0) {
-        setPlaylistItems(play.slides);
+        const validSlides = play.slides.filter(slide => allMedia.some(m => m.id === slide.mediaId));
+        setPlaylistItems(validSlides);
       } else {
-        const mappedSlides = play.mediaIds.map(mid => ({
+        const validMediaIds = play.mediaIds.filter(mid => allMedia.some(m => m.id === mid));
+        const mappedSlides = validMediaIds.map(mid => ({
           id: `slide_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
           mediaId: mid,
           duration: 10,
