@@ -60,6 +60,7 @@ import com.example.ui.SignageViewModel
 import com.example.ui.theme.MyApplicationTheme
 import java.io.File
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.draw.rotate
 import android.content.res.Configuration
 import androidx.annotation.OptIn
 import coil.size.Size
@@ -927,10 +928,24 @@ fun PlaybackLoopScreen(
         sharedExoPlayer.volume = volumePercent / 100f
     }
 
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isVerticalPlaylist = orientation.equals("vertical", ignoreCase = true)
+
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
+        modifier = if (isVerticalPlaylist && isLandscape) {
+            Modifier
+                .size(
+                    width = configuration.screenHeightDp.dp,
+                    height = configuration.screenWidthDp.dp
+                )
+                .rotate(90f)
+                .background(Color.Black)
+        } else {
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        },
         contentAlignment = Alignment.Center
     ) {
         if (isVideo) {

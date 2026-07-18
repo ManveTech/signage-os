@@ -86,6 +86,9 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   const [playlistWidgetType, setPlaylistWidgetType] = useState<'weather' | 'clock' | 'rss' | 'qrcode' | undefined>(undefined);
   const [playlistWidgetPlacement, setPlaylistWidgetPlacement] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'>('top-right');
   const [playlistWidgetLink, setPlaylistWidgetLink] = useState('');
+  const [tickerBgColor, setTickerBgColor] = useState('#111827');
+  const [tickerTextColor, setTickerTextColor] = useState('#ffffff');
+  const [tickerParagraphs, setTickerParagraphs] = useState<string[]>(['']);
 
   // Preview Modal States
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -141,6 +144,30 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       setPlaylistWidgetLink(play.widgetLink || '');
       setTargetUserEmail(play.createdBy);
 
+      // Load ticker specific states
+      if (play.widgetType === 'rss' && play.widgetLink) {
+        try {
+          const config = JSON.parse(play.widgetLink);
+          if (config && typeof config === 'object') {
+            setTickerBgColor(config.bgColor || '#111827');
+            setTickerTextColor(config.textColor || '#ffffff');
+            setTickerParagraphs(Array.isArray(config.items) ? config.items : ['']);
+          } else {
+            setTickerParagraphs([play.widgetLink]);
+            setTickerBgColor('#111827');
+            setTickerTextColor('#ffffff');
+          }
+        } catch (e) {
+          setTickerParagraphs([play.widgetLink]);
+          setTickerBgColor('#111827');
+          setTickerTextColor('#ffffff');
+        }
+      } else {
+        setTickerBgColor('#111827');
+        setTickerTextColor('#ffffff');
+        setTickerParagraphs(['']);
+      }
+
       if (play.slides && play.slides.length > 0) {
         setPlaylistItems(play.slides);
       } else {
@@ -178,6 +205,9 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     setPlaylistWidgetType(undefined);
     setPlaylistWidgetPlacement('top-right');
     setPlaylistWidgetLink('');
+    setTickerBgColor('#111827');
+    setTickerTextColor('#ffffff');
+    setTickerParagraphs(['']);
     showToast('Starting a new playlist.');
   };
 
@@ -498,6 +528,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       return;
     }
 
+    const finalWidgetLink = playlistWidgetType === 'rss'
+      ? JSON.stringify({ items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor })
+      : playlistWidgetLink;
+
     if (editingPlaylistId) {
       // Update existing playlist
       mediaStore.updatePlaylist(editingPlaylistId, {
@@ -508,7 +542,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         orientation: playlistOrientation,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
-        widgetLink: playlistWidgetLink,
+        widgetLink: finalWidgetLink,
         transition: playlistTransition,
         shuffle: playlistShuffle,
         loop: playlistLoop,
@@ -528,7 +562,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         orientation: playlistOrientation,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
-        widgetLink: playlistWidgetLink,
+        widgetLink: finalWidgetLink,
         transition: playlistTransition,
         shuffle: playlistShuffle,
         loop: playlistLoop,
@@ -1154,12 +1188,95 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 </div>
               )}
 
-              {playlistWidgetType && (
+              {playlistWidgetType && playlistWidgetType === 'rss' && (
+                <div className="sm:col-span-2 space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                  <span className="block text-[10px] text-slate-455 uppercase tracking-widest font-black">Ticker Configuration</span>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Background Color</label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="color"
+                          value={tickerBgColor}
+                          onChange={e => setTickerBgColor(e.target.value)}
+                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-300"
+                        />
+                        <input
+                          type="text"
+                          value={tickerBgColor}
+                          onChange={e => setTickerBgColor(e.target.value)}
+                          className="w-full px-2 py-1 text-xs border border-slate-200 rounded-lg outline-none font-semibold text-slate-800 bg-white"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Text Color</label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="color"
+                          value={tickerTextColor}
+                          onChange={e => setTickerTextColor(e.target.value)}
+                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-300"
+                        />
+                        <input
+                          type="text"
+                          value={tickerTextColor}
+                          onChange={e => setTickerTextColor(e.target.value)}
+                          className="w-full px-2 py-1 text-xs border border-slate-200 rounded-lg outline-none font-semibold text-slate-800 bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Ticker Paragraphs / List Items</label>
+                    <div className="space-y-2">
+                      {tickerParagraphs.map((para, idx) => (
+                        <div key={idx} className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            value={para}
+                            onChange={e => {
+                              const newParas = [...tickerParagraphs];
+                              newParas[idx] = e.target.value;
+                              setTickerParagraphs(newParas);
+                            }}
+                            placeholder={`Item ${idx + 1}`}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-850 text-sm bg-white"
+                          />
+                          {tickerParagraphs.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newParas = tickerParagraphs.filter((_, i) => i !== idx);
+                                setTickerParagraphs(newParas);
+                              }}
+                              className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <X size={15} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setTickerParagraphs([...tickerParagraphs, ''])}
+                      className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-dashed border-blue-200 rounded-xl transition-all cursor-pointer"
+                    >
+                      <Plus size={13} /> Add Item
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {playlistWidgetType && playlistWidgetType !== 'rss' && (
                 <div className="sm:col-span-2">
                   <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">
                     {playlistWidgetType === 'qrcode' ? 'QR Code Link / URL' :
-                     playlistWidgetType === 'weather' ? 'Weather Location / City' :
-                     playlistWidgetType === 'rss' ? 'News Ticker Text / RSS Feed URL' : 'Clock Label / Header'}
+                     playlistWidgetType === 'weather' ? 'Weather Location / City' : 'Clock Label / Header'}
                   </label>
                   <input
                     type={playlistWidgetType === 'qrcode' ? 'url' : 'text'}
@@ -1167,10 +1284,9 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                     onChange={e => setPlaylistWidgetLink(e.target.value)}
                     placeholder={
                       playlistWidgetType === 'qrcode' ? 'https://example.com/menu.pdf' :
-                      playlistWidgetType === 'weather' ? 'e.g. Bengaluru' :
-                      playlistWidgetType === 'rss' ? 'e.g. + + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +' : 'e.g. Lobby Clock'
+                      playlistWidgetType === 'weather' ? 'e.g. Bengaluru' : 'e.g. Lobby Clock'
                     }
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-850"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-semibold text-slate-850"
                   />
                 </div>
               )}
@@ -1364,20 +1480,59 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                               {playlistWidgetLink || 'Lobby Clock'}
                             </span>
                             <div className="text-base font-mono font-bold text-slate-800 mt-1">
-                              {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
                             </div>
                           </div>
                         )}
 
-                        {playlistWidgetType === 'rss' && (
-                          <div className="text-center space-y-1 font-normal">
-                            <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">Live Ticker</span>
-                            <div className="bg-slate-50/80 border border-slate-200/50 rounded-lg p-1 text-[8.5px] font-semibold text-slate-655 overflow-hidden h-5 flex items-center relative">
-                              <div className="absolute whitespace-nowrap animate-marquee">
-                                {playlistWidgetLink || '+ + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +'}
+                        {playlistWidgetType === 'rss' && (() => {
+                          let tickerText = '+ + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +';
+                          let bgColor = 'rgba(248, 250, 252, 0.8)';
+                          let textColor = '#475569';
+                          
+                          if (tickerParagraphs.filter(p => p.trim() !== '').length > 0) {
+                            tickerText = tickerParagraphs.filter(p => p.trim() !== '').join('  |  ') + '  |';
+                            bgColor = tickerBgColor;
+                            textColor = tickerTextColor;
+                          } else {
+                            try {
+                              const config = JSON.parse(playlistWidgetLink);
+                              if (config && typeof config === 'object') {
+                                if (Array.isArray(config.items)) {
+                                  tickerText = config.items.filter(item => item && item.trim() !== '').join('  |  ');
+                                  if (tickerText) {
+                                    tickerText += '  |';
+                                  } else {
+                                    tickerText = '+ + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +';
+                                  }
+                                }
+                                if (config.bgColor) bgColor = config.bgColor;
+                                if (config.textColor) textColor = config.textColor;
+                              }
+                            } catch (e) {
+                              if (playlistWidgetLink) {
+                                tickerText = playlistWidgetLink;
+                              }
+                            }
+                          }
+
+                          return (
+                            <div className="text-center space-y-1 font-normal w-full">
+                              <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">Live Ticker</span>
+                              <div 
+                                style={{ backgroundColor: bgColor }}
+                                className="border border-slate-200/50 rounded-lg p-1 text-[8.5px] font-semibold overflow-hidden h-5 flex items-center relative w-full"
+                              >
+                                <div 
+                                  style={{ color: textColor }}
+                                  className="absolute whitespace-nowrap animate-marquee"
+                                >
+                                  {tickerText}
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          );
+                        })()}              </div>
                         )}
 
                         {playlistWidgetType === 'qrcode' && (
@@ -1406,7 +1561,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                   })()}
 
                   {/* Volume overlay indicator */}
-                  <div className="absolute bottom-5 left-5 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl text-[10px] font-bold border border-slate-200/80 text-slate-850 shadow-sm">
+                  <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl text-[10px] font-bold border border-slate-200/80 text-slate-850 shadow-sm">
                     <Volume2 size={12} className="text-slate-500" />
                     <span>Vol: {playlistVolume}%</span>
                   </div>

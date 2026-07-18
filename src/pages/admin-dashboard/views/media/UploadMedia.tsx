@@ -734,21 +734,51 @@ export default function UploadMedia() {
                               {playlistWidgetLink || 'Lobby Clock'}
                             </span>
                             <div className="text-lg font-mono font-bold text-cyan-400 mt-1">
-                              {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
                             </div>
                           </div>
                         )}
 
-                        {playlistWidgetType === 'rss' && (
-                          <div className="text-center space-y-1 font-normal">
-                            <span className="text-[7.5px] font-bold uppercase text-blue-400 tracking-widest text-left block">Tech Feed RSS</span>
-                            <div className="bg-slate-900 border border-slate-800 rounded p-1 text-[9px] font-semibold text-slate-200 overflow-hidden h-6 flex items-center relative">
-                              <div className="absolute whitespace-nowrap animate-marquee">
-                                {playlistWidgetLink || '+++ AI Summit reveals signage capabilities +++ SignageOS launches custom CNC enclosure lines +++'}
+                        {playlistWidgetType === 'rss' && (() => {
+                          let tickerText = '+++ AI Summit reveals signage capabilities +++ SignageOS launches custom CNC enclosure lines +++';
+                          let bgColor = '#0f172a';
+                          let textColor = '#e2e8f0';
+                          try {
+                            const config = JSON.parse(playlistWidgetLink);
+                            if (config && typeof config === 'object') {
+                              if (Array.isArray(config.items)) {
+                                tickerText = config.items.filter(item => item && item.trim() !== '').join('  |  ');
+                                if (tickerText) {
+                                  tickerText += '  |';
+                                } else {
+                                  tickerText = '+++ AI Summit reveals signage capabilities +++ SignageOS launches custom CNC enclosure lines +++';
+                                }
+                              }
+                              if (config.bgColor) bgColor = config.bgColor;
+                              if (config.textColor) textColor = config.textColor;
+                            }
+                          } catch (e) {
+                            if (playlistWidgetLink) {
+                              tickerText = playlistWidgetLink;
+                            }
+                          }
+                          return (
+                            <div className="text-center space-y-1 font-normal w-full">
+                              <span className="text-[7.5px] font-bold uppercase text-blue-400 tracking-widest text-left block">Tech Feed RSS</span>
+                              <div 
+                                style={{ backgroundColor: bgColor }}
+                                className="border border-slate-800 rounded p-1 text-[9px] font-semibold overflow-hidden h-6 flex items-center relative w-full"
+                              >
+                                <div 
+                                  style={{ color: textColor }}
+                                  className="absolute whitespace-nowrap animate-marquee"
+                                >
+                                  {tickerText}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {playlistWidgetType === 'qrcode' && (
                           <div className="flex flex-col items-center gap-1.5 text-center font-normal">

@@ -29,7 +29,10 @@
         currentAssetIndex: 0,
         volume: parseInt(localStorage.getItem(KEYS.VOLUME) || '80'),
         branding: JSON.parse(localStorage.getItem(KEYS.BRANDING) || '{}'),
-        widget: JSON.parse(localStorage.getItem(KEYS.WIDGET) || '{}')
+        widget: JSON.parse(localStorage.getItem(KEYS.WIDGET) || '{}'),
+        orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
+        playlistTransition: localStorage.getItem('signage_tizen_transition') || 'fade',
+        playlistLoop: localStorage.getItem('signage_tizen_loop') !== 'false'
     };
 
     // Elements
@@ -300,13 +303,22 @@
             const standbyTitle = document.getElementById('standby-title');
             const standbyDesc = document.getElementById('standby-desc');
             if (standbyTitle) standbyTitle.innerText = `READY FOR ${state.branding.name.toUpperCase()} CONTENT`;
-            if (standbyDesc) standbyDesc.innerText = `To stream promos, assign a playlist schedule of active photos or videos on your ${state.branding.name} CMS.`;
+            if (standbyDesc) standbyDesc.innerText = "Assign playlist from Whitelabel CMS Portal.";
         } else {
-            if (views.splashName) views.splashName.innerText = "SignageOS";
             const standbyTitle = document.getElementById('standby-title');
             const standbyDesc = document.getElementById('standby-desc');
             if (standbyTitle) standbyTitle.innerText = "Standby Mode";
             if (standbyDesc) standbyDesc.innerText = "No playlist assigned to this screen. Please assign a playlist from the SignageOS Dashboard.";
+        }
+    }
+
+    // Apply orientation rotation CSS class
+    function applyOrientation() {
+        const orientation = state.orientation || 'horizontal';
+        if (orientation === 'vertical' && window.innerWidth > window.innerHeight) {
+            views.playback.classList.add('rotate-portrait');
+        } else {
+            views.playback.classList.remove('rotate-portrait');
         }
     }
 
@@ -341,6 +353,7 @@
                 if (!state.playlist || state.playlist.length === 0) {
                     views.standby.classList.add('active');
                 } else {
+                    applyOrientation();
                     views.playback.classList.add('active');
                     startPlaylistRotation();
                     renderWidgets();
@@ -629,6 +642,13 @@
             // Sync transitions and loop flags
             state.playlistTransition = data.transition || 'fade';
             state.playlistLoop = data.loop !== false; // Default to true
+            state.orientation = data.orientation || 'horizontal';
+
+            localStorage.setItem('signage_tizen_transition', state.playlistTransition);
+            localStorage.setItem('signage_tizen_loop', state.playlistLoop);
+            localStorage.setItem('signage_tizen_orientation', state.orientation);
+
+            applyOrientation();
 
             // Check structure equality
             const isDifferent = JSON.stringify(fetchedAssets) !== JSON.stringify(state.playlist);
@@ -674,9 +694,31 @@
             views.outOfRange.style.display = 'none';
         }
 
-        // Apply transition styling classes
-        views.imagePlayer.style.transition = state.playlistTransition === 'none' ? 'none' : 'opacity 0.5s ease-in-out';
-        views.videoPlayer.style.transition = state.playlistTransition === 'none' ? 'none' : 'opacity 0.5s ease-in-out';
+        // Apply transition styling animations
+        const transitionName = state.playlistTransition || 'fade';
+        const animClass = 'animate-' + (
+            transitionName === 'slide' ? 'slideIn' :
+            transitionName === 'zoom' ? 'zoomIn' :
+            transitionName === 'slide-up' ? 'slideUp' :
+            transitionName === 'slide-down' ? 'slideDown' :
+            transitionName === 'blur' ? 'blurIn' :
+            transitionName === 'bounce' ? 'bounceIn' : 'fadeIn'
+        );
+
+        // Reset classes first
+        [views.imagePlayer, views.videoPlayer].forEach(el => {
+            el.className = 'media-element';
+        });
+
+        // Trigger reflow to restart CSS keyframe animations
+        void views.imagePlayer.offsetWidth;
+        void views.videoPlayer.offsetWidth;
+
+        // Apply animated transition classes
+        if (transitionName !== 'none') {
+            views.imagePlayer.classList.add(animClass);
+            views.videoPlayer.classList.add(animClass);
+        }
 
         if (asset.mediaType === 'video') {
             views.imagePlayer.style.display = 'none';
@@ -719,18 +761,12 @@
 
         console.log("Rendering widget overlay:", w.type, w.placement);
 
-        // Hide all widgets first
-        widgets.qrcode.classList.add('hidden');
-        widgets.weather.classList.add('hidden');
-        widgets.clock.classList.add('hidden');
-        widgets.rss.classList.add('hidden');
-
-        // Apply placement class
+        // Hide all widgets first by default and apply placement
         const placement = w.placement || 'top-right';
         [widgets.qrcode, widgets.weather, widgets.clock].forEach(el => {
-            el.className = 'widget-item ' + (el.id === 'widget-qrcode' ? '' : 'card hud');
-            el.classList.add(placement);
+            el.className = 'widget-item ' + (el.id === 'widget-qrcode' ? '' : 'card hud') + ' ' + placement + ' hidden';
         });
+        widgets.rss.className = 'rss-ticker-container hidden';
 
         if (w.type === 'qrcode') {
             const link = w.link || SERVER_URL;
@@ -743,7 +779,29 @@
             widgets.clockTitle.innerText = w.link || 'Lobby Clock';
             widgets.clock.classList.remove('hidden');
         } else if (w.type === 'rss') {
-            widgets.rssText.innerText = w.link || 'SignageOS Player online and running.';
+            let tickerText = w.link || 'SignageOS Player online and running.';
+            let bgColor = 'rgba(17, 24, 39, 0.85)';
+            let textColor = '#e5e7eb';
+            try {
+                const config = JSON.parse(w.link);
+                if (config && typeof config === 'object') {
+                    if (Array.isArray(config.items)) {
+                        tickerText = config.items.filter(item => item && item.trim() !== '').join('  |  ');
+                        if (tickerText) {
+                            tickerText += '  |';
+                        } else {
+                            tickerText = 'SignageOS Player online and running.';
+                        }
+                    }
+                    if (config.bgColor) bgColor = config.bgColor;
+                    if (config.textColor) textColor = config.textColor;
+                }
+            } catch (e) {
+                // Not JSON, fallback to plain text
+            }
+            widgets.rssText.innerText = tickerText;
+            widgets.rss.style.backgroundColor = bgColor;
+            widgets.rssText.style.color = textColor;
             widgets.rss.classList.remove('hidden');
         }
     }
@@ -753,7 +811,13 @@
         if (clockInterval) clearInterval(clockInterval);
         clockInterval = setInterval(() => {
             const now = new Date();
-            const timeStr = now.toTimeString().split(' ')[0];
+            let hours = now.getHours();
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; // the hour '0' should be '12'
+            const timeStr = `${String(hours).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`;
             widgets.clockTime.innerText = timeStr;
         }, 1000);
     }
