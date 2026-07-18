@@ -74,6 +74,16 @@
     // Detect physical screen diagonal and model name to verify size limit (under 43 inches)
     function checkScreenSize() {
         return new Promise((resolve) => {
+            // Query parameter override for testing (e.g. ?test_inches=50)
+            const urlParams = new URLSearchParams(window.location.search);
+            const testInches = urlParams.get('test_inches');
+            if (testInches) {
+                const inches = parseInt(testInches, 10);
+                console.log(`Query parameter test override detected: ${inches} inches`);
+                resolve({ allowed: inches <= 43, size: inches });
+                return;
+            }
+
             if (!window.tizen || !window.tizen.systeminfo) {
                 console.log("Not in Tizen environment, allowing all sizes.");
                 resolve({ allowed: true, size: 0 });
