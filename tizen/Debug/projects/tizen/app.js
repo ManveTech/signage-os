@@ -39,7 +39,7 @@
         standby: document.getElementById('standby-screen'),
         suspended: document.getElementById('suspended-screen'),
         playback: document.getElementById('playback-screen'),
-        outOfRange: document.getElementById('out-of-range-screen'),
+        outOfRange: document.getElementById('out-of-range-media-placeholder'),
         pairingCodeText: document.getElementById('pairing-code'),
         pairingStatusMsg: document.getElementById('pairing-status-message'),
         refreshCodeBtn: document.getElementById('refresh-code-btn'),
@@ -165,14 +165,11 @@
         applyBranding();
         bindEvents();
 
-        // Run screen size hardware check first
+        // Run screen size hardware check first (does not halt initialization)
         checkScreenSize().then((result) => {
-            if (!result.allowed) {
-                console.warn(`Screen size verification failed. Size: ${result.size} inches. Halting execution.`);
-                state.status = 'out-of-range';
-                updateUI();
-                views.splash.classList.remove('active');
-                return;
+            state.isOutOfRange = !result.allowed;
+            if (state.isOutOfRange) {
+                console.warn(`Screen size verification limit reached (${result.size}"). Media content will be blocked.`);
             }
 
             updateUI();
@@ -331,9 +328,6 @@
         console.log(`Updating UI state: ${state.status}`);
 
         switch (state.status) {
-            case 'out-of-range':
-                if (views.outOfRange) views.outOfRange.classList.add('active');
-                break;
             case 'pairing':
                 views.pairingCodeText.innerText = state.pairingCode || '------';
                 views.pairing.classList.add('active');
@@ -661,6 +655,24 @@
         }
 
         console.log(`Rotating to asset index ${state.currentAssetIndex}: ${asset.filename} (${asset.mediaType})`);
+ 
+        // If device is out of range, replace background media with placeholder but continue loop
+        if (state.isOutOfRange) {
+            views.imagePlayer.style.display = 'none';
+            views.videoPlayer.style.display = 'none';
+            views.videoPlayer.pause();
+            if (views.outOfRange) {
+                views.outOfRange.style.display = 'flex';
+            }
+            const duration = (asset.duration || 10) * 1000;
+            rotationTimeout = setTimeout(advancePlaylist, duration);
+            return;
+        }
+
+        // Hide out of range placeholder if allowed size
+        if (views.outOfRange) {
+            views.outOfRange.style.display = 'none';
+        }
 
         // Apply transition styling classes
         views.imagePlayer.style.transition = state.playlistTransition === 'none' ? 'none' : 'opacity 0.5s ease-in-out';
