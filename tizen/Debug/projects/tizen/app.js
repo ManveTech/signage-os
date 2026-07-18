@@ -32,7 +32,8 @@
         widget: JSON.parse(localStorage.getItem(KEYS.WIDGET) || '{}'),
         orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
         playlistTransition: localStorage.getItem('signage_tizen_transition') || 'fade',
-        playlistLoop: localStorage.getItem('signage_tizen_loop') !== 'false'
+        playlistLoop: localStorage.getItem('signage_tizen_loop') !== 'false',
+        cacheBust: localStorage.getItem('signage_tizen_cache_bust') || ''
     };
 
     // Elements
@@ -289,7 +290,7 @@
 
     // Render whitelabel branding
     function applyBranding() {
-        const defaultLogo = "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=200&auto=format&fit=crop&q=60";
+        const defaultLogo = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230ea5e9'><path d='M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7l-2 3v1h8v-1l-2-3h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z'/></svg>";
         const logoUrl = (state.branding && state.branding.isWhiteLabel && state.branding.logoUrl) 
             ? state.branding.logoUrl 
             : defaultLogo;
@@ -439,6 +440,8 @@
             // 1. Clear Cache commands
             if (data.clear_cache) {
                 console.log("Received clear cache instruction.");
+                state.cacheBust = Date.now().toString();
+                localStorage.setItem('signage_tizen_cache_bust', state.cacheBust);
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
                 // Clear on server
@@ -452,6 +455,8 @@
             // 2. Force Sync command
             if (data.force_sync) {
                 console.log("Received force sync instruction.");
+                state.cacheBust = Date.now().toString();
+                localStorage.setItem('signage_tizen_cache_bust', state.cacheBust);
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
                 state.currentAssetIndex = 0;
@@ -583,9 +588,10 @@
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
+                        const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
                         fetchedAssets.push({
                             id: media.id,
-                            url: media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail,
+                            url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
                             duration: slide.duration || media.duration || 10
@@ -598,7 +604,7 @@
                 data.assetsJson.forEach((pbAsset) => {
                     fetchedAssets.push({
                         id: pbAsset.id,
-                        url: pbAsset.url,
+                        url: pbAsset.url + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                         mediaType: pbAsset.mediaType.toLowerCase(),
                         filename: pbAsset.filename,
                         duration: pbAsset.duration || 10
@@ -608,9 +614,10 @@
             // 3. Fallback to native files
             else if (data.files && data.files.length > 0) {
                 data.files.forEach((fileName, index) => {
+                    const rawUrl = `${POCKETBASE_URL}/api/files/playlists/${playlistId}/${fileName}`;
                     fetchedAssets.push({
                         id: `${playlistId}_${index}`,
-                        url: `${POCKETBASE_URL}/api/files/playlists/${playlistId}/${fileName}`,
+                        url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                         mediaType: "image",
                         filename: fileName,
                         duration: 10
@@ -623,9 +630,10 @@
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
+                        const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
                         fetchedAssets.push({
                             id: media.id,
-                            url: media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail,
+                            url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
                             duration: media.duration || 10

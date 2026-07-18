@@ -151,7 +151,7 @@ fun SignagePlayerApp(
                                 // Key on the playlist identity so the composable (and its ExoPlayer)
                                 // is fully recreated when a different playlist is assigned, immediately
                                 // stopping any currently playing video or audio.
-                                val playlistKey = uiState.playlist.joinToString(",") { it.id }
+                                val playlistKey = uiState.playlist.joinToString(",") { "${it.id}_${it.duration}_${it.localPath}" }
                                 key(playlistKey) {
                                 PlaybackLoopScreen(
                                     playlist = uiState.playlist,
