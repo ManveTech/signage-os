@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
+import { syncCollection } from '../../../../lib/syncHelper';
 import { toast } from '../../../../components/Toast';
 
 type PlaylistItem = {
@@ -219,6 +220,11 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     const all = mediaStore.getMedia();
     const clientMedia = all.filter(m => m.uploadedBy === targetUserEmail);
     setMediaList(clientMedia);
+
+    syncCollection('media_items', 'signageos_media').then(updatedMedia => {
+      const updatedClientMedia = updatedMedia.filter(m => m.uploadedBy === targetUserEmail);
+      setMediaList(updatedClientMedia);
+    });
 
     // Get current storage usage
     const used = mediaStore.getClientStorageUsedBytes(targetUserEmail);

@@ -706,7 +706,7 @@
             views.outOfRange.style.display = 'none';
         }
 
-        // Apply transition styling animations
+        // Get transition styling animations
         const transitionName = state.playlistTransition || 'fade';
         const animClass = 'animate-' + (
             transitionName === 'slide' ? 'slideIn' :
@@ -717,24 +717,10 @@
             transitionName === 'bounce' ? 'bounceIn' : 'fadeIn'
         );
 
-        // Reset classes first
-        [views.imagePlayer, views.videoPlayer].forEach(el => {
-            el.className = 'media-element';
-        });
-
-        // Trigger reflow to restart CSS keyframe animations
-        void views.imagePlayer.offsetWidth;
-        void views.videoPlayer.offsetWidth;
-
-        // Apply animated transition classes
-        if (transitionName !== 'none') {
-            views.imagePlayer.classList.add(animClass);
-            views.videoPlayer.classList.add(animClass);
-        }
-
         if (asset.mediaType === 'video') {
             // Show video thumbnail on the image player during buffering to avoid blank black screen
             if (asset.thumbnail) {
+                views.imagePlayer.className = 'media-element';
                 views.imagePlayer.src = asset.thumbnail;
                 views.imagePlayer.style.display = 'block';
             }
@@ -745,6 +731,11 @@
             views.videoPlayer.volume = state.volume / 100;
 
             const handleVideoPlaying = () => {
+                views.videoPlayer.className = 'media-element';
+                void views.videoPlayer.offsetWidth; // trigger reflow
+                if (transitionName !== 'none') {
+                    views.videoPlayer.classList.add(animClass);
+                }
                 views.videoPlayer.style.opacity = '1';
                 views.imagePlayer.style.display = 'none';
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
@@ -763,8 +754,17 @@
             img.onload = () => {
                 views.videoPlayer.style.display = 'none';
                 views.videoPlayer.pause();
+                
+                // Set source and reset class
+                views.imagePlayer.className = 'media-element';
                 views.imagePlayer.src = asset.url;
                 views.imagePlayer.style.display = 'block';
+
+                // Trigger animation reflow precisely on image load
+                void views.imagePlayer.offsetWidth;
+                if (transitionName !== 'none') {
+                    views.imagePlayer.classList.add(animClass);
+                }
 
                 // Image duration rotation starts ONLY after image is fully loaded
                 const duration = (asset.duration || 10) * 1000;

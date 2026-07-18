@@ -154,8 +154,8 @@ body {
 
 /* Playback Screen elements */
 .fullscreen-container {
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     position: relative;
     background-color: #000;
 }
@@ -166,7 +166,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
     transition: opacity 0.5s ease-in-out;
 }
 
@@ -175,8 +175,8 @@ body {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
     z-index: 10;
     padding: 24px;

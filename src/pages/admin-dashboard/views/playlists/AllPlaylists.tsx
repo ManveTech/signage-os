@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Monitor, Film, Calendar, Trash2, Trash, Play, Pause, Tv, CheckSquare, Square, FolderOpen, AlertTriangle, Edit, CheckCircle } from 'lucide-react';
 import { mediaStore, Playlist, Screen } from '../../../../lib/mediaStore';
+import { syncCollection } from '../../../../lib/syncHelper';
 
 const scheduleColors: Record<string, string> = {
   Running: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -36,12 +37,20 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
   }, [userEmail]);
 
   const loadData = () => {
+    // Read local cache immediately for instant load
     const allPlaylists = mediaStore.getPlaylists();
-    // Filter to only show playlists created by the admin
     setPlaylists(allPlaylists.filter(p => p.createdBy === userEmail));
     setScreens(mediaStore.getScreens());
     const storedGroups = localStorage.getItem('signageos_groups');
     setGroups(storedGroups ? JSON.parse(storedGroups) : []);
+
+    // Sync from server to get authoritative updates
+    syncCollection('playlists', 'signageos_playlists').then(updatedPlaylists => {
+      setPlaylists(updatedPlaylists.filter(p => p.createdBy === userEmail));
+    });
+    syncCollection('screens', 'signageos_screens').then(updatedScreens => {
+      setScreens(updatedScreens);
+    });
   };
 
   const showToast = (msg: string) => {
