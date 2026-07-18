@@ -303,6 +303,37 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     setPlaylistItems(p => p.map(item => item.id === id ? { ...item, ...updates } : item));
   };
 
+  const getDropdownValue = (item: PlaylistItem) => {
+    if (item.scalePercent === 105 && (item.objectFit === 'cover' || !item.objectFit)) return 'zoom-in-5';
+    if (item.scalePercent === 110 && (item.objectFit === 'cover' || !item.objectFit)) return 'zoom-in-10';
+    if (item.scalePercent === 95 && item.objectFit === 'contain') return 'zoom-out-5';
+    if (item.scalePercent === 90 && item.objectFit === 'contain') return 'zoom-out-10';
+    if (item.scalePercent && item.scalePercent !== 100 && item.scalePercent !== 105 && item.scalePercent !== 110 && item.scalePercent !== 95 && item.scalePercent !== 90) return 'custom';
+    return item.objectFit || 'cover';
+  };
+
+  const handleDropdownChange = (itemId: string, value: string) => {
+    if (value === 'cover') {
+      updateItem(itemId, { objectFit: 'cover', scalePercent: 100 });
+    } else if (value === 'contain') {
+      updateItem(itemId, { objectFit: 'contain', scalePercent: 100 });
+    } else if (value === 'fill') {
+      updateItem(itemId, { objectFit: 'fill', scalePercent: 100 });
+    } else if (value === 'none') {
+      updateItem(itemId, { objectFit: 'none', scalePercent: 100 });
+    } else if (value === 'zoom-in-5') {
+      updateItem(itemId, { objectFit: 'cover', scalePercent: 105 });
+    } else if (value === 'zoom-in-10') {
+      updateItem(itemId, { objectFit: 'cover', scalePercent: 110 });
+    } else if (value === 'zoom-out-5') {
+      updateItem(itemId, { objectFit: 'contain', scalePercent: 95 });
+    } else if (value === 'zoom-out-10') {
+      updateItem(itemId, { objectFit: 'contain', scalePercent: 90 });
+    } else if (value === 'custom') {
+      updateItem(itemId, { scalePercent: 100 });
+    }
+  };
+
   // Click asset to directly add to sequence
   const addAssetToTimeline = (asset: MediaItem) => {
     const newSlide: PlaylistItem = {
@@ -936,16 +967,21 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                             <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Scale mode & zoom</label>
                             <div className="flex gap-2 items-center">
                               <select 
-                                value={item.objectFit || 'cover'}
-                                onChange={e => updateItem(item.id, { objectFit: e.target.value as any })}
+                                value={getDropdownValue(item)}
+                                onChange={e => handleDropdownChange(item.id, e.target.value)}
                                 className="flex-1 text-xs border border-slate-200 bg-white rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400 cursor-pointer font-bold text-slate-700 shadow-xs"
                               >
-                                <option value="cover">Fill Screen (Cover)</option>
+                                <option value="cover">Auto Scale (Cover)</option>
                                 <option value="contain">Fit to Screen (Contain)</option>
                                 <option value="fill">Stretch to Fill (Fill)</option>
                                 <option value="none">Original Size (None)</option>
+                                <option value="zoom-in-5">Zoom In (105%)</option>
+                                <option value="zoom-in-10">Zoom In (110%)</option>
+                                <option value="zoom-out-5">Zoom Out (95%)</option>
+                                <option value="zoom-out-10">Zoom Out (90%)</option>
+                                <option value="custom">Custom Zoom %</option>
                               </select>
-                              {item.objectFit && item.objectFit !== 'cover' && (
+                              {getDropdownValue(item) === 'custom' && (
                                 <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 w-20 flex-shrink-0">
                                   <input 
                                     type="number"
