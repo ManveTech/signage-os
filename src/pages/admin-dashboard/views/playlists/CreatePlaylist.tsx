@@ -1568,8 +1568,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                               </div>
                             </div>
                           );
-                        })()}              </div>
-                        )}
+                        })()}
 
                         {playlistWidgetType === 'qrcode' && (
                           <div className="flex flex-col items-center gap-1.5 text-center font-normal">
