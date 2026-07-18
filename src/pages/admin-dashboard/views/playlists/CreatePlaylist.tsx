@@ -938,65 +938,64 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                       </div>
 
                       {/* Layout & Split Controls */}
-                      <div className="flex flex-wrap gap-4 items-center flex-1 min-w-[240px]">
-                        <div className="flex-1 min-w-[120px] space-y-2 text-xs">
-                          <div>
-                            <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Layout ratio</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start flex-1 min-w-[280px]">
+                        <div>
+                          <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Layout ratio</label>
+                          <select 
+                            value={item.layoutType}
+                            onChange={e => updateItem(item.id, { layoutType: e.target.value as any })}
+                            className="w-full text-xs border border-slate-200 bg-white rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400 cursor-pointer font-bold text-slate-700 shadow-xs"
+                          >
+                            <option value="single">Single Fullscreen</option>
+                            <option value="50-50">50/50 Split Screen</option>
+                            <option value="70-30">70/30 Split Screen</option>
+                            <option value="30-70">30/70 Split Screen</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Scale mode & zoom</label>
+                          <div className="flex gap-2 items-center">
                             <select 
-                              value={item.layoutType}
-                              onChange={e => updateItem(item.id, { layoutType: e.target.value as any })}
-                              className="w-full text-xs border border-slate-200 bg-white rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400 cursor-pointer font-bold text-slate-700 shadow-xs"
+                              value={getDropdownValue(item)}
+                              onChange={e => handleDropdownChange(item.id, e.target.value)}
+                              className="flex-1 text-xs border border-slate-200 bg-white rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400 cursor-pointer font-bold text-slate-700 shadow-xs"
                             >
-                              <option value="single">Single Fullscreen</option>
-                              <option value="50-50">50/55 Split Screen</option>
-                              <option value="70-30">70/30 Split Screen</option>
-                              <option value="30-70">30/70 Split Screen</option>
+                              <option value="cover">Auto Scale (Cover)</option>
+                              <option value="contain">Fit to Screen (Contain)</option>
+                              <option value="fill">Stretch to Fill (Fill)</option>
+                              <option value="none">Original Size (None)</option>
+                              <option value="zoom-in">Zoom In %</option>
+                              <option value="zoom-out">Zoom Out %</option>
                             </select>
+                            {(getDropdownValue(item) === 'zoom-in' || getDropdownValue(item) === 'zoom-out') && (
+                              <div className="flex items-center justify-between gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2.5 w-24 flex-shrink-0">
+                                <input 
+                                  type="number"
+                                  min={10}
+                                  max={300}
+                                  value={item.scalePercent ?? 100}
+                                  onChange={e => updateItem(item.id, { scalePercent: Math.max(10, parseInt(e.target.value) || 100) })}
+                                  className="w-12 border border-slate-200 rounded bg-white px-1 text-center text-xs font-bold outline-none focus:border-blue-550 text-gray-800"
+                                />
+                                <span className="text-[10px] text-gray-600 font-bold">%</span>
+                              </div>
+                            )}
                           </div>
+                        </div>
 
-                          <div>
-                            <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Scale mode & zoom</label>
-                            <div className="flex gap-2 items-center">
-                              <select 
-                                value={getDropdownValue(item)}
-                                onChange={e => handleDropdownChange(item.id, e.target.value)}
-                                className="flex-1 text-xs border border-slate-200 bg-white rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400 cursor-pointer font-bold text-slate-700 shadow-xs"
-                              >
-                                <option value="cover">Auto Scale (Cover)</option>
-                                <option value="contain">Fit to Screen (Contain)</option>
-                                <option value="fill">Stretch to Fill (Fill)</option>
-                                <option value="none">Original Size (None)</option>
-                                <option value="zoom-in">Zoom In %</option>
-                                <option value="zoom-out">Zoom Out %</option>
-                              </select>
-                              {(getDropdownValue(item) === 'zoom-in' || getDropdownValue(item) === 'zoom-out') && (
-                                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 w-20 flex-shrink-0">
-                                  <input 
-                                    type="number"
-                                    min={10}
-                                    max={300}
-                                    value={item.scalePercent ?? 100}
-                                    onChange={e => updateItem(item.id, { scalePercent: Math.max(10, parseInt(e.target.value) || 100) })}
-                                    className="w-10 border border-slate-200 rounded bg-white px-1 text-center text-xs font-bold outline-none focus:border-blue-550 text-gray-800"
-                                  />
-                                  <span className="text-[10px] text-gray-600 font-bold">%</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {item.layoutType !== 'single' && (
-                            <div className="space-y-1">
-                              <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Zone 2 Secondary File</label>
-                              <div 
-                                onDragOver={e => e.preventDefault()}
-                                onDrop={e => handleZone2Drop(e, item.id)}
-                                className={`border rounded-xl p-2 transition-all ${
-                                  secondMedia 
-                                    ? 'bg-slate-550/10 border-slate-200' 
-                                    : 'border-dashed border-blue-300 bg-blue-50/10'
-                                }`}
-                              >
+                        {item.layoutType !== 'single' && (
+                          <div className="sm:col-span-2 space-y-1">
+                            <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Zone 2 Secondary File</label>
+                            <div 
+                              onDragOver={e => e.preventDefault()}
+                              onDrop={e => handleZone2Drop(e, item.id)}
+                              className={`border rounded-xl p-2 transition-all ${
+                                secondMedia 
+                                  ? 'bg-slate-550/10 border-slate-200' 
+                                  : 'border-dashed border-blue-300 bg-blue-50/10'
+                              }`}
+                            >
                                 {secondMedia ? (
                                   <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded border border-slate-200 overflow-hidden flex-shrink-0 bg-gray-50">
@@ -1030,7 +1029,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                               </div>
                             </div>
                           )}
-                        </div>
 
                         {/* Remove Slide Button */}
                         <button 
