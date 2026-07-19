@@ -810,28 +810,23 @@
 
             applyOrientation();
 
-            // Check structural changes using media IDs and ordering
-            const newKeys = fetchedAssets.map(a => `${a.id}_${a.duration}`);
-            const currentKeys = state.playlist.map(a => `${a.id}_${a.duration}`);
-            const isDifferent = JSON.stringify(newKeys) !== JSON.stringify(currentKeys);
-            if (isDifferent) {
-                state.playlist = fetchedAssets;
-                localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
-                state.currentAssetIndex = 0;
-                updateUI();
-            }
-
-            // Sync files to TV internal storage in the background for future offline playback
-            syncLocalFiles(fetchedAssets.map(a => Object.assign({}, a))).then((localAssets) => {
-                const hasLocalChanges = JSON.stringify(localAssets) !== JSON.stringify(state.playlist);
-                if (hasLocalChanges) {
-                    console.log("Background local storage sync finished. Updated assets list silently.");
+            // Sync files to TV internal storage and block until finished to play 100% offline local files
+            try {
+                const localAssets = await syncLocalFiles(fetchedAssets.map(a => Object.assign({}, a)));
+                
+                const newKeys = localAssets.map(a => `${a.id}_${a.duration}`);
+                const currentKeys = state.playlist.map(a => `${a.id}_${a.duration}`);
+                const isDifferent = JSON.stringify(newKeys) !== JSON.stringify(currentKeys);
+                
+                if (isDifferent || state.playlist.length === 0) {
                     state.playlist = localAssets;
                     localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
+                    state.currentAssetIndex = 0;
+                    updateUI();
                 }
-            }).catch((syncErr) => {
-                console.error("Background local file sync failed:", syncErr);
-            });
+            } catch (syncErr) {
+                console.error("Local file sync failed:", syncErr);
+            }
 
             localStorage.setItem('signage_tizen_playlist_updated', lastUpdated);
         } catch (err) {
@@ -846,12 +841,28 @@
             return assets;
         }
 
+        const progressContainer = document.getElementById('download-progress-container');
+        const progressBar = document.getElementById('download-progress-bar');
+        if (progressContainer) progressContainer.classList.remove('hidden');
+        if (progressBar) progressBar.style.width = '0%';
+
+        function updateProgress(completed, total) {
+            if (views.splashStatus) {
+                views.splashStatus.innerText = `Downloading offline assets... ${completed}/${total}`;
+            }
+            if (progressBar) {
+                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+                progressBar.style.width = `${pct}%`;
+            }
+        }
+
         try {
             const dir = await new Promise((resolve, reject) => {
                 window.tizen.filesystem.resolve("wgt-private", resolve, reject, "rw");
             });
 
             console.log("Local wgt-private storage resolved. Syncing assets...");
+            updateProgress(0, assets.length);
 
             // Process all media items sequentially
             for (let i = 0; i < assets.length; i++) {
@@ -900,13 +911,37 @@
                             reader.readAsDataURL(blob);
                         });
 
-                        // Write Base64 data to local file using compatible Tizen FileStream APIs
+                        // Write Base64 data to local file using non-blocking Tizen FileStream APIs
                         const file = dir.createFile(filename);
                         await new Promise((resolve, reject) => {
                             file.openStream("w", (stream) => {
                                 try {
-                                    if (typeof stream.writeBase64 === 'function') {
+                                    if (typeof stream.writeBase64NonBlocking === 'function') {
+                                        stream.writeBase64NonBlocking(base64Data, () => {
+                                            stream.close();
+                                            resolve();
+                                        }, (writeErr) => {
+                                            stream.close();
+                                            reject(writeErr);
+                                        });
+                                    } else if (typeof stream.writeBase64 === 'function') {
                                         stream.writeBase64(base64Data);
+                                        stream.close();
+                                        resolve();
+                                    } else if (typeof stream.writeDataNonBlocking === 'function') {
+                                        const binaryString = window.atob(base64Data);
+                                        const len = binaryString.length;
+                                        const bytes = new Uint8Array(len);
+                                        for (let j = 0; j < len; j++) {
+                                            bytes[j] = binaryString.charCodeAt(j);
+                                        }
+                                        stream.writeDataNonBlocking(bytes, () => {
+                                            stream.close();
+                                            resolve();
+                                        }, (writeErr) => {
+                                            stream.close();
+                                            reject(writeErr);
+                                        });
                                     } else if (typeof stream.writeData === 'function') {
                                         const binaryString = window.atob(base64Data);
                                         const len = binaryString.length;
@@ -915,11 +950,13 @@
                                             bytes[j] = binaryString.charCodeAt(j);
                                         }
                                         stream.writeData(bytes);
+                                        stream.close();
+                                        resolve();
                                     } else {
                                         stream.write(base64Data);
+                                        stream.close();
+                                        resolve();
                                     }
-                                    stream.close();
-                                    resolve();
                                 } catch (writeErr) {
                                     stream.close();
                                     reject(writeErr);
@@ -933,6 +970,9 @@
                         console.error(`Failed to download and write asset ${filename}:`, dlErr);
                     }
                 }
+                updateProgress(i + 1, assets.length);
+                // Add a 1-second delay between downloads to let the TV processor breathe
+                await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
             }
 
             // Sync QR Code Widget locally if active
@@ -1007,6 +1047,7 @@
             console.error("Local filesystem synchronization failed:", err);
         }
 
+        if (progressContainer) progressContainer.classList.add('hidden');
         return assets;
     }
 
