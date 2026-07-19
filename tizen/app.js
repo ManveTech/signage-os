@@ -170,6 +170,16 @@
         });
     }
 
+    // Fetch helper with timeout to avoid AbortController incompatibility in Tizen 3.0/4.0
+    function fetchWithTimeout(url, options = {}, timeout = 2500) {
+        return Promise.race([
+            fetch(url, options),
+            new Promise((_, reject) => {
+                setTimeout(() => reject(new Error("Request timeout")), timeout);
+            })
+        ]);
+    }
+
     // Initialize application
     function init() {
         console.log("Initializing SignageOS Tizen App...");
@@ -472,9 +482,14 @@
     // Query screen state from PocketBase backend
     async function fetchScreenConfig() {
         if (!state.screenId) return;
+        if (window.navigator && window.navigator.onLine === false) {
+            console.log("Device is offline. Skipping sync check.");
+            return;
+        }
+
         try {
             const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
-            const res = await fetch(url);
+            const res = await fetchWithTimeout(url, {}, 2500);
             if (!res.ok) {
                 if (res.status === 404) {
                     // Screen was deleted/disconnected on CMS. Go back to pairing.
@@ -1257,14 +1272,14 @@
         if (syncInterval) clearInterval(syncInterval);
         if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-        // Config Sync every 7.5 seconds
+        // Config Sync every 60 seconds (1 minute)
         syncInterval = setInterval(() => {
             if (state.screenId) {
                 fetchScreenConfig();
             } else if (state.status === 'pairing') {
                 checkPairingStatusOnServer();
             }
-        }, 7500);
+        }, 60000);
 
         // Diagnostic heartbeat every 30 seconds
         heartbeatInterval = setInterval(() => {
@@ -1275,9 +1290,11 @@
     // Query pairing status on server
     async function checkPairingStatusOnServer() {
         if (!state.screenId) return;
+        if (window.navigator && window.navigator.onLine === false) return;
+
         try {
             const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
-            const res = await fetch(url);
+            const res = await fetchWithTimeout(url, {}, 2500);
             if (res.ok) {
                 const data = await res.json();
                 if (data.status && data.status !== 'pairing') {
@@ -1295,6 +1312,8 @@
     // Broadcast diagnostic heartbeat to backend API
     async function sendHeartbeat() {
         if (state.status === 'pairing' || !state.screenId) return;
+        if (window.navigator && window.navigator.onLine === false) return;
+
         try {
             const currentAsset = state.playlist[state.currentAssetIndex];
             const payload = {
@@ -1305,11 +1324,11 @@
                 storageAvailableBytes: 85 * 1024 * 1024
             };
 
-            await fetch(`${SERVER_URL}/api/v1/devices/heartbeat`, {
+            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/heartbeat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
-            });
+            }, 2500);
         } catch (err) {
             console.error("Heartbeat broadcast failed:", err);
         }
