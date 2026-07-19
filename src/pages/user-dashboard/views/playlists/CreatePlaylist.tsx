@@ -1353,9 +1353,8 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       </div>
                     </div>
                   )}
-
-                  {/* Render Widget Overlay (Clean, Elegant Modern Cards) */}
-                  {playlistWidgetType && (() => {
+                                      {/* Render Widget Overlay (Clean, Elegant Modern Cards) */}
+                  {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (() => {
                     const positionClasses = {
                       'top-left': 'top-5 left-5',
                       'top-right': 'top-5 right-5',
@@ -1365,7 +1364,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
                     return (
                       <div className={`absolute ${positionClasses} z-10 shadow-md bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl p-3 w-48 flex flex-col justify-between animate-fadeIn text-slate-800`}>
-                        {playlistWidgetType === 'weather' && (() => {
+                        {isWidgetActive('weather') && (() => {
                           const location = playlistWidgetLink || 'Bengaluru';
                           let temp = 24;
                           let condition = 'Sunny';
@@ -1413,14 +1412,14 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                                 <WeatherIcon className={`${iconColor} w-5 h-5 ${animateClass}`} />
                                 <span className="text-base font-extrabold text-slate-800">{temp}°C</span>
                               </div>
-                              <div className="text-[9px] font-medium text-slate-600 mt-0.5 truncate max-w-full" title={`${location} · ${condition}`}>
+                              <div className="text-[9px] font-medium text-slate-650 mt-0.5 truncate max-w-full" title={`${location} · ${condition}`}>
                                 {location} · {condition}
                               </div>
                             </div>
                           );
                         })()}
 
-                        {playlistWidgetType === 'clock' && (
+                        {isWidgetActive('clock') && (
                           <div className="text-center font-normal">
                             <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">
                               {playlistWidgetLink || 'Lobby Clock'}
@@ -1431,56 +1430,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                           </div>
                         )}
 
-                        {playlistWidgetType === 'rss' && (() => {
-                          let tickerText = '+ + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +';
-                          let bgColor = 'rgba(248, 250, 252, 0.8)';
-                          let textColor = '#475569';
-                          
-                          if (tickerParagraphs.filter(p => p.trim() !== '').length > 0) {
-                            tickerText = tickerParagraphs.filter(p => p.trim() !== '').join('  |  ') + '  |';
-                            bgColor = tickerBgColor;
-                            textColor = tickerTextColor;
-                          } else {
-                            try {
-                              const config = JSON.parse(playlistWidgetLink);
-                              if (config && typeof config === 'object') {
-                                if (Array.isArray(config.items)) {
-                                  tickerText = config.items.filter(item => item && item.trim() !== '').join('  |  ');
-                                  if (tickerText) {
-                                    tickerText += '  |';
-                                  } else {
-                                    tickerText = '+ + + SignageOS CNC Cabinets + + + Signage Live Broadcast + + +';
-                                  }
-                                }
-                                if (config.bgColor) bgColor = config.bgColor;
-                                if (config.textColor) textColor = config.textColor;
-                              }
-                            } catch (e) {
-                              if (playlistWidgetLink) {
-                                tickerText = playlistWidgetLink;
-                              }
-                            }
-                          }
-
-                          return (
-                            <div className="text-center space-y-1 font-normal w-full">
-                              <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">Live Ticker</span>
-                              <div 
-                                style={{ backgroundColor: bgColor }}
-                                className="border border-slate-200/50 rounded-lg p-1 text-[8.5px] font-semibold overflow-hidden h-5 flex items-center relative w-full"
-                              >
-                                <div 
-                                  style={{ color: textColor }}
-                                  className="absolute whitespace-nowrap animate-marquee"
-                                >
-                                  {tickerText}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {playlistWidgetType === 'qrcode' && (
+                        {isWidgetActive('qrcode') && (
                           <div className="flex flex-col items-center gap-1.5 text-center font-normal">
                             <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left w-full">Scan Link</span>
                             <div className="bg-white p-1 rounded-xl border border-slate-100 flex items-center justify-center w-12 h-12 shadow-xs overflow-hidden">
@@ -1501,6 +1451,58 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                             )}
                           </div>
                         )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Render bottom News RSS Ticker marquee overlay */}
+                  {playlistWidgetType && isWidgetActive('rss') && (() => {
+                    let tickerText = 'SignageOS Player online and running.';
+                    let bgColor = '#ffffff';
+                    let textColor = '#1e293b';
+                    let labelText = 'WORLD NEWS';
+                    
+                    if (tickerParagraphs.filter(p => p.trim() !== '').length > 0) {
+                      tickerText = tickerParagraphs.filter(p => p.trim() !== '').join(' | ');
+                      bgColor = tickerBgColor;
+                      textColor = tickerTextColor;
+                    } else {
+                      try {
+                        const config = JSON.parse(playlistWidgetLink);
+                        const rssData = typeof config.rss === 'object' ? config.rss : config;
+                        if (rssData.label) labelText = rssData.label;
+                        if (Array.isArray(rssData.items)) {
+                          tickerText = rssData.items.filter(item => item && item.trim() !== '').join(' | ');
+                        }
+                        if (rssData.bgColor) bgColor = rssData.bgColor;
+                        if (rssData.textColor) textColor = rssData.textColor;
+                      } catch (e) {
+                        if (playlistWidgetLink) {
+                          tickerText = playlistWidgetLink.split('|').map(s => s.trim()).filter(Boolean).join(' | ');
+                        }
+                      }
+                    }
+
+                    return (
+                      <div 
+                        style={{ backgroundColor: bgColor }}
+                        className="absolute bottom-0 left-0 right-0 h-8 border-t border-slate-200/80 flex items-center overflow-hidden z-10 select-none animate-fadeIn"
+                      >
+                        <div 
+                          className="bg-rose-600 text-white h-full flex items-center px-3 pr-5 text-[8px] font-black uppercase tracking-wider whitespace-nowrap z-20" 
+                          style={{ clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%)' }}
+                        >
+                          {labelText}
+                        </div>
+                        <div className="flex-1 overflow-hidden relative flex items-center h-full">
+                          <div 
+                            style={{ color: textColor }} 
+                            className="whitespace-nowrap text-[9px] font-bold uppercase tracking-wide flex animate-marquee"
+                          >
+                            <span className="pr-12 shrink-0">{tickerText}</span>
+                            <span className="pr-12 shrink-0">{tickerText}</span>
+                          </div>
+                        </div>
                       </div>
                     );
                   })()}

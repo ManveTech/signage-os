@@ -68,7 +68,8 @@
         clockTime: document.getElementById('clock-time'),
         clockTitle: document.getElementById('clock-title'),
         rss: document.getElementById('widget-rss'),
-        rssText: document.getElementById('rss-text')
+        rssText: document.getElementById('rss-text'),
+        rssTextDup: document.getElementById('rss-text-dup')
     };
 
     // Loop Timers
@@ -390,13 +391,13 @@
 
         // Auto-launch playlist if device is already paired and has slides
         if (state.playlist && state.playlist.length > 0 && state.status !== 'active' && state.status !== 'online' && state.status !== 'offline' && state.status !== 'suspended') {
-            console.log("Inactivity timer started. Auto-launching in 30 seconds.");
+            console.log("Inactivity timer started. Auto-launching in 2 minutes.");
             idleTimeout = setTimeout(() => {
                 console.log("Inactivity timeout: launching playlist full screen.");
                 state.status = 'active';
                 localStorage.setItem(KEYS.STATUS, 'active');
                 updateUI();
-            }, 30000);
+            }, 120000);
         }
     }
 
@@ -933,6 +934,10 @@
 
             widgets.rss.querySelector('.rss-label').innerText = labelText;
             widgets.rssText.innerText = tickerText;
+            if (widgets.rssTextDup) {
+                widgets.rssTextDup.innerText = tickerText;
+                widgets.rssTextDup.style.color = textColor;
+            }
             widgets.rss.style.backgroundColor = bgColor;
             widgets.rssText.style.color = textColor;
             widgets.rss.className = 'rss-ticker-container'; // Make visible (removed hidden)
