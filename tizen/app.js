@@ -857,6 +857,9 @@
 
         console.log("Rendering widget overlay:", w.type, w.placement);
 
+        // Split active types (e.g. "rss,qrcode")
+        const activeTypes = w.type.split(',').map(s => s.trim().toLowerCase());
+
         // Hide all widgets first by default and apply placement
         const placement = w.placement || 'top-right';
         [widgets.qrcode, widgets.weather, widgets.clock].forEach(el => {
@@ -864,41 +867,75 @@
         });
         widgets.rss.className = 'rss-ticker-container hidden';
 
-        if (w.type === 'qrcode') {
-            const link = w.link || SERVER_URL;
-            widgets.qrcodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
-            widgets.qrcode.classList.remove('hidden');
-        } else if (w.type === 'weather') {
-            widgets.weather.querySelector('.location-name').innerText = w.link || 'Bengaluru';
-            widgets.weather.classList.remove('hidden');
-        } else if (w.type === 'clock') {
-            widgets.clockTitle.innerText = w.link || 'Lobby Clock';
-            widgets.clock.classList.remove('hidden');
-        } else if (w.type === 'rss') {
-            let tickerText = w.link || 'SignageOS Player online and running.';
-            let bgColor = 'rgba(17, 24, 39, 0.85)';
-            let textColor = '#e5e7eb';
+        // Parse individual links from multi-link JSON configuration if present
+        let qrcodeLink = w.link;
+        let rssLink = w.link;
+        let weatherLink = w.link;
+        let clockLink = w.link;
+
+        if (w.link && w.link.trim().startsWith('{')) {
             try {
-                const config = JSON.parse(w.link);
+                const parsed = JSON.parse(w.link);
+                if (parsed.qrcode) qrcodeLink = parsed.qrcode;
+                if (parsed.rss) rssLink = typeof parsed.rss === 'object' ? JSON.stringify(parsed.rss) : parsed.rss;
+                if (parsed.weather) weatherLink = parsed.weather;
+                if (parsed.clock) clockLink = parsed.clock;
+            } catch (e) {
+                console.warn("Could not parse widget multi-link JSON:", e);
+            }
+        }
+
+        // Render QR Code widget
+        if (activeTypes.includes('qrcode')) {
+            const link = qrcodeLink || SERVER_URL;
+            widgets.qrcodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
+            widgets.qrcode.className = 'widget-item ' + placement;
+            widgets.qrcode.classList.remove('hidden');
+        }
+
+        // Render Weather widget
+        if (activeTypes.includes('weather')) {
+            widgets.weather.className = 'widget-item card hud ' + placement;
+            widgets.weather.querySelector('.location-name').innerText = weatherLink || 'Bengaluru';
+            widgets.weather.classList.remove('hidden');
+        }
+
+        // Render Clock widget
+        if (activeTypes.includes('clock')) {
+            widgets.clock.className = 'widget-item card hud ' + placement;
+            widgets.clockTitle.innerText = clockLink || 'Lobby Clock';
+            widgets.clock.classList.remove('hidden');
+        }
+
+        // Render RSS News Ticker widget
+        if (activeTypes.includes('rss')) {
+            let tickerText = rssLink || 'SignageOS Player online and running.';
+            let labelText = 'WORLD NEWS';
+            let bgColor = '#ffffff';
+            let textColor = '#1e293b';
+
+            try {
+                const config = JSON.parse(rssLink);
                 if (config && typeof config === 'object') {
+                    if (config.label) labelText = config.label;
                     if (Array.isArray(config.items)) {
-                        tickerText = config.items.filter(item => item && item.trim() !== '').join('  |  ');
-                        if (tickerText) {
-                            tickerText += '  |';
-                        } else {
-                            tickerText = 'SignageOS Player online and running.';
-                        }
+                        tickerText = config.items.filter(item => item && item.trim() !== '').join(' | ');
                     }
                     if (config.bgColor) bgColor = config.bgColor;
                     if (config.textColor) textColor = config.textColor;
                 }
             } catch (e) {
-                // Not JSON, fallback to plain text
+                // Not JSON, format plain text with space-pipe-space separator if pipes are present
+                if (typeof rssLink === 'string') {
+                    tickerText = rssLink.split('|').map(s => s.trim()).filter(Boolean).join(' | ');
+                }
             }
+
+            widgets.rss.querySelector('.rss-label').innerText = labelText;
             widgets.rssText.innerText = tickerText;
             widgets.rss.style.backgroundColor = bgColor;
             widgets.rssText.style.color = textColor;
-            widgets.rss.classList.remove('hidden');
+            widgets.rss.className = 'rss-ticker-container'; // Make visible (removed hidden)
         }
     }
 
