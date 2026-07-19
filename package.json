@@ -41,7 +41,10 @@
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.0",
     "autoprefixer": "^10.4.21",
+    "jszip": "^3.10.1",
+    "node-forge": "^1.4.0",
     "tailwindcss": "^4.1.14",
+    "tizen": "https://github.com/reisxd/tizen.js/tarball/main",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
