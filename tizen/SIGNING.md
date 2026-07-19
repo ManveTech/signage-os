@@ -27,7 +27,7 @@ zip -j tizen/Debug/tizen_unsigned.wgt tizen/README.md tizen/app.js tizen/config.
 ### 2. Sign and Update SSSP Manifest
 Run the signing script:
 ```bash
-node tizen/sign.js
+node tizen/sign.cjs
 ```
 This script will:
 * Load the certificates from `tizenbrewInstallerConfig.json`.
