@@ -943,39 +943,30 @@
                 rotationTimeout = setTimeout(advancePlaylist, 5000);
             });
         } else {
-            // Preload image to ensure zero flash/blank screens during transition
-            const img = new Image();
-            img.onload = () => {
-                views.videoPlayer.style.display = 'none';
-                views.videoPlayer.pause();
-                
-                // Apply scale mode configuration
-                views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
+            views.videoPlayer.style.display = 'none';
+            views.videoPlayer.pause();
+            
+            // Apply scale mode configuration
+            views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
 
-                // Apply scale zoom configuration
-                const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-                views.imagePlayer.style.transform = scale;
+            // Apply scale zoom configuration
+            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
+            views.imagePlayer.style.transform = scale;
 
-                // Set source and reset class
-                views.imagePlayer.className = 'media-element';
-                views.imagePlayer.src = asset.url;
-                views.imagePlayer.style.display = 'block';
+            // Set source and reset class
+            views.imagePlayer.className = 'media-element';
+            views.imagePlayer.src = asset.url;
+            views.imagePlayer.style.display = 'block';
 
-                // Trigger animation reflow precisely on image load
-                void views.imagePlayer.offsetWidth;
-                if (transitionName !== 'none') {
-                    views.imagePlayer.classList.add(animClass);
-                }
+            // Trigger animation reflow precisely
+            void views.imagePlayer.offsetWidth;
+            if (transitionName !== 'none') {
+                views.imagePlayer.classList.add(animClass);
+            }
 
-                // Image duration rotation starts ONLY after image is fully loaded
-                const duration = (asset.duration || 10) * 1000;
-                rotationTimeout = setTimeout(advancePlaylist, duration);
-            };
-            img.onerror = () => {
-                console.error("Failed to preload image:", asset.url);
-                advancePlaylist();
-            };
-            img.src = asset.url;
+            // Schedule the transition timeout immediately
+            const duration = (parseInt(asset.duration, 10) || 10) * 1000;
+            rotationTimeout = setTimeout(advancePlaylist, duration);
         }
     }
 
