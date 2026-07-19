@@ -139,11 +139,17 @@ body {
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
+}
+
+.btn:hover, .btn:focus {
+    background-color: #1d4ed8;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+    outline: 3px solid rgba(59, 130, 246, 0.4);
 }
 
 .btn:active {
-    background-color: #2563eb;
+    background-color: #1e40af;
 }
 
 .small-text {

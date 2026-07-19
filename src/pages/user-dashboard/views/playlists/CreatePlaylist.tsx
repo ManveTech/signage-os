@@ -49,12 +49,29 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
   const [playlistVolume, setPlaylistVolume] = useState<number>(80);
 
   // Widget Settings
-  const [playlistWidgetType, setPlaylistWidgetType] = useState<'weather' | 'clock' | 'rss' | 'qrcode' | undefined>(undefined);
+  const [playlistWidgetType, setPlaylistWidgetType] = useState<string | undefined>(undefined);
+  const toggleWidgetType = (type: string) => {
+    setPlaylistWidgetType(prev => {
+      const active = prev ? prev.split(',').map(s => s.trim()) : [];
+      let newActive;
+      if (active.includes(type)) {
+        newActive = active.filter(x => x !== type);
+      } else {
+        newActive = [...active, type];
+      }
+      return newActive.length > 0 ? newActive.join(',') : undefined;
+    });
+  };
+  const isWidgetActive = (type: string) => {
+    const active = playlistWidgetType ? playlistWidgetType.split(',').map(s => s.trim()) : [];
+    return active.includes(type);
+  };
   const [playlistWidgetPlacement, setPlaylistWidgetPlacement] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'>('top-right');
   const [playlistWidgetLink, setPlaylistWidgetLink] = useState('');
   const [tickerBgColor, setTickerBgColor] = useState('#111827');
   const [tickerTextColor, setTickerTextColor] = useState('#ffffff');
   const [tickerParagraphs, setTickerParagraphs] = useState<string[]>(['']);
+  const [tickerLabel, setTickerLabel] = useState('WORLD NEWS');
 
   // Preview Modal States
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -109,28 +126,58 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       setPlaylistWidgetPlacement(play.widgetPlacement || 'top-right');
       setPlaylistWidgetLink(play.widgetLink || '');
 
-      // Load ticker specific states
-      if (play.widgetType === 'rss' && play.widgetLink) {
+      // Load ticker specific states (handling both single widget and multi-widget formats)
+      let hasRss = false;
+      if (play.widgetType) {
+        const active = play.widgetType.split(',').map(s => s.trim().toLowerCase());
+        hasRss = active.includes('rss');
+      }
+
+      if (hasRss && play.widgetLink) {
         try {
-          const config = JSON.parse(play.widgetLink);
-          if (config && typeof config === 'object') {
-            setTickerBgColor(config.bgColor || '#111827');
-            setTickerTextColor(config.textColor || '#ffffff');
-            setTickerParagraphs(Array.isArray(config.items) ? config.items : ['']);
+          if (play.widgetLink.startsWith('{')) {
+            const parsed = JSON.parse(play.widgetLink);
+            if (parsed.rss && typeof parsed.rss === 'object') {
+              // It's a combined JSON structure
+              const rssData = parsed.rss;
+              setTickerBgColor(rssData.bgColor || '#111827');
+              setTickerTextColor(rssData.textColor || '#ffffff');
+              setTickerParagraphs(Array.isArray(rssData.items) ? rssData.items : ['']);
+              setTickerLabel(rssData.label !== undefined ? rssData.label : 'WORLD NEWS');
+              
+              // Unpack secondary widget link
+              if (parsed.qrcode) setPlaylistWidgetLink(parsed.qrcode);
+              else if (parsed.weather) setPlaylistWidgetLink(parsed.weather);
+              else if (parsed.clock) setPlaylistWidgetLink(parsed.clock);
+            } else if (parsed.items) {
+              // Standard single RSS JSON structure
+              setTickerBgColor(parsed.bgColor || '#111827');
+              setTickerTextColor(parsed.textColor || '#ffffff');
+              setTickerParagraphs(Array.isArray(parsed.items) ? parsed.items : ['']);
+              setTickerLabel(parsed.label !== undefined ? parsed.label : 'WORLD NEWS');
+            } else {
+              setTickerParagraphs([play.widgetLink]);
+              setTickerBgColor('#111827');
+              setTickerTextColor('#ffffff');
+              setTickerLabel('WORLD NEWS');
+            }
           } else {
             setTickerParagraphs([play.widgetLink]);
             setTickerBgColor('#111827');
             setTickerTextColor('#ffffff');
+            setTickerLabel('WORLD NEWS');
           }
         } catch (e) {
           setTickerParagraphs([play.widgetLink]);
           setTickerBgColor('#111827');
           setTickerTextColor('#ffffff');
+          setTickerLabel('WORLD NEWS');
         }
       } else {
         setTickerBgColor('#111827');
         setTickerTextColor('#ffffff');
         setTickerParagraphs(['']);
+        setTickerLabel('WORLD NEWS');
       }
 
       const allMedia = mediaStore.getMedia();
@@ -177,6 +224,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     setTickerBgColor('#111827');
     setTickerTextColor('#ffffff');
     setTickerParagraphs(['']);
+    setTickerLabel('WORLD NEWS');
     showToast('Starting a new playlist.');
   };
 
@@ -524,9 +572,20 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       return;
     }
 
-    const finalWidgetLink = playlistWidgetType === 'rss'
-      ? JSON.stringify({ items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor })
-      : playlistWidgetLink;
+    const active = playlistWidgetType ? playlistWidgetType.split(',').map(s => s.trim().toLowerCase()) : [];
+    const hasRss = active.includes('rss');
+    const hasSecondary = active.includes('qrcode') || active.includes('weather') || active.includes('clock');
+
+    const finalWidgetLink = (hasRss && hasSecondary)
+      ? JSON.stringify({
+          qrcode: playlistWidgetLink,
+          weather: playlistWidgetLink,
+          clock: playlistWidgetLink,
+          rss: { label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor }
+        })
+      : hasRss
+        ? JSON.stringify({ label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor })
+        : playlistWidgetLink;
 
     if (editingPlaylistId) {
       // Update existing playlist
@@ -1103,24 +1162,34 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
 
               {/* Widget overlays */}
-              <div>
+              <div className="space-y-2">
                 <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Global Widget Overlay</label>
-                <select
-                  value={playlistWidgetType ?? ''}
-                  onChange={e => setPlaylistWidgetType((e.target.value || undefined) as any)}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-bold text-slate-700 shadow-xs h-[42px] cursor-pointer"
-                >
-                  <option value="">No Widget Overlay</option>
-                  <option value="weather">Weather Forecast</option>
-                  <option value="clock">Live Digital Clock</option>
-                  <option value="rss">News RSS Ticker</option>
-                  <option value="qrcode">Scan QR Code</option>
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'rss', name: 'News RSS Ticker' },
+                    { id: 'qrcode', name: 'Scan QR Code' },
+                    { id: 'clock', name: 'Live Digital Clock' },
+                    { id: 'weather', name: 'Weather Forecast' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => toggleWidgetType(opt.id)}
+                      className={`flex items-center justify-center px-3 py-2 border rounded-xl font-bold text-xs transition-all cursor-pointer h-10 ${
+                        isWidgetActive(opt.id)
+                          ? 'border-blue-600 bg-blue-50 text-blue-600 shadow-xs font-black'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {playlistWidgetType && (
+              {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Widget Placement</label>
+                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Secondary Widget Placement</label>
                   <select
                     value={playlistWidgetPlacement}
                     onChange={e => setPlaylistWidgetPlacement(e.target.value as any)}
@@ -1134,9 +1203,20 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 </div>
               )}
 
-              {playlistWidgetType && playlistWidgetType === 'rss' && (
-                <div className="sm:col-span-2 space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+              {playlistWidgetType && isWidgetActive('rss') && (
+                <div className="sm:col-span-2 space-y-4 bg-slate-550/10 p-4 rounded-xl border border-slate-200 text-left">
                   <span className="block text-[10px] text-slate-455 uppercase tracking-widest font-black">Ticker Configuration</span>
+                  
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">Ticker Label / Header</label>
+                    <input
+                      type="text"
+                      value={tickerLabel}
+                      onChange={e => setTickerLabel(e.target.value)}
+                      placeholder="e.g. WORLD NEWS (leave blank for no label)"
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-semibold text-slate-800 text-xs shadow-xs"
+                    />
+                  </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1460,7 +1540,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                     let tickerText = 'SignageOS Player online and running.';
                     let bgColor = '#ffffff';
                     let textColor = '#1e293b';
-                    let labelText = 'WORLD NEWS';
+                    let labelText = tickerLabel;
                     
                     if (tickerParagraphs.filter(p => p.trim() !== '').length > 0) {
                       tickerText = tickerParagraphs.filter(p => p.trim() !== '').join(' | ');
@@ -1488,12 +1568,14 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                         style={{ backgroundColor: bgColor }}
                         className="absolute bottom-0 left-0 right-0 h-8 border-t border-slate-200/80 flex items-center overflow-hidden z-10 select-none animate-fadeIn"
                       >
-                        <div 
-                          className="bg-rose-600 text-white h-full flex items-center px-3 pr-5 text-[8px] font-black uppercase tracking-wider whitespace-nowrap z-20" 
-                          style={{ clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%)' }}
-                        >
-                          {labelText}
-                        </div>
+                        {labelText && labelText.trim() !== '' && (
+                          <div 
+                            className="bg-rose-600 text-white h-full flex items-center px-3 pr-5 text-[8px] font-black uppercase tracking-wider whitespace-nowrap z-20" 
+                            style={{ clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%)' }}
+                          >
+                            {labelText}
+                          </div>
+                        )}
                         <div className="flex-1 overflow-hidden relative flex items-center h-full">
                           <div 
                             style={{ color: textColor }} 

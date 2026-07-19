@@ -278,6 +278,25 @@
             });
         });
 
+        // Remote navigation / spatial select support for Tizen TVs
+        window.addEventListener('keydown', (e) => {
+            const keyCode = e.keyCode;
+            const isPairingScreenActive = views.pairing && views.pairing.classList.contains('active');
+
+            if (isPairingScreenActive) {
+                // Focus the refresh button on any navigation key press to show visual feedback highlight
+                if (document.activeElement !== views.refreshCodeBtn) {
+                    views.refreshCodeBtn.focus();
+                }
+
+                // If Enter / OK is pressed (Tizen KeyCodes: 13, 29443, 10190)
+                if (keyCode === 13 || keyCode === 29443 || keyCode === 10190 || e.key === 'Enter') {
+                    e.preventDefault();
+                    views.refreshCodeBtn.click();
+                }
+            }
+        });
+
         // Loop next media on video end
         views.videoPlayer.addEventListener('ended', () => {
             console.log("Video playback complete, advancing index.");
@@ -911,7 +930,7 @@
         // Render RSS News Ticker widget
         if (activeTypes.includes('rss')) {
             let tickerText = rssLink || 'SignageOS Player online and running.';
-            let labelText = 'WORLD NEWS';
+            let labelText = '';
             let bgColor = '#ffffff';
             let textColor = '#1e293b';
 
@@ -932,7 +951,15 @@
                 }
             }
 
-            widgets.rss.querySelector('.rss-label').innerText = labelText;
+            const rssLabelEl = widgets.rss.querySelector('.rss-label');
+            if (rssLabelEl) {
+                if (labelText && labelText.trim() !== '') {
+                    rssLabelEl.innerText = labelText;
+                    rssLabelEl.style.display = 'block';
+                } else {
+                    rssLabelEl.style.display = 'none';
+                }
+            }
             widgets.rssText.innerText = tickerText;
             if (widgets.rssTextDup) {
                 widgets.rssTextDup.innerText = tickerText;
