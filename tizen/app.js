@@ -683,6 +683,16 @@
             };
             localStorage.setItem(KEYS.WIDGET, JSON.stringify(state.widget));
 
+            // Check if playlist updated timestamp actually changed!
+            const lastUpdated = data.updated;
+            const cachedPlaylistUpdated = localStorage.getItem('signage_tizen_playlist_updated') || '';
+            const isPlaylistEmpty = !state.playlist || state.playlist.length === 0;
+
+            if (lastUpdated === cachedPlaylistUpdated && !isPlaylistEmpty) {
+                console.log("Playlist content timestamp is unchanged. Skipping media item fetch and file sync.");
+                return;
+            }
+
             // Sync Playlist assets from slides or direct references
             let fetchedAssets = [];
             
@@ -806,6 +816,8 @@
             }).catch((syncErr) => {
                 console.error("Background local file sync failed:", syncErr);
             });
+
+            localStorage.setItem('signage_tizen_playlist_updated', lastUpdated);
         } catch (err) {
             console.error("Error syncing playlist assets:", err);
         }
