@@ -311,10 +311,11 @@
         });
 
         // Loop next media on video end
-        views.videoPlayer.addEventListener('ended', () => {
-            console.log("Video playback complete, advancing index.");
-            advancePlaylist();
-        });
+        // Disabled to strictly respect custom slide durations rather than video length
+        // views.videoPlayer.addEventListener('ended', () => {
+        //     console.log("Video playback complete, advancing index.");
+        //     advancePlaylist();
+        // });
 
         views.videoPlayer.addEventListener('error', (e) => {
             console.error("Video element error, skipping asset.", e);
@@ -648,8 +649,18 @@
             let fetchedAssets = [];
             
             // 1. Resolve from slides sequence (with custom durations, ordering)
-            if (data.slides && data.slides.length > 0) {
-                for (const slide of data.slides) {
+            let slides = data.slides || [];
+            if (typeof slides === 'string') {
+                try {
+                    slides = JSON.parse(slides);
+                } catch (e) {
+                    console.error("Failed to parse slides JSON string:", e);
+                    slides = [];
+                }
+            }
+
+            if (Array.isArray(slides) && slides.length > 0) {
+                for (const slide of slides) {
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
@@ -659,7 +670,7 @@
                             url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
-                            duration: slide.duration || media.duration || 10,
+                            duration: parseInt(slide.duration || media.duration || 10, 10),
                             thumbnail: media.thumbnail || rawUrl,
                             objectFit: slide.objectFit || 'cover',
                             scalePercent: slide.scalePercent || 100
