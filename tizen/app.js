@@ -194,8 +194,13 @@
             // If paired already, immediately query config, else start in pairing mode
             if (state.screenId) {
                 POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
+                // If we have a cached playlist, hide splash immediately to play cached content offline / without delay
+                if (state.playlist && state.playlist.length > 0) {
+                    views.splash.classList.remove('active');
+                }
                 fetchScreenConfig().then(() => {
                     views.splash.classList.remove('active');
+                    updateUI();
                 });
             } else {
                 // Generate/request code
@@ -544,9 +549,7 @@
                 }
             }
 
-            if (oldStatus !== state.status) {
-                updateUI();
-            }
+            updateUI();
         } catch (err) {
             console.error("Error fetching screen configuration:", err);
             // 5. Offline unpair check (24 hour threshold)
