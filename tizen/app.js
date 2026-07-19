@@ -735,8 +735,10 @@
 
             applyOrientation();
 
-            // Check structure equality and play immediate remote/cached files
-            const isDifferent = JSON.stringify(fetchedAssets) !== JSON.stringify(state.playlist);
+            // Check structural changes using media IDs and ordering
+            const newKeys = fetchedAssets.map(a => `${a.id}_${a.duration}`);
+            const currentKeys = state.playlist.map(a => `${a.id}_${a.duration}`);
+            const isDifferent = JSON.stringify(newKeys) !== JSON.stringify(currentKeys);
             if (isDifferent) {
                 state.playlist = fetchedAssets;
                 localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
@@ -748,10 +750,9 @@
             syncLocalFiles(fetchedAssets.map(a => Object.assign({}, a))).then((localAssets) => {
                 const hasLocalChanges = JSON.stringify(localAssets) !== JSON.stringify(state.playlist);
                 if (hasLocalChanges) {
-                    console.log("Background local storage sync finished. Transitioning to local files.");
+                    console.log("Background local storage sync finished. Updated assets list silently.");
                     state.playlist = localAssets;
                     localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
-                    updateUI();
                 }
             }).catch((syncErr) => {
                 console.error("Background local file sync failed:", syncErr);
