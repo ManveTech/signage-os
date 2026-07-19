@@ -34,7 +34,9 @@
         playlistTransition: localStorage.getItem('signage_tizen_transition') || 'fade',
         playlistLoop: localStorage.getItem('signage_tizen_loop') !== 'false',
         cacheBust: localStorage.getItem('signage_tizen_cache_bust') || '',
-        qrcodeLocalPath: localStorage.getItem('signage_qrcode_local_path') || ''
+        qrcodeLocalPath: localStorage.getItem('signage_qrcode_local_path') || '',
+        playlistId: localStorage.getItem('signage_tizen_playlist_id') || '',
+        screenUpdated: localStorage.getItem('signage_tizen_screen_updated') || ''
     };
 
     // Inactivity / Idle Auto Launch Timeout
@@ -573,13 +575,29 @@
                 }
             }
 
-            // Sync Playlist if active
+            // Sync Playlist if active and changed
             if (state.status === "active" || state.status === "online") {
                 if (activePlaylistId) {
-                    await fetchPlaylist(activePlaylistId);
+                    const screenUpdated = data.updated;
+                    const hasPlaylistChanged = activePlaylistId !== state.playlistId;
+                    const hasScreenUpdated = screenUpdated !== state.screenUpdated;
+                    const isPlaylistEmpty = !state.playlist || state.playlist.length === 0;
+
+                    if (hasPlaylistChanged || hasScreenUpdated || isPlaylistEmpty) {
+                        console.log(`Syncing playlist. Reason: playlistChanged=${hasPlaylistChanged}, screenUpdated=${hasScreenUpdated}, isEmpty=${isPlaylistEmpty}`);
+                        state.playlistId = activePlaylistId;
+                        state.screenUpdated = screenUpdated;
+                        localStorage.setItem('signage_tizen_playlist_id', state.playlistId);
+                        localStorage.setItem('signage_tizen_screen_updated', state.screenUpdated);
+                        await fetchPlaylist(activePlaylistId);
+                    }
                 } else {
                     state.playlist = [];
+                    state.playlistId = '';
+                    state.screenUpdated = '';
                     localStorage.setItem(KEYS.PLAYLIST, '[]');
+                    localStorage.removeItem('signage_tizen_playlist_id');
+                    localStorage.removeItem('signage_tizen_screen_updated');
                 }
             }
 
