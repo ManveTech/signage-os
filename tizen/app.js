@@ -33,7 +33,8 @@
         orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
         playlistTransition: localStorage.getItem('signage_tizen_transition') || 'fade',
         playlistLoop: localStorage.getItem('signage_tizen_loop') !== 'false',
-        cacheBust: localStorage.getItem('signage_tizen_cache_bust') || ''
+        cacheBust: localStorage.getItem('signage_tizen_cache_bust') || '',
+        qrcodeLocalPath: localStorage.getItem('signage_qrcode_local_path') || ''
     };
 
     // Inactivity / Idle Auto Launch Timeout
@@ -722,6 +723,13 @@
 
             applyOrientation();
 
+            // Sync files to TV internal storage for offline playback
+            try {
+                fetchedAssets = await syncLocalFiles(fetchedAssets);
+            } catch (syncErr) {
+                console.error("Local file sync failed, playing from remote URLs:", syncErr);
+            }
+
             // Check structure equality
             const isDifferent = JSON.stringify(fetchedAssets) !== JSON.stringify(state.playlist);
             if (isDifferent) {
@@ -733,6 +741,112 @@
         } catch (err) {
             console.error("Error syncing playlist assets:", err);
         }
+    }
+
+    // Offline caching: sync remote files to local Tizen filesystem storage
+    async function syncLocalFiles(assets) {
+        if (!window.tizen || !window.tizen.filesystem) {
+            console.log("Not running on Tizen screen. Skipping offline local filesystem sync.");
+            return assets;
+        }
+
+        try {
+            const dir = await new Promise((resolve, reject) => {
+                window.tizen.filesystem.resolve("wgt-private-local", resolve, reject, "rw");
+            });
+
+            console.log("Local wgt-private-local storage resolved. Syncing assets...");
+
+            // Process all media items sequentially
+            for (let i = 0; i < assets.length; i++) {
+                const asset = assets[i];
+                if (!asset.url) continue;
+
+                // Determine file extension
+                let ext = 'png';
+                if (asset.mediaType === 'video') ext = 'mp4';
+                else if (asset.url.includes('.gif')) ext = 'gif';
+                else if (asset.url.includes('.jpg') || asset.url.includes('.jpeg')) ext = 'jpg';
+                else if (asset.url.includes('.webp')) ext = 'webp';
+
+                const filename = `asset_${asset.id}.${ext}`;
+
+                try {
+                    // Check if file exists locally
+                    const file = dir.resolve(filename);
+                    console.log(`Asset ${filename} already exists locally: ${file.toURI()}`);
+                    asset.url = file.toURI(); // Replace remote URL with local URI
+                } catch (e) {
+                    // File does not exist, download it
+                    console.log(`Downloading asset: ${asset.url} as ${filename}`);
+                    
+                    try {
+                        const localPath = await new Promise((resolve, reject) => {
+                            // Strip query parameters for download target URL
+                            const cleanUrl = asset.url.split('?')[0];
+                            const downloadRequest = new window.tizen.DownloadRequest(cleanUrl, "wgt-private-local", filename);
+                            window.tizen.download.start(downloadRequest, {
+                                oncompleted: (id, path) => {
+                                    console.log(`Download complete: ${filename}`);
+                                    resolve(path);
+                                },
+                                onfailed: (id, err) => {
+                                    reject(new Error(`Download failed: ${err.name}`));
+                                }
+                            });
+                        });
+                        const downloadedFile = dir.resolve(filename);
+                        asset.url = downloadedFile.toURI();
+                    } catch (dlErr) {
+                        console.error(`Failed to download asset ${filename}:`, dlErr);
+                    }
+                }
+            }
+
+            // Sync QR Code Widget locally if active
+            const w = state.widget;
+            const activeTypes = w && w.type ? w.type.split(',').map(s => s.trim().toLowerCase()) : [];
+            if (activeTypes.includes('qrcode') && w.link) {
+                let qrcodeLink = w.link;
+                if (w.link.trim().startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(w.link);
+                        if (parsed.qrcode) qrcodeLink = parsed.qrcode;
+                    } catch (e) {}
+                }
+                
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrcodeLink)}`;
+                const qrFilename = 'qrcode_widget.png';
+
+                try {
+                    // Delete old QR Code to regenerate new link if links changed
+                    try {
+                        const existingQr = dir.resolve(qrFilename);
+                        dir.deleteFile(existingQr.fullPath);
+                    } catch (err) {}
+
+                    console.log("Downloading updated QR code image...");
+                    await new Promise((resolve, reject) => {
+                        const downloadRequest = new window.tizen.DownloadRequest(qrUrl, "wgt-private-local", qrFilename);
+                        window.tizen.download.start(downloadRequest, {
+                            oncompleted: resolve,
+                            onfailed: (id, err) => reject(err)
+                        });
+                    });
+
+                    const downloadedQrFile = dir.resolve(qrFilename);
+                    state.qrcodeLocalPath = downloadedQrFile.toURI();
+                    localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
+                } catch (qrErr) {
+                    console.error("QR Code offline download failed:", qrErr);
+                }
+            }
+
+        } catch (err) {
+            console.error("Local filesystem synchronization failed:", err);
+        }
+
+        return assets;
     }
 
     // Playback playlist rotation loop
@@ -908,7 +1022,7 @@
         // Render QR Code widget
         if (activeTypes.includes('qrcode')) {
             const link = qrcodeLink || SERVER_URL;
-            widgets.qrcodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
+            widgets.qrcodeImg.src = state.qrcodeLocalPath || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
             widgets.qrcode.className = 'widget-item ' + placement;
             widgets.qrcode.classList.remove('hidden');
         }
