@@ -174,46 +174,45 @@
         applyBranding();
         bindEvents();
 
-        // Run screen size hardware check first (does not halt initialization)
+        // Clear any pending auto-launch alarms (if we just opened)
+        cancelAutoLaunchAlarm();
+
+        // Listen for keydown/click to reset the auto-launch idle timer
+        window.addEventListener('keydown', resetIdleTimer);
+        window.addEventListener('click', resetIdleTimer);
+
+        // Listen for visibility changes (background / exit state)
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        // If paired already, immediately query config, else start in pairing mode
+        if (state.screenId) {
+            POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
+            // If we have a cached playlist, hide splash immediately to play cached content offline / without delay
+            if (state.playlist && state.playlist.length > 0) {
+                views.splash.classList.remove('active');
+            }
+            fetchScreenConfig().then(() => {
+                views.splash.classList.remove('active');
+                updateUI();
+            });
+        } else {
+            // Generate/request code
+            requestPairingCode().then(() => {
+                views.splash.classList.remove('active');
+            });
+        }
+
+        // Start periodic sync and heartbeat processes
+        startSyncLoops();
+        startClockWidget();
+
+        // Run screen size hardware check in the background (does not block load)
         checkScreenSize().then((result) => {
             state.isOutOfRange = !result.allowed;
             if (state.isOutOfRange) {
                 console.warn(`Screen size verification limit reached (${result.size}"). Media content will be blocked.`);
+                updateUI();
             }
-
-            updateUI();
-
-            // Clear any pending auto-launch alarms (if we just opened)
-            cancelAutoLaunchAlarm();
-
-            // Listen for keydown/click to reset the auto-launch idle timer
-            window.addEventListener('keydown', resetIdleTimer);
-            window.addEventListener('click', resetIdleTimer);
-
-            // Listen for visibility changes (background / exit state)
-            document.addEventListener("visibilitychange", handleVisibilityChange);
-
-            // If paired already, immediately query config, else start in pairing mode
-            if (state.screenId) {
-                POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
-                // If we have a cached playlist, hide splash immediately to play cached content offline / without delay
-                if (state.playlist && state.playlist.length > 0) {
-                    views.splash.classList.remove('active');
-                }
-                fetchScreenConfig().then(() => {
-                    views.splash.classList.remove('active');
-                    updateUI();
-                });
-            } else {
-                // Generate/request code
-                requestPairingCode().then(() => {
-                    views.splash.classList.remove('active');
-                });
-            }
-
-            // Start periodic sync and heartbeat processes
-            startSyncLoops();
-            startClockWidget();
         });
     }
 
@@ -223,8 +222,21 @@
             console.log("App moved to background / hidden. Scheduling auto-launch alarm in 15 seconds...");
             scheduleAutoLaunchAlarm();
         } else {
-            console.log("App returned to foreground. Cancelling auto-launch alarm.");
+            console.log("App returned to foreground. Cancelling auto-launch alarm and resuming playback...");
             cancelAutoLaunchAlarm();
+
+            // Resume active media and loop
+            if (state.status === 'active') {
+                try {
+                    const currentAsset = state.playlist[state.currentAssetIndex];
+                    if (currentAsset && currentAsset.mediaType === 'video') {
+                        views.videoPlayer.play().catch(e => console.warn("Failed to resume video on wake:", e));
+                    }
+                    startPlaylistRotation();
+                } catch (err) {
+                    console.error("Failed to restore playback state on wake:", err);
+                }
+            }
         }
     }
 
