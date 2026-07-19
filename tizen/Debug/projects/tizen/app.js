@@ -29,15 +29,8 @@
         currentAssetIndex: 0,
         volume: parseInt(localStorage.getItem(KEYS.VOLUME) || '80'),
         branding: JSON.parse(localStorage.getItem(KEYS.BRANDING) || '{}'),
-        widget: JSON.parse(localStorage.getItem(KEYS.WIDGET) || '{}'),
-        orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
-        playlistTransition: localStorage.getItem('signage_tizen_transition') || 'fade',
-        playlistLoop: localStorage.getItem('signage_tizen_loop') !== 'false',
-        cacheBust: localStorage.getItem('signage_tizen_cache_bust') || ''
+        widget: JSON.parse(localStorage.getItem(KEYS.WIDGET) || '{}')
     };
-
-    // Inactivity / Idle Auto Launch Timeout
-    let idleTimeout = null;
 
     // Elements
     const views = {
@@ -46,15 +39,12 @@
         standby: document.getElementById('standby-screen'),
         suspended: document.getElementById('suspended-screen'),
         playback: document.getElementById('playback-screen'),
-        outOfRange: document.getElementById('out-of-range-media-placeholder'),
         pairingCodeText: document.getElementById('pairing-code'),
         pairingStatusMsg: document.getElementById('pairing-status-message'),
         refreshCodeBtn: document.getElementById('refresh-code-btn'),
         imagePlayer: document.getElementById('image-player'),
         videoPlayer: document.getElementById('video-player'),
         splashLogo: document.getElementById('splash-logo'),
-        pairingLogo: document.getElementById('pairing-logo'),
-        standbyLogo: document.getElementById('standby-logo'),
         splashName: document.getElementById('splash-name'),
         splashStatus: document.getElementById('splash-status')
     };
@@ -77,137 +67,35 @@
     let heartbeatInterval = null;
     let clockInterval = null;
 
-    // Detect physical screen diagonal and model name to verify size limit (under 43 inches)
-    function checkScreenSize() {
-        return new Promise((resolve) => {
-            // Query parameter override for testing (e.g. ?test_inches=50)
-            const urlParams = new URLSearchParams(window.location.search);
-            const testInches = urlParams.get('test_inches');
-            if (testInches) {
-                const inches = parseInt(testInches, 10);
-                console.log(`Query parameter test override detected: ${inches} inches`);
-                resolve({ allowed: inches <= 43, size: inches });
-                return;
-            }
-
-            if (!window.tizen || !window.tizen.systeminfo) {
-                console.log("Not in Tizen environment, allowing all sizes.");
-                resolve({ allowed: true, size: 0 });
-                return;
-            }
-
-            let detectedInches = null;
-            let displayDone = false;
-            let buildDone = false;
-
-            function checkDone() {
-                if (displayDone && buildDone) {
-                    if (detectedInches !== null && detectedInches > 43) {
-                        resolve({ allowed: false, size: detectedInches });
-                    } else {
-                        resolve({ allowed: true, size: detectedInches || 0 });
-                    }
-                }
-            }
-
-            // Method 1: Check DISPLAY physical dimensions
-            try {
-                window.tizen.systeminfo.getPropertyValue("DISPLAY", (disp) => {
-                    if (disp.physicalWidth && disp.physicalHeight) {
-                        const widthMm = disp.physicalWidth;
-                        const heightMm = disp.physicalHeight;
-                        const diagonalMm = Math.sqrt(Math.pow(widthMm, 2) + Math.pow(heightMm, 2));
-                        const inches = diagonalMm / 25.4;
-                        console.log(`DISPLAY physical diagonal: ${inches.toFixed(2)} inches`);
-                        if (inches > 0) {
-                            detectedInches = Math.round(inches);
-                        }
-                    }
-                    displayDone = true;
-                    checkDone();
-                }, (err) => {
-                    console.warn("DISPLAY systeminfo fetch error:", err);
-                    displayDone = true;
-                    checkDone();
-                });
-            } catch (e) {
-                console.error("DISPLAY property access exception:", e);
-                displayDone = true;
-                checkDone();
-            }
-
-            // Method 2: Check BUILD model code for size digits (e.g. QB43C, LH55QB, UN65RU...)
-            try {
-                window.tizen.systeminfo.getPropertyValue("BUILD", (build) => {
-                    if (build.model) {
-                        console.log(`BUILD model detected: ${build.model}`);
-                        // Find first sequence of two or more digits in the model name
-                        const matches = build.model.match(/\d{2,}/);
-                        if (matches && matches[0]) {
-                            const sizeFromModel = parseInt(matches[0], 10);
-                            console.log(`Parsed size from model code: ${sizeFromModel} inches`);
-                            if (sizeFromModel > 0 && (!detectedInches || sizeFromModel > detectedInches)) {
-                                detectedInches = sizeFromModel;
-                            }
-                        }
-                    }
-                    buildDone = true;
-                    checkDone();
-                }, (err) => {
-                    console.warn("BUILD systeminfo fetch error:", err);
-                    buildDone = true;
-                    checkDone();
-                });
-            } catch (e) {
-                console.error("BUILD property access exception:", e);
-                buildDone = true;
-                checkDone();
-            }
-        });
-    }
-
     // Initialize application
     function init() {
         console.log("Initializing SignageOS Tizen App...");
         applyBranding();
         bindEvents();
+        updateUI();
 
-        // Run screen size hardware check first (does not halt initialization)
-        checkScreenSize().then((result) => {
-            state.isOutOfRange = !result.allowed;
-            if (state.isOutOfRange) {
-                console.warn(`Screen size verification limit reached (${result.size}"). Media content will be blocked.`);
-            }
+        // Clear any pending auto-launch alarms (if we just opened)
+        cancelAutoLaunchAlarm();
 
-            updateUI();
+        // Listen for visibility changes (background / exit state)
+        document.addEventListener("visibilitychange", handleVisibilityChange);
 
-            // Clear any pending auto-launch alarms (if we just opened)
-            cancelAutoLaunchAlarm();
+        // If paired already, immediately query config, else start in pairing mode
+        if (state.screenId) {
+            POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
+            fetchScreenConfig().then(() => {
+                views.splash.classList.remove('active');
+            });
+        } else {
+            // Generate/request code
+            requestPairingCode().then(() => {
+                views.splash.classList.remove('active');
+            });
+        }
 
-            // Listen for keydown/click to reset the auto-launch idle timer
-            window.addEventListener('keydown', resetIdleTimer);
-            window.addEventListener('click', resetIdleTimer);
-
-            // Listen for visibility changes (background / exit state)
-            document.addEventListener("visibilitychange", handleVisibilityChange);
-
-            // If paired already, immediately query config, else start in pairing mode
-            if (state.screenId) {
-                POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
-                fetchScreenConfig().then(() => {
-                    views.splash.classList.remove('active');
-                });
-            } else {
-                // Generate/request code
-                requestPairingCode().then(() => {
-                    views.splash.classList.remove('active');
-                });
-            }
-
-            // Start periodic sync and heartbeat processes
-            startSyncLoops();
-            startClockWidget();
-        });
+        // Start periodic sync and heartbeat processes
+        startSyncLoops();
+        startClockWidget();
     }
 
     // Handle background transition or exit
@@ -297,36 +185,13 @@
 
     // Render whitelabel branding
     function applyBranding() {
-        const defaultLogo = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230ea5e9'><path d='M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7l-2 3v1h8v-1l-2-3h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z'/></svg>";
-        const logoUrl = (state.branding && state.branding.isWhiteLabel && state.branding.logoUrl) 
-            ? state.branding.logoUrl 
-            : defaultLogo;
-
-        if (views.splashLogo) views.splashLogo.src = logoUrl;
-        if (views.pairingLogo) views.pairingLogo.src = logoUrl;
-        if (views.standbyLogo) views.standbyLogo.src = logoUrl;
-
-        if (state.branding && state.branding.isWhiteLabel && state.branding.name) {
-            if (views.splashName) views.splashName.innerText = state.branding.name;
-            const standbyTitle = document.getElementById('standby-title');
-            const standbyDesc = document.getElementById('standby-desc');
-            if (standbyTitle) standbyTitle.innerText = `READY FOR ${state.branding.name.toUpperCase()} CONTENT`;
-            if (standbyDesc) standbyDesc.innerText = "Assign playlist from Whitelabel CMS Portal.";
-        } else {
-            const standbyTitle = document.getElementById('standby-title');
-            const standbyDesc = document.getElementById('standby-desc');
-            if (standbyTitle) standbyTitle.innerText = "Standby Mode";
-            if (standbyDesc) standbyDesc.innerText = "No playlist assigned to this screen. Please assign a playlist from the SignageOS Dashboard.";
-        }
-    }
-
-    // Apply orientation rotation CSS class
-    function applyOrientation() {
-        const orientation = state.orientation || 'horizontal';
-        if (orientation === 'vertical' && window.innerWidth > window.innerHeight) {
-            views.playback.classList.add('rotate-portrait');
-        } else {
-            views.playback.classList.remove('rotate-portrait');
+        if (state.branding && state.branding.isWhiteLabel) {
+            if (state.branding.logoUrl) {
+                views.splashLogo.src = state.branding.logoUrl;
+            }
+            if (state.branding.name) {
+                views.splashName.innerText = state.branding.name;
+            }
         }
     }
 
@@ -351,7 +216,6 @@
             case 'pairing':
                 views.pairingCodeText.innerText = state.pairingCode || '------';
                 views.pairing.classList.add('active');
-                resetIdleTimer();
                 break;
             case 'suspended':
                 views.suspended.classList.add('active');
@@ -359,14 +223,9 @@
             case 'active':
             case 'online':
             case 'offline':
-                if (idleTimeout) {
-                    clearTimeout(idleTimeout);
-                    idleTimeout = null;
-                }
                 if (!state.playlist || state.playlist.length === 0) {
                     views.standby.classList.add('active');
                 } else {
-                    applyOrientation();
                     views.playback.classList.add('active');
                     startPlaylistRotation();
                     renderWidgets();
@@ -374,24 +233,7 @@
                 break;
             default:
                 views.pairing.classList.add('active');
-                resetIdleTimer();
                 break;
-        }
-    }
-
-    // Reset inactivity / idle auto launch timer
-    function resetIdleTimer() {
-        if (idleTimeout) clearTimeout(idleTimeout);
-
-        // Auto-launch playlist if device is already paired and has slides
-        if (state.playlist && state.playlist.length > 0 && state.status !== 'active' && state.status !== 'online' && state.status !== 'offline' && state.status !== 'suspended') {
-            console.log("Inactivity timer started. Auto-launching in 30 seconds.");
-            idleTimeout = setTimeout(() => {
-                console.log("Inactivity timeout: launching playlist full screen.");
-                state.status = 'active';
-                localStorage.setItem(KEYS.STATUS, 'active');
-                updateUI();
-            }, 30000);
         }
     }
 
@@ -469,8 +311,6 @@
             // 1. Clear Cache commands
             if (data.clear_cache) {
                 console.log("Received clear cache instruction.");
-                state.cacheBust = Date.now().toString();
-                localStorage.setItem('signage_tizen_cache_bust', state.cacheBust);
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
                 // Clear on server
@@ -484,8 +324,6 @@
             // 2. Force Sync command
             if (data.force_sync) {
                 console.log("Received force sync instruction.");
-                state.cacheBust = Date.now().toString();
-                localStorage.setItem('signage_tizen_cache_bust', state.cacheBust);
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
                 state.currentAssetIndex = 0;
@@ -617,16 +455,12 @@
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
-                        const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
                         fetchedAssets.push({
                             id: media.id,
-                            url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
+                            url: media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail,
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
-                            duration: slide.duration || media.duration || 10,
-                            thumbnail: media.thumbnail || rawUrl,
-                            objectFit: slide.objectFit || 'cover',
-                            scalePercent: slide.scalePercent || 100
+                            duration: slide.duration || media.duration || 10
                         });
                     }
                 }
@@ -636,29 +470,22 @@
                 data.assetsJson.forEach((pbAsset) => {
                     fetchedAssets.push({
                         id: pbAsset.id,
-                        url: pbAsset.url + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
+                        url: pbAsset.url,
                         mediaType: pbAsset.mediaType.toLowerCase(),
                         filename: pbAsset.filename,
-                        duration: pbAsset.duration || 10,
-                        thumbnail: pbAsset.thumbnail || pbAsset.url,
-                        objectFit: pbAsset.objectFit || 'cover',
-                        scalePercent: pbAsset.scalePercent || 100
+                        duration: pbAsset.duration || 10
                     });
                 });
             } 
             // 3. Fallback to native files
             else if (data.files && data.files.length > 0) {
                 data.files.forEach((fileName, index) => {
-                    const rawUrl = `${POCKETBASE_URL}/api/files/playlists/${playlistId}/${fileName}`;
                     fetchedAssets.push({
                         id: `${playlistId}_${index}`,
-                        url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
+                        url: `${POCKETBASE_URL}/api/files/playlists/${playlistId}/${fileName}`,
                         mediaType: "image",
                         filename: fileName,
-                        duration: 10,
-                        thumbnail: rawUrl,
-                        objectFit: 'cover',
-                        scalePercent: 100
+                        duration: 10
                     });
                 });
             }
@@ -668,16 +495,12 @@
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
-                        const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
                         fetchedAssets.push({
                             id: media.id,
-                            url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
+                            url: media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail,
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
-                            duration: media.duration || 10,
-                            thumbnail: media.thumbnail || rawUrl,
-                            objectFit: 'cover',
-                            scalePercent: 100
+                            duration: media.duration || 10
                         });
                     }
                 }
@@ -691,13 +514,6 @@
             // Sync transitions and loop flags
             state.playlistTransition = data.transition || 'fade';
             state.playlistLoop = data.loop !== false; // Default to true
-            state.orientation = data.orientation || 'horizontal';
-
-            localStorage.setItem('signage_tizen_transition', state.playlistTransition);
-            localStorage.setItem('signage_tizen_loop', state.playlistLoop);
-            localStorage.setItem('signage_tizen_orientation', state.orientation);
-
-            applyOrientation();
 
             // Check structure equality
             const isDifferent = JSON.stringify(fetchedAssets) !== JSON.stringify(state.playlist);
@@ -724,110 +540,30 @@
         }
 
         console.log(`Rotating to asset index ${state.currentAssetIndex}: ${asset.filename} (${asset.mediaType})`);
- 
-        // If device is out of range, replace background media with placeholder but continue loop
-        if (state.isOutOfRange) {
-            views.imagePlayer.style.display = 'none';
-            views.videoPlayer.style.display = 'none';
-            views.videoPlayer.pause();
-            if (views.outOfRange) {
-                views.outOfRange.style.display = 'flex';
-            }
-            const duration = (asset.duration || 10) * 1000;
-            rotationTimeout = setTimeout(advancePlaylist, duration);
-            return;
-        }
 
-        // Hide out of range placeholder if allowed size
-        if (views.outOfRange) {
-            views.outOfRange.style.display = 'none';
-        }
-
-        // Get transition styling animations
-        const transitionName = state.playlistTransition || 'fade';
-        const animClass = 'animate-' + (
-            transitionName === 'slide' ? 'slideIn' :
-            transitionName === 'zoom' ? 'zoomIn' :
-            transitionName === 'slide-up' ? 'slideUp' :
-            transitionName === 'slide-down' ? 'slideDown' :
-            transitionName === 'blur' ? 'blurIn' :
-            transitionName === 'bounce' ? 'bounceIn' : 'fadeIn'
-        );
+        // Apply transition styling classes
+        views.imagePlayer.style.transition = state.playlistTransition === 'none' ? 'none' : 'opacity 0.5s ease-in-out';
+        views.videoPlayer.style.transition = state.playlistTransition === 'none' ? 'none' : 'opacity 0.5s ease-in-out';
 
         if (asset.mediaType === 'video') {
-            // Apply scale mode configuration
-            views.videoPlayer.style.objectFit = asset.objectFit || 'cover';
-            views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
-
-            // Apply scale zoom configuration
-            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-            views.videoPlayer.style.transform = scale;
-            views.imagePlayer.style.transform = scale;
-
-            // Show video thumbnail on the image player during buffering to avoid blank black screen
-            if (asset.thumbnail) {
-                views.imagePlayer.className = 'media-element';
-                views.imagePlayer.src = asset.thumbnail;
-                views.imagePlayer.style.display = 'block';
-            }
-
-            views.videoPlayer.style.opacity = '0';
-            views.videoPlayer.style.display = 'block';
+            views.imagePlayer.style.display = 'none';
             views.videoPlayer.src = asset.url;
+            views.videoPlayer.style.display = 'block';
             views.videoPlayer.volume = state.volume / 100;
-
-            const handleVideoPlaying = () => {
-                views.videoPlayer.className = 'media-element';
-                void views.videoPlayer.offsetWidth; // trigger reflow
-                if (transitionName !== 'none') {
-                    views.videoPlayer.classList.add(animClass);
-                }
-                views.videoPlayer.style.opacity = '1';
-                views.imagePlayer.style.display = 'none';
-                views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
-            };
-            views.videoPlayer.addEventListener('playing', handleVideoPlaying);
-
             views.videoPlayer.play().catch(e => {
                 console.warn("Autoplay block / playback error on video", e);
-                views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
                 // Advance automatically if blocked
                 rotationTimeout = setTimeout(advancePlaylist, 5000);
             });
         } else {
-            // Preload image to ensure zero flash/blank screens during transition
-            const img = new Image();
-            img.onload = () => {
-                views.videoPlayer.style.display = 'none';
-                views.videoPlayer.pause();
-                
-                // Apply scale mode configuration
-                views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
+            views.videoPlayer.style.display = 'none';
+            views.videoPlayer.pause();
+            views.imagePlayer.src = asset.url;
+            views.imagePlayer.style.display = 'block';
 
-                // Apply scale zoom configuration
-                const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-                views.imagePlayer.style.transform = scale;
-
-                // Set source and reset class
-                views.imagePlayer.className = 'media-element';
-                views.imagePlayer.src = asset.url;
-                views.imagePlayer.style.display = 'block';
-
-                // Trigger animation reflow precisely on image load
-                void views.imagePlayer.offsetWidth;
-                if (transitionName !== 'none') {
-                    views.imagePlayer.classList.add(animClass);
-                }
-
-                // Image duration rotation starts ONLY after image is fully loaded
-                const duration = (asset.duration || 10) * 1000;
-                rotationTimeout = setTimeout(advancePlaylist, duration);
-            };
-            img.onerror = () => {
-                console.error("Failed to preload image:", asset.url);
-                advancePlaylist();
-            };
-            img.src = asset.url;
+            // Image duration rotation
+            const duration = (asset.duration || 10) * 1000;
+            rotationTimeout = setTimeout(advancePlaylist, duration);
         }
     }
 
@@ -850,12 +586,18 @@
 
         console.log("Rendering widget overlay:", w.type, w.placement);
 
-        // Hide all widgets first by default and apply placement
+        // Hide all widgets first
+        widgets.qrcode.classList.add('hidden');
+        widgets.weather.classList.add('hidden');
+        widgets.clock.classList.add('hidden');
+        widgets.rss.classList.add('hidden');
+
+        // Apply placement class
         const placement = w.placement || 'top-right';
         [widgets.qrcode, widgets.weather, widgets.clock].forEach(el => {
-            el.className = 'widget-item ' + (el.id === 'widget-qrcode' ? '' : 'card hud') + ' ' + placement + ' hidden';
+            el.className = 'widget-item ' + (el.id === 'widget-qrcode' ? '' : 'card hud');
+            el.classList.add(placement);
         });
-        widgets.rss.className = 'rss-ticker-container hidden';
 
         if (w.type === 'qrcode') {
             const link = w.link || SERVER_URL;
@@ -868,29 +610,7 @@
             widgets.clockTitle.innerText = w.link || 'Lobby Clock';
             widgets.clock.classList.remove('hidden');
         } else if (w.type === 'rss') {
-            let tickerText = w.link || 'SignageOS Player online and running.';
-            let bgColor = 'rgba(17, 24, 39, 0.85)';
-            let textColor = '#e5e7eb';
-            try {
-                const config = JSON.parse(w.link);
-                if (config && typeof config === 'object') {
-                    if (Array.isArray(config.items)) {
-                        tickerText = config.items.filter(item => item && item.trim() !== '').join('  |  ');
-                        if (tickerText) {
-                            tickerText += '  |';
-                        } else {
-                            tickerText = 'SignageOS Player online and running.';
-                        }
-                    }
-                    if (config.bgColor) bgColor = config.bgColor;
-                    if (config.textColor) textColor = config.textColor;
-                }
-            } catch (e) {
-                // Not JSON, fallback to plain text
-            }
-            widgets.rssText.innerText = tickerText;
-            widgets.rss.style.backgroundColor = bgColor;
-            widgets.rssText.style.color = textColor;
+            widgets.rssText.innerText = w.link || 'SignageOS Player online and running.';
             widgets.rss.classList.remove('hidden');
         }
     }
@@ -900,13 +620,7 @@
         if (clockInterval) clearInterval(clockInterval);
         clockInterval = setInterval(() => {
             const now = new Date();
-            let hours = now.getHours();
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12; // the hour '0' should be '12'
-            const timeStr = `${String(hours).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`;
+            const timeStr = now.toTimeString().split(' ')[0];
             widgets.clockTime.innerText = timeStr;
         }, 1000);
     }
