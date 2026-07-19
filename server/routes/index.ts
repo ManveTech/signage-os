@@ -39,7 +39,38 @@ apiRouter.get('/public/tenant-branding', async (req, res) => {
   } catch (err) {
     console.error('Error fetching tenant branding:', err);
   }
-  return res.status(200).json({ logoUrl: null, companyName: 'SignageOS', primaryColor: '#0EA5E9' });
+});
+
+// Public dynamic media proxy to bypass Tizen SSSP CORS restrictions
+apiRouter.get('/public/proxy-media', async (req, res) => {
+  const mediaUrl = req.query.url;
+  if (!mediaUrl || typeof mediaUrl !== 'string') {
+    return res.status(400).send('Missing url parameter');
+  }
+
+  try {
+    const cleanUrl = decodeURIComponent(mediaUrl);
+    // Fetch the remote media item
+    const mediaRes = await fetch(cleanUrl);
+    if (!mediaRes.ok) {
+      return res.status(mediaRes.status).send(`Failed to fetch remote media: ${mediaRes.statusText}`);
+    }
+
+    // Copy Content-Type and headers
+    const contentType = mediaRes.headers.get('content-type');
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    // Pipe the response body
+    const arrayBuffer = await mediaRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    return res.send(buffer);
+  } catch (err) {
+    console.error('Error proxying media request:', err);
+    return res.status(500).send('Internal Server Error proxying media');
+  }
 });
 
 // 2. Token protection middleware for all following API routes

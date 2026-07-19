@@ -490,22 +490,32 @@
             state.lastSyncedAt = Date.now();
             localStorage.setItem('signage_tizen_last_sync', state.lastSyncedAt);
             
+            let hasChanged = false;
+
             // Check status transition
             const oldStatus = state.status;
+            const oldVolume = state.volume;
             state.status = data.status || 'pairing';
             state.volume = data.volume || 80;
 
-            localStorage.setItem(KEYS.STATUS, state.status);
-            localStorage.setItem(KEYS.VOLUME, state.volume);
+            if (oldStatus !== state.status || oldVolume !== state.volume) {
+                hasChanged = true;
+                localStorage.setItem(KEYS.STATUS, state.status);
+                localStorage.setItem(KEYS.VOLUME, state.volume);
+            }
 
             // Sync branding
+            const oldBranding = JSON.stringify(state.branding);
             state.branding = {
                 isWhiteLabel: !!data.whiteLabel,
                 logoUrl: data.websiteLogo || '',
                 name: data.websiteName || ''
             };
-            localStorage.setItem(KEYS.BRANDING, JSON.stringify(state.branding));
-            applyBranding();
+            if (oldBranding !== JSON.stringify(state.branding)) {
+                hasChanged = true;
+                localStorage.setItem(KEYS.BRANDING, JSON.stringify(state.branding));
+                applyBranding();
+            }
 
             // 1. Clear Cache commands
             if (data.clear_cache) {
@@ -514,6 +524,7 @@
                 localStorage.setItem('signage_tizen_cache_bust', state.cacheBust);
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
+                hasChanged = true;
                 // Clear on server
                 await fetch(url, {
                     method: 'PATCH',
@@ -530,6 +541,7 @@
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
                 state.currentAssetIndex = 0;
+                hasChanged = true;
                 // Clear force_sync flag on server
                 await fetch(url, {
                     method: 'PATCH',
@@ -542,6 +554,7 @@
             if (data.restart_playlist) {
                 console.log("Received restart playlist instruction.");
                 state.currentAssetIndex = 0;
+                hasChanged = true;
                 // Clear restart_playlist flag on server
                 await fetch(url, {
                     method: 'PATCH',
@@ -559,6 +572,7 @@
                     const scheduledPlaylistId = await fetchScheduledPlaylistId(data.schedulePlaylist);
                     if (scheduledPlaylistId) {
                         activePlaylistId = scheduledPlaylistId;
+                        hasChanged = true;
                         // Update on server
                         await fetch(url, {
                             method: 'PATCH',
@@ -590,18 +604,24 @@
                         localStorage.setItem('signage_tizen_playlist_id', state.playlistId);
                         localStorage.setItem('signage_tizen_screen_updated', state.screenUpdated);
                         await fetchPlaylist(activePlaylistId);
+                        hasChanged = true;
                     }
                 } else {
-                    state.playlist = [];
-                    state.playlistId = '';
-                    state.screenUpdated = '';
-                    localStorage.setItem(KEYS.PLAYLIST, '[]');
-                    localStorage.removeItem('signage_tizen_playlist_id');
-                    localStorage.removeItem('signage_tizen_screen_updated');
+                    if (state.playlistId || state.playlist.length > 0) {
+                        state.playlist = [];
+                        state.playlistId = '';
+                        state.screenUpdated = '';
+                        localStorage.setItem(KEYS.PLAYLIST, '[]');
+                        localStorage.removeItem('signage_tizen_playlist_id');
+                        localStorage.removeItem('signage_tizen_screen_updated');
+                        hasChanged = true;
+                    }
                 }
             }
 
-            updateUI();
+            if (hasChanged) {
+                updateUI();
+            }
         } catch (err) {
             console.error("Error fetching screen configuration:", err);
             // 5. Offline unpair check (24 hour threshold)
@@ -829,8 +849,16 @@
                     console.log(`Downloading asset: ${asset.url} as ${filename}`);
                     
                     try {
-                        const response = await fetch(asset.url);
-                        if (!response.ok) throw new Error("Network response not OK");
+                        let response;
+                        try {
+                            response = await fetch(asset.url);
+                            if (!response.ok) throw new Error("Direct fetch failed");
+                        } catch (directErr) {
+                            console.log(`Direct download failed (possibly CORS). Trying proxy: ${asset.url}`);
+                            const proxyUrl = `${SERVER_URL}/api/v1/public/proxy-media?url=${encodeURIComponent(asset.url)}`;
+                            response = await fetch(proxyUrl);
+                            if (!response.ok) throw new Error("Proxy download failed");
+                        }
                         const blob = await response.blob();
 
                         // Convert blob to base64
