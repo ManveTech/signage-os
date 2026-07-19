@@ -77,6 +77,7 @@
 
     // Loop Timers
     let rotationTimeout = null;
+    let rotationToken = 0;
     let syncInterval = null;
     let heartbeatInterval = null;
     let clockInterval = null;
@@ -1014,6 +1015,8 @@
         if (rotationTimeout) clearTimeout(rotationTimeout);
         if (!state.playlist || state.playlist.length === 0) return;
 
+        const currentToken = ++rotationToken; // Capture a unique token for this loop cycle
+
         const asset = state.playlist[state.currentAssetIndex];
         if (!asset) {
             console.warn(`Asset at index ${state.currentAssetIndex} is undefined. Resetting to index 0.`);
@@ -1035,7 +1038,11 @@
                 views.outOfRange.style.display = 'flex';
             }
             const duration = (asset.duration || 10) * 1000;
-            rotationTimeout = setTimeout(advancePlaylist, duration);
+            rotationTimeout = setTimeout(() => {
+                if (currentToken === rotationToken) {
+                    advancePlaylist();
+                }
+            }, duration);
             return;
         }
 
@@ -1078,12 +1085,15 @@
             views.videoPlayer.volume = state.volume / 100;
 
             const handleVideoPlaying = () => {
+                if (currentToken !== rotationToken) return;
                 views.videoPlayer.className = 'media-element';
                 views.videoPlayer.style.opacity = '1';
                 views.imagePlayer.style.display = 'none';
                 if (transitionName !== 'none') {
                     setTimeout(() => {
-                        views.videoPlayer.classList.add(animClass);
+                        if (currentToken === rotationToken) {
+                            views.videoPlayer.classList.add(animClass);
+                        }
                     }, 20);
                 }
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
@@ -1094,14 +1104,20 @@
                 // Set rotation timeout to cut off video when the slide duration completes
                 const duration = (parseInt(asset.duration, 10) || 10) * 1000;
                 rotationTimeout = setTimeout(() => {
-                    views.videoPlayer.pause();
-                    advancePlaylist();
+                    if (currentToken === rotationToken) {
+                        views.videoPlayer.pause();
+                        advancePlaylist();
+                    }
                 }, duration);
             }).catch(e => {
                 console.warn("Autoplay block / playback error on video", e);
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
                 // Advance automatically if blocked
-                rotationTimeout = setTimeout(advancePlaylist, 5000);
+                rotationTimeout = setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        advancePlaylist();
+                    }
+                }, 5000);
             });
         } else {
             views.videoPlayer.style.display = 'none';
@@ -1121,13 +1137,19 @@
 
             if (transitionName !== 'none') {
                 setTimeout(() => {
-                    views.imagePlayer.classList.add(animClass);
+                    if (currentToken === rotationToken) {
+                        views.imagePlayer.classList.add(animClass);
+                    }
                 }, 20);
             }
 
             // Schedule the transition timeout immediately
             const duration = (parseInt(asset.duration, 10) || 10) * 1000;
-            rotationTimeout = setTimeout(advancePlaylist, duration);
+            rotationTimeout = setTimeout(() => {
+                if (currentToken === rotationToken) {
+                    advancePlaylist();
+                }
+            }, duration);
         }
 
         // Background preloader: preload the next image slide so it loads instantly with zero lag
