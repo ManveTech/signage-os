@@ -722,7 +722,11 @@
 
         const asset = state.playlist[state.currentAssetIndex];
         if (!asset) {
+            console.warn(`Asset at index ${state.currentAssetIndex} is undefined. Resetting to index 0.`);
             state.currentAssetIndex = 0;
+            if (state.playlist && state.playlist[0]) {
+                startPlaylistRotation();
+            }
             return;
         }
 
