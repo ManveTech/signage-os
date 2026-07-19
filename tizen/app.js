@@ -1079,12 +1079,13 @@
 
             const handleVideoPlaying = () => {
                 views.videoPlayer.className = 'media-element';
-                void views.videoPlayer.offsetWidth; // trigger reflow
-                if (transitionName !== 'none') {
-                    views.videoPlayer.classList.add(animClass);
-                }
                 views.videoPlayer.style.opacity = '1';
                 views.imagePlayer.style.display = 'none';
+                if (transitionName !== 'none') {
+                    setTimeout(() => {
+                        views.videoPlayer.classList.add(animClass);
+                    }, 20);
+                }
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
             };
             views.videoPlayer.addEventListener('playing', handleVideoPlaying);
@@ -1118,15 +1119,25 @@
             views.imagePlayer.src = asset.url;
             views.imagePlayer.style.display = 'block';
 
-            // Trigger animation reflow precisely
-            void views.imagePlayer.offsetWidth;
             if (transitionName !== 'none') {
-                views.imagePlayer.classList.add(animClass);
+                setTimeout(() => {
+                    views.imagePlayer.classList.add(animClass);
+                }, 20);
             }
 
             // Schedule the transition timeout immediately
             const duration = (parseInt(asset.duration, 10) || 10) * 1000;
             rotationTimeout = setTimeout(advancePlaylist, duration);
+        }
+
+        // Background preloader: preload the next image slide so it loads instantly with zero lag
+        if (state.playlist.length > 1) {
+            const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
+            const nextAsset = state.playlist[nextIndex];
+            if (nextAsset && nextAsset.url && nextAsset.mediaType === 'image') {
+                const preloadImg = new Image();
+                preloadImg.src = nextAsset.url;
+            }
         }
     }
 
