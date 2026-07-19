@@ -230,7 +230,7 @@
     function scheduleAutoLaunchAlarm() {
         try {
             if (window.tizen && window.tizen.alarm && window.tizen.application) {
-                const appId = window.tizen.application.getCurrentApplication().appId;
+                const appId = window.tizen.application.getCurrentApplication().appInfo.id;
                 
                 // Clear any existing alarms first
                 cancelAutoLaunchAlarm();
@@ -251,7 +251,7 @@
     function cancelAutoLaunchAlarm() {
         try {
             if (window.tizen && window.tizen.alarm && window.tizen.application) {
-                const appId = window.tizen.application.getCurrentApplication().appId;
+                const appId = window.tizen.application.getCurrentApplication().appInfo.id;
                 const alarms = window.tizen.alarm.getAll();
                 alarms.forEach(alarm => {
                     // Tizen Alarm object contains the ID and target appId
