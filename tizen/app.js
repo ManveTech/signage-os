@@ -807,34 +807,56 @@
                     console.log(`Asset ${filename} already exists locally: ${file.toURI()}`);
                     asset.url = file.toURI(); // Replace remote URL with local URI
                 } catch (e) {
-                    // File does not exist, download it
+                    // File does not exist, download it via fetch to follow redirects (S3/R2 compatibility)
                     console.log(`Downloading asset: ${asset.url} as ${filename}`);
                     
                     try {
-                        const localPath = await new Promise((resolve, reject) => {
-                            const timer = setTimeout(() => {
-                                reject(new Error("Download timeout"));
-                            }, 15000);
+                        const response = await fetch(asset.url);
+                        if (!response.ok) throw new Error("Network response not OK");
+                        const blob = await response.blob();
 
-                            // Strip query parameters for download target URL
-                            const cleanUrl = asset.url.split('?')[0];
-                            const downloadRequest = new window.tizen.DownloadRequest(cleanUrl, "wgt-private", filename);
-                            window.tizen.download.start(downloadRequest, {
-                                oncompleted: (id, path) => {
-                                    clearTimeout(timer);
-                                    console.log(`Download complete: ${filename}`);
-                                    resolve(path);
-                                },
-                                onfailed: (id, err) => {
-                                    clearTimeout(timer);
-                                    reject(new Error(`Download failed: ${err.name}`));
-                                }
-                            });
+                        // Convert blob to base64
+                        const base64Data = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                const base64 = reader.result.split(',')[1];
+                                resolve(base64);
+                            };
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
                         });
-                        const downloadedFile = dir.resolve(filename);
-                        asset.url = downloadedFile.toURI();
+
+                        // Write Base64 data to local file using compatible Tizen FileStream APIs
+                        const file = dir.createFile(filename);
+                        await new Promise((resolve, reject) => {
+                            file.openStream("w", (stream) => {
+                                try {
+                                    if (typeof stream.writeBase64 === 'function') {
+                                        stream.writeBase64(base64Data);
+                                    } else if (typeof stream.writeData === 'function') {
+                                        const binaryString = window.atob(base64Data);
+                                        const len = binaryString.length;
+                                        const bytes = new Uint8Array(len);
+                                        for (let j = 0; j < len; j++) {
+                                            bytes[j] = binaryString.charCodeAt(j);
+                                        }
+                                        stream.writeData(bytes);
+                                    } else {
+                                        stream.write(base64Data);
+                                    }
+                                    stream.close();
+                                    resolve();
+                                } catch (writeErr) {
+                                    stream.close();
+                                    reject(writeErr);
+                                }
+                            }, reject);
+                        });
+
+                        console.log(`Successfully cached asset ${filename} locally.`);
+                        asset.url = file.toURI();
                     } catch (dlErr) {
-                        console.error(`Failed to download asset ${filename}:`, dlErr);
+                        console.error(`Failed to download and write asset ${filename}:`, dlErr);
                     }
                 }
             }
@@ -852,29 +874,58 @@
                 }
                 
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrcodeLink)}`;
-                const qrFilename = 'qrcode_widget.png';
+                const safeUrlStr = qrcodeLink.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+                const qrFilename = `qrcode_${safeUrlStr}.png`;
 
                 try {
-                    // Delete old QR Code to regenerate new link if links changed
-                    try {
-                        const existingQr = dir.resolve(qrFilename);
-                        dir.deleteFile(existingQr.fullPath);
-                    } catch (err) {}
-
-                    console.log("Downloading updated QR code image...");
-                    await new Promise((resolve, reject) => {
-                        const downloadRequest = new window.tizen.DownloadRequest(qrUrl, "wgt-private", qrFilename);
-                        window.tizen.download.start(downloadRequest, {
-                            oncompleted: resolve,
-                            onfailed: (id, err) => reject(err)
-                        });
-                    });
-
-                    const downloadedQrFile = dir.resolve(qrFilename);
-                    state.qrcodeLocalPath = downloadedQrFile.toURI();
+                    // Check if file exists locally
+                    const file = dir.resolve(qrFilename);
+                    state.qrcodeLocalPath = file.toURI();
                     localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
-                } catch (qrErr) {
-                    console.error("QR Code offline download failed:", qrErr);
+                } catch (e) {
+                    console.log(`Downloading updated QR code image: ${qrFilename}`);
+                    try {
+                        const response = await fetch(qrUrl);
+                        if (!response.ok) throw new Error("QR network fetch failed");
+                        const blob = await response.blob();
+                        const base64Data = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
+                        });
+
+                        const file = dir.createFile(qrFilename);
+                        await new Promise((resolve, reject) => {
+                            file.openStream("w", (stream) => {
+                                try {
+                                    if (typeof stream.writeBase64 === 'function') {
+                                        stream.writeBase64(base64Data);
+                                    } else if (typeof stream.writeData === 'function') {
+                                        const binaryString = window.atob(base64Data);
+                                        const len = binaryString.length;
+                                        const bytes = new Uint8Array(len);
+                                        for (let j = 0; j < len; j++) {
+                                            bytes[j] = binaryString.charCodeAt(j);
+                                        }
+                                        stream.writeData(bytes);
+                                    } else {
+                                        stream.write(base64Data);
+                                    }
+                                    stream.close();
+                                    resolve();
+                                } catch (writeErr) {
+                                    stream.close();
+                                    reject(writeErr);
+                                }
+                            }, reject);
+                        });
+
+                        state.qrcodeLocalPath = file.toURI();
+                        localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
+                    } catch (qrErr) {
+                        console.error("QR Code offline download failed:", qrErr);
+                    }
                 }
             }
 
