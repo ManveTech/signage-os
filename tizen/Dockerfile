@@ -3,9 +3,8 @@ FROM nginx:alpine
 # Add correct MIME type for Tizen .wgt packages
 RUN sed -i 's|types {|types {\n    application/widget wgt;|' /etc/nginx/mime.types
 
-# Copy SSSP config and the compiled .wgt package to the Nginx web root
-# COPY sssp_config.xml /usr/share/nginx/html/sssp_config.xml
-# COPY SSSP/sssp_app.wgt /usr/share/nginx/html/tizen.wgt
+COPY sssp_config.xml /usr/share/nginx/html/sssp_config.xml
+COPY Debug/tizen.wgt /usr/share/nginx/html/tizen.wgt
 
 # Copy web files to allow running as a Web App page in standard browsers
 COPY index.html /usr/share/nginx/html/index.html
