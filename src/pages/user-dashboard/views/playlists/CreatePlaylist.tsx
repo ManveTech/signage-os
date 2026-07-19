@@ -801,67 +801,70 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       onDragStart={(e) => handleSlideDragStart(e, index)}
                       onDragOver={(e) => handleSlideDragOver(e, index)}
                       onDragEnd={handleSlideDragEnd}
-                      className={`bg-white rounded-xl border p-4 flex flex-col md:flex-row gap-5 items-start md:items-center transition-all duration-200 select-none ${
+                      className={`bg-white rounded-xl border p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-center transition-all duration-200 select-none ${
                         draggedIndex === index 
                           ? 'opacity-50 border-blue-400 bg-blue-50/20 shadow-inner scale-[0.99]' 
                           : 'border-slate-200 hover:border-slate-300'
                       }`}
                     >
-                      {/* Reorder Navigator */}
-                      <div className="flex flex-row md:flex-col gap-1 items-center justify-center flex-shrink-0">
-                        <div className="text-gray-400 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-100">
-                          <GripVertical size={16} />
+                      {/* Left Block: Reorder & Media Details */}
+                      <div className="flex gap-4 items-center lg:col-span-6 min-w-0">
+                        {/* Reorder Navigator */}
+                        <div className="flex flex-row lg:flex-col gap-1 items-center justify-center flex-shrink-0">
+                          <div className="text-gray-400 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-100">
+                            <GripVertical size={16} />
+                          </div>
+                          <button 
+                            onClick={() => moveItem(index, 'up')}
+                            disabled={index === 0}
+                            className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 rounded-lg hover:bg-gray-50 cursor-pointer"
+                          >
+                            <ArrowUp size={16} />
+                          </button>
+                          <span className="text-xs font-bold text-gray-500 w-6 text-center">{index + 1}</span>
+                          <button 
+                            onClick={() => moveItem(index, 'down')}
+                            disabled={index === playlistItems.length - 1}
+                            className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 rounded-lg hover:bg-gray-50 cursor-pointer"
+                          >
+                            <ArrowDown size={16} />
+                          </button>
                         </div>
-                        <button 
-                          onClick={() => moveItem(index, 'up')}
-                          disabled={index === 0}
-                          className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 rounded-lg hover:bg-gray-50 cursor-pointer"
-                        >
-                          <ArrowUp size={16} />
-                        </button>
-                        <span className="text-xs font-bold text-gray-500 w-6 text-center">{index + 1}</span>
-                        <button 
-                          onClick={() => moveItem(index, 'down')}
-                          disabled={index === playlistItems.length - 1}
-                          className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 rounded-lg hover:bg-gray-50 cursor-pointer"
-                        >
-                          <ArrowDown size={16} />
-                        </button>
+
+                        {/* Thumbnail & Title Details */}
+                        <div className="flex gap-3 items-center min-w-0 flex-1">
+                          <div className="w-20 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-slate-200 relative">
+                            <img src={media.thumbnail} alt={media.title} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-800 truncate" title={media.title}>{media.title}</p>
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 uppercase flex items-center gap-1">
+                                {media.type === 'image' && '🖼 Image'}
+                                {media.type !== 'image' && media.type}
+                              </span>
+                              <span className="text-[9.5px] text-gray-400 font-semibold">{media.fileSize}</span>
+                            </div>
+                            
+                            {/* Duration input */}
+                            <div className="flex items-center gap-2 mt-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 w-fit">
+                              <Clock size={12} className="text-blue-500" />
+                              <span className="text-[10px] text-gray-600 font-bold">Play time:</span>
+                              <input 
+                                type="number"
+                                min={1}
+                                value={item.duration}
+                                onChange={e => updateItem(item.id, { duration: Math.max(1, parseInt(e.target.value) || 5) })}
+                                className="w-10 border border-slate-200 rounded bg-white px-1 py-0.5 text-xs text-center font-bold outline-none focus:border-blue-550 text-gray-800"
+                              />
+                              <span className="text-[9.5px] text-slate-455 font-bold uppercase">sec</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Primary Slide Details */}
-                      <div className="flex gap-3 items-center min-w-0 flex-1">
-                        <div className="w-20 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-slate-200 relative">
-                          <img src={media.thumbnail} alt={media.title} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-slate-800 truncate" title={media.title}>{media.title}</p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 uppercase flex items-center gap-1">
-                              {media.type === 'image' && '🖼 Image'}
-                              {media.type !== 'image' && media.type}
-                            </span>
-                            <span className="text-[9.5px] text-gray-400 font-semibold">{media.fileSize}</span>
-                          </div>
-                          
-                          {/* Duration input */}
-                          <div className="flex items-center gap-2 mt-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 w-fit">
-                            <Clock size={12} className="text-blue-500" />
-                            <span className="text-[10px] text-gray-600 font-bold">Play time:</span>
-                            <input 
-                              type="number"
-                              min={1}
-                              value={item.duration}
-                              onChange={e => updateItem(item.id, { duration: Math.max(1, parseInt(e.target.value) || 5) })}
-                              className="w-10 border border-slate-200 rounded bg-white px-1 py-0.5 text-xs text-center font-bold outline-none focus:border-blue-550 text-gray-800"
-                            />
-                            <span className="text-[9.5px] text-slate-455 font-bold uppercase">sec</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Layout & Split Controls */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start flex-1 min-w-[280px]">
+                      {/* Middle Block: Layout & Split Controls */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start lg:col-span-5 w-full">
                         <div>
                           <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Layout ratio</label>
                           <select 
@@ -907,56 +910,57 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                           </div>
                         </div>
 
-                          {item.layoutType !== 'single' && (
-                            <div className="sm:col-span-2 space-y-1">
-                              <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Zone 2 Secondary File</label>
-                              <div 
-                                onDragOver={e => e.preventDefault()}
-                                onDrop={e => handleZone2Drop(e, item.id)}
-                                className={`border rounded-xl p-2 transition-all ${
-                                  secondMedia 
-                                    ? 'bg-slate-550/10 border-slate-200' 
-                                    : 'border-dashed border-blue-300 bg-blue-50/10'
-                                }`}
-                              >
-                                {secondMedia ? (
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 rounded border border-slate-200 overflow-hidden flex-shrink-0 bg-gray-50">
-                                      <img src={secondMedia.thumbnail} className="w-full h-full object-cover" alt="secondary" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-[10px] font-bold text-slate-800 truncate">{secondMedia.title}</p>
-                                    </div>
-                                    <button 
-                                      onClick={() => updateItem(item.id, { secondMediaId: undefined })}
-                                      className="p-1 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded cursor-pointer"
-                                    >
-                                      <X size={12} />
-                                    </button>
+                        {item.layoutType !== 'single' && (
+                          <div className="sm:col-span-2 space-y-1">
+                            <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Zone 2 Secondary File</label>
+                            <div 
+                              onDragOver={e => e.preventDefault()}
+                              onDrop={e => handleZone2Drop(e, item.id)}
+                              className={`border rounded-xl p-2 transition-all ${
+                                secondMedia 
+                                  ? 'bg-slate-550/10 border-slate-200' 
+                                  : 'border-dashed border-blue-300 bg-blue-50/10'
+                              }`}
+                            >
+                              {secondMedia ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 rounded border border-slate-200 overflow-hidden flex-shrink-0 bg-gray-50">
+                                    <img src={secondMedia.thumbnail} className="w-full h-full object-cover" alt="secondary" />
                                   </div>
-                                ) : (
-                                  <div className="space-y-1">
-                                    {/* Direct click dropdown selector for Zone 2 */}
-                                    <select
-                                      value={item.secondMediaId ?? ''}
-                                      onChange={e => updateItem(item.id, { secondMediaId: e.target.value || undefined })}
-                                      className="w-full text-[10px] border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:border-blue-400 font-bold text-slate-700 cursor-pointer"
-                                    >
-                                      <option value="">-- Drop or Select Zone 2 --</option>
-                                      {mediaList.filter(m => m.id !== item.mediaId).map(m => (
-                                        <option key={m.id} value={m.id}>{m.title}</option>
-                                      ))}
-                                    </select>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[10px] font-bold text-slate-800 truncate">{secondMedia.title}</p>
                                   </div>
-                                )}
-                              </div>
+                                  <button 
+                                    onClick={() => updateItem(item.id, { secondMediaId: undefined })}
+                                    className="p-1 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded cursor-pointer"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <select
+                                    value={item.secondMediaId ?? ''}
+                                    onChange={e => updateItem(item.id, { secondMediaId: e.target.value || undefined })}
+                                    className="w-full text-[10px] border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:border-blue-400 font-bold text-slate-700 cursor-pointer"
+                                  >
+                                    <option value="">-- Drop or Select Zone 2 --</option>
+                                    {mediaList.filter(m => m.id !== item.mediaId).map(m => (
+                                      <option key={m.id} value={m.id}>{m.title}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
                             </div>
-                          )}
+                          </div>
+                        )}
+                      </div>
 
-                        {/* Remove Slide Button */}
+                      {/* Right Block: Remove Slide Button */}
+                      <div className="flex justify-end lg:col-span-1">
                         <button 
                           onClick={() => removeItem(item.id)}
-                          className="p-1.5 text-gray-300 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors ml-auto cursor-pointer"
+                          className="p-1.5 text-gray-300 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
                           title="Remove item"
                         >
                           <X size={15} />
