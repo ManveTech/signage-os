@@ -929,7 +929,14 @@
             };
             views.videoPlayer.addEventListener('playing', handleVideoPlaying);
 
-            views.videoPlayer.play().catch(e => {
+            views.videoPlayer.play().then(() => {
+                // Set rotation timeout to cut off video when the slide duration completes
+                const duration = (parseInt(asset.duration, 10) || 10) * 1000;
+                rotationTimeout = setTimeout(() => {
+                    views.videoPlayer.pause();
+                    advancePlaylist();
+                }, duration);
+            }).catch(e => {
                 console.warn("Autoplay block / playback error on video", e);
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
                 // Advance automatically if blocked
@@ -973,6 +980,7 @@
     }
 
     function advancePlaylist() {
+        if (rotationTimeout) clearTimeout(rotationTimeout);
         if (state.playlist.length > 0) {
             // Respect loop settings
             if (state.currentAssetIndex === state.playlist.length - 1 && !state.playlistLoop) {
@@ -1082,6 +1090,13 @@
             widgets.rss.style.backgroundColor = bgColor;
             widgets.rssText.style.color = textColor;
             widgets.rss.className = 'rss-ticker-container'; // Make visible (removed hidden)
+
+            // Force animation reflow for Tizen to prevent freeze / stop scrolling
+            widgets.rssText.style.animation = 'none';
+            if (widgets.rssTextDup) widgets.rssTextDup.style.animation = 'none';
+            void widgets.rssText.offsetHeight; // trigger reflow
+            widgets.rssText.style.animation = '';
+            if (widgets.rssTextDup) widgets.rssTextDup.style.animation = '';
         }
     }
 
