@@ -723,14 +723,7 @@
 
             applyOrientation();
 
-            // Sync files to TV internal storage for offline playback
-            try {
-                fetchedAssets = await syncLocalFiles(fetchedAssets);
-            } catch (syncErr) {
-                console.error("Local file sync failed, playing from remote URLs:", syncErr);
-            }
-
-            // Check structure equality
+            // Check structure equality and play immediate remote/cached files
             const isDifferent = JSON.stringify(fetchedAssets) !== JSON.stringify(state.playlist);
             if (isDifferent) {
                 state.playlist = fetchedAssets;
@@ -738,6 +731,19 @@
                 state.currentAssetIndex = 0;
                 updateUI();
             }
+
+            // Sync files to TV internal storage in the background for future offline playback
+            syncLocalFiles(fetchedAssets.map(a => Object.assign({}, a))).then((localAssets) => {
+                const hasLocalChanges = JSON.stringify(localAssets) !== JSON.stringify(state.playlist);
+                if (hasLocalChanges) {
+                    console.log("Background local storage sync finished. Transitioning to local files.");
+                    state.playlist = localAssets;
+                    localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
+                    updateUI();
+                }
+            }).catch((syncErr) => {
+                console.error("Background local file sync failed:", syncErr);
+            });
         } catch (err) {
             console.error("Error syncing playlist assets:", err);
         }
@@ -782,15 +788,21 @@
                     
                     try {
                         const localPath = await new Promise((resolve, reject) => {
+                            const timer = setTimeout(() => {
+                                reject(new Error("Download timeout"));
+                            }, 15000);
+
                             // Strip query parameters for download target URL
                             const cleanUrl = asset.url.split('?')[0];
                             const downloadRequest = new window.tizen.DownloadRequest(cleanUrl, "wgt-private-local", filename);
                             window.tizen.download.start(downloadRequest, {
                                 oncompleted: (id, path) => {
+                                    clearTimeout(timer);
                                     console.log(`Download complete: ${filename}`);
                                     resolve(path);
                                 },
                                 onfailed: (id, err) => {
+                                    clearTimeout(timer);
                                     reject(new Error(`Download failed: ${err.name}`));
                                 }
                             });
