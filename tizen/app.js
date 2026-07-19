@@ -782,10 +782,10 @@
 
         try {
             const dir = await new Promise((resolve, reject) => {
-                window.tizen.filesystem.resolve("wgt-private-local", resolve, reject, "rw");
+                window.tizen.filesystem.resolve("wgt-private", resolve, reject, "rw");
             });
 
-            console.log("Local wgt-private-local storage resolved. Syncing assets...");
+            console.log("Local wgt-private storage resolved. Syncing assets...");
 
             // Process all media items sequentially
             for (let i = 0; i < assets.length; i++) {
@@ -818,7 +818,7 @@
 
                             // Strip query parameters for download target URL
                             const cleanUrl = asset.url.split('?')[0];
-                            const downloadRequest = new window.tizen.DownloadRequest(cleanUrl, "wgt-private-local", filename);
+                            const downloadRequest = new window.tizen.DownloadRequest(cleanUrl, "wgt-private", filename);
                             window.tizen.download.start(downloadRequest, {
                                 oncompleted: (id, path) => {
                                     clearTimeout(timer);
@@ -863,7 +863,7 @@
 
                     console.log("Downloading updated QR code image...");
                     await new Promise((resolve, reject) => {
-                        const downloadRequest = new window.tizen.DownloadRequest(qrUrl, "wgt-private-local", qrFilename);
+                        const downloadRequest = new window.tizen.DownloadRequest(qrUrl, "wgt-private", qrFilename);
                         window.tizen.download.start(downloadRequest, {
                             oncompleted: resolve,
                             onfailed: (id, err) => reject(err)
