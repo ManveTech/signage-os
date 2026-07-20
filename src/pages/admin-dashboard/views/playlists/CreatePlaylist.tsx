@@ -9,7 +9,6 @@ import {
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
-import { compilePlaylistToVideo, PlaylistCompileProgress } from '../../../../lib/playlistCompiler';
 import { toast } from '../../../../components/Toast';
 
 type PlaylistItem = {
@@ -127,7 +126,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   const [totalFilesToUpload, setTotalFilesToUpload] = useState(0);
   const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [compilationProgress, setCompilationProgress] = useState<PlaylistCompileProgress | null>(null);
 
   useEffect(() => {
     loadMedia();
@@ -220,17 +218,8 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
       const allMedia = mediaStore.getMedia();
       const clientMedia = allMedia.filter(m => m.uploadedBy === play.createdBy);
-      let slidesArray: any[] = [];
-      if (play.slides) {
-        if (Array.isArray(play.slides)) {
-          slidesArray = play.slides;
-        } else if (play.slides.isCompiled && Array.isArray(play.slides.originalSlides)) {
-          slidesArray = play.slides.originalSlides;
-        }
-      }
-
-      if (slidesArray.length > 0) {
-        const validSlides = slidesArray.filter(slide => clientMedia.some(m => m.id === slide.mediaId));
+      if (play.slides && play.slides.length > 0) {
+        const validSlides = play.slides.filter(slide => clientMedia.some(m => m.id === slide.mediaId));
         setPlaylistItems(validSlides);
       } else {
         const validMediaIds = play.mediaIds.filter(mid => clientMedia.some(m => m.id === mid));
@@ -605,7 +594,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   // -------------------------------------------------------------
   // SAVE PLAYLIST HANDLER
   // -------------------------------------------------------------
-  const handleSavePlaylist = async () => {
+  const handleSavePlaylist = () => {
     if (totalFilesToUpload > 0) {
       toast.warning('Please wait for all uploads to complete before saving the playlist.');
       return;
@@ -619,132 +608,74 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       return;
     }
 
-    setCompilationProgress({ progress: 0, status: 'Initializing video compilation...' });
+    const active = playlistWidgetType ? playlistWidgetType.split(',').map(s => s.trim().toLowerCase()) : [];
+    const hasRss = active.includes('rss');
+    const hasSecondary = active.includes('qrcode') || active.includes('weather') || active.includes('clock');
 
-    try {
-      // 1. Compile playlist slides into a single MP4/WebM background video
-      const { blob, fileName, mimeType } = await compilePlaylistToVideo(
-        playlistItems,
-        mediaList,
-        (prog) => setCompilationProgress(prog)
-      );
+    const finalWidgetLink = (hasRss && hasSecondary)
+      ? JSON.stringify({
+          qrcode: playlistWidgetLink,
+          weather: playlistWidgetLink,
+          clock: playlistWidgetLink,
+          rss: { label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor }
+        })
+      : hasRss
+        ? JSON.stringify({ label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor })
+        : playlistWidgetLink;
 
-      // 2. Convert video Blob to base64
-      setCompilationProgress({ progress: 92, status: 'Processing video data stream...' });
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
+    if (editingPlaylistId) {
+      // Update existing playlist
+      mediaStore.updatePlaylist(editingPlaylistId, {
+        name: playlistName,
+        active: true,
+        scheduleStatus: 'Running',
+        mediaIds: playlistItems.map(item => item.mediaId),
+        orientation: playlistOrientation,
+        widgetType: playlistWidgetType,
+        widgetPlacement: playlistWidgetPlacement,
+        widgetLink: finalWidgetLink,
+        transition: playlistTransition,
+        shuffle: playlistShuffle,
+        loop: playlistLoop,
+        volume: playlistVolume,
+        slides: playlistItems
       });
-
-      // 3. Upload compiled video to media items collection
-      setCompilationProgress({ progress: 95, status: 'Uploading compiled playlist video...' });
-      const totalDuration = playlistItems.reduce((acc, item) => acc + (item.duration || 10), 0);
-      const uploadedMedia = await mediaStore.uploadMedia({
-        title: `[Compiled Video] ${playlistName}`,
-        type: 'video',
-        duration: totalDuration,
-        resolution: '1920x1080',
-        fileSize: `${(blob.size / (1024 * 1024)).toFixed(2)} MB`,
-        fileSizeBytes: blob.size,
-        uploadedBy: targetUserEmail,
-        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        tags: ['compiled_playlist_video'],
-        thumbnail: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60',
-        width: 1920,
-        height: 1080,
-        mimeType: mimeType,
-        fileData: base64Data,
-        fileName: fileName
+      showToast(`Playlist "${playlistName}" updated successfully!`);
+    } else {
+      // Create new playlist
+      mediaStore.createPlaylist({
+        name: playlistName,
+        active: true,
+        scheduleStatus: 'Running',
+        createdBy: targetUserEmail,
+        mediaIds: playlistItems.map(item => item.mediaId),
+        assignedScreenIds: [],
+        orientation: playlistOrientation,
+        widgetType: playlistWidgetType,
+        widgetPlacement: playlistWidgetPlacement,
+        widgetLink: finalWidgetLink,
+        transition: playlistTransition,
+        shuffle: playlistShuffle,
+        loop: playlistLoop,
+        volume: playlistVolume,
+        slides: playlistItems
       });
+      showToast(`Playlist "${playlistName}" created successfully!`);
+    }
 
-      // 4. Structure the slides field to keep editability but serve compiled video to TV
-      const compiledSlidesJson = {
-        isCompiled: true,
-        compiledVideoId: uploadedMedia.id,
-        compiledVideoUrl: uploadedMedia.fileUrl || uploadedMedia.thumbnail,
-        originalSlides: playlistItems
-      };
+    // Refresh playlists dropdown list
+    loadPlaylists();
+    
+    // Reset inputs
+    handleStartNewPlaylist();
 
-      const active = playlistWidgetType ? playlistWidgetType.split(',').map(s => s.trim().toLowerCase()) : [];
-      const hasRss = active.includes('rss');
-      const hasSecondary = active.includes('qrcode') || active.includes('weather') || active.includes('clock');
-
-      const finalWidgetLink = (hasRss && hasSecondary)
-        ? JSON.stringify({
-            qrcode: playlistWidgetLink,
-            weather: playlistWidgetLink,
-            clock: playlistWidgetLink,
-            rss: { label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor }
-          })
-        : hasRss
-          ? JSON.stringify({ label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor })
-          : playlistWidgetLink;
-
-      if (editingPlaylistId) {
-        // Update existing playlist
-        mediaStore.updatePlaylist(editingPlaylistId, {
-          name: playlistName,
-          active: true,
-          scheduleStatus: 'Running',
-          mediaIds: [uploadedMedia.id],
-          orientation: playlistOrientation,
-          widgetType: playlistWidgetType,
-          widgetPlacement: playlistWidgetPlacement,
-          widgetLink: finalWidgetLink,
-          transition: playlistTransition,
-          shuffle: playlistShuffle,
-          loop: playlistLoop,
-          volume: playlistVolume,
-          slides: compiledSlidesJson as any
-        });
-        showToast(`Playlist "${playlistName}" compiled & updated successfully!`);
+    // Navigate to all playlists / my playlists view
+    if (onNavigate) {
+      if (userEmail === 'admin@demo.com') {
+        onNavigate('my-playlists');
       } else {
-        // Create new playlist
-        mediaStore.createPlaylist({
-          name: playlistName,
-          active: true,
-          scheduleStatus: 'Running',
-          createdBy: targetUserEmail,
-          mediaIds: [uploadedMedia.id],
-          assignedScreenIds: [],
-          orientation: playlistOrientation,
-          widgetType: playlistWidgetType,
-          widgetPlacement: playlistWidgetPlacement,
-          widgetLink: finalWidgetLink,
-          transition: playlistTransition,
-          shuffle: playlistShuffle,
-          loop: playlistLoop,
-          volume: playlistVolume,
-          slides: compiledSlidesJson as any
-        });
-        showToast(`Playlist "${playlistName}" compiled & created successfully!`);
+        onNavigate('playlists-all');
       }
-
-      setCompilationProgress(null);
-
-      // Refresh playlists dropdown list
-      loadPlaylists();
-      
-      // Reset inputs
-      handleStartNewPlaylist();
-
-      // Navigate to all playlists / my playlists view
-      if (onNavigate) {
-        if (userEmail === 'admin@demo.com') {
-          onNavigate('my-playlists');
-        } else {
-          onNavigate('playlists-all');
-        }
-      }
-    } catch (err: any) {
-      console.error('Playlist compilation error:', err);
-      showToast(`Compilation failed: ${err?.message || err}`);
-      setCompilationProgress(null);
     }
   };
 
@@ -1804,33 +1735,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
             </div>
           </div>
 
-        </div>
-      )}
-
-      {/* ================= COMPILATION PROGRESS OVERLAY MODAL ================= */}
-      {compilationProgress && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-6 animate-fadeIn font-sans text-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-xl border border-slate-200 text-slate-800 space-y-4">
-            <h2 className="text-sm font-extrabold tracking-tight text-slate-900 flex items-center gap-2">
-              <Sparkles size={16} className="text-blue-600 animate-pulse" />
-              Compiling Background Playback Video
-            </h2>
-            <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
-              Stitching your slides, image durations, and transitions into a single hardware-looping background video. Please keep this browser window open.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between font-bold text-slate-700">
-                <span>{compilationProgress.status}</span>
-                <span>{compilationProgress.progress}%</span>
-              </div>
-              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200/50">
-                <div 
-                  className="bg-blue-600 h-full rounded-full transition-all duration-300" 
-                  style={{ width: `${compilationProgress.progress}%` }} 
-                />
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>

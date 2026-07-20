@@ -138,76 +138,18 @@ export default function MediaLibrary({ userEmail }: Props) {
             if (fileType === 'image') {
               const img = new window.Image();
               img.onload = async () => {
-                let targetWidth = img.naturalWidth;
-                let targetHeight = img.naturalHeight;
-                const MAX_WIDTH = 1920;
-                const MAX_HEIGHT = 1080;
-
-                if (targetWidth > MAX_WIDTH || targetHeight > MAX_HEIGHT) {
-                  const ratio = Math.min(MAX_WIDTH / targetWidth, MAX_HEIGHT / targetHeight);
-                  targetWidth = Math.round(targetWidth * ratio);
-                  targetHeight = Math.round(targetHeight * ratio);
-                }
-
-                const canvas = document.createElement('canvas');
-                canvas.width = targetWidth;
-                canvas.height = targetHeight;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  const isPng = file.type === 'image/png';
-                  const exportMime = isPng ? 'image/png' : 'image/jpeg';
-                  const exportQuality = isPng ? undefined : 0.85;
-
-                  ctx.imageSmoothingEnabled = true;
-                  ctx.imageSmoothingQuality = 'high';
-                  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-
-                  const optimizedDataUrl = canvas.toDataURL(exportMime, exportQuality);
-                  const optimizedBase64 = optimizedDataUrl.split(',')[1];
-                  const optSizeBytes = Math.round((optimizedBase64.length * 3) / 4);
-
-                  const didDownscale = img.naturalWidth > MAX_WIDTH || img.naturalHeight > MAX_HEIGHT;
-                  const useOptimized = didDownscale || (optSizeBytes < file.size);
-
-                  const finalBase64 = useOptimized ? optimizedBase64 : base64Data;
-                  const finalSizeBytes = useOptimized ? optSizeBytes : file.size;
-                  const finalSizeString = `${(finalSizeBytes / (1024 * 1024)).toFixed(2)} MB`;
-                  const finalDataUrl = useOptimized ? optimizedDataUrl : resultDataUrl;
-
-                  try {
-                    await mediaStore.uploadMedia({
-                      title: title,
-                      type: fileType,
-                      duration: 10,
-                      resolution: `${targetWidth}x${targetHeight}`,
-                      fileSize: finalSizeString,
-                      fileSizeBytes: finalSizeBytes,
-                      uploadedBy: userEmail,
-                      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                      tags: ['uploaded', fileType],
-                      thumbnail: finalDataUrl,
-                      width: targetWidth,
-                      height: targetHeight,
-                      mimeType: useOptimized ? exportMime : file.type,
-                      fileData: finalBase64,
-                      fileName: file.name.replace(/\.[^/.]+$/, "") + (useOptimized ? (isPng ? '.png' : '.jpg') : file.name.substring(file.name.lastIndexOf('.')))
-                    });
-                    resolve();
-                  } catch (err) {
-                    reject(err);
-                  }
-                } else {
-                  try {
-                    await mediaStore.uploadMedia({
-                      title, type: fileType, duration: 10, resolution: `${img.naturalWidth}x${img.naturalHeight}`,
-                      fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`, fileSizeBytes: file.size,
-                      uploadedBy: userEmail, expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                      tags: ['uploaded', fileType], thumbnail: resultDataUrl,
-                      width: img.naturalWidth, height: img.naturalHeight, mimeType: file.type, fileData: base64Data, fileName: file.name
-                    });
-                    resolve();
-                  } catch (err) { reject(err); }
-                }
+                const width = img.naturalWidth;
+                const height = img.naturalHeight;
+                try {
+                  await mediaStore.uploadMedia({
+                    title, type: fileType, duration: 10, resolution: `${width}x${height}`,
+                    fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`, fileSizeBytes: file.size,
+                    uploadedBy: userEmail, expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    tags: ['uploaded', fileType], thumbnail: resultDataUrl,
+                    width, height, mimeType: file.type, fileData: base64Data, fileName: file.name
+                  });
+                  resolve();
+                } catch (err) { reject(err); }
               };
               img.onerror = () => reject(new Error("Failed to load image metadata"));
               img.src = resultDataUrl;

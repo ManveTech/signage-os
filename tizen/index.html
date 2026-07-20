@@ -14,6 +14,9 @@
             <h1 id="splash-name">SignageOS</h1>
             <div class="spinner"></div>
             <p id="splash-status">Initializing system...</p>
+            <div id="download-progress-container" class="progress-bar-container hidden">
+                <div id="download-progress-bar" class="progress-bar" style="width: 0%;"></div>
+            </div>
         </div>
     </div>
 
@@ -58,8 +61,12 @@
     <div id="playback-screen" class="screen">
         <!-- Media Players -->
         <div id="media-container" class="fullscreen-container">
-            <img id="image-player" class="media-element" style="display: none;" src="" alt="Signage Content">
+            <img id="image-player-1" class="media-element" style="display: none; opacity: 0;" src="" alt="Signage Content">
+            <img id="image-player-2" class="media-element" style="display: none; opacity: 0;" src="" alt="Signage Content">
             <video id="video-player" class="media-element" style="display: none;" preload="auto" muted></video>
+            <div id="out-of-range-media-placeholder" class="out-of-range-text-overlay" style="display: none;">
+                Out of Range
+            </div>
         </div>
 
         <!-- Dynamic Overlay Widgets -->
@@ -90,6 +97,7 @@
                 <div class="rss-label">NEWS Ticker</div>
                 <div class="rss-scroll-wrapper">
                     <div id="rss-text" class="rss-scroll-text">Loading updates...</div>
+                    <div id="rss-text-dup" class="rss-scroll-text">Loading updates...</div>
                 </div>
             </div>
         </div>
