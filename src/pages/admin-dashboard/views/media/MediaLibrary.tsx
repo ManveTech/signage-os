@@ -163,7 +163,7 @@ export default function MediaLibrary({ userEmail }: Props) {
                 if (ctx) {
                   const isPng = file.type === 'image/png';
                   const exportMime = isPng ? 'image/png' : 'image/jpeg';
-                  const exportQuality = isPng ? undefined : 0.92; // 92% high quality (visually lossless)
+                  const exportQuality = isPng ? undefined : 0.85; // 85% high quality standard web compression
 
                   // Configure high-quality scaling algorithms
                   ctx.imageSmoothingEnabled = true;
@@ -173,9 +173,17 @@ export default function MediaLibrary({ userEmail }: Props) {
                   const optimizedDataUrl = canvas.toDataURL(exportMime, exportQuality);
                   const optimizedBase64 = optimizedDataUrl.split(',')[1];
                   const optSizeBytes = Math.round((optimizedBase64.length * 3) / 4);
-                  const optSizeString = `${(optSizeBytes / (1024 * 1024)).toFixed(2)} MB`;
 
-                  console.log(`Auto-optimized upload image size from ${(file.size / (1024 * 1024)).toFixed(2)} MB to ${optSizeString}`);
+                  // Safety check: use optimized data only if we downscaled, or if the optimized file is smaller
+                  const didDownscale = img.naturalWidth > MAX_WIDTH || img.naturalHeight > MAX_HEIGHT;
+                  const useOptimized = didDownscale || (optSizeBytes < file.size);
+
+                  const finalBase64 = useOptimized ? optimizedBase64 : base64Data;
+                  const finalSizeBytes = useOptimized ? optSizeBytes : file.size;
+                  const finalSizeString = `${(finalSizeBytes / (1024 * 1024)).toFixed(2)} MB`;
+                  const finalDataUrl = useOptimized ? optimizedDataUrl : resultDataUrl;
+
+                  console.log(`Auto-optimized upload image size from ${(file.size / (1024 * 1024)).toFixed(2)} MB to ${finalSizeString} (usedOptimized=${useOptimized})`);
 
                   try {
                     await mediaStore.uploadMedia({
@@ -183,17 +191,17 @@ export default function MediaLibrary({ userEmail }: Props) {
                       type: fileType,
                       duration: 10,
                       resolution: `${targetWidth}x${targetHeight}`,
-                      fileSize: optSizeString,
-                      fileSizeBytes: optSizeBytes,
+                      fileSize: finalSizeString,
+                      fileSizeBytes: finalSizeBytes,
                       uploadedBy: userEmail,
                       expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                       tags: ['uploaded', fileType],
-                      thumbnail: optimizedDataUrl,
+                      thumbnail: finalDataUrl,
                       width: targetWidth,
                       height: targetHeight,
-                      mimeType: exportMime,
-                      fileData: optimizedBase64,
-                      fileName: file.name.replace(/\.[^/.]+$/, "") + (isPng ? '.png' : '.jpg')
+                      mimeType: useOptimized ? exportMime : file.type,
+                      fileData: finalBase64,
+                      fileName: file.name.replace(/\.[^/.]+$/, "") + (useOptimized ? (isPng ? '.png' : '.jpg') : file.name.substring(file.name.lastIndexOf('.')))
                     });
                     resolve();
                   } catch (err) {
