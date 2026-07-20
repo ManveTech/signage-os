@@ -6,6 +6,14 @@
     // Config Constants (pointing to backend endpoints)
     const SERVER_URL = 'https://dem1.manve.co'; // Target server URL. Will be resolved to match PocketBase settings.
     let POCKETBASE_URL = 'https://demo.manve.co'; // Resolved during pairing
+    
+    // Performance optimization: disable debug logs on the TV CPU in production
+    const DEBUG = false;
+    if (!DEBUG) {
+        console.log = function () {};
+        console.info = function () {};
+        console.warn = function () {};
+    }
 
     // Local Storage state keys
     const KEYS = {
@@ -36,8 +44,7 @@
         cacheBust: localStorage.getItem('signage_tizen_cache_bust') || '',
         qrcodeLocalPath: localStorage.getItem('signage_qrcode_local_path') || '',
         playlistId: localStorage.getItem('signage_tizen_playlist_id') || '',
-        screenUpdated: localStorage.getItem('signage_tizen_screen_updated') || '',
-        imageElementsCache: {}
+        screenUpdated: localStorage.getItem('signage_tizen_screen_updated') || ''
     };
 
     // Inactivity / Idle Auto Launch Timeout
@@ -1304,46 +1311,31 @@
                 }
             }, 600);
             
-            // Get or create pre-decoded Image element from state cache
-            if (!state.imageElementsCache[asset.id]) {
-                const img = new Image();
-                img.className = 'media-element';
-                img.style.display = 'block';
-                img.style.opacity = '0.001';
-                img.style.zIndex = '1';
-                img.src = asset.url;
-                state.imageElementsCache[asset.id] = img;
-            }
-
-            const imgElement = state.imageElementsCache[asset.id];
-            
-            // Configure scale mode and zoom transform
-            imgElement.style.objectFit = asset.objectFit || 'cover';
+            // Configure scale mode and zoom transform on the inactive player
+            inactivePlayer.style.objectFit = asset.objectFit || 'cover';
             const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-            imgElement.style.transform = scale;
-
-            // Ensure the image element is appended to the media container
-            const container = document.getElementById('media-container');
-            if (imgElement.parentNode !== container) {
-                container.appendChild(imgElement);
-            }
+            inactivePlayer.style.transform = scale;
+            
+            // Ensure the inactive player is visible in DOM hierarchy but kept transparent
+            inactivePlayer.style.display = 'block';
+            inactivePlayer.style.opacity = '0.001';
 
             const startTransition = () => {
                 if (currentToken !== rotationToken) return;
 
-                // Bring new image to foreground on top of the old one
-                imgElement.style.display = 'block';
-                imgElement.style.zIndex = '2';
+                // Bring the new image (inactivePlayer) to the foreground on top of the old activePlayer
+                inactivePlayer.style.zIndex = '2';
+                activePlayer.style.zIndex = '1';
                 
                 // Fade in the new image (only animate this top layer to keep GPU blending load low)
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
-                        imgElement.style.opacity = '1';
+                        inactivePlayer.style.opacity = '1';
                         
                         if (transitionName !== 'none') {
-                            imgElement.className = 'media-element ' + animClass;
+                            inactivePlayer.className = 'media-element ' + animClass;
                         } else {
-                            imgElement.className = 'media-element';
+                            inactivePlayer.className = 'media-element';
                         }
                     }
                 }, 20);
@@ -1351,15 +1343,13 @@
                 // Wait for the transition to finish (600ms), then push old image to background
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
-                        const children = container.querySelectorAll('.media-element');
-                        children.forEach(child => {
-                            if (child !== imgElement && child.id !== 'video-player') {
-                                child.style.opacity = '0.001';
-                                child.style.zIndex = '1';
-                            }
-                        });
+                        activePlayer.style.opacity = '0.001';
+                        activePlayer.style.zIndex = '1';
                     }
                 }, 600);
+
+                // Toggle active player index for next transition
+                activeImagePlayerNum = activeImagePlayerNum === 1 ? 2 : 1;
 
                 // Schedule the next transition duration (enforce a safe minimum of 3 seconds to prevent rapid skipping)
                 const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
@@ -1370,37 +1360,26 @@
                 }, duration);
             };
 
-            if (imgElement.complete) {
-                if (typeof imgElement.decode === 'function') {
-                    imgElement.decode().then(startTransition).catch(startTransition);
-                } else {
-                    startTransition();
-                }
+            const handleLoad = () => {
+                inactivePlayer.removeEventListener('load', handleLoad);
+                inactivePlayer.removeEventListener('error', handleError);
+                startTransition();
+            };
+            
+            const handleError = (err) => {
+                console.error(`Double-buffer image load failed: ${asset.url}`, err);
+                inactivePlayer.removeEventListener('load', handleLoad);
+                inactivePlayer.removeEventListener('error', handleError);
+                advancePlaylist();
+            };
+
+            // Set source only if it's different to prevent redundant loading stutters
+            if (inactivePlayer.src !== asset.url) {
+                inactivePlayer.addEventListener('load', handleLoad);
+                inactivePlayer.addEventListener('error', handleError);
+                inactivePlayer.src = asset.url;
             } else {
-                const handleLoad = () => {
-                    imgElement.removeEventListener('load', handleLoad);
-                    imgElement.removeEventListener('error', handleError);
-                    // Append to DOM to ensure GPU caching starts immediately
-                    if (container && imgElement.parentNode !== container) {
-                        container.appendChild(imgElement);
-                    }
-                    if (typeof imgElement.decode === 'function') {
-                        imgElement.decode().then(startTransition).catch(startTransition);
-                    } else {
-                        startTransition();
-                    }
-                };
-                const handleError = (err) => {
-                    console.error(`Dynamic image element load failed: ${asset.url}`, err);
-                    imgElement.removeEventListener('load', handleLoad);
-                    imgElement.removeEventListener('error', handleError);
-                    advancePlaylist();
-                };
-                imgElement.addEventListener('load', handleLoad);
-                imgElement.addEventListener('error', handleError);
-                if (!imgElement.src) {
-                    imgElement.src = asset.url;
-                }
+                startTransition();
             }
         }
 
