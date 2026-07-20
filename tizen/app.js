@@ -276,7 +276,10 @@
                     if (currentAsset && currentAsset.mediaType === 'video') {
                         views.videoPlayer.play().catch(e => console.warn("Failed to resume video on wake:", e));
                     }
-                    startPlaylistRotation();
+                    // Only start rotation if the playlist loop is not already running
+                    if (!rotationTimeout && rotationToken === 0) {
+                        startPlaylistRotation();
+                    }
                 } catch (err) {
                     console.error("Failed to restore playback state on wake:", err);
                 }
@@ -1274,8 +1277,8 @@
             views.videoPlayer.addEventListener('playing', handleVideoPlaying);
 
             views.videoPlayer.play().then(() => {
-                // Set rotation timeout to cut off video when the slide duration completes
-                const duration = (parseInt(asset.duration, 10) || 10) * 1000;
+                // Set rotation timeout to cut off video when the slide duration completes (minimum 3 seconds)
+                const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
                         views.videoPlayer.pause();
@@ -1328,23 +1331,14 @@
             const startTransition = () => {
                 if (currentToken !== rotationToken) return;
 
-                // Bring new image to foreground
+                // Bring new image to foreground on top of the old one
                 imgElement.style.display = 'block';
                 imgElement.style.zIndex = '2';
                 
-                // Fade in the new image
+                // Fade in the new image (only animate this top layer to keep GPU blending load low)
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
                         imgElement.style.opacity = '1';
-                        
-                        // Push other images to the background with 0.001 opacity to keep GPU cache warm
-                        const children = container.querySelectorAll('.media-element');
-                        children.forEach(child => {
-                            if (child !== imgElement && child.id !== 'video-player') {
-                                child.style.opacity = '0.001';
-                                child.style.zIndex = '1';
-                            }
-                        });
                         
                         if (transitionName !== 'none') {
                             imgElement.className = 'media-element ' + animClass;
@@ -1354,8 +1348,21 @@
                     }
                 }, 20);
 
-                // Schedule the next transition duration
-                const duration = (parseInt(asset.duration, 10) || 10) * 1000;
+                // Wait for the transition to finish (600ms), then push old image to background
+                setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        const children = container.querySelectorAll('.media-element');
+                        children.forEach(child => {
+                            if (child !== imgElement && child.id !== 'video-player') {
+                                child.style.opacity = '0.001';
+                                child.style.zIndex = '1';
+                            }
+                        });
+                    }
+                }, 600);
+
+                // Schedule the next transition duration (enforce a safe minimum of 3 seconds to prevent rapid skipping)
+                const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
                         advancePlaylist();
