@@ -17,7 +17,7 @@ function resignPackage(certificates, packageBuffer, newVer) {
             // Update the version in config.xml directly inside the zip in memory before signing
             if (newVer && zip.file('config.xml')) {
                 let configXmlText = await zip.file('config.xml').async('string');
-                configXmlText = configXmlText.replace(/version="[^"]+"/, `version="${newVer}"`);
+                configXmlText = configXmlText.replace(/(<widget\s+[^>]*\bversion=")[^"]+(")/, `$1${newVer}$2`);
                 zip.file('config.xml', configXmlText);
             }
 
