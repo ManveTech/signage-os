@@ -145,30 +145,80 @@ export default function MediaLibrary({ userEmail }: Props) {
             if (fileType === 'image') {
               const img = new window.Image();
               img.onload = async () => {
-                const width = img.naturalWidth;
-                const height = img.naturalHeight;
+                let targetWidth = img.naturalWidth;
+                let targetHeight = img.naturalHeight;
+                const MAX_WIDTH = 1920;
+                const MAX_HEIGHT = 1080;
 
-                try {
-                  await mediaStore.uploadMedia({
-                    title: title,
-                    type: fileType,
-                    duration: 10,
-                    resolution: `${width}x${height}`,
-                    fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-                    fileSizeBytes: file.size,
-                    uploadedBy: userEmail,
-                    expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                    tags: ['uploaded', fileType],
-                    thumbnail: resultDataUrl,
-                    width: width,
-                    height: height,
-                    mimeType: file.type,
-                    fileData: base64Data,
-                    fileName: file.name
-                  });
-                  resolve();
-                } catch (err) {
-                  reject(err);
+                if (targetWidth > MAX_WIDTH || targetHeight > MAX_HEIGHT) {
+                  const ratio = Math.min(MAX_WIDTH / targetWidth, MAX_HEIGHT / targetHeight);
+                  targetWidth = Math.round(targetWidth * ratio);
+                  targetHeight = Math.round(targetHeight * ratio);
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  const isPng = file.type === 'image/png';
+                  const exportMime = isPng ? 'image/png' : 'image/jpeg';
+                  const exportQuality = isPng ? undefined : 0.82;
+
+                  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                  const optimizedDataUrl = canvas.toDataURL(exportMime, exportQuality);
+                  const optimizedBase64 = optimizedDataUrl.split(',')[1];
+                  const optSizeBytes = Math.round((optimizedBase64.length * 3) / 4);
+                  const optSizeString = `${(optSizeBytes / (1024 * 1024)).toFixed(2)} MB`;
+
+                  console.log(`Auto-optimized upload image size from ${(file.size / (1024 * 1024)).toFixed(2)} MB to ${optSizeString}`);
+
+                  try {
+                    await mediaStore.uploadMedia({
+                      title: title,
+                      type: fileType,
+                      duration: 10,
+                      resolution: `${targetWidth}x${targetHeight}`,
+                      fileSize: optSizeString,
+                      fileSizeBytes: optSizeBytes,
+                      uploadedBy: userEmail,
+                      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                      tags: ['uploaded', fileType],
+                      thumbnail: optimizedDataUrl,
+                      width: targetWidth,
+                      height: targetHeight,
+                      mimeType: exportMime,
+                      fileData: optimizedBase64,
+                      fileName: file.name.replace(/\.[^/.]+$/, "") + (isPng ? '.png' : '.jpg')
+                    });
+                    resolve();
+                  } catch (err) {
+                    reject(err);
+                  }
+                } else {
+                  // Fallback if canvas context fails
+                  try {
+                    await mediaStore.uploadMedia({
+                      title: title,
+                      type: fileType,
+                      duration: 10,
+                      resolution: `${img.naturalWidth}x${img.naturalHeight}`,
+                      fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                      fileSizeBytes: file.size,
+                      uploadedBy: userEmail,
+                      expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                      tags: ['uploaded', fileType],
+                      thumbnail: resultDataUrl,
+                      width: img.naturalWidth,
+                      height: img.naturalHeight,
+                      mimeType: file.type,
+                      fileData: base64Data,
+                      fileName: file.name
+                    });
+                    resolve();
+                  } catch (err) {
+                    reject(err);
+                  }
                 }
               };
               img.onerror = () => reject(new Error("Failed to load image metadata"));

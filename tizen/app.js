@@ -823,6 +823,7 @@
                     localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
                     state.currentAssetIndex = 0;
                     updateUI();
+                    startPlaylistRotation();
                 }
             } catch (syncErr) {
                 console.error("Local file sync failed:", syncErr);
@@ -1173,24 +1174,42 @@
 
             // Set source and reset class
             views.imagePlayer.className = 'media-element';
-            views.imagePlayer.src = asset.url;
-            views.imagePlayer.style.display = 'block';
 
-            if (transitionName !== 'none') {
-                setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        views.imagePlayer.classList.add(animClass);
-                    }
-                }, 20);
-            }
+            const handleImageLoaded = () => {
+                if (currentToken !== rotationToken) return;
+                views.imagePlayer.style.display = 'block';
 
-            // Schedule the transition timeout immediately
-            const duration = (parseInt(asset.duration, 10) || 10) * 1000;
-            rotationTimeout = setTimeout(() => {
-                if (currentToken === rotationToken) {
-                    advancePlaylist();
+                if (transitionName !== 'none') {
+                    setTimeout(() => {
+                        if (currentToken === rotationToken) {
+                            views.imagePlayer.classList.add(animClass);
+                        }
+                    }, 20);
                 }
-            }, duration);
+
+                // Schedule the transition timeout ONLY after image is fully loaded and drawn on screen
+                const duration = (parseInt(asset.duration, 10) || 10) * 1000;
+                rotationTimeout = setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        advancePlaylist();
+                    }
+                }, duration);
+
+                views.imagePlayer.removeEventListener('load', handleImageLoaded);
+                views.imagePlayer.removeEventListener('error', handleImageError);
+            };
+
+            const handleImageError = (err) => {
+                console.error(`Error loading image from disk: ${asset.url}`, err);
+                if (currentToken !== rotationToken) return;
+                views.imagePlayer.removeEventListener('load', handleImageLoaded);
+                views.imagePlayer.removeEventListener('error', handleImageError);
+                advancePlaylist();
+            };
+
+            views.imagePlayer.addEventListener('load', handleImageLoaded);
+            views.imagePlayer.addEventListener('error', handleImageError);
+            views.imagePlayer.src = asset.url;
         }
 
         // Background preloader: preload the next image slide so it loads instantly with zero lag
