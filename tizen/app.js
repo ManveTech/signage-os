@@ -615,10 +615,9 @@
             let fetchedAssets = [];
             
             // 1. Resolve from slides sequence (with custom durations, ordering)
-            if (data.slides) {
-                const slides = data.slides;
-                if (slides.isCompiled && slides.compiledVideoId) {
-                    const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slides.compiledVideoId}`);
+            if (data.slides && data.slides.length > 0) {
+                for (const slide of data.slides) {
+                    const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
                         const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
@@ -627,29 +626,11 @@
                             url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
-                            duration: 3600, // Large safe duration
+                            duration: slide.duration || media.duration || 10,
                             thumbnail: media.thumbnail || rawUrl,
-                            objectFit: 'cover',
-                            scalePercent: 100
+                            objectFit: slide.objectFit || 'cover',
+                            scalePercent: slide.scalePercent || 100
                         });
-                    }
-                } else if (Array.isArray(slides) && slides.length > 0) {
-                    for (const slide of slides) {
-                        const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
-                        if (mediaRes.ok) {
-                            const media = await mediaRes.json();
-                            const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
-                            fetchedAssets.push({
-                                id: media.id,
-                                url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
-                                mediaType: media.type.toLowerCase(),
-                                filename: media.title,
-                                duration: slide.duration || media.duration || 10,
-                                thumbnail: media.thumbnail || rawUrl,
-                                objectFit: slide.objectFit || 'cover',
-                                scalePercent: slide.scalePercent || 100
-                            });
-                        }
                     }
                 }
             } 
@@ -745,35 +726,6 @@
             state.currentAssetIndex = 0;
             if (state.playlist && state.playlist[0]) {
                 startPlaylistRotation();
-            }
-            return;
-        }
-
-        // If it's a single compiled video asset, loop it natively and exit immediately
-        // This removes all JS timing overhead and runs at 0% JS CPU consumption
-        if (state.playlist.length === 1 && asset.mediaType === 'video') {
-            if (views.outOfRange) {
-                views.outOfRange.style.display = state.isOutOfRange ? 'flex' : 'none';
-            }
-            views.imagePlayer.style.display = 'none';
-            
-            if (state.isOutOfRange) {
-                views.videoPlayer.style.display = 'none';
-                views.videoPlayer.pause();
-                return;
-            }
-
-            views.videoPlayer.loop = true;
-            views.videoPlayer.style.display = 'block';
-            views.videoPlayer.style.opacity = '1';
-            views.videoPlayer.style.objectFit = asset.objectFit || 'cover';
-            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-            views.videoPlayer.style.transform = scale;
-
-            if (views.videoPlayer.src !== asset.url) {
-                views.videoPlayer.src = asset.url;
-                views.videoPlayer.volume = state.volume / 100;
-                views.videoPlayer.play().catch(e => console.warn("Failed to autoplay loop video:", e));
             }
             return;
         }
