@@ -36,7 +36,8 @@
         cacheBust: localStorage.getItem('signage_tizen_cache_bust') || '',
         qrcodeLocalPath: localStorage.getItem('signage_qrcode_local_path') || '',
         playlistId: localStorage.getItem('signage_tizen_playlist_id') || '',
-        screenUpdated: localStorage.getItem('signage_tizen_screen_updated') || ''
+        screenUpdated: localStorage.getItem('signage_tizen_screen_updated') || '',
+        imageElementsCache: {}
     };
 
     // Inactivity / Idle Auto Launch Timeout
@@ -53,7 +54,8 @@
         pairingCodeText: document.getElementById('pairing-code'),
         pairingStatusMsg: document.getElementById('pairing-status-message'),
         refreshCodeBtn: document.getElementById('refresh-code-btn'),
-        imagePlayer: document.getElementById('image-player'),
+        imagePlayer1: document.getElementById('image-player-1'),
+        imagePlayer2: document.getElementById('image-player-2'),
         videoPlayer: document.getElementById('video-player'),
         splashLogo: document.getElementById('splash-logo'),
         pairingLogo: document.getElementById('pairing-logo'),
@@ -78,6 +80,7 @@
     // Loop Timers
     let rotationTimeout = null;
     let rotationToken = 0;
+    let activeImagePlayerNum = 1; // Double-buffering index: tracks which image tag (1 or 2) is active
     let syncInterval = null;
     let heartbeatInterval = null;
     let clockInterval = null;
@@ -1085,9 +1088,19 @@
                     try {
                         await new Promise((resolve) => {
                             const img = new Image();
+                            img.className = 'media-element';
+                            img.style.display = 'none';
+                            img.style.opacity = '0';
+
                             img.onload = () => {
                                 if (typeof img.decode === 'function') {
-                                    img.decode().then(resolve).catch(() => resolve());
+                                    img.decode().then(() => {
+                                        state.imageElementsCache[asset.id] = img;
+                                        resolve();
+                                    }).catch(() => {
+                                        state.imageElementsCache[asset.id] = img;
+                                        resolve();
+                                    });
                                 } else {
                                     // Fallback: force synchronous decode on GPU via 1x1 canvas rendering
                                     try {
@@ -1099,6 +1112,7 @@
                                             tempCtx.drawImage(img, 0, 0, 1, 1);
                                         }
                                     } catch (e) {}
+                                    state.imageElementsCache[asset.id] = img;
                                     resolve();
                                 }
                             };
@@ -1143,7 +1157,8 @@
  
         // If device is out of range, replace background media with placeholder but continue loop
         if (state.isOutOfRange) {
-            views.imagePlayer.style.display = 'none';
+            views.imagePlayer1.style.display = 'none';
+            views.imagePlayer2.style.display = 'none';
             views.videoPlayer.style.display = 'none';
             views.videoPlayer.pause();
             if (views.outOfRange) {
@@ -1174,21 +1189,26 @@
             transitionName === 'bounce' ? 'bounceIn' : 'fadeIn'
         );
 
+        // Determine active and inactive players for double buffering
+        const activePlayer = activeImagePlayerNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
+        const inactivePlayer = activeImagePlayerNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
+
         if (asset.mediaType === 'video') {
             // Apply scale mode configuration
             views.videoPlayer.style.objectFit = asset.objectFit || 'cover';
-            views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
+            activePlayer.style.objectFit = asset.objectFit || 'cover';
 
             // Apply scale zoom configuration
             const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
             views.videoPlayer.style.transform = scale;
-            views.imagePlayer.style.transform = scale;
+            activePlayer.style.transform = scale;
 
-            // Show video thumbnail on the image player during buffering to avoid blank black screen
+            // Show video thumbnail on active image player during buffering to avoid blank black screen
             if (asset.thumbnail) {
-                views.imagePlayer.className = 'media-element';
-                views.imagePlayer.src = asset.thumbnail;
-                views.imagePlayer.style.display = 'block';
+                activePlayer.className = 'media-element';
+                activePlayer.src = asset.thumbnail;
+                activePlayer.style.display = 'block';
+                activePlayer.style.opacity = '1';
             }
 
             views.videoPlayer.style.opacity = '0';
@@ -1200,7 +1220,17 @@
                 if (currentToken !== rotationToken) return;
                 views.videoPlayer.className = 'media-element';
                 views.videoPlayer.style.opacity = '1';
-                views.imagePlayer.style.display = 'none';
+                
+                // Fade out and hide all image players
+                activePlayer.style.opacity = '0';
+                inactivePlayer.style.opacity = '0';
+                setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        activePlayer.style.display = 'none';
+                        inactivePlayer.style.display = 'none';
+                    }
+                }, 600);
+
                 if (transitionName !== 'none') {
                     setTimeout(() => {
                         if (currentToken === rotationToken) {
@@ -1232,79 +1262,105 @@
                 }, 5000);
             });
         } else {
-            views.videoPlayer.style.display = 'none';
-            views.videoPlayer.pause();
-            
-            // Apply scale mode configuration
-            views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
-
-            // Apply scale zoom configuration
-            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-            views.imagePlayer.style.transform = scale;
-
-            // Set source and reset class
-            views.imagePlayer.className = 'media-element';
-
-            const handleImageLoaded = () => {
-                if (currentToken !== rotationToken) return;
-
-                const startTimer = () => {
-                    if (currentToken !== rotationToken) return;
-                    views.imagePlayer.style.display = 'block';
-
-                    if (transitionName !== 'none') {
-                        setTimeout(() => {
-                            if (currentToken === rotationToken) {
-                                views.imagePlayer.classList.add(animClass);
-                            }
-                        }, 20);
-                    }
-
-                    // Schedule transition timeout only after full image decoding has completed
-                    const duration = (parseInt(asset.duration, 10) || 10) * 1000;
-                    rotationTimeout = setTimeout(() => {
-                        if (currentToken === rotationToken) {
-                            advancePlaylist();
-                        }
-                    }, duration);
-                };
-
-                // Remove event listeners first to prevent duplicates
-                views.imagePlayer.removeEventListener('load', handleImageLoaded);
-                views.imagePlayer.removeEventListener('error', handleImageError);
-
-                if (typeof views.imagePlayer.decode === 'function') {
-                    views.imagePlayer.decode().then(startTimer).catch(() => {
-                        startTimer();
-                    });
-                } else {
-                    // Fallback for Tizen 3.0: force synchronous layout decode using a temporary 1x1 canvas draw
-                    try {
-                        const tempCanvas = document.createElement('canvas');
-                        tempCanvas.width = 1;
-                        tempCanvas.height = 1;
-                        const tempCtx = tempCanvas.getContext('2d');
-                        if (tempCtx) {
-                            tempCtx.drawImage(views.imagePlayer, 0, 0, 1, 1);
-                        }
-                    } catch (e) {
-                        console.warn("Forced canvas decode fallback exception:", e);
-                    }
-                    startTimer();
+            // Hide video player immediately if we are switching to an image
+            views.videoPlayer.style.opacity = '0';
+            setTimeout(() => {
+                if (currentToken === rotationToken) {
+                    views.videoPlayer.style.display = 'none';
                 }
-            };
+            }, 600);
+            
+            // Get or create pre-decoded Image element from state cache
+            if (!state.imageElementsCache[asset.id]) {
+                const img = new Image();
+                img.className = 'media-element';
+                img.style.display = 'none';
+                img.style.opacity = '0';
+                img.src = asset.url;
+                state.imageElementsCache[asset.id] = img;
+            }
 
-            const handleImageError = (err) => {
-                console.error(`Error loading image from disk: ${asset.url}`, err);
+            const imgElement = state.imageElementsCache[asset.id];
+            
+            // Configure scale mode and zoom transform
+            imgElement.style.objectFit = asset.objectFit || 'cover';
+            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
+            imgElement.style.transform = scale;
+
+            // Ensure the image element is appended to the media container
+            const container = document.getElementById('media-container');
+            if (imgElement.parentNode !== container) {
+                container.appendChild(imgElement);
+            }
+
+            const startTransition = () => {
                 if (currentToken !== rotationToken) return;
-                views.imagePlayer.removeEventListener('load', handleImageLoaded);
-                views.imagePlayer.removeEventListener('error', handleImageError);
-                advancePlaylist();
+
+                imgElement.style.display = 'block';
+                
+                // Fade in the new image
+                setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        imgElement.style.opacity = '1';
+                        
+                        // Fade out and hide all other images in the container
+                        const children = container.querySelectorAll('.media-element');
+                        children.forEach(child => {
+                            if (child !== imgElement && child.id !== 'video-player') {
+                                child.style.opacity = '0';
+                                setTimeout(() => {
+                                    if (currentToken === rotationToken && child.parentNode === container) {
+                                        child.style.display = 'none';
+                                    }
+                                }, 600);
+                            }
+                        });
+                        
+                        if (transitionName !== 'none') {
+                            imgElement.className = 'media-element ' + animClass;
+                        } else {
+                            imgElement.className = 'media-element';
+                        }
+                    }
+                }, 20);
+
+                // Schedule the next transition duration
+                const duration = (parseInt(asset.duration, 10) || 10) * 1000;
+                rotationTimeout = setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        advancePlaylist();
+                    }
+                }, duration);
             };
 
-            views.imagePlayer.addEventListener('load', handleImageLoaded);
-            views.imagePlayer.addEventListener('error', handleImageError);
-            views.imagePlayer.src = asset.url;
+            if (imgElement.complete) {
+                if (typeof imgElement.decode === 'function') {
+                    imgElement.decode().then(startTransition).catch(startTransition);
+                } else {
+                    startTransition();
+                }
+            } else {
+                const handleLoad = () => {
+                    imgElement.removeEventListener('load', handleLoad);
+                    imgElement.removeEventListener('error', handleError);
+                    if (typeof imgElement.decode === 'function') {
+                        imgElement.decode().then(startTransition).catch(startTransition);
+                    } else {
+                        startTransition();
+                    }
+                };
+                const handleError = (err) => {
+                    console.error(`Dynamic image element load failed: ${asset.url}`, err);
+                    imgElement.removeEventListener('load', handleLoad);
+                    imgElement.removeEventListener('error', handleError);
+                    advancePlaylist();
+                };
+                imgElement.addEventListener('load', handleLoad);
+                imgElement.addEventListener('error', handleError);
+                if (!imgElement.src) {
+                    imgElement.src = asset.url;
+                }
+            }
         }
 
         // Background preloader: preload the next image slide so it loads instantly with zero lag
