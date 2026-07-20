@@ -347,3 +347,18 @@ body {
     transition: width 0.2s ease-out;
 }
 
+.out-of-range-text-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 32px;
+    font-weight: 800;
+    color: #ef4444; /* Premium red color */
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    z-index: 10;
+    pointer-events: none;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
