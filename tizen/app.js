@@ -1044,6 +1044,57 @@
                 }
             }
 
+            // Pre-decode all cached image assets upfront so they are loaded into GPU memory before playback starts
+            console.log("Starting upfront asset pre-decoding...");
+            const imageAssets = assets.filter(a => a.mediaType === 'image' && a.url);
+            if (imageAssets.length > 0) {
+                if (views.splashStatus) {
+                    views.splashStatus.innerText = "Optimizing display cache for smooth transitions...";
+                }
+                if (progressBar) progressBar.style.width = '0%';
+
+                for (let k = 0; k < imageAssets.length; k++) {
+                    const asset = imageAssets[k];
+                    if (views.splashStatus) {
+                        views.splashStatus.innerText = `Optimizing graphics cache... ${k + 1}/${imageAssets.length}`;
+                    }
+                    if (progressBar) {
+                        const percent = ((k + 1) / imageAssets.length) * 100;
+                        progressBar.style.width = `${percent}%`;
+                    }
+
+                    try {
+                        await new Promise((resolve) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                if (typeof img.decode === 'function') {
+                                    img.decode().then(resolve).catch(() => resolve());
+                                } else {
+                                    // Fallback: force synchronous decode on GPU via 1x1 canvas rendering
+                                    try {
+                                        const tempCanvas = document.createElement('canvas');
+                                        tempCanvas.width = 1;
+                                        tempCanvas.height = 1;
+                                        const tempCtx = tempCanvas.getContext('2d');
+                                        if (tempCtx) {
+                                            tempCtx.drawImage(img, 0, 0, 1, 1);
+                                        }
+                                    } catch (e) {}
+                                    resolve();
+                                }
+                            };
+                            img.onerror = () => resolve();
+                            img.src = asset.url;
+                        });
+                    } catch (decodeErr) {
+                        console.warn(`Upfront pre-decoding failed for ${asset.filename}:`, decodeErr);
+                    }
+
+                    // Brief pause to keep TV processor fully responsive
+                    await new Promise(r => setTimeout(r, 150));
+                }
+            }
+
         } catch (err) {
             console.error("Local filesystem synchronization failed:", err);
         }
@@ -1177,26 +1228,51 @@
 
             const handleImageLoaded = () => {
                 if (currentToken !== rotationToken) return;
-                views.imagePlayer.style.display = 'block';
 
-                if (transitionName !== 'none') {
-                    setTimeout(() => {
-                        if (currentToken === rotationToken) {
-                            views.imagePlayer.classList.add(animClass);
-                        }
-                    }, 20);
-                }
+                const startTimer = () => {
+                    if (currentToken !== rotationToken) return;
+                    views.imagePlayer.style.display = 'block';
 
-                // Schedule the transition timeout ONLY after image is fully loaded and drawn on screen
-                const duration = (parseInt(asset.duration, 10) || 10) * 1000;
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        advancePlaylist();
+                    if (transitionName !== 'none') {
+                        setTimeout(() => {
+                            if (currentToken === rotationToken) {
+                                views.imagePlayer.classList.add(animClass);
+                            }
+                        }, 20);
                     }
-                }, duration);
 
+                    // Schedule transition timeout only after full image decoding has completed
+                    const duration = (parseInt(asset.duration, 10) || 10) * 1000;
+                    rotationTimeout = setTimeout(() => {
+                        if (currentToken === rotationToken) {
+                            advancePlaylist();
+                        }
+                    }, duration);
+                };
+
+                // Remove event listeners first to prevent duplicates
                 views.imagePlayer.removeEventListener('load', handleImageLoaded);
                 views.imagePlayer.removeEventListener('error', handleImageError);
+
+                if (typeof views.imagePlayer.decode === 'function') {
+                    views.imagePlayer.decode().then(startTimer).catch(() => {
+                        startTimer();
+                    });
+                } else {
+                    // Fallback for Tizen 3.0: force synchronous layout decode using a temporary 1x1 canvas draw
+                    try {
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = 1;
+                        tempCanvas.height = 1;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        if (tempCtx) {
+                            tempCtx.drawImage(views.imagePlayer, 0, 0, 1, 1);
+                        }
+                    } catch (e) {
+                        console.warn("Forced canvas decode fallback exception:", e);
+                    }
+                    startTimer();
+                }
             };
 
             const handleImageError = (err) => {

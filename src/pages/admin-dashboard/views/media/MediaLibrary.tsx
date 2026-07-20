@@ -163,7 +163,11 @@ export default function MediaLibrary({ userEmail }: Props) {
                 if (ctx) {
                   const isPng = file.type === 'image/png';
                   const exportMime = isPng ? 'image/png' : 'image/jpeg';
-                  const exportQuality = isPng ? undefined : 0.82;
+                  const exportQuality = isPng ? undefined : 0.92; // 92% high quality (visually lossless)
+
+                  // Configure high-quality scaling algorithms
+                  ctx.imageSmoothingEnabled = true;
+                  ctx.imageSmoothingQuality = 'high';
 
                   ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
                   const optimizedDataUrl = canvas.toDataURL(exportMime, exportQuality);
