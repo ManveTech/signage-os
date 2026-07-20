@@ -197,6 +197,18 @@
         }
     }
 
+    // Resolve file URI safely (handles method vs property across Tizen versions)
+    function getFileURI(file) {
+        if (file) {
+            if (typeof file.toURI === 'function') {
+                return file.toURI();
+            } else if (typeof file.toURI === 'string') {
+                return file.toURI;
+            }
+        }
+        return '';
+    }
+
     // Initialize application
     function init() {
         console.log("Initializing SignageOS Tizen App...");
@@ -888,8 +900,9 @@
                 try {
                     // Check if file exists locally
                     const file = dir.resolve(filename);
-                    console.log(`Asset ${filename} already exists locally: ${file.toURI()}`);
-                    asset.url = file.toURI(); // Replace remote URL with local URI
+                    const localUri = getFileURI(file);
+                    console.log(`Asset ${filename} already exists locally: ${localUri}`);
+                    asset.url = localUri; // Replace remote URL with local URI
                 } catch (e) {
                     // File does not exist, download it via fetch to follow redirects (S3/R2 compatibility)
                     console.log(`Downloading asset: ${asset.url} as ${filename}`);
@@ -972,7 +985,7 @@
                         });
 
                         console.log(`Successfully cached asset ${filename} locally.`);
-                        asset.url = file.toURI();
+                        asset.url = getFileURI(file);
                     } catch (dlErr) {
                         console.error(`Failed to download and write asset ${filename}:`, dlErr);
                     }
@@ -1001,7 +1014,7 @@
                 try {
                     // Check if file exists locally
                     const file = dir.resolve(qrFilename);
-                    state.qrcodeLocalPath = file.toURI();
+                    state.qrcodeLocalPath = getFileURI(file);
                     localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
                 } catch (e) {
                     console.log(`Downloading updated QR code image: ${qrFilename}`);
@@ -1042,7 +1055,7 @@
                             }, reject);
                         });
 
-                        state.qrcodeLocalPath = file.toURI();
+                        state.qrcodeLocalPath = getFileURI(file);
                         localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
                     } catch (qrErr) {
                         console.error("QR Code offline download failed:", qrErr);

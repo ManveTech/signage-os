@@ -317,6 +317,7 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     animation: ticker 35s linear infinite;
+    white-space: pre; /* Preserve wide spaces between scrolling news items */
 }
 
 @keyframes ticker {
