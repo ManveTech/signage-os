@@ -1099,3 +1099,39 @@ export async function disconnectScreen(req: any, res: any) {
     res.status(500).json({ message: error.message || 'Error disconnecting screen' });
   }
 }
+
+export async function clearScreenCommand(req: any, res: any) {
+  try {
+    const { screenId, command } = req.body;
+    if (!screenId || !command) {
+      return res.status(400).json({ error: 'screenId and command are required' });
+    }
+
+    const validCommands = ['clear_cache', 'force_sync', 'restart_playlist'];
+    if (!validCommands.includes(command)) {
+      return res.status(400).json({ error: `Invalid command: ${command}` });
+    }
+
+    const authenticated = await ensurePBAuth();
+    if (!authenticated) {
+      return res.status(503).json({ error: 'PocketBase connection authentication failed' });
+    }
+
+    const updateData: any = {};
+    updateData[command] = false;
+
+    const updatedRecord = await pb.collection('screens').update(screenId, updateData);
+
+    if (isRedisReady()) {
+      await redis.pipeline()
+        .del(`cache:screen:${screenId}`)
+        .del(`cache:screen_uuid:${updatedRecord.hardware_uuid || ''}`)
+        .exec();
+    }
+
+    return res.status(200).json({ success: true, message: `Command ${command} cleared successfully.` });
+  } catch (err: any) {
+    console.error(`Error clearing screen command ${req.body?.command}:`, err);
+    return res.status(500).json({ error: err.message || 'Internal server error clearing command' });
+  }
+}

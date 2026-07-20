@@ -181,6 +181,22 @@
         ]);
     }
 
+    // Call Express backend to clear commands safely without PocketBase auth conflicts
+    async function clearScreenCommandOnServer(command) {
+        try {
+            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/clear-command`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    screenId: state.screenId,
+                    command: command
+                })
+            }, 3000);
+        } catch (e) {
+            console.error(`Failed to clear command ${command} on server:`, e);
+        }
+    }
+
     // Initialize application
     function init() {
         console.log("Initializing SignageOS Tizen App...");
@@ -541,12 +557,7 @@
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
                 hasChanged = true;
-                // Clear on server
-                await fetch(url, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clear_cache: false })
-                });
+                await clearScreenCommandOnServer('clear_cache');
             }
 
             // 2. Force Sync command
@@ -558,12 +569,7 @@
                 state.playlist = [];
                 state.currentAssetIndex = 0;
                 hasChanged = true;
-                // Clear force_sync flag on server
-                await fetch(url, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ force_sync: false })
-                });
+                await clearScreenCommandOnServer('force_sync');
             }
 
             // 3. Restart Playlist command
@@ -571,12 +577,7 @@
                 console.log("Received restart playlist instruction.");
                 state.currentAssetIndex = 0;
                 hasChanged = true;
-                // Clear restart_playlist flag on server
-                await fetch(url, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ restart_playlist: false })
-                });
+                await clearScreenCommandOnServer('restart_playlist');
                 startPlaylistRotation();
             }
 
@@ -818,12 +819,17 @@
                 const currentKeys = state.playlist.map(a => `${a.id}_${a.duration}`);
                 const isDifferent = JSON.stringify(newKeys) !== JSON.stringify(currentKeys);
                 
+                // Always populate playlist state with the offline local paths
+                state.playlist = localAssets;
+                localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
+
                 if (isDifferent || state.playlist.length === 0) {
-                    state.playlist = localAssets;
-                    localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
                     state.currentAssetIndex = 0;
                     updateUI();
                     startPlaylistRotation();
+                } else {
+                    // Update UI elements to bind the new local paths
+                    updateUI();
                 }
             } catch (syncErr) {
                 console.error("Local file sync failed:", syncErr);
@@ -1381,7 +1387,7 @@
                 if (config && typeof config === 'object') {
                     if (config.label) labelText = config.label;
                     if (Array.isArray(config.items)) {
-                        tickerText = config.items.filter(item => item && item.trim() !== '').join(' | ');
+                        tickerText = config.items.filter(item => item && item.trim() !== '').join('         |         ');
                     }
                     if (config.bgColor) bgColor = config.bgColor;
                     if (config.textColor) textColor = config.textColor;
@@ -1389,7 +1395,7 @@
             } catch (e) {
                 // Not JSON, format plain text with space-pipe-space separator if pipes are present
                 if (typeof rssLink === 'string') {
-                    tickerText = rssLink.split('|').map(s => s.trim()).filter(Boolean).join(' | ');
+                    tickerText = rssLink.split('|').map(s => s.trim()).filter(Boolean).join('         |         ');
                 }
             }
 
