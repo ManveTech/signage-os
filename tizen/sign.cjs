@@ -37,9 +37,9 @@ function resignPackage(certificates, packageBuffer, newVer) {
             const filteredFiles = files.filter(file => file !== null);
 
             const p12Asn1 = forge.asn1.fromDer(certificates.distributorCert);
-            const distributorP12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, certificates.password);
+            const distributorP12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, certificates.distributorPassword);
             const p12Asn1Author = forge.asn1.fromDer(certificates.authorCert);
-            const authorP12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1Author, false, certificates.password);
+            const authorP12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1Author, false, certificates.authorPassword);
 
             const AuthorSignature = new Signature('AuthorSignature', filteredFiles);
             const filesAuthor = await AuthorSignature.sign(authorP12);
@@ -69,8 +69,9 @@ async function run() {
         
         const certificates = {
             authorCert: Buffer.from(config.authorCert, 'base64').toString('binary'),
+            authorPassword: config.password,
             distributorCert: Buffer.from(config.distributorCert, 'base64').toString('binary'),
-            password: config.password
+            distributorPassword: config.password
         };
         
         console.log('Reading unsigned widget...');
