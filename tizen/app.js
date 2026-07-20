@@ -753,7 +753,23 @@
                 }
             }
 
-            if (Array.isArray(slides) && slides.length > 0) {
+            if (slides && slides.isCompiled && slides.compiledVideoId) {
+                const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slides.compiledVideoId}`);
+                if (mediaRes.ok) {
+                    const media = await mediaRes.json();
+                    const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
+                    fetchedAssets.push({
+                        id: media.id,
+                        url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
+                        mediaType: media.type.toLowerCase(),
+                        filename: media.title,
+                        duration: 3600, // Large safe duration
+                        thumbnail: media.thumbnail || rawUrl,
+                        objectFit: 'cover',
+                        scalePercent: 100
+                    });
+                }
+            } else if (Array.isArray(slides) && slides.length > 0) {
                 for (const slide of slides) {
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                     if (mediaRes.ok) {
@@ -1206,6 +1222,37 @@
             return;
         }
 
+        // If it's a single compiled video asset, loop it natively and exit immediately
+        // This removes all JS timing overhead and runs at 0% JS CPU consumption
+        if (state.playlist.length === 1 && asset.mediaType === 'video') {
+            if (views.outOfRange) {
+                views.outOfRange.style.display = state.isOutOfRange ? 'block' : 'none';
+            }
+            views.imagePlayer1.style.display = 'none';
+            views.imagePlayer2.style.display = 'none';
+            views.imagePlayer3.style.display = 'none';
+            
+            if (state.isOutOfRange) {
+                views.videoPlayer.style.display = 'none';
+                views.videoPlayer.pause();
+                return;
+            }
+
+            views.videoPlayer.loop = true;
+            views.videoPlayer.style.display = 'block';
+            views.videoPlayer.style.opacity = '1';
+            views.videoPlayer.style.objectFit = asset.objectFit || 'cover';
+            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
+            views.videoPlayer.style.transform = scale;
+
+            if (views.videoPlayer.src !== asset.url) {
+                views.videoPlayer.src = asset.url;
+                views.videoPlayer.volume = state.volume / 100;
+                views.videoPlayer.play().catch(e => console.warn("Failed to autoplay loop video:", e));
+            }
+            return;
+        }
+
         console.log(`Rotating to asset index ${state.currentAssetIndex}: ${asset.filename} (${asset.mediaType})`);
  
         // If device is out of range, replace background media with placeholder but continue loop
@@ -1250,6 +1297,25 @@
             const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
             views.videoPlayer.style.transform = scale;
             activePlayer.style.transform = scale;
+
+            // If the playlist has exactly 1 video asset, loop it seamlessly at the hardware level with zero flashes
+            if (state.playlist.length === 1) {
+                views.videoPlayer.loop = true;
+                views.videoPlayer.style.display = 'block';
+                views.videoPlayer.style.opacity = '1';
+                imagePlayers.forEach(p => {
+                    p.style.opacity = '0.001';
+                    p.style.zIndex = '1';
+                });
+                if (views.videoPlayer.src !== asset.url) {
+                    views.videoPlayer.src = asset.url;
+                    views.videoPlayer.volume = state.volume / 100;
+                    views.videoPlayer.play().catch(e => console.warn("Failed to autoplay loop video:", e));
+                }
+                return;
+            } else {
+                views.videoPlayer.loop = false;
+            }
 
             // Show video thumbnail on active image player during buffering to avoid blank black screen
             if (asset.thumbnail) {
