@@ -838,7 +838,7 @@
                 state.playlist = localAssets;
                 localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
 
-                if (isDifferent || state.playlist.length === 0) {
+                if (isDifferent || isPlaylistEmpty) {
                     state.currentAssetIndex = 0;
                     updateUI();
                     startPlaylistRotation();
@@ -1066,7 +1066,10 @@
                 }
             }
 
-            // Pre-decode all cached image assets upfront so they are loaded into GPU memory before playback starts
+            if (!state.imageElementsCache) {
+                state.imageElementsCache = {};
+            }
+
             console.log("Starting upfront asset pre-decoding...");
             const imageAssets = assets.filter(a => a.mediaType === 'image' && a.url);
             if (imageAssets.length > 0) {
@@ -1083,6 +1086,12 @@
                     if (progressBar) {
                         const percent = ((k + 1) / imageAssets.length) * 100;
                         progressBar.style.width = `${percent}%`;
+                    }
+
+                    // Skip loading if this asset URL is already in-memory and pre-decoded
+                    if (state.imageElementsCache[asset.id] && state.imageElementsCache[asset.id].src === asset.url) {
+                        console.log(`Asset ${asset.id} already exists in pre-decode cache.`);
+                        continue;
                     }
 
                     try {
@@ -1127,6 +1136,18 @@
                     await new Promise(r => setTimeout(r, 150));
                 }
             }
+
+            // Cleanup obsolete cache entries that are no longer in the playlist to free up RAM
+            const activeAssetIds = assets.map(a => a.id);
+            Object.keys(state.imageElementsCache).forEach(cachedId => {
+                if (!activeAssetIds.includes(cachedId)) {
+                    const img = state.imageElementsCache[cachedId];
+                    if (img && img.parentNode) {
+                        img.parentNode.removeChild(img);
+                    }
+                    delete state.imageElementsCache[cachedId];
+                }
+            });
 
         } catch (err) {
             console.error("Local filesystem synchronization failed:", err);
@@ -1477,9 +1498,9 @@
                     rssLabelEl.style.display = 'none';
                 }
             }
-            widgets.rssText.innerText = tickerText;
+            widgets.rssText.innerText = tickerText + '         |         ';
             if (widgets.rssTextDup) {
-                widgets.rssTextDup.innerText = tickerText;
+                widgets.rssTextDup.innerText = tickerText + '         |         ';
                 widgets.rssTextDup.style.color = textColor;
             }
             widgets.rss.style.backgroundColor = bgColor;
