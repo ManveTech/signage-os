@@ -451,7 +451,10 @@
                 } else {
                     applyOrientation();
                     views.playback.classList.add('active');
-                    startPlaylistRotation();
+                    // Only start rotation if the playlist loop is not already running
+                    if (!rotationTimeout && rotationToken === 0) {
+                        startPlaylistRotation();
+                    }
                     renderWidgets();
                 }
                 break;
