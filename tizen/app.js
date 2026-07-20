@@ -85,7 +85,7 @@
     let heartbeatInterval = null;
     let clockInterval = null;
 
-    // Detect physical screen diagonal and model name to verify size limit (strictly under 43 inches)
+    // Detect physical screen diagonal and model name to verify size limit (under 43 inches)
     function checkScreenSize() {
         return new Promise((resolve) => {
             // Query parameter override for testing (e.g. ?test_inches=50)
@@ -94,7 +94,7 @@
             if (testInches) {
                 const inches = parseInt(testInches, 10);
                 console.log(`Query parameter test override detected: ${inches} inches`);
-                resolve({ allowed: inches < 43, size: inches });
+                resolve({ allowed: inches <= 43, size: inches });
                 return;
             }
 
@@ -110,7 +110,7 @@
 
             function checkDone() {
                 if (displayDone && buildDone) {
-                    if (detectedInches !== null && detectedInches >= 43) {
+                    if (detectedInches !== null && detectedInches > 43) {
                         resolve({ allowed: false, size: detectedInches });
                     } else {
                         resolve({ allowed: true, size: detectedInches || 0 });
