@@ -9,10 +9,18 @@ const unsignedWgtPath = path.join(__dirname, 'Debug/tizen_unsigned.wgt');
 const signedWgtPath = path.join(__dirname, 'Debug/tizen.wgt');
 const ssspConfigPath = path.join(__dirname, 'sssp_config.xml');
 
-function resignPackage(certificates, packageBuffer) {
+function resignPackage(certificates, packageBuffer, newVer) {
     return new Promise(async (resolve, reject) => {
         try {
             const zip = await JSZip.loadAsync(packageBuffer);
+
+            // Update the version in config.xml directly inside the zip in memory before signing
+            if (newVer && zip.file('config.xml')) {
+                let configXmlText = await zip.file('config.xml').async('string');
+                configXmlText = configXmlText.replace(/version="[^"]+"/, `version="${newVer}"`);
+                zip.file('config.xml', configXmlText);
+            }
+
             const files = await Promise.all(
                 Object.keys(zip.files).map(async (filename) => {
                     const file = zip.files[filename];
@@ -71,8 +79,21 @@ async function run() {
         }
         const unsignedBuffer = fs.readFileSync(unsignedWgtPath);
         
+        // Read current version from sssp_config.xml and determine new version to increment
+        let ssspXml = fs.readFileSync(ssspConfigPath, 'utf8');
+        let newVer = '1.0.0';
+        const verMatch = ssspXml.match(/<ver>(\d+)\.(\d+)\.(\d+)<\/ver>/);
+        if (verMatch) {
+            const major = verMatch[1];
+            const minor = verMatch[2];
+            const patch = parseInt(verMatch[3]) + 1;
+            newVer = `${major}.${minor}.${patch}`;
+            ssspXml = ssspXml.replace(/<ver>[^<]+<\/ver>/, `<ver>${newVer}</ver>`);
+            console.log(`Incrementing version to: ${newVer}`);
+        }
+        
         console.log('Cryptographically signing widget with Samsung Partner keys...');
-        const signedBuffer = await resignPackage(certificates, unsignedBuffer);
+        const signedBuffer = await resignPackage(certificates, unsignedBuffer, newVer);
         
         console.log('Writing signed widget to disk...');
         fs.writeFileSync(signedWgtPath, signedBuffer);
@@ -80,19 +101,7 @@ async function run() {
         
         // Automatically update sssp_config.xml with the correct size
         console.log('Updating sssp_config.xml size...');
-        let ssspXml = fs.readFileSync(ssspConfigPath, 'utf8');
         ssspXml = ssspXml.replace(/<size>\d+<\/size>/, `<size>${signedBuffer.length}</size>`);
-        
-        // Auto-increment the version minor number (e.g. 1.0.3 -> 1.0.4) to clear TV installer cache
-        const verMatch = ssspXml.match(/<ver>(\d+)\.(\d+)\.(\d+)<\/ver>/);
-        if (verMatch) {
-            const major = verMatch[1];
-            const minor = verMatch[2];
-            const patch = parseInt(verMatch[3]) + 1;
-            const newVer = `${major}.${minor}.${patch}`;
-            ssspXml = ssspXml.replace(/<ver>[^<]+<\/ver>/, `<ver>${newVer}</ver>`);
-            console.log(`Incremented manifest version to: ${newVer}`);
-        }
         
         fs.writeFileSync(ssspConfigPath, ssspXml);
         console.log('SUCCESS! Widget signed and SSSP manifest updated.');
