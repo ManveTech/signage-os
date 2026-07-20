@@ -1101,10 +1101,17 @@
                         await new Promise((resolve) => {
                             const img = new Image();
                             img.className = 'media-element';
-                            img.style.display = 'none';
-                            img.style.opacity = '0';
+                            img.style.display = 'block';
+                            img.style.opacity = '0.001';
+                            img.style.zIndex = '1';
 
                             img.onload = () => {
+                                // Append to DOM immediately to activate GPU compositor caching
+                                const container = document.getElementById('media-container');
+                                if (container && img.parentNode !== container) {
+                                    container.appendChild(img);
+                                }
+
                                 if (typeof img.decode === 'function') {
                                     img.decode().then(() => {
                                         state.imageElementsCache[asset.id] = img;
@@ -1287,7 +1294,7 @@
             });
         } else {
             // Hide video player immediately if we are switching to an image
-            views.videoPlayer.style.opacity = '0';
+            views.videoPlayer.style.opacity = '0.001';
             setTimeout(() => {
                 if (currentToken === rotationToken) {
                     views.videoPlayer.style.display = 'none';
@@ -1298,8 +1305,9 @@
             if (!state.imageElementsCache[asset.id]) {
                 const img = new Image();
                 img.className = 'media-element';
-                img.style.display = 'none';
-                img.style.opacity = '0';
+                img.style.display = 'block';
+                img.style.opacity = '0.001';
+                img.style.zIndex = '1';
                 img.src = asset.url;
                 state.imageElementsCache[asset.id] = img;
             }
@@ -1320,23 +1328,21 @@
             const startTransition = () => {
                 if (currentToken !== rotationToken) return;
 
+                // Bring new image to foreground
                 imgElement.style.display = 'block';
+                imgElement.style.zIndex = '2';
                 
                 // Fade in the new image
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
                         imgElement.style.opacity = '1';
                         
-                        // Fade out and hide all other images in the container
+                        // Push other images to the background with 0.001 opacity to keep GPU cache warm
                         const children = container.querySelectorAll('.media-element');
                         children.forEach(child => {
                             if (child !== imgElement && child.id !== 'video-player') {
-                                child.style.opacity = '0';
-                                setTimeout(() => {
-                                    if (currentToken === rotationToken && child.parentNode === container) {
-                                        child.style.display = 'none';
-                                    }
-                                }, 600);
+                                child.style.opacity = '0.001';
+                                child.style.zIndex = '1';
                             }
                         });
                         
@@ -1367,6 +1373,10 @@
                 const handleLoad = () => {
                     imgElement.removeEventListener('load', handleLoad);
                     imgElement.removeEventListener('error', handleError);
+                    // Append to DOM to ensure GPU caching starts immediately
+                    if (container && imgElement.parentNode !== container) {
+                        container.appendChild(imgElement);
+                    }
                     if (typeof imgElement.decode === 'function') {
                         imgElement.decode().then(startTransition).catch(startTransition);
                     } else {
