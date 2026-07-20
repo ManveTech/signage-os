@@ -1,5 +1,5 @@
 /**
- * SignageOS Player - Tizen Web Client Engine
+ * SignageOS Player - Tizen Web Client Engine (v1.0.55-rollback)
  */
 
 (function () {
