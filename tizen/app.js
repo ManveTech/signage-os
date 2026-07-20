@@ -63,6 +63,7 @@
         refreshCodeBtn: document.getElementById('refresh-code-btn'),
         imagePlayer1: document.getElementById('image-player-1'),
         imagePlayer2: document.getElementById('image-player-2'),
+        imagePlayer3: document.getElementById('image-player-3'),
         videoPlayer: document.getElementById('video-player'),
         splashLogo: document.getElementById('splash-logo'),
         pairingLogo: document.getElementById('pairing-logo'),
@@ -87,7 +88,7 @@
     // Loop Timers
     let rotationTimeout = null;
     let rotationToken = 0;
-    let activeImagePlayerNum = 1; // Double-buffering index: tracks which image tag (1 or 2) is active
+    let currentPlayerIndex = 0; // Tracks which of the 3 players (0, 1, or 2) is active
     let syncInterval = null;
     let heartbeatInterval = null;
     let clockInterval = null;
@@ -1177,6 +1178,17 @@
         return assets;
     }
 
+    // Preload helper to warm up image textures in background elements
+    function preloadAsset(asset, player) {
+        if (!asset || asset.mediaType !== 'image') return;
+        if (player.src !== asset.url) {
+            player.style.display = 'block';
+            player.style.opacity = '0.001';
+            player.style.zIndex = '1';
+            player.src = asset.url;
+        }
+    }
+
     // Playback playlist rotation loop
     function startPlaylistRotation() {
         if (rotationTimeout) clearTimeout(rotationTimeout);
@@ -1200,12 +1212,13 @@
         if (state.isOutOfRange) {
             views.imagePlayer1.style.display = 'none';
             views.imagePlayer2.style.display = 'none';
+            views.imagePlayer3.style.display = 'none';
             views.videoPlayer.style.display = 'none';
             views.videoPlayer.pause();
             if (views.outOfRange) {
-                views.outOfRange.style.display = 'flex';
+                views.outOfRange.style.display = 'block';
             }
-            const duration = (asset.duration || 10) * 1000;
+            const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
             rotationTimeout = setTimeout(() => {
                 if (currentToken === rotationToken) {
                     advancePlaylist();
@@ -1221,18 +1234,12 @@
 
         // Get transition styling animations
         const transitionName = state.playlistTransition || 'fade';
-        const animClass = 'animate-' + (
-            transitionName === 'slide' ? 'slideIn' :
-            transitionName === 'zoom' ? 'zoomIn' :
-            transitionName === 'slide-up' ? 'slideUp' :
-            transitionName === 'slide-down' ? 'slideDown' :
-            transitionName === 'blur' ? 'blurIn' :
-            transitionName === 'bounce' ? 'bounceIn' : 'fadeIn'
-        );
+        let animClass = 'fadeIn';
+        if (transitionName === 'slide-left') animClass = 'slideInLeft';
+        else if (transitionName === 'slide-right') animClass = 'slideInRight';
 
-        // Determine active and inactive players for double buffering
-        const activePlayer = activeImagePlayerNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
-        const inactivePlayer = activeImagePlayerNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
+        const imagePlayers = [views.imagePlayer1, views.imagePlayer2, views.imagePlayer3];
+        const activePlayer = imagePlayers[currentPlayerIndex];
 
         if (asset.mediaType === 'video') {
             // Apply scale mode configuration
@@ -1263,22 +1270,10 @@
                 views.videoPlayer.style.opacity = '1';
                 
                 // Fade out and hide all image players
-                activePlayer.style.opacity = '0';
-                inactivePlayer.style.opacity = '0';
-                setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        activePlayer.style.display = 'none';
-                        inactivePlayer.style.display = 'none';
-                    }
-                }, 600);
-
-                if (transitionName !== 'none') {
-                    setTimeout(() => {
-                        if (currentToken === rotationToken) {
-                            views.videoPlayer.classList.add(animClass);
-                        }
-                    }, 20);
-                }
+                imagePlayers.forEach(p => {
+                    p.style.opacity = '0.001';
+                    p.style.zIndex = '1';
+                });
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
             };
             views.videoPlayer.addEventListener('playing', handleVideoPlaying);
@@ -1300,8 +1295,12 @@
                     if (currentToken === rotationToken) {
                         advancePlaylist();
                     }
-                }, 5000);
+                }, 3000);
             });
+
+            // Preload the next image into the next player slot in the background
+            const nextAsset = state.playlist[(state.currentAssetIndex + 1) % state.playlist.length];
+            preloadAsset(nextAsset, imagePlayers[(currentPlayerIndex + 1) % 3]);
         } else {
             // Hide video player immediately if we are switching to an image
             views.videoPlayer.style.opacity = '0.001';
@@ -1311,85 +1310,95 @@
                 }
             }, 600);
             
-            // Configure scale mode and zoom transform on the inactive player
-            inactivePlayer.style.objectFit = asset.objectFit || 'cover';
+            const prevPlayer = imagePlayers[(currentPlayerIndex + 2) % 3];
+
+            activePlayer.style.objectFit = asset.objectFit || 'cover';
             const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-            inactivePlayer.style.transform = scale;
-            
-            // Ensure the inactive player is visible in DOM hierarchy but kept transparent
-            inactivePlayer.style.display = 'block';
-            inactivePlayer.style.opacity = '0.001';
+            activePlayer.style.transform = scale;
 
             const startTransition = () => {
                 if (currentToken !== rotationToken) return;
 
-                // Bring the new image (inactivePlayer) to the foreground on top of the old activePlayer
-                inactivePlayer.style.zIndex = '2';
-                activePlayer.style.zIndex = '1';
+                // Make the active preloaded player fully opaque underneath first
+                activePlayer.style.display = 'block';
+                activePlayer.style.opacity = '1';
                 
-                // Fade in the new image (only animate this top layer to keep GPU blending load low)
+                if (transitionName !== 'none') {
+                    activePlayer.className = 'media-element ' + animClass;
+                } else {
+                    activePlayer.className = 'media-element';
+                }
+
+                // Fade out the previous player on top
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
-                        inactivePlayer.style.opacity = '1';
-                        
-                        if (transitionName !== 'none') {
-                            inactivePlayer.className = 'media-element ' + animClass;
-                        } else {
-                            inactivePlayer.className = 'media-element';
-                        }
+                        prevPlayer.style.opacity = '0.001';
                     }
                 }, 20);
 
-                // Wait for the transition to finish (600ms), then push old image to background
+                // Wait for the transition to finish (600ms), then bring new active image to foreground
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
-                        activePlayer.style.opacity = '0.001';
-                        activePlayer.style.zIndex = '1';
+                        activePlayer.style.zIndex = '2';
+                        prevPlayer.style.zIndex = '1';
                     }
                 }, 600);
 
-                // Toggle active player index for next transition
-                activeImagePlayerNum = activeImagePlayerNum === 1 ? 2 : 1;
+                // Preload the next image slide into the next player slot in the background
+                const nextAsset = state.playlist[(state.currentAssetIndex + 1) % state.playlist.length];
+                preloadAsset(nextAsset, imagePlayers[(currentPlayerIndex + 1) % 3]);
 
                 // Schedule the next transition duration (enforce a safe minimum of 3 seconds to prevent rapid skipping)
                 const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
+                        // Toggle active player index for next transition
+                        currentPlayerIndex = (currentPlayerIndex + 1) % 3;
                         advancePlaylist();
                     }
                 }, duration);
             };
 
+            let retryCount = 0;
+            const maxRetries = 3;
+
             const handleLoad = () => {
-                inactivePlayer.removeEventListener('load', handleLoad);
-                inactivePlayer.removeEventListener('error', handleError);
+                activePlayer.removeEventListener('load', handleLoad);
+                activePlayer.removeEventListener('error', handleError);
                 startTransition();
             };
             
             const handleError = (err) => {
-                console.error(`Double-buffer image load failed: ${asset.url}`, err);
-                inactivePlayer.removeEventListener('load', handleLoad);
-                inactivePlayer.removeEventListener('error', handleError);
-                advancePlaylist();
+                activePlayer.removeEventListener('load', handleLoad);
+                activePlayer.removeEventListener('error', handleError);
+                
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    console.warn(`Local image load failed for: ${asset.url}. Retrying in 1s (Attempt ${retryCount}/${maxRetries})...`, err);
+                    setTimeout(() => {
+                        if (currentToken === rotationToken) {
+                            activePlayer.addEventListener('load', handleLoad);
+                            activePlayer.addEventListener('error', handleError);
+                            activePlayer.src = asset.url + (asset.url.includes('?') ? '&' : '?') + 'retry=' + Date.now();
+                        }
+                    }, 1000);
+                } else {
+                    console.error(`Double-buffer image load failed after ${maxRetries} retries: ${asset.url}`, err);
+                    rotationTimeout = setTimeout(() => {
+                        if (currentToken === rotationToken) {
+                            advancePlaylist();
+                        }
+                    }, 3000);
+                }
             };
 
             // Set source only if it's different to prevent redundant loading stutters
-            if (inactivePlayer.src !== asset.url) {
-                inactivePlayer.addEventListener('load', handleLoad);
-                inactivePlayer.addEventListener('error', handleError);
-                inactivePlayer.src = asset.url;
+            if (activePlayer.src !== asset.url) {
+                activePlayer.addEventListener('load', handleLoad);
+                activePlayer.addEventListener('error', handleError);
+                activePlayer.src = asset.url;
             } else {
                 startTransition();
-            }
-        }
-
-        // Background preloader: preload the next image slide so it loads instantly with zero lag
-        if (state.playlist.length > 1) {
-            const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
-            const nextAsset = state.playlist[nextIndex];
-            if (nextAsset && nextAsset.url && nextAsset.mediaType === 'image') {
-                const preloadImg = new Image();
-                preloadImg.src = nextAsset.url;
             }
         }
     }
