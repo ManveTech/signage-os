@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <widget>
-    <ver>1.0.63</ver>
-    <size>29729</size>
+    <ver>1.0.64</ver>
+    <size>29726</size>
     <widgetname>tizen</widgetname>
     <webtype>tizen</webtype>
 </widget>
