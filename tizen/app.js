@@ -6,14 +6,6 @@
     // Config Constants (pointing to backend endpoints)
     const SERVER_URL = 'https://dem1.manve.co'; // Target server URL. Will be resolved to match PocketBase settings.
     let POCKETBASE_URL = 'https://demo.manve.co'; // Resolved during pairing
-    
-    // Performance optimization: disable debug logs on the TV CPU in production
-    const DEBUG = false;
-    if (!DEBUG) {
-        console.log = function () {};
-        console.info = function () {};
-        console.warn = function () {};
-    }
 
     // Local Storage state keys
     const KEYS = {
@@ -41,10 +33,7 @@
         orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
         playlistTransition: localStorage.getItem('signage_tizen_transition') || 'fade',
         playlistLoop: localStorage.getItem('signage_tizen_loop') !== 'false',
-        cacheBust: localStorage.getItem('signage_tizen_cache_bust') || '',
-        qrcodeLocalPath: localStorage.getItem('signage_qrcode_local_path') || '',
-        playlistId: localStorage.getItem('signage_tizen_playlist_id') || '',
-        screenUpdated: localStorage.getItem('signage_tizen_screen_updated') || ''
+        cacheBust: localStorage.getItem('signage_tizen_cache_bust') || ''
     };
 
     // Inactivity / Idle Auto Launch Timeout
@@ -61,9 +50,7 @@
         pairingCodeText: document.getElementById('pairing-code'),
         pairingStatusMsg: document.getElementById('pairing-status-message'),
         refreshCodeBtn: document.getElementById('refresh-code-btn'),
-        imagePlayer1: document.getElementById('image-player-1'),
-        imagePlayer2: document.getElementById('image-player-2'),
-        imagePlayer3: document.getElementById('image-player-3'),
+        imagePlayer: document.getElementById('image-player'),
         videoPlayer: document.getElementById('video-player'),
         splashLogo: document.getElementById('splash-logo'),
         pairingLogo: document.getElementById('pairing-logo'),
@@ -81,14 +68,11 @@
         clockTime: document.getElementById('clock-time'),
         clockTitle: document.getElementById('clock-title'),
         rss: document.getElementById('widget-rss'),
-        rssText: document.getElementById('rss-text'),
-        rssTextDup: document.getElementById('rss-text-dup')
+        rssText: document.getElementById('rss-text')
     };
 
     // Loop Timers
     let rotationTimeout = null;
-    let rotationToken = 0;
-    let currentPlayerIndex = 0; // Tracks which of the 3 players (0, 1, or 2) is active
     let syncInterval = null;
     let heartbeatInterval = null;
     let clockInterval = null;
@@ -182,89 +166,52 @@
         });
     }
 
-    // Fetch helper with timeout to avoid AbortController incompatibility in Tizen 3.0/4.0
-    function fetchWithTimeout(url, options = {}, timeout = 2500) {
-        return Promise.race([
-            fetch(url, options),
-            new Promise((_, reject) => {
-                setTimeout(() => reject(new Error("Request timeout")), timeout);
-            })
-        ]);
-    }
-
-    // Call Express backend to clear commands safely without PocketBase auth conflicts
-    async function clearScreenCommandOnServer(command) {
-        try {
-            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/clear-command`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    screenId: state.screenId,
-                    command: command
-                })
-            }, 3000);
-        } catch (e) {
-            console.error(`Failed to clear command ${command} on server:`, e);
-        }
-    }
-
-    // Resolve file URI safely (handles method vs property across Tizen versions)
-    function getFileURI(file) {
-        if (file) {
-            if (typeof file.toURI === 'function') {
-                return file.toURI();
-            } else if (typeof file.toURI === 'string') {
-                return file.toURI;
-            }
-        }
-        return '';
-    }
-
     // Initialize application
     function init() {
         console.log("Initializing SignageOS Tizen App...");
         applyBranding();
         bindEvents();
 
-        // Clear any pending auto-launch alarms (if we just opened)
-        cancelAutoLaunchAlarm();
-
-        // Listen for keydown/click to reset the auto-launch idle timer
-        window.addEventListener('keydown', resetIdleTimer);
-        window.addEventListener('click', resetIdleTimer);
-
-        // Listen for visibility changes (background / exit state)
-        document.addEventListener("visibilitychange", handleVisibilityChange);
-
-        // If paired already, immediately query config, else start in pairing mode
-        if (state.screenId) {
-            POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
-            // If we have a cached playlist, hide splash immediately to play cached content offline / without delay
-            if (state.playlist && state.playlist.length > 0) {
-                views.splash.classList.remove('active');
-            }
-            fetchScreenConfig().then(() => {
-                views.splash.classList.remove('active');
-                updateUI();
-            });
-        } else {
-            // Generate/request code
-            requestPairingCode().then(() => {
-                views.splash.classList.remove('active');
-            });
-        }
-
-        // Start periodic sync and heartbeat processes
-        startSyncLoops();
-        startClockWidget();
-
-        // Run screen size hardware check in the background (does not block load)
+        // Run screen size hardware check first (does not halt initialization)
         checkScreenSize().then((result) => {
             state.isOutOfRange = !result.allowed;
             if (state.isOutOfRange) {
                 console.warn(`Screen size verification limit reached (${result.size}"). Media content will be blocked.`);
-                updateUI();
             }
+
+            updateUI();
+
+            // Clear any pending auto-launch alarms (if we just opened)
+            cancelAutoLaunchAlarm();
+
+            // Listen for keydown/click to reset the auto-launch idle timer
+            window.addEventListener('keydown', resetIdleTimer);
+            window.addEventListener('click', resetIdleTimer);
+
+            // Listen for visibility changes (background / exit state)
+            document.addEventListener("visibilitychange", handleVisibilityChange);
+
+            // If paired already, immediately query config, else start in pairing mode
+            if (state.screenId) {
+                POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
+                // If we have a cached playlist, hide splash immediately to play cached content offline / without delay
+                if (state.playlist && state.playlist.length > 0) {
+                    views.splash.classList.remove('active');
+                }
+                fetchScreenConfig().then(() => {
+                    views.splash.classList.remove('active');
+                    updateUI();
+                });
+            } else {
+                // Generate/request code
+                requestPairingCode().then(() => {
+                    views.splash.classList.remove('active');
+                });
+            }
+
+            // Start periodic sync and heartbeat processes
+            startSyncLoops();
+            startClockWidget();
         });
     }
 
@@ -274,24 +221,8 @@
             console.log("App moved to background / hidden. Scheduling auto-launch alarm in 15 seconds...");
             scheduleAutoLaunchAlarm();
         } else {
-            console.log("App returned to foreground. Cancelling auto-launch alarm and resuming playback...");
+            console.log("App returned to foreground. Cancelling auto-launch alarm.");
             cancelAutoLaunchAlarm();
-
-            // Resume active media and loop
-            if (state.status === 'active') {
-                try {
-                    const currentAsset = state.playlist[state.currentAssetIndex];
-                    if (currentAsset && currentAsset.mediaType === 'video') {
-                        views.videoPlayer.play().catch(e => console.warn("Failed to resume video on wake:", e));
-                    }
-                    // Only start rotation if the playlist loop is not already running
-                    if (!rotationTimeout && rotationToken === 0) {
-                        startPlaylistRotation();
-                    }
-                } catch (err) {
-                    console.error("Failed to restore playback state on wake:", err);
-                }
-            }
         }
     }
 
@@ -346,31 +277,11 @@
             });
         });
 
-        // Remote navigation / spatial select support for Tizen TVs
-        window.addEventListener('keydown', (e) => {
-            const keyCode = e.keyCode;
-            const isPairingScreenActive = views.pairing && views.pairing.classList.contains('active');
-
-            if (isPairingScreenActive) {
-                // Focus the refresh button on any navigation key press to show visual feedback highlight
-                if (document.activeElement !== views.refreshCodeBtn) {
-                    views.refreshCodeBtn.focus();
-                }
-
-                // If Enter / OK is pressed (Tizen KeyCodes: 13, 29443, 10190)
-                if (keyCode === 13 || keyCode === 29443 || keyCode === 10190 || e.key === 'Enter') {
-                    e.preventDefault();
-                    views.refreshCodeBtn.click();
-                }
-            }
-        });
-
         // Loop next media on video end
-        // Disabled to strictly respect custom slide durations rather than video length
-        // views.videoPlayer.addEventListener('ended', () => {
-        //     console.log("Video playback complete, advancing index.");
-        //     advancePlaylist();
-        // });
+        views.videoPlayer.addEventListener('ended', () => {
+            console.log("Video playback complete, advancing index.");
+            advancePlaylist();
+        });
 
         views.videoPlayer.addEventListener('error', (e) => {
             console.error("Video element error, skipping asset.", e);
@@ -462,10 +373,7 @@
                 } else {
                     applyOrientation();
                     views.playback.classList.add('active');
-                    // Only start rotation if the playlist loop is not already running
-                    if (!rotationTimeout && rotationToken === 0) {
-                        startPlaylistRotation();
-                    }
+                    startPlaylistRotation();
                     renderWidgets();
                 }
                 break;
@@ -482,13 +390,13 @@
 
         // Auto-launch playlist if device is already paired and has slides
         if (state.playlist && state.playlist.length > 0 && state.status !== 'active' && state.status !== 'online' && state.status !== 'offline' && state.status !== 'suspended') {
-            console.log("Inactivity timer started. Auto-launching in 2 minutes.");
+            console.log("Inactivity timer started. Auto-launching in 30 seconds.");
             idleTimeout = setTimeout(() => {
                 console.log("Inactivity timeout: launching playlist full screen.");
                 state.status = 'active';
                 localStorage.setItem(KEYS.STATUS, 'active');
                 updateUI();
-            }, 120000);
+            }, 30000);
         }
     }
 
@@ -528,14 +436,9 @@
     // Query screen state from PocketBase backend
     async function fetchScreenConfig() {
         if (!state.screenId) return;
-        if (window.navigator && window.navigator.onLine === false) {
-            console.log("Device is offline. Skipping sync check.");
-            return;
-        }
-
         try {
             const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
-            const res = await fetchWithTimeout(url, {}, 2500);
+            const res = await fetch(url);
             if (!res.ok) {
                 if (res.status === 404) {
                     // Screen was deleted/disconnected on CMS. Go back to pairing.
@@ -551,32 +454,22 @@
             state.lastSyncedAt = Date.now();
             localStorage.setItem('signage_tizen_last_sync', state.lastSyncedAt);
             
-            let hasChanged = false;
-
             // Check status transition
             const oldStatus = state.status;
-            const oldVolume = state.volume;
             state.status = data.status || 'pairing';
             state.volume = data.volume || 80;
 
-            if (oldStatus !== state.status || oldVolume !== state.volume) {
-                hasChanged = true;
-                localStorage.setItem(KEYS.STATUS, state.status);
-                localStorage.setItem(KEYS.VOLUME, state.volume);
-            }
+            localStorage.setItem(KEYS.STATUS, state.status);
+            localStorage.setItem(KEYS.VOLUME, state.volume);
 
             // Sync branding
-            const oldBranding = JSON.stringify(state.branding);
             state.branding = {
                 isWhiteLabel: !!data.whiteLabel,
                 logoUrl: data.websiteLogo || '',
                 name: data.websiteName || ''
             };
-            if (oldBranding !== JSON.stringify(state.branding)) {
-                hasChanged = true;
-                localStorage.setItem(KEYS.BRANDING, JSON.stringify(state.branding));
-                applyBranding();
-            }
+            localStorage.setItem(KEYS.BRANDING, JSON.stringify(state.branding));
+            applyBranding();
 
             // 1. Clear Cache commands
             if (data.clear_cache) {
@@ -585,8 +478,12 @@
                 localStorage.setItem('signage_tizen_cache_bust', state.cacheBust);
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
-                hasChanged = true;
-                await clearScreenCommandOnServer('clear_cache');
+                // Clear on server
+                await fetch(url, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clear_cache: false })
+                });
             }
 
             // 2. Force Sync command
@@ -597,16 +494,24 @@
                 localStorage.removeItem(KEYS.PLAYLIST);
                 state.playlist = [];
                 state.currentAssetIndex = 0;
-                hasChanged = true;
-                await clearScreenCommandOnServer('force_sync');
+                // Clear force_sync flag on server
+                await fetch(url, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ force_sync: false })
+                });
             }
 
             // 3. Restart Playlist command
             if (data.restart_playlist) {
                 console.log("Received restart playlist instruction.");
                 state.currentAssetIndex = 0;
-                hasChanged = true;
-                await clearScreenCommandOnServer('restart_playlist');
+                // Clear restart_playlist flag on server
+                await fetch(url, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ restart_playlist: false })
+                });
                 startPlaylistRotation();
             }
 
@@ -618,7 +523,6 @@
                     const scheduledPlaylistId = await fetchScheduledPlaylistId(data.schedulePlaylist);
                     if (scheduledPlaylistId) {
                         activePlaylistId = scheduledPlaylistId;
-                        hasChanged = true;
                         // Update on server
                         await fetch(url, {
                             method: 'PATCH',
@@ -635,39 +539,17 @@
                 }
             }
 
-            // Sync Playlist if active and changed
+            // Sync Playlist if active
             if (state.status === "active" || state.status === "online") {
                 if (activePlaylistId) {
-                    const screenUpdated = data.updated;
-                    const hasPlaylistChanged = activePlaylistId !== state.playlistId;
-                    const hasScreenUpdated = screenUpdated !== state.screenUpdated;
-                    const isPlaylistEmpty = !state.playlist || state.playlist.length === 0;
-
-                    if (hasPlaylistChanged || hasScreenUpdated || isPlaylistEmpty) {
-                        console.log(`Syncing playlist. Reason: playlistChanged=${hasPlaylistChanged}, screenUpdated=${hasScreenUpdated}, isEmpty=${isPlaylistEmpty}`);
-                        state.playlistId = activePlaylistId;
-                        state.screenUpdated = screenUpdated;
-                        localStorage.setItem('signage_tizen_playlist_id', state.playlistId);
-                        localStorage.setItem('signage_tizen_screen_updated', state.screenUpdated);
-                        await fetchPlaylist(activePlaylistId);
-                        hasChanged = true;
-                    }
+                    await fetchPlaylist(activePlaylistId);
                 } else {
-                    if (state.playlistId || state.playlist.length > 0) {
-                        state.playlist = [];
-                        state.playlistId = '';
-                        state.screenUpdated = '';
-                        localStorage.setItem(KEYS.PLAYLIST, '[]');
-                        localStorage.removeItem('signage_tizen_playlist_id');
-                        localStorage.removeItem('signage_tizen_screen_updated');
-                        hasChanged = true;
-                    }
+                    state.playlist = [];
+                    localStorage.setItem(KEYS.PLAYLIST, '[]');
                 }
             }
 
-            if (hasChanged) {
-                updateUI();
-            }
+            updateUI();
         } catch (err) {
             console.error("Error fetching screen configuration:", err);
             // 5. Offline unpair check (24 hour threshold)
@@ -729,48 +611,12 @@
             };
             localStorage.setItem(KEYS.WIDGET, JSON.stringify(state.widget));
 
-            // Check if playlist updated timestamp actually changed!
-            const lastUpdated = data.updated;
-            const cachedPlaylistUpdated = localStorage.getItem('signage_tizen_playlist_updated') || '';
-            const isPlaylistEmpty = !state.playlist || state.playlist.length === 0;
-
-            if (lastUpdated === cachedPlaylistUpdated && !isPlaylistEmpty) {
-                console.log("Playlist content timestamp is unchanged. Skipping media item fetch and file sync.");
-                return;
-            }
-
             // Sync Playlist assets from slides or direct references
             let fetchedAssets = [];
             
             // 1. Resolve from slides sequence (with custom durations, ordering)
-            let slides = data.slides || [];
-            if (typeof slides === 'string') {
-                try {
-                    slides = JSON.parse(slides);
-                } catch (e) {
-                    console.error("Failed to parse slides JSON string:", e);
-                    slides = [];
-                }
-            }
-
-            if (slides && slides.isCompiled && slides.compiledVideoId) {
-                const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slides.compiledVideoId}`);
-                if (mediaRes.ok) {
-                    const media = await mediaRes.json();
-                    const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
-                    fetchedAssets.push({
-                        id: media.id,
-                        url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
-                        mediaType: media.type.toLowerCase(),
-                        filename: media.title,
-                        duration: 3600, // Large safe duration
-                        thumbnail: media.thumbnail || rawUrl,
-                        objectFit: 'cover',
-                        scalePercent: 100
-                    });
-                }
-            } else if (Array.isArray(slides) && slides.length > 0) {
-                for (const slide of slides) {
+            if (data.slides && data.slides.length > 0) {
+                for (const slide of data.slides) {
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
@@ -780,7 +626,7 @@
                             url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                             mediaType: media.type.toLowerCase(),
                             filename: media.title,
-                            duration: parseInt(slide.duration || media.duration || 10, 10),
+                            duration: slide.duration || media.duration || 10,
                             thumbnail: media.thumbnail || rawUrl,
                             objectFit: slide.objectFit || 'cover',
                             scalePercent: slide.scalePercent || 100
@@ -856,352 +702,16 @@
 
             applyOrientation();
 
-            // Sync files to TV internal storage and block until finished to play 100% offline local files
-            try {
-                const localAssets = await syncLocalFiles(fetchedAssets.map(a => Object.assign({}, a)));
-                
-                const newKeys = localAssets.map(a => `${a.id}_${a.duration}`);
-                const currentKeys = state.playlist.map(a => `${a.id}_${a.duration}`);
-                const isDifferent = JSON.stringify(newKeys) !== JSON.stringify(currentKeys);
-                
-                // Always populate playlist state with the offline local paths
-                state.playlist = localAssets;
+            // Check structure equality
+            const isDifferent = JSON.stringify(fetchedAssets) !== JSON.stringify(state.playlist);
+            if (isDifferent) {
+                state.playlist = fetchedAssets;
                 localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
-
-                if (isDifferent || isPlaylistEmpty) {
-                    state.currentAssetIndex = 0;
-                    updateUI();
-                    startPlaylistRotation();
-                } else {
-                    // Update UI elements to bind the new local paths
-                    updateUI();
-                }
-            } catch (syncErr) {
-                console.error("Local file sync failed:", syncErr);
+                state.currentAssetIndex = 0;
+                updateUI();
             }
-
-            localStorage.setItem('signage_tizen_playlist_updated', lastUpdated);
         } catch (err) {
             console.error("Error syncing playlist assets:", err);
-        }
-    }
-
-    // Offline caching: sync remote files to local Tizen filesystem storage
-    async function syncLocalFiles(assets) {
-        if (!window.tizen || !window.tizen.filesystem) {
-            console.log("Not running on Tizen screen. Skipping offline local filesystem sync.");
-            return assets;
-        }
-
-        const progressContainer = document.getElementById('download-progress-container');
-        const progressBar = document.getElementById('download-progress-bar');
-        if (progressContainer) progressContainer.classList.remove('hidden');
-        if (progressBar) progressBar.style.width = '0%';
-
-        function updateProgress(completed, total) {
-            if (views.splashStatus) {
-                views.splashStatus.innerText = `Downloading offline assets... ${completed}/${total}`;
-            }
-            if (progressBar) {
-                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-                progressBar.style.width = `${pct}%`;
-            }
-        }
-
-        try {
-            const dir = await new Promise((resolve, reject) => {
-                window.tizen.filesystem.resolve("wgt-private", resolve, reject, "rw");
-            });
-
-            console.log("Local wgt-private storage resolved. Syncing assets...");
-            updateProgress(0, assets.length);
-
-            // Process all media items sequentially
-            for (let i = 0; i < assets.length; i++) {
-                const asset = assets[i];
-                if (!asset.url) continue;
-
-                // Determine file extension
-                let ext = 'png';
-                if (asset.mediaType === 'video') ext = 'mp4';
-                else if (asset.url.includes('.gif')) ext = 'gif';
-                else if (asset.url.includes('.jpg') || asset.url.includes('.jpeg')) ext = 'jpg';
-                else if (asset.url.includes('.webp')) ext = 'webp';
-
-                const filename = `asset_${asset.id}.${ext}`;
-
-                try {
-                    // Check if file exists locally
-                    const file = dir.resolve(filename);
-                    const localUri = getFileURI(file);
-                    console.log(`Asset ${filename} already exists locally: ${localUri}`);
-                    asset.url = localUri; // Replace remote URL with local URI
-                } catch (e) {
-                    // File does not exist, download it via fetch to follow redirects (S3/R2 compatibility)
-                    console.log(`Downloading asset: ${asset.url} as ${filename}`);
-                    
-                    try {
-                        let response;
-                        try {
-                            response = await fetch(asset.url);
-                            if (!response.ok) throw new Error("Direct fetch failed");
-                        } catch (directErr) {
-                            console.log(`Direct download failed (possibly CORS). Trying proxy: ${asset.url}`);
-                            const proxyUrl = `${SERVER_URL}/api/v1/public/proxy-media?url=${encodeURIComponent(asset.url)}`;
-                            response = await fetch(proxyUrl);
-                            if (!response.ok) throw new Error("Proxy download failed");
-                        }
-                        const blob = await response.blob();
-
-                        // Convert blob to base64
-                        const base64Data = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                                const base64 = reader.result.split(',')[1];
-                                resolve(base64);
-                            };
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
-
-                        // Write Base64 data to local file using non-blocking Tizen FileStream APIs
-                        const file = dir.createFile(filename);
-                        await new Promise((resolve, reject) => {
-                            file.openStream("w", (stream) => {
-                                try {
-                                    if (typeof stream.writeBase64NonBlocking === 'function') {
-                                        stream.writeBase64NonBlocking(base64Data, () => {
-                                            stream.close();
-                                            resolve();
-                                        }, (writeErr) => {
-                                            stream.close();
-                                            reject(writeErr);
-                                        });
-                                    } else if (typeof stream.writeBase64 === 'function') {
-                                        stream.writeBase64(base64Data);
-                                        stream.close();
-                                        resolve();
-                                    } else if (typeof stream.writeDataNonBlocking === 'function') {
-                                        const binaryString = window.atob(base64Data);
-                                        const len = binaryString.length;
-                                        const bytes = new Uint8Array(len);
-                                        for (let j = 0; j < len; j++) {
-                                            bytes[j] = binaryString.charCodeAt(j);
-                                        }
-                                        stream.writeDataNonBlocking(bytes, () => {
-                                            stream.close();
-                                            resolve();
-                                        }, (writeErr) => {
-                                            stream.close();
-                                            reject(writeErr);
-                                        });
-                                    } else if (typeof stream.writeData === 'function') {
-                                        const binaryString = window.atob(base64Data);
-                                        const len = binaryString.length;
-                                        const bytes = new Uint8Array(len);
-                                        for (let j = 0; j < len; j++) {
-                                            bytes[j] = binaryString.charCodeAt(j);
-                                        }
-                                        stream.writeData(bytes);
-                                        stream.close();
-                                        resolve();
-                                    } else {
-                                        stream.write(base64Data);
-                                        stream.close();
-                                        resolve();
-                                    }
-                                } catch (writeErr) {
-                                    stream.close();
-                                    reject(writeErr);
-                                }
-                            }, reject);
-                        });
-
-                        console.log(`Successfully cached asset ${filename} locally.`);
-                        asset.url = getFileURI(file);
-                    } catch (dlErr) {
-                        console.error(`Failed to download and write asset ${filename}:`, dlErr);
-                    }
-                }
-                updateProgress(i + 1, assets.length);
-                // Add a 1-second delay between downloads to let the TV processor breathe
-                await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
-            }
-
-            // Sync QR Code Widget locally if active
-            const w = state.widget;
-            const activeTypes = w && w.type ? w.type.split(',').map(s => s.trim().toLowerCase()) : [];
-            if (activeTypes.includes('qrcode') && w.link) {
-                let qrcodeLink = w.link;
-                if (w.link.trim().startsWith('{')) {
-                    try {
-                        const parsed = JSON.parse(w.link);
-                        if (parsed.qrcode) qrcodeLink = parsed.qrcode;
-                    } catch (e) {}
-                }
-                
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrcodeLink)}`;
-                const safeUrlStr = qrcodeLink.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
-                const qrFilename = `qrcode_${safeUrlStr}.png`;
-
-                try {
-                    // Check if file exists locally
-                    const file = dir.resolve(qrFilename);
-                    state.qrcodeLocalPath = getFileURI(file);
-                    localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
-                } catch (e) {
-                    console.log(`Downloading updated QR code image: ${qrFilename}`);
-                    try {
-                        const response = await fetch(qrUrl);
-                        if (!response.ok) throw new Error("QR network fetch failed");
-                        const blob = await response.blob();
-                        const base64Data = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
-
-                        const file = dir.createFile(qrFilename);
-                        await new Promise((resolve, reject) => {
-                            file.openStream("w", (stream) => {
-                                try {
-                                    if (typeof stream.writeBase64 === 'function') {
-                                        stream.writeBase64(base64Data);
-                                    } else if (typeof stream.writeData === 'function') {
-                                        const binaryString = window.atob(base64Data);
-                                        const len = binaryString.length;
-                                        const bytes = new Uint8Array(len);
-                                        for (let j = 0; j < len; j++) {
-                                            bytes[j] = binaryString.charCodeAt(j);
-                                        }
-                                        stream.writeData(bytes);
-                                    } else {
-                                        stream.write(base64Data);
-                                    }
-                                    stream.close();
-                                    resolve();
-                                } catch (writeErr) {
-                                    stream.close();
-                                    reject(writeErr);
-                                }
-                            }, reject);
-                        });
-
-                        state.qrcodeLocalPath = getFileURI(file);
-                        localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
-                    } catch (qrErr) {
-                        console.error("QR Code offline download failed:", qrErr);
-                    }
-                }
-            }
-
-            if (!state.imageElementsCache) {
-                state.imageElementsCache = {};
-            }
-
-            console.log("Starting upfront asset pre-decoding...");
-            const imageAssets = assets.filter(a => a.mediaType === 'image' && a.url);
-            if (imageAssets.length > 0) {
-                if (views.splashStatus) {
-                    views.splashStatus.innerText = "Optimizing display cache for smooth transitions...";
-                }
-                if (progressBar) progressBar.style.width = '0%';
-
-                for (let k = 0; k < imageAssets.length; k++) {
-                    const asset = imageAssets[k];
-                    if (views.splashStatus) {
-                        views.splashStatus.innerText = `Optimizing graphics cache... ${k + 1}/${imageAssets.length}`;
-                    }
-                    if (progressBar) {
-                        const percent = ((k + 1) / imageAssets.length) * 100;
-                        progressBar.style.width = `${percent}%`;
-                    }
-
-                    // Skip loading if this asset URL is already in-memory and pre-decoded
-                    if (state.imageElementsCache[asset.id] && state.imageElementsCache[asset.id].src === asset.url) {
-                        console.log(`Asset ${asset.id} already exists in pre-decode cache.`);
-                        continue;
-                    }
-
-                    try {
-                        await new Promise((resolve) => {
-                            const img = new Image();
-                            img.className = 'media-element';
-                            img.style.display = 'block';
-                            img.style.opacity = '0.001';
-                            img.style.zIndex = '1';
-
-                            img.onload = () => {
-                                // Append to DOM immediately to activate GPU compositor caching
-                                const container = document.getElementById('media-container');
-                                if (container && img.parentNode !== container) {
-                                    container.appendChild(img);
-                                }
-
-                                if (typeof img.decode === 'function') {
-                                    img.decode().then(() => {
-                                        state.imageElementsCache[asset.id] = img;
-                                        resolve();
-                                    }).catch(() => {
-                                        state.imageElementsCache[asset.id] = img;
-                                        resolve();
-                                    });
-                                } else {
-                                    // Fallback: force synchronous decode on GPU via 1x1 canvas rendering
-                                    try {
-                                        const tempCanvas = document.createElement('canvas');
-                                        tempCanvas.width = 1;
-                                        tempCanvas.height = 1;
-                                        const tempCtx = tempCanvas.getContext('2d');
-                                        if (tempCtx) {
-                                            tempCtx.drawImage(img, 0, 0, 1, 1);
-                                        }
-                                    } catch (e) {}
-                                    state.imageElementsCache[asset.id] = img;
-                                    resolve();
-                                }
-                            };
-                            img.onerror = () => resolve();
-                            img.src = asset.url;
-                        });
-                    } catch (decodeErr) {
-                        console.warn(`Upfront pre-decoding failed for ${asset.filename}:`, decodeErr);
-                    }
-
-                    // Brief pause to keep TV processor fully responsive
-                    await new Promise(r => setTimeout(r, 150));
-                }
-            }
-
-            // Cleanup obsolete cache entries that are no longer in the playlist to free up RAM
-            const activeAssetIds = assets.map(a => a.id);
-            Object.keys(state.imageElementsCache).forEach(cachedId => {
-                if (!activeAssetIds.includes(cachedId)) {
-                    const img = state.imageElementsCache[cachedId];
-                    if (img && img.parentNode) {
-                        img.parentNode.removeChild(img);
-                    }
-                    delete state.imageElementsCache[cachedId];
-                }
-            });
-
-        } catch (err) {
-            console.error("Local filesystem synchronization failed:", err);
-        }
-
-        if (progressContainer) progressContainer.classList.add('hidden');
-        return assets;
-    }
-
-    // Preload helper to warm up image textures in background elements
-    function preloadAsset(asset, player) {
-        if (!asset || asset.mediaType !== 'image') return;
-        if (player.src !== asset.url) {
-            player.style.display = 'block';
-            player.style.opacity = '0.001';
-            player.style.zIndex = '1';
-            player.src = asset.url;
         }
     }
 
@@ -1209,8 +719,6 @@
     function startPlaylistRotation() {
         if (rotationTimeout) clearTimeout(rotationTimeout);
         if (!state.playlist || state.playlist.length === 0) return;
-
-        const currentToken = ++rotationToken; // Capture a unique token for this loop cycle
 
         const asset = state.playlist[state.currentAssetIndex];
         if (!asset) {
@@ -1222,55 +730,18 @@
             return;
         }
 
-        // If it's a single compiled video asset, loop it natively and exit immediately
-        // This removes all JS timing overhead and runs at 0% JS CPU consumption
-        if (state.playlist.length === 1 && asset.mediaType === 'video') {
-            if (views.outOfRange) {
-                views.outOfRange.style.display = state.isOutOfRange ? 'block' : 'none';
-            }
-            views.imagePlayer1.style.display = 'none';
-            views.imagePlayer2.style.display = 'none';
-            views.imagePlayer3.style.display = 'none';
-            
-            if (state.isOutOfRange) {
-                views.videoPlayer.style.display = 'none';
-                views.videoPlayer.pause();
-                return;
-            }
-
-            views.videoPlayer.loop = true;
-            views.videoPlayer.style.display = 'block';
-            views.videoPlayer.style.opacity = '1';
-            views.videoPlayer.style.objectFit = asset.objectFit || 'cover';
-            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-            views.videoPlayer.style.transform = scale;
-
-            if (views.videoPlayer.src !== asset.url) {
-                views.videoPlayer.src = asset.url;
-                views.videoPlayer.volume = state.volume / 100;
-                views.videoPlayer.play().catch(e => console.warn("Failed to autoplay loop video:", e));
-            }
-            return;
-        }
-
         console.log(`Rotating to asset index ${state.currentAssetIndex}: ${asset.filename} (${asset.mediaType})`);
  
         // If device is out of range, replace background media with placeholder but continue loop
         if (state.isOutOfRange) {
-            views.imagePlayer1.style.display = 'none';
-            views.imagePlayer2.style.display = 'none';
-            views.imagePlayer3.style.display = 'none';
+            views.imagePlayer.style.display = 'none';
             views.videoPlayer.style.display = 'none';
             views.videoPlayer.pause();
             if (views.outOfRange) {
-                views.outOfRange.style.display = 'block';
+                views.outOfRange.style.display = 'flex';
             }
-            const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
-            rotationTimeout = setTimeout(() => {
-                if (currentToken === rotationToken) {
-                    advancePlaylist();
-                }
-            }, duration);
+            const duration = (asset.duration || 10) * 1000;
+            rotationTimeout = setTimeout(advancePlaylist, duration);
             return;
         }
 
@@ -1281,48 +752,30 @@
 
         // Get transition styling animations
         const transitionName = state.playlistTransition || 'fade';
-        let animClass = 'fadeIn';
-        if (transitionName === 'slide-left') animClass = 'slideInLeft';
-        else if (transitionName === 'slide-right') animClass = 'slideInRight';
-
-        const imagePlayers = [views.imagePlayer1, views.imagePlayer2, views.imagePlayer3];
-        const activePlayer = imagePlayers[currentPlayerIndex];
+        const animClass = 'animate-' + (
+            transitionName === 'slide' ? 'slideIn' :
+            transitionName === 'zoom' ? 'zoomIn' :
+            transitionName === 'slide-up' ? 'slideUp' :
+            transitionName === 'slide-down' ? 'slideDown' :
+            transitionName === 'blur' ? 'blurIn' :
+            transitionName === 'bounce' ? 'bounceIn' : 'fadeIn'
+        );
 
         if (asset.mediaType === 'video') {
             // Apply scale mode configuration
             views.videoPlayer.style.objectFit = asset.objectFit || 'cover';
-            activePlayer.style.objectFit = asset.objectFit || 'cover';
+            views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
 
             // Apply scale zoom configuration
             const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
             views.videoPlayer.style.transform = scale;
-            activePlayer.style.transform = scale;
+            views.imagePlayer.style.transform = scale;
 
-            // If the playlist has exactly 1 video asset, loop it seamlessly at the hardware level with zero flashes
-            if (state.playlist.length === 1) {
-                views.videoPlayer.loop = true;
-                views.videoPlayer.style.display = 'block';
-                views.videoPlayer.style.opacity = '1';
-                imagePlayers.forEach(p => {
-                    p.style.opacity = '0.001';
-                    p.style.zIndex = '1';
-                });
-                if (views.videoPlayer.src !== asset.url) {
-                    views.videoPlayer.src = asset.url;
-                    views.videoPlayer.volume = state.volume / 100;
-                    views.videoPlayer.play().catch(e => console.warn("Failed to autoplay loop video:", e));
-                }
-                return;
-            } else {
-                views.videoPlayer.loop = false;
-            }
-
-            // Show video thumbnail on active image player during buffering to avoid blank black screen
+            // Show video thumbnail on the image player during buffering to avoid blank black screen
             if (asset.thumbnail) {
-                activePlayer.className = 'media-element';
-                activePlayer.src = asset.thumbnail;
-                activePlayer.style.display = 'block';
-                activePlayer.style.opacity = '1';
+                views.imagePlayer.className = 'media-element';
+                views.imagePlayer.src = asset.thumbnail;
+                views.imagePlayer.style.display = 'block';
             }
 
             views.videoPlayer.style.opacity = '0';
@@ -1331,146 +784,61 @@
             views.videoPlayer.volume = state.volume / 100;
 
             const handleVideoPlaying = () => {
-                if (currentToken !== rotationToken) return;
                 views.videoPlayer.className = 'media-element';
+                void views.videoPlayer.offsetWidth; // trigger reflow
+                if (transitionName !== 'none') {
+                    views.videoPlayer.classList.add(animClass);
+                }
                 views.videoPlayer.style.opacity = '1';
-                
-                // Fade out and hide all image players
-                imagePlayers.forEach(p => {
-                    p.style.opacity = '0.001';
-                    p.style.zIndex = '1';
-                });
+                views.imagePlayer.style.display = 'none';
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
             };
             views.videoPlayer.addEventListener('playing', handleVideoPlaying);
 
-            views.videoPlayer.play().then(() => {
-                // Set rotation timeout to cut off video when the slide duration completes (minimum 3 seconds)
-                const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        views.videoPlayer.pause();
-                        advancePlaylist();
-                    }
-                }, duration);
-            }).catch(e => {
+            views.videoPlayer.play().catch(e => {
                 console.warn("Autoplay block / playback error on video", e);
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
                 // Advance automatically if blocked
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        advancePlaylist();
-                    }
-                }, 3000);
+                rotationTimeout = setTimeout(advancePlaylist, 5000);
             });
-
-            // Preload the next image into the next player slot in the background
-            const nextAsset = state.playlist[(state.currentAssetIndex + 1) % state.playlist.length];
-            preloadAsset(nextAsset, imagePlayers[(currentPlayerIndex + 1) % 3]);
         } else {
-            // Hide video player immediately if we are switching to an image
-            views.videoPlayer.style.opacity = '0.001';
-            setTimeout(() => {
-                if (currentToken === rotationToken) {
-                    views.videoPlayer.style.display = 'none';
-                }
-            }, 600);
-            
-            const prevPlayer = imagePlayers[(currentPlayerIndex + 2) % 3];
-
-            activePlayer.style.objectFit = asset.objectFit || 'cover';
-            const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-            activePlayer.style.transform = scale;
-
-            const startTransition = () => {
-                if (currentToken !== rotationToken) return;
-
-                // Make the active preloaded player fully opaque underneath first
-                activePlayer.style.display = 'block';
-                activePlayer.style.opacity = '1';
+            // Preload image to ensure zero flash/blank screens during transition
+            const img = new Image();
+            img.onload = () => {
+                views.videoPlayer.style.display = 'none';
+                views.videoPlayer.pause();
                 
+                // Apply scale mode configuration
+                views.imagePlayer.style.objectFit = asset.objectFit || 'cover';
+
+                // Apply scale zoom configuration
+                const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
+                views.imagePlayer.style.transform = scale;
+
+                // Set source and reset class
+                views.imagePlayer.className = 'media-element';
+                views.imagePlayer.src = asset.url;
+                views.imagePlayer.style.display = 'block';
+
+                // Trigger animation reflow precisely on image load
+                void views.imagePlayer.offsetWidth;
                 if (transitionName !== 'none') {
-                    activePlayer.className = 'media-element ' + animClass;
-                } else {
-                    activePlayer.className = 'media-element';
+                    views.imagePlayer.classList.add(animClass);
                 }
 
-                // Fade out the previous player on top
-                setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        prevPlayer.style.opacity = '0.001';
-                    }
-                }, 20);
-
-                // Wait for the transition to finish (600ms), then bring new active image to foreground
-                setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        activePlayer.style.zIndex = '2';
-                        prevPlayer.style.zIndex = '1';
-                    }
-                }, 600);
-
-                // Preload the next image slide into the next player slot in the background
-                const nextAsset = state.playlist[(state.currentAssetIndex + 1) % state.playlist.length];
-                preloadAsset(nextAsset, imagePlayers[(currentPlayerIndex + 1) % 3]);
-
-                // Schedule the next transition duration (enforce a safe minimum of 3 seconds to prevent rapid skipping)
-                const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        // Toggle active player index for next transition
-                        currentPlayerIndex = (currentPlayerIndex + 1) % 3;
-                        advancePlaylist();
-                    }
-                }, duration);
+                // Image duration rotation starts ONLY after image is fully loaded
+                const duration = (asset.duration || 10) * 1000;
+                rotationTimeout = setTimeout(advancePlaylist, duration);
             };
-
-            let retryCount = 0;
-            const maxRetries = 3;
-
-            const handleLoad = () => {
-                activePlayer.removeEventListener('load', handleLoad);
-                activePlayer.removeEventListener('error', handleError);
-                startTransition();
+            img.onerror = () => {
+                console.error("Failed to preload image:", asset.url);
+                advancePlaylist();
             };
-            
-            const handleError = (err) => {
-                activePlayer.removeEventListener('load', handleLoad);
-                activePlayer.removeEventListener('error', handleError);
-                
-                if (retryCount < maxRetries) {
-                    retryCount++;
-                    console.warn(`Local image load failed for: ${asset.url}. Retrying in 1s (Attempt ${retryCount}/${maxRetries})...`, err);
-                    setTimeout(() => {
-                        if (currentToken === rotationToken) {
-                            activePlayer.addEventListener('load', handleLoad);
-                            activePlayer.addEventListener('error', handleError);
-                            activePlayer.src = asset.url + (asset.url.includes('?') ? '&' : '?') + 'retry=' + Date.now();
-                        }
-                    }, 1000);
-                } else {
-                    console.error(`Double-buffer image load failed after ${maxRetries} retries: ${asset.url}`, err);
-                    rotationTimeout = setTimeout(() => {
-                        if (currentToken === rotationToken) {
-                            advancePlaylist();
-                        }
-                    }, 3000);
-                }
-            };
-
-            // Set source only if it's different to prevent redundant loading stutters
-            if (activePlayer.src !== asset.url) {
-                activePlayer.addEventListener('load', handleLoad);
-                activePlayer.addEventListener('error', handleError);
-                activePlayer.src = asset.url;
-            } else {
-                startTransition();
-            }
+            img.src = asset.url;
         }
     }
 
     function advancePlaylist() {
-        if (rotationTimeout) clearTimeout(rotationTimeout);
         if (state.playlist.length > 0) {
             // Respect loop settings
             if (state.currentAssetIndex === state.playlist.length - 1 && !state.playlistLoop) {
@@ -1520,7 +888,7 @@
         // Render QR Code widget
         if (activeTypes.includes('qrcode')) {
             const link = qrcodeLink || SERVER_URL;
-            widgets.qrcodeImg.src = state.qrcodeLocalPath || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
+            widgets.qrcodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
             widgets.qrcode.className = 'widget-item ' + placement;
             widgets.qrcode.classList.remove('hidden');
         }
@@ -1542,7 +910,7 @@
         // Render RSS News Ticker widget
         if (activeTypes.includes('rss')) {
             let tickerText = rssLink || 'SignageOS Player online and running.';
-            let labelText = '';
+            let labelText = 'WORLD NEWS';
             let bgColor = '#ffffff';
             let textColor = '#1e293b';
 
@@ -1551,7 +919,7 @@
                 if (config && typeof config === 'object') {
                     if (config.label) labelText = config.label;
                     if (Array.isArray(config.items)) {
-                        tickerText = config.items.filter(item => item && item.trim() !== '').join('         |         ');
+                        tickerText = config.items.filter(item => item && item.trim() !== '').join(' | ');
                     }
                     if (config.bgColor) bgColor = config.bgColor;
                     if (config.textColor) textColor = config.textColor;
@@ -1559,34 +927,15 @@
             } catch (e) {
                 // Not JSON, format plain text with space-pipe-space separator if pipes are present
                 if (typeof rssLink === 'string') {
-                    tickerText = rssLink.split('|').map(s => s.trim()).filter(Boolean).join('         |         ');
+                    tickerText = rssLink.split('|').map(s => s.trim()).filter(Boolean).join(' | ');
                 }
             }
 
-            const rssLabelEl = widgets.rss.querySelector('.rss-label');
-            if (rssLabelEl) {
-                if (labelText && labelText.trim() !== '') {
-                    rssLabelEl.innerText = labelText;
-                    rssLabelEl.style.display = 'block';
-                } else {
-                    rssLabelEl.style.display = 'none';
-                }
-            }
-            widgets.rssText.innerText = tickerText + '         |         ';
-            if (widgets.rssTextDup) {
-                widgets.rssTextDup.innerText = tickerText + '         |         ';
-                widgets.rssTextDup.style.color = textColor;
-            }
+            widgets.rss.querySelector('.rss-label').innerText = labelText;
+            widgets.rssText.innerText = tickerText;
             widgets.rss.style.backgroundColor = bgColor;
             widgets.rssText.style.color = textColor;
             widgets.rss.className = 'rss-ticker-container'; // Make visible (removed hidden)
-
-            // Force animation reflow for Tizen to prevent freeze / stop scrolling
-            widgets.rssText.style.animation = 'none';
-            if (widgets.rssTextDup) widgets.rssTextDup.style.animation = 'none';
-            void widgets.rssText.offsetHeight; // trigger reflow
-            widgets.rssText.style.animation = '';
-            if (widgets.rssTextDup) widgets.rssTextDup.style.animation = '';
         }
     }
 
@@ -1611,14 +960,14 @@
         if (syncInterval) clearInterval(syncInterval);
         if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-        // Config Sync every 60 seconds (1 minute)
+        // Config Sync every 7.5 seconds
         syncInterval = setInterval(() => {
             if (state.screenId) {
                 fetchScreenConfig();
             } else if (state.status === 'pairing') {
                 checkPairingStatusOnServer();
             }
-        }, 60000);
+        }, 7500);
 
         // Diagnostic heartbeat every 30 seconds
         heartbeatInterval = setInterval(() => {
@@ -1629,11 +978,9 @@
     // Query pairing status on server
     async function checkPairingStatusOnServer() {
         if (!state.screenId) return;
-        if (window.navigator && window.navigator.onLine === false) return;
-
         try {
             const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
-            const res = await fetchWithTimeout(url, {}, 2500);
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 if (data.status && data.status !== 'pairing') {
@@ -1651,8 +998,6 @@
     // Broadcast diagnostic heartbeat to backend API
     async function sendHeartbeat() {
         if (state.status === 'pairing' || !state.screenId) return;
-        if (window.navigator && window.navigator.onLine === false) return;
-
         try {
             const currentAsset = state.playlist[state.currentAssetIndex];
             const payload = {
@@ -1663,11 +1008,11 @@
                 storageAvailableBytes: 85 * 1024 * 1024
             };
 
-            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/heartbeat`, {
+            await fetch(`${SERVER_URL}/api/v1/devices/heartbeat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
-            }, 2500);
+            });
         } catch (err) {
             console.error("Heartbeat broadcast failed:", err);
         }

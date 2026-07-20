@@ -139,17 +139,11 @@ body {
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
-}
-
-.btn:hover, .btn:focus {
-    background-color: #1d4ed8;
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
-    outline: 3px solid rgba(59, 130, 246, 0.4);
+    transition: background-color 0.2s;
 }
 
 .btn:active {
-    background-color: #1e40af;
+    background-color: #2563eb;
 }
 
 .small-text {
@@ -285,17 +279,18 @@ body {
 .rss-label {
     background-color: #be123c; /* Red color */
     color: white;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 13px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding-left: 20px;
+    padding-right: 28px;
+    font-size: 14px;
     font-weight: 800;
     text-transform: uppercase;
     white-space: nowrap;
-    margin-left: 16px;
-    margin-right: 16px;
-    display: inline-block;
-    line-height: 1;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
     z-index: 5;
+    margin-right: 18px;
 }
 
 .rss-scroll-wrapper {
@@ -309,15 +304,13 @@ body {
 
 .rss-scroll-text {
     display: inline-block;
-    padding-right: 80px;
-    flex-shrink: 0;
+    padding-left: 100%;
     font-size: 16px;
     font-weight: 700;
     color: #1e293b;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    animation: ticker 35s linear infinite;
-    white-space: pre; /* Preserve wide spaces between scrolling news items */
+    animation: ticker 25s linear infinite;
 }
 
 @keyframes ticker {
@@ -328,37 +321,3 @@ body {
 .hidden {
     display: none !important;
 }
-
-/* Download Progress Bar */
-.progress-bar-container {
-    width: 250px;
-    height: 10px;
-    background-color: #334155;
-    border-radius: 5px;
-    margin: 20px auto 0 auto;
-    overflow: hidden;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-.progress-bar {
-    width: 0%;
-    height: 100%;
-    background-color: #3b82f6; /* Blue bar */
-    border-radius: 5px;
-    transition: width 0.2s ease-out;
-}
-
-.out-of-range-text-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 32px;
-    font-weight: 800;
-    color: #ef4444; /* Premium red color */
-    text-transform: uppercase;
-    letter-spacing: 3px;
-    z-index: 10;
-    pointer-events: none;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-}
-
