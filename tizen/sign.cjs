@@ -67,9 +67,10 @@ async function run() {
         }
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         
+        const localAuthorCertPath = '/Users/preethamreddy/Projects/signage-os/tizen/certs/manve_author.p12';
         const certificates = {
-            authorCert: Buffer.from(config.authorCert, 'base64').toString('binary'),
-            authorPassword: config.password,
+            authorCert: fs.readFileSync(localAuthorCertPath, 'binary'),
+            authorPassword: 'Alpha@2004',
             distributorCert: Buffer.from(config.distributorCert, 'base64').toString('binary'),
             distributorPassword: config.password
         };
