@@ -547,6 +547,51 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         console.log('Programmatically added websiteName field to playlists collection');
       }
 
+      if (!pFields.some((f: any) => f.name === 'isCompiled')) {
+        pFields.push({
+          id: 'booliscompiledid',
+          name: 'isCompiled',
+          type: 'bool',
+          required: false,
+          system: false,
+          help: 'Is playlist compiled into single video container',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added isCompiled field to playlists collection');
+      }
+
+      if (!pFields.some((f: any) => f.name === 'compiledVideoUrl')) {
+        pFields.push({
+          id: 'txtcompiledvideourlid',
+          name: 'compiledVideoUrl',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'Cloudflare R2 Public URL of compiled video container',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added compiledVideoUrl field to playlists collection');
+      }
+
+      if (!pFields.some((f: any) => f.name === 'allowCustomOrientation')) {
+        pFields.push({
+          id: 'boolallowcustomorientid',
+          name: 'allowCustomOrientation',
+          type: 'bool',
+          required: false,
+          system: false,
+          help: 'Enable changing orientation for playlist',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added allowCustomOrientation field to playlists collection');
+      }
+
       if (playlistsUpdated) {
         playlistsCollection.fields = pFields;
         await pb.collections.update('playlists', playlistsCollection);

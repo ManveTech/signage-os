@@ -16,6 +16,14 @@ const getCorsProxyUrl = (url: string) => {
   return `${API_BASE}/public/proxy-media?url=${encodeURIComponent(url)}`;
 };
 
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('signageos_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
+
 type PlaylistItem = {
   id: string;
   mediaId: string;
@@ -724,7 +732,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         const fileName = `compiled_playlist_${Date.now()}.webm`;
         const res = await fetch(`${API_BASE}/media_items`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             fileData: base64Data,
             fileName: fileName,
