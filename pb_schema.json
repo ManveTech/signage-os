@@ -2341,6 +2341,31 @@
         "maxSize": 0
       },
       {
+        "help": "",
+        "hidden": false,
+        "id": "booliscompiledid",
+        "name": "isCompiled",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "txtcompiledvideourlid",
+        "name": "compiledVideoUrl",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "text",
+        "autogeneratePattern": "",
+        "max": 0,
+        "min": 0,
+        "pattern": "",
+        "primaryKey": false
+      },
+      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",

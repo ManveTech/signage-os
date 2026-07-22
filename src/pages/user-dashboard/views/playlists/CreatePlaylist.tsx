@@ -57,10 +57,10 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
   const [isCompiled, setIsCompiled] = useState<boolean>(false);
   const [compiledVideoUrl, setCompiledVideoUrl] = useState<string | undefined>(undefined);
 
-  const handleCompilePlaylistVideo = async () => {
+  const handleCompilePlaylistVideo = async (): Promise<string | undefined> => {
     if (playlistItems.length === 0) {
       showToast('⚠️ Add at least one media item before compiling.');
-      return;
+      return undefined;
     }
 
     setIsCompiling(true);
@@ -163,9 +163,11 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       setIsCompiled(true);
       setCompileProgress(100);
       showToast('✅ Playlist video successfully compiled!');
+      return videoDataUrl;
     } catch (err: any) {
       console.error('Video compilation failed:', err);
-      showToast('⚠️ Video compilation failed. Standard frame player will be used.');
+      showToast('⚠️ Video compilation failed.');
+      return undefined;
     } finally {
       setIsCompiling(false);
     }
@@ -701,11 +703,17 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       return;
     }
 
-    let finalCompiledVideoUrl = compiledVideoUrl;
-    if (isCompiled && compiledVideoUrl && compiledVideoUrl.startsWith('data:')) {
+    let targetCompiledUrl = compiledVideoUrl;
+    if (!isCompiled || !targetCompiledUrl) {
+      showToast('🎬 Compiling playlist slides into a single video container...');
+      targetCompiledUrl = await handleCompilePlaylistVideo();
+    }
+
+    let finalCompiledVideoUrl = targetCompiledUrl;
+    if (targetCompiledUrl && targetCompiledUrl.startsWith('data:')) {
       try {
         showToast('Uploading compiled video to Cloudflare R2 storage...');
-        const base64Data = compiledVideoUrl.split(',')[1];
+        const base64Data = targetCompiledUrl.split(',')[1];
         const fileName = `compiled_playlist_${Date.now()}.webm`;
         const res = await fetch('/api/media_items', {
           method: 'POST',
@@ -723,6 +731,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
           const data = await res.json();
           finalCompiledVideoUrl = data.fileUrl || data.thumbnail;
           setCompiledVideoUrl(finalCompiledVideoUrl);
+          setIsCompiled(true);
           console.log('[R2 Upload] Compiled playlist video uploaded to Cloudflare R2:', finalCompiledVideoUrl);
         }
       } catch (err) {
