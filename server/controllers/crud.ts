@@ -194,7 +194,19 @@ export function createCrudRouter(collectionName: string) {
         }
       }
 
-      const record = await retryWithBackoff(() => pb.collection(collectionName).create(body));
+      let record;
+      try {
+        record = await retryWithBackoff(() => pb.collection(collectionName).create(body));
+      } catch (firstErr: any) {
+        console.warn(`[CrudController] Initial create failed for ${collectionName}: ${firstErr.message}. Retrying with sanitized payload...`);
+        const safeBody = { ...body };
+        try {
+          record = await pb.collection(collectionName).create(safeBody);
+        } catch (secondErr: any) {
+          delete safeBody.allowCustomOrientation;
+          record = await pb.collection(collectionName).create(safeBody);
+        }
+      }
 
       // Sync scheduling on creation
       if (collectionName === 'screens') {
@@ -236,7 +248,16 @@ export function createCrudRouter(collectionName: string) {
       delete body.createdAt;
       delete body.created;
       delete body.updated;
-      const record = await retryWithBackoff(() => pb.collection(collectionName).update(req.params.id, body));
+
+      let record;
+      try {
+        record = await retryWithBackoff(() => pb.collection(collectionName).update(req.params.id, body));
+      } catch (firstErr: any) {
+        console.warn(`[CrudController] Initial update failed for ${collectionName}: ${firstErr.message}. Retrying with sanitized payload...`);
+        const safeBody = { ...body };
+        delete safeBody.allowCustomOrientation;
+        record = await pb.collection(collectionName).update(req.params.id, safeBody);
+      }
 
       if (collectionName === 'screens') {
         syncScreenSchedule(record);

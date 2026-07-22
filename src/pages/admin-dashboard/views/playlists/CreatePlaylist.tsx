@@ -10,6 +10,13 @@ import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
 import { toast } from '../../../../components/Toast';
+import { API_BASE } from '../../../../config';
+
+const getCorsProxyUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  return `${API_BASE}/public/proxy-media?url=${encodeURIComponent(url)}`;
+};
 
 type PlaylistItem = {
   id: string;
@@ -142,7 +149,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         if (media.type === 'video' && media.fileUrl) {
           const vid = document.createElement('video');
           vid.crossOrigin = 'anonymous';
-          vid.src = media.fileUrl || media.thumbnail;
+          vid.src = getCorsProxyUrl(media.fileUrl || media.thumbnail);
           vid.muted = true;
           await new Promise(r => {
             vid.onloadeddata = r;
@@ -163,7 +170,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         } else {
           const img = new Image();
           img.crossOrigin = 'anonymous';
-          img.src = media.thumbnail || media.fileUrl || '';
+          img.src = getCorsProxyUrl(media.thumbnail || media.fileUrl || '');
           await new Promise(r => {
             img.onload = r;
             img.onerror = r;
@@ -739,19 +746,13 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       return;
     }
 
-    let targetCompiledUrl = compiledVideoUrl;
-    if (!isCompiled || !targetCompiledUrl) {
-      showToast('🎬 Compiling playlist slides into a single video container...');
-      targetCompiledUrl = await handleCompilePlaylistVideo();
-    }
-
-    let finalCompiledVideoUrl = targetCompiledUrl;
-    if (targetCompiledUrl && targetCompiledUrl.startsWith('data:')) {
+    let finalCompiledVideoUrl = compiledVideoUrl;
+    if (isCompiled && compiledVideoUrl && compiledVideoUrl.startsWith('data:')) {
       try {
         showToast('Uploading compiled video to Cloudflare R2 storage...');
-        const base64Data = targetCompiledUrl.split(',')[1];
+        const base64Data = compiledVideoUrl.split(',')[1];
         const fileName = `compiled_playlist_${Date.now()}.webm`;
-        const res = await fetch('/api/media_items', {
+        const res = await fetch(`${API_BASE}/media_items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -767,7 +768,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
           const data = await res.json();
           finalCompiledVideoUrl = data.fileUrl || data.thumbnail;
           setCompiledVideoUrl(finalCompiledVideoUrl);
-          setIsCompiled(true);
           console.log('[R2 Upload] Compiled playlist video uploaded to Cloudflare R2:', finalCompiledVideoUrl);
         }
       } catch (err) {
@@ -790,57 +790,73 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         ? JSON.stringify({ label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor })
         : playlistWidgetLink;
 
+    const playlistPayload = {
+      name: playlistName,
+      active: true,
+      scheduleStatus: 'Running' as const,
+      createdBy: targetUserEmail,
+      mediaIds: playlistItems.map(item => item.mediaId),
+      allowCustomOrientation: allowCustomOrientation,
+      orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
+      isCompiled: Boolean(isCompiled && finalCompiledVideoUrl),
+      compiledVideoUrl: finalCompiledVideoUrl || '',
+      widgetType: playlistWidgetType,
+      widgetPlacement: playlistWidgetPlacement,
+      widgetLink: finalWidgetLink,
+      transition: playlistTransition,
+      shuffle: playlistShuffle,
+      loop: playlistLoop,
+      volume: playlistVolume,
+      slides: playlistItems
+    };
+
+    let savedPlaylistId = editingPlaylistId;
     if (editingPlaylistId) {
-      // Update existing playlist
-      mediaStore.updatePlaylist(editingPlaylistId, {
-        name: playlistName,
-        active: true,
-        scheduleStatus: 'Running',
-        mediaIds: playlistItems.map(item => item.mediaId),
-        allowCustomOrientation: allowCustomOrientation,
-        orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
-        isCompiled: isCompiled,
-        compiledVideoUrl: finalCompiledVideoUrl,
-        widgetType: playlistWidgetType,
-        widgetPlacement: playlistWidgetPlacement,
-        widgetLink: finalWidgetLink,
-        transition: playlistTransition,
-        shuffle: playlistShuffle,
-        loop: playlistLoop,
-        volume: playlistVolume,
-        slides: playlistItems
-      });
-      showToast(`Playlist "${playlistName}" updated successfully!`);
+      mediaStore.updatePlaylist(editingPlaylistId, playlistPayload);
+      showToast(`✅ Playlist "${playlistName}" updated in database successfully!`);
     } else {
-      // Create new playlist
-      mediaStore.createPlaylist({
-        name: playlistName,
-        active: true,
-        scheduleStatus: 'Running',
-        createdBy: targetUserEmail,
-        mediaIds: playlistItems.map(item => item.mediaId),
-        assignedScreenIds: [],
-        allowCustomOrientation: allowCustomOrientation,
-        orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
-        isCompiled: isCompiled,
-        compiledVideoUrl: finalCompiledVideoUrl,
-        widgetType: playlistWidgetType,
-        widgetPlacement: playlistWidgetPlacement,
-        widgetLink: finalWidgetLink,
-        transition: playlistTransition,
-        shuffle: playlistShuffle,
-        loop: playlistLoop,
-        volume: playlistVolume,
-        slides: playlistItems
-      });
-      showToast(`Playlist "${playlistName}" created successfully!`);
+      const created = mediaStore.createPlaylist({ ...playlistPayload, assignedScreenIds: [] });
+      savedPlaylistId = created.id;
+      setEditingPlaylistId(created.id);
+      showToast(`✅ Playlist "${playlistName}" created and saved to database!`);
     }
 
-    // Refresh playlists dropdown list
     loadPlaylists();
-    
-    // Reset inputs
-    handleStartNewPlaylist();
+
+    // Background compilation if not already compiled
+    if (savedPlaylistId && (!isCompiled || !finalCompiledVideoUrl)) {
+      handleCompilePlaylistVideo().then(async (dataUrl) => {
+        if (dataUrl && dataUrl.startsWith('data:')) {
+          try {
+            const fileName = `compiled_playlist_${Date.now()}.webm`;
+            const res = await fetch(`${API_BASE}/media_items`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fileData: dataUrl.split(',')[1],
+                fileName: fileName,
+                mimeType: 'video/webm',
+                title: `Compiled Loop - ${playlistName}`,
+                type: 'video',
+                uploadedBy: targetUserEmail
+              })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const r2Url = data.fileUrl || data.thumbnail;
+              setCompiledVideoUrl(r2Url);
+              setIsCompiled(true);
+              mediaStore.updatePlaylist(savedPlaylistId!, { isCompiled: true, compiledVideoUrl: r2Url });
+              console.log('[Background Compile] Playlist compiled and updated in database:', r2Url);
+            }
+          } catch (e) {
+            console.error('[Background Compile] Upload error:', e);
+          }
+        }
+      }).catch(err => {
+        console.warn('[Background Compile] Skipped background compile:', err);
+      });
+    }
 
     // Navigate to all playlists / my playlists view
     if (onNavigate) {
