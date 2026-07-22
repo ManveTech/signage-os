@@ -1569,8 +1569,19 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
             {/* Screen Glass Reflection Overlay */}
             <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 pointer-events-none z-20" />
             
-            {/* The active slide rendering */}
-            {simulatedItems[previewIndex] && (() => {
+            {/* The active slide or compiled video rendering */}
+            {isCompiled && compiledVideoUrl ? (
+              <div className="w-full h-full relative bg-slate-900">
+                <video 
+                  src={compiledVideoUrl} 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline 
+                  className="w-full h-full object-cover" 
+                />
+              </div>
+            ) : simulatedItems[previewIndex] && (() => {
               const slide = simulatedItems[previewIndex];
               const pMedia = getMediaItem(slide.mediaId);
               const sMedia = slide.secondMediaId ? getMediaItem(slide.secondMediaId) : null;
