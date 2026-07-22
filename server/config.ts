@@ -34,7 +34,7 @@ export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_live_demo8392
 export const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 
 // Cloudflare R2 / S3 Storage Configuration
-export const S3_ENABLED = (process.env.S3_ENABLED || '').trim() === 'true';
+export const S3_ENABLED = (process.env.S3_ENABLED || '').trim() === 'true' || Boolean((process.env.S3_BUCKET || '').trim() && (process.env.S3_ACCESS_KEY || '').trim());
 export const S3_BUCKET = (process.env.S3_BUCKET || '').trim();
 export const S3_REGION = (process.env.S3_REGION || '').trim() || 'auto';
 export const S3_ENDPOINT = (process.env.S3_ENDPOINT || '').trim();

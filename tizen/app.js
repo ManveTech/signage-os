@@ -733,8 +733,27 @@
 
             // Sync Playlist assets from slides or direct references
             let fetchedAssets = [];
+
+            const rawCompiledUrl = data.compiledVideoUrl || data.compiledVideo;
+            if (data.isCompiled || rawCompiledUrl) {
+                const compiledUrl = (rawCompiledUrl && (rawCompiledUrl.startsWith('http') || rawCompiledUrl.startsWith('data:')))
+                    ? rawCompiledUrl
+                    : `${POCKETBASE_URL}/api/files/playlists/${playlistId}/${rawCompiledUrl}`;
+
+                console.log("🎬 Playlist IS COMPILED! Syncing single compiled video container in Tizen:", compiledUrl);
+                fetchedAssets.push({
+                    id: `${playlistId}_compiled_video`,
+                    url: compiledUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
+                    mediaType: 'video',
+                    filename: `compiled_playlist_${playlistId}.webm`,
+                    duration: (data.slides && data.slides.length) ? data.slides.reduce((a, s) => a + (parseInt(s.duration, 10) || 10), 0) : 30,
+                    thumbnail: compiledUrl,
+                    objectFit: 'cover',
+                    scalePercent: 100
+                });
+            }
             
-            // 1. Resolve from slides sequence (with custom durations, ordering)
+            // 1. Resolve from slides sequence (with custom durations, ordering) if not compiled
             let slides = data.slides || [];
             if (typeof slides === 'string') {
                 try {
@@ -745,7 +764,7 @@
                 }
             }
 
-            if (Array.isArray(slides) && slides.length > 0) {
+            if (fetchedAssets.length === 0 && Array.isArray(slides) && slides.length > 0) {
                 for (const slide of slides) {
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                     if (mediaRes.ok) {

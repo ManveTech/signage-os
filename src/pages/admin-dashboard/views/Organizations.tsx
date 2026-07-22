@@ -18,6 +18,7 @@ type OrganizationType = {
   storageLimit: number;
   subscriptionStatus: 'active' | 'suspended' | 'expired';
   renewalDate: string;
+  customDomain?: string;
 };
 
 const statusColors: Record<OrganizationType['subscriptionStatus'], string> = {

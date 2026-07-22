@@ -524,8 +524,40 @@ class SignageRepository(private val context: Context) {
             val newAssets = mutableListOf<PlaylistAsset>()
             val cacheDir = File(context.filesDir, "signage_cache")
 
-            // 1. Resolve from slides sequence (with custom durations, ordering, layout details)
-            if (!response.slides.isNullOrEmpty()) {
+            val rawCompiledUrl = response.compiledVideoUrl ?: response.compiledVideo
+            if (response.isCompiled == true || !rawCompiledUrl.isNullOrEmpty()) {
+                val compiledUrl = when {
+                    !rawCompiledUrl.isNullOrEmpty() && (rawCompiledUrl.startsWith("http") || rawCompiledUrl.startsWith("data:")) -> rawCompiledUrl
+                    !rawCompiledUrl.isNullOrEmpty() -> "$pocketbaseUrl/api/files/playlists/$actualId/$rawCompiledUrl"
+                    else -> null
+                }
+
+                if (!compiledUrl.isNullOrEmpty()) {
+                    Log.d("SignageRepository", "🎬 Playlist IS COMPILED! Syncing single compiled video container: $compiledUrl")
+                    val finalUrl = resolveUrl(compiledUrl, pocketbaseUrl, serverUrl)
+                    val filename = "compiled_playlist_$actualId.webm"
+                    val cacheFileName = getCacheFileName(finalUrl, filename)
+                    val cacheFile = File(cacheDir, cacheFileName)
+
+                    val totalDuration = response.slides?.sumOf { it.duration } ?: 30
+                    newAssets.add(
+                        PlaylistAsset(
+                            id = "${playlistId}_compiled_video",
+                            url = finalUrl,
+                            filename = filename,
+                            localPath = if (cacheFile.exists()) cacheFile.absolutePath else null,
+                            mediaType = "video",
+                            duration = totalDuration,
+                            sortOrder = 0,
+                            objectFit = "cover",
+                            scalePercent = 100
+                        )
+                    )
+                }
+            }
+
+            // 1. Resolve from slides sequence if not compiled
+            if (newAssets.isEmpty() && !response.slides.isNullOrEmpty()) {
                 Log.d("SignageRepository", "Fetching metadata for ${response.slides.size} slides in parallel")
                 val slideAssets = coroutineScope {
                     response.slides.mapIndexed { index, slide ->

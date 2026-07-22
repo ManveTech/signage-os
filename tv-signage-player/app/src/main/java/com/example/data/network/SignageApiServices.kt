@@ -99,6 +99,9 @@ data class PocketBasePlaylistResponse(
     val widgetType: String? = null,
     val widgetPlacement: String? = null,
     val widgetLink: String? = null,
+    val isCompiled: Boolean? = null,
+    val compiledVideoUrl: String? = null,
+    val compiledVideo: String? = null,
     val whiteLabel: Boolean? = null,
     val websiteLogo: String? = null,
     val websiteName: String? = null

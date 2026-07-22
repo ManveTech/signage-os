@@ -17,6 +17,8 @@ type PlaylistItem = {
   duration: number;
   layoutType: 'single' | '50-50' | '70-30' | '30-70';
   secondMediaId?: string;
+  scalePercent?: number;
+  objectFit?: string;
 };
 
 interface Props {
@@ -273,7 +275,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       setSelectedPlaylistId(id);
       setPlaylistName(play.name);
       setPlaylistDesc(play.slides ? '' : 'Loaded from older layout');
+      setAllowCustomOrientation(play.allowCustomOrientation || false);
       setPlaylistOrientation(play.orientation || 'horizontal');
+      setIsCompiled(play.isCompiled || false);
+      setCompiledVideoUrl(play.compiledVideoUrl);
       setPlaylistTransition(play.transition || 'fade');
       setPlaylistShuffle(play.shuffle || false);
       setPlaylistLoop(play.loop !== undefined ? play.loop : true);
@@ -370,7 +375,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     setPlaylistName('');
     setPlaylistDesc('');
     setPlaylistItems([]);
+    setAllowCustomOrientation(false);
     setPlaylistOrientation('horizontal');
+    setIsCompiled(false);
+    setCompiledVideoUrl(undefined);
     setPlaylistTransition('fade');
     setPlaylistShuffle(false);
     setPlaylistLoop(true);
@@ -715,7 +723,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   // -------------------------------------------------------------
   // SAVE PLAYLIST HANDLER
   // -------------------------------------------------------------
-  const handleSavePlaylist = () => {
+  const handleSavePlaylist = async () => {
     if (totalFilesToUpload > 0) {
       toast.warning('Please wait for all uploads to complete before saving the playlist.');
       return;
@@ -727,6 +735,35 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     if (playlistItems.length === 0) {
       toast.warning('Please add at least one media slide to the sequence.');
       return;
+    }
+
+    let finalCompiledVideoUrl = compiledVideoUrl;
+    if (isCompiled && compiledVideoUrl && compiledVideoUrl.startsWith('data:')) {
+      try {
+        showToast('Uploading compiled video to Cloudflare R2 storage...');
+        const base64Data = compiledVideoUrl.split(',')[1];
+        const fileName = `compiled_playlist_${Date.now()}.webm`;
+        const res = await fetch('/api/media_items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileData: base64Data,
+            fileName: fileName,
+            mimeType: 'video/webm',
+            title: `Compiled Loop - ${playlistName}`,
+            type: 'video',
+            uploadedBy: targetUserEmail
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          finalCompiledVideoUrl = data.fileUrl || data.thumbnail;
+          setCompiledVideoUrl(finalCompiledVideoUrl);
+          console.log('[R2 Upload] Compiled playlist video uploaded to Cloudflare R2:', finalCompiledVideoUrl);
+        }
+      } catch (err) {
+        console.error('Failed to upload compiled video to Cloudflare R2:', err);
+      }
     }
 
     const active = playlistWidgetType ? playlistWidgetType.split(',').map(s => s.trim().toLowerCase()) : [];
@@ -754,7 +791,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         allowCustomOrientation: allowCustomOrientation,
         orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
         isCompiled: isCompiled,
-        compiledVideoUrl: compiledVideoUrl,
+        compiledVideoUrl: finalCompiledVideoUrl,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
         widgetLink: finalWidgetLink,
@@ -777,7 +814,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         allowCustomOrientation: allowCustomOrientation,
         orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
         isCompiled: isCompiled,
-        compiledVideoUrl: compiledVideoUrl,
+        compiledVideoUrl: finalCompiledVideoUrl,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
         widgetLink: finalWidgetLink,
