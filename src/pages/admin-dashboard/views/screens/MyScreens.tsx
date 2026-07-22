@@ -81,7 +81,21 @@ const getStatusColors = (status: string) => {
   }
 };
 
-const renderStatusBadge = (status: string) => {
+export const getEffectiveStatus = (screen: any): string => {
+  const status = screen?.status || 'offline';
+  if (status === 'online' || status === 'active') {
+    const hb = screen?.lastHeartbeat || screen?.lastSeen;
+    if (!hb) return 'offline';
+    const hbTime = new Date(hb).getTime();
+    if (isNaN(hbTime) || (Date.now() - hbTime > 90000)) {
+      return 'offline';
+    }
+  }
+  return status;
+};
+
+const renderStatusBadge = (screenOrStatus: any) => {
+  const status = typeof screenOrStatus === 'string' ? screenOrStatus : getEffectiveStatus(screenOrStatus);
   const info = getStatusColors(status);
   return (
     <span 
@@ -136,8 +150,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [reconnectScreen, setReconnectScreen] = useState<Screen | null>(null);
-  const [reconnectPairingCode, setReconnectPairingCode] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -268,34 +280,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     addToast(`"${deleteScreen.name}" removed from your screens`);
   };
 
-  const handleDisconnectDevice = async (screen: any) => {
-    const confirm = window.confirm(`Are you sure you want to disconnect "${screen.name}"? The player will return to the pairing screen.`);
-    if (!confirm) return;
-
-    try {
-      const token = localStorage.getItem('signageos_token');
-      const res = await fetch(`${API_BASE}/screens/disconnect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ screenId: screen.id })
-      });
-      if (res.ok) {
-        addToast(`Successfully disconnected "${screen.name}"`, 'success');
-        const allScreens = mediaStore.getScreens().map(s => s.id === screen.id ? { ...s, status: 'pairing' as any, assignedToUserEmail: '' } : s);
-        mediaStore.saveScreens(allScreens);
-        setScreens(prev => prev.filter(s => s.id !== screen.id));
-      } else {
-        const err = await res.json().catch(() => ({}));
-        addToast(`Failed to disconnect screen: ${err.message || 'Unknown error'}`, 'error');
-      }
-    } catch (e: any) {
-      addToast(`Error disconnecting screen: ${e.message}`, 'error');
-    }
-  };
-
   const handleDeleteSelected = () => {
     const allScreens = mediaStore.getScreens();
     const updated = allScreens.filter(s => !selectedIds.includes(s.id));
@@ -306,44 +290,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     setIsSelectionMode(false);
     setDeleteConfirm(false);
     addToast(`Selected screen(s) removed successfully`, 'success');
-  };
-
-  const handleReconnectSave = () => {
-    if (!reconnectScreen) return;
-    if (!reconnectPairingCode.trim()) {
-      addToast('Please enter a pairing code', 'error');
-      return;
-    }
-    fetch(`${API_BASE}/screens/reconnect`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('signageos_token')}`
-      },
-      body: JSON.stringify({
-        screenId: reconnectScreen.id,
-        pairingCode: reconnectPairingCode.trim().toUpperCase()
-      })
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || 'Failed to reconnect screen');
-        }
-        return res.json();
-      })
-      .then((updatedScreen) => {
-        addToast(`Successfully reconnected "${reconnectScreen.name}"`, 'success');
-        const allScreens = mediaStore.getScreens();
-        const updatedAll = allScreens.map(s => s.id === reconnectScreen.id ? { ...s, hardware_uuid: updatedScreen.hardware_uuid, status: 'active' as const, onlineSince: updatedScreen.onlineSince } : s);
-        mediaStore.saveScreens(updatedAll);
-        setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
-        setReconnectScreen(null);
-        setReconnectPairingCode('');
-      })
-      .catch((err) => {
-        addToast(err.message, 'error');
-      });
   };
 
   const handleSync = (screen: Screen) => {
@@ -602,7 +548,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                 {/* Status badge */}
                 {!isSelectionMode && (
                   <div className="absolute top-3 left-3 z-30">
-                    {renderStatusBadge(screen.status)}
+                    {renderStatusBadge(screen)}
                   </div>
                 )}
 
@@ -749,13 +695,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                       <RefreshCw size={13} />
                     </button>
                     <button
-                      onClick={() => setReconnectScreen(screen)}
-                      className="p-1 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                      data-tooltip="Reconnect Screen"
-                    >
-                      <Link size={13} />
-                    </button>
-                    <button
                       onClick={() => {
                         setAssignScreen(screen);
                         setAssignSearch('');
@@ -809,13 +748,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                         <FolderMinus size={13} />
                       </button>
                     )}
-                    <button
-                      onClick={() => handleDisconnectDevice(screen)}
-                      className="p-1 text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                      data-tooltip="Disconnect Device"
-                    >
-                      <WifiOff size={13} />
-                    </button>
                     <button
                       onClick={() => setDeleteScreen(screen)}
                       className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
@@ -891,7 +823,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {renderStatusBadge(screen.status)}
+                        {renderStatusBadge(screen)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 max-w-[160px] truncate">{screen.location}</td>
                        <td className="px-4 py-3">
@@ -935,13 +867,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                             title="Sync Device"
                           >
                             <RefreshCw size={13} />
-                          </button>
-                          <button
-                            onClick={() => setReconnectScreen(screen)}
-                            className="p-1 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-lg transition-colors cursor-pointer"
-                            title="Reconnect Screen"
-                          >
-                            <Link size={13} />
                           </button>
                           <button
                             onClick={() => {
@@ -997,13 +922,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                               <FolderMinus size={13} />
                             </button>
                           )}
-                          <button
-                            onClick={() => handleDisconnectDevice(screen)}
-                            className="p-1 text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-lg transition-colors cursor-pointer"
-                            title="Disconnect Device"
-                          >
-                            <WifiOff size={13} />
-                          </button>
                           <button
                             onClick={() => setDeleteScreen(screen)}
                             className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer"
@@ -1225,38 +1143,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
               <div className="flex gap-3">
                 <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
                 <button onClick={handleDeleteSelected} className="flex-1 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">Delete Selected</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Reconnect Screen Modal */}
-      {reconnectScreen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setReconnectScreen(null); setReconnectPairingCode(''); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <div className="p-6 text-left space-y-4">
-              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-2 text-emerald-600">
-                <RefreshCw size={22} />
-              </div>
-              <div className="text-center">
-                <h2 className="text-base font-bold text-gray-900 mb-1">Reconnect Screen</h2>
-                <p className="text-xs text-gray-500">Enter the 6-character pairing code from the TV player screen to link it to "{reconnectScreen.name}".</p>
-              </div>
-              <div className="space-y-1.5">
-                <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-black text-center">Pairing Code</label>
-                <input
-                  type="text"
-                  value={reconnectPairingCode}
-                  onChange={e => setReconnectPairingCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. ABCDEF"
-                  maxLength={6}
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 font-mono font-bold text-center text-lg uppercase text-slate-850"
-                />
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => { setReconnectScreen(null); setReconnectPairingCode(''); }} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
-                <button onClick={handleReconnectSave} className="flex-1 py-2.5 text-sm font-semibold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors cursor-pointer">Reconnect</button>
               </div>
             </div>
           </div>

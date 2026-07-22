@@ -93,7 +93,27 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     ]);
 
     setLicenses(licensingStore.getLicenses());
-    setPayments(licensingStore.getPayments());
+    
+    // Fetch payments history directly from backend webhook payments API
+    try {
+      const token = localStorage.getItem('signageos_token');
+      const res = await fetch('/api/payments/history', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+          setPayments(data.items);
+        } else {
+          setPayments(licensingStore.getPayments());
+        }
+      } else {
+        setPayments(licensingStore.getPayments());
+      }
+    } catch (_) {
+      setPayments(licensingStore.getPayments());
+    }
+
     setInvoices(licensingStore.getInvoices());
     const biz = licensingStore.getBusinessDetails();
     setBusinessDetails(biz);

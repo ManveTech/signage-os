@@ -76,11 +76,9 @@ export function ScreensTab({
   const [ungroupedExpanded, setUngroupedExpanded] = useState(false);
 
   // Modal States
-  const [activeModal, setActiveModal] = useState<null | 'add-screen' | 'create-group' | 'pairing-code' | 'pairing-success' | 'edit-group' | 'reconnect-screen' | 'add-screens-to-group'>(null);
+  const [activeModal, setActiveModal] = useState<null | 'add-screen' | 'create-group' | 'pairing-code' | 'pairing-success' | 'edit-group' | 'add-screens-to-group'>(null);
   const [activeStep, setActiveStep] = useState(1);
   const [selectedScreen, setSelectedScreen] = useState<any | null>(null);
-  const [reconnectScreen, setReconnectScreen] = useState<any | null>(null);
-  const [reconnectPairingCode, setReconnectPairingCode] = useState('');
   const [addScreensToGroupId, setAddScreensToGroupId] = useState<string | null>(null);
   const [detailSelectedPlaylist, setDetailSelectedPlaylist] = useState('');
   const [detailScheduleEnabled, setDetailScheduleEnabled] = useState(false);
@@ -310,87 +308,6 @@ export function ScreensTab({
     } finally {
       setIsPairing(false);
     }
-  };
-
-  const handleReconnectDevice = async () => {
-    const code = reconnectPairingCode.trim().toUpperCase();
-    if (code.length < 4) {
-      Alert.alert('Error', 'Please enter a valid pairing code');
-      return;
-    }
-    if (!reconnectScreen) return;
-    setIsPairing(true);
-    try {
-      const token = await AsyncStorage.getItem('signageos_token');
-      const res = await fetch(`${API_BASE}/screens/reconnect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          screenId: reconnectScreen.id,
-          pairingCode: code,
-        })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        Alert.alert('Success', `Successfully reconnected "${reconnectScreen.name}"!`);
-        setScreensList(prev => prev.map(s => s.id === reconnectScreen.id ? {
-          ...s,
-          hardware_uuid: data.hardware_uuid || s.hardware_uuid,
-          status: 'online',
-          lastSeen: 'Just now'
-        } : s));
-        setActiveModal(null);
-        setSelectedScreen(null);
-        setReconnectScreen(null);
-        setReconnectPairingCode('');
-      } else {
-        Alert.alert('Reconnect Failed', data.message || 'Invalid pairing code or connection failure.');
-      }
-    } catch (e: any) {
-      Alert.alert('Connection Error', 'Could not reach the server. Please check your network.');
-    } finally {
-      setIsPairing(false);
-    }
-  };
-
-  const handleDisconnectDevice = async (screen: any) => {
-    Alert.alert(
-      'Disconnect Screen',
-      `Are you sure you want to disconnect "${screen.name}"? The TV player will go back to the pairing setup screen.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Disconnect',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const token = await AsyncStorage.getItem('signageos_token');
-              const res = await fetch(`${API_BASE}/screens/disconnect`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                },
-                body: JSON.stringify({ screenId: screen.id })
-              });
-              if (res.ok) {
-                Alert.alert('Success', `Successfully disconnected "${screen.name}".`);
-                setScreensList(prev => prev.filter(item => item.id !== screen.id));
-                setSelectedScreen(null);
-              } else {
-                const err = await res.json().catch(() => ({}));
-                Alert.alert('Error', err.message || 'Failed to disconnect screen');
-              }
-            } catch (e: any) {
-              Alert.alert('Error', `Network error: ${e.message}`);
-            }
-          }
-        }
-      ]
-    );
   };
 
   // Filtered Screens
@@ -1267,22 +1184,6 @@ export function ScreensTab({
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
-                    setReconnectScreen(selectedScreen);
-                    setReconnectPairingCode('');
-                    setActiveModal('reconnect-screen');
-                  }}
-                  style={{ flex: 1, minWidth: 90, backgroundColor: '#10B981', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <ThemedText style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 12 }}>Reconnect</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleDisconnectDevice(selectedScreen)}
-                  style={{ flex: 1, minWidth: 90, backgroundColor: '#f97316', height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <ThemedText style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 12 }}>Disconnect</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
                     setScreensList(prev => prev.filter(item => item.id !== selectedScreen.id));
                     setSelectedScreen(null);
                     Alert.alert('Success', 'Signage display unlinked successfully!');
@@ -1638,33 +1539,6 @@ export function ScreensTab({
               }}
             >
               <ThemedText style={styles.pairButtonText}>Done</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ================= MODAL 4: RECONNECT DEVICE CODE POPUP ================= */}
-      <Modal visible={activeModal === 'reconnect-screen'} animationType="fade" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.pairingCard}>
-            <ThemedText type="smallBold" style={{ fontSize: 20, textAlign: 'center', marginBottom: 8, color: '#181c23' }}>Reconnect Screen</ThemedText>
-            <ThemedText style={{ textAlign: 'center', color: '#8F9BB3', fontSize: 13, marginBottom: 20 }}>
-              Enter the pairing code shown on your display hardware screen to reconnect it to "{reconnectScreen?.name}"
-            </ThemedText>
-            <TextInput
-              style={[styles.pairingCodeInput, { color: '#181c23', borderColor: '#7c3aed' }]}
-              placeholder="SO-XXXX"
-              placeholderTextColor="#8F9BB3"
-              maxLength={7}
-              autoCapitalize="characters"
-              value={reconnectPairingCode}
-              onChangeText={setReconnectPairingCode}
-            />
-            <TouchableOpacity style={[styles.pairButton, isPairing && { opacity: 0.7 }]} onPress={handleReconnectDevice} disabled={isPairing}>
-              <ThemedText style={styles.pairButtonText}>{isPairing ? 'Reconnecting...' : 'Reconnect Display'}</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.skipButton} onPress={() => { setActiveModal(null); setReconnectScreen(null); }} disabled={isPairing}>
-              <ThemedText style={styles.skipButtonText}>Cancel</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

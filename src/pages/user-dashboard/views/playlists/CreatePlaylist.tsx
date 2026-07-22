@@ -41,12 +41,133 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
   const [category, setCategory] = useState('Advertising');
 
   // Playlist Settings (Orientation, Transition, Shuffle, Loop)
+  const [allowCustomOrientation, setAllowCustomOrientation] = useState<boolean>(false);
   const [playlistOrientation, setPlaylistOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [playlistTransition, setPlaylistTransition] = useState<'fade' | 'slide' | 'zoom' | 'slide-up' | 'slide-down' | 'flip' | 'spin' | 'blur' | 'bounce' | 'wipe'>('fade');
   const [showAllTransitions, setShowAllTransitions] = useState(false);
   const [playlistShuffle, setPlaylistShuffle] = useState<boolean>(false);
   const [playlistLoop, setPlaylistLoop] = useState<boolean>(true);
   const [playlistVolume, setPlaylistVolume] = useState<number>(80);
+
+  // Client-Side Video Compilation State
+  const [isCompiling, setIsCompiling] = useState<boolean>(false);
+  const [compileProgress, setCompileProgress] = useState<number>(0);
+  const [isCompiled, setIsCompiled] = useState<boolean>(false);
+  const [compiledVideoUrl, setCompiledVideoUrl] = useState<string | undefined>(undefined);
+
+  const handleCompilePlaylistVideo = async () => {
+    if (playlistItems.length === 0) {
+      showToast('⚠️ Add at least one media item before compiling.');
+      return;
+    }
+
+    setIsCompiling(true);
+    setCompileProgress(5);
+
+    try {
+      const width = playlistOrientation === 'vertical' ? 1080 : 1920;
+      const height = playlistOrientation === 'vertical' ? 1920 : 1080;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) throw new Error('Canvas 2D context unavailable');
+
+      const stream = canvas.captureStream(30);
+      let mimeType = 'video/webm;codecs=vp9';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm';
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.start(100);
+
+      const totalItems = playlistItems.length;
+      let completedItems = 0;
+
+      for (const item of playlistItems) {
+        const media = mediaList.find(m => m.id === item.mediaId);
+        if (!media) continue;
+
+        const durationMs = Math.min(item.duration, 10) * 1000;
+        const fps = 30;
+        const totalFrames = Math.max(15, Math.floor((durationMs / 1000) * fps));
+        const frameIntervalMs = 1000 / fps;
+
+        if (media.type === 'video' && media.fileUrl) {
+          const vid = document.createElement('video');
+          vid.crossOrigin = 'anonymous';
+          vid.src = media.fileUrl || media.thumbnail;
+          vid.muted = true;
+          await new Promise(r => {
+            vid.onloadeddata = r;
+            vid.onerror = r;
+            setTimeout(r, 1200);
+          });
+          vid.play().catch(() => {});
+
+          for (let f = 0; f < totalFrames; f++) {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, width, height);
+            try {
+              ctx.drawImage(vid, 0, 0, width, height);
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, frameIntervalMs));
+          }
+          vid.pause();
+        } else {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.src = media.thumbnail || media.fileUrl || '';
+          await new Promise(r => {
+            img.onload = r;
+            img.onerror = r;
+            setTimeout(r, 800);
+          });
+
+          for (let f = 0; f < totalFrames; f++) {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, width, height);
+            try {
+              ctx.drawImage(img, 0, 0, width, height);
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, frameIntervalMs));
+          }
+        }
+
+        completedItems++;
+        setCompileProgress(Math.round((completedItems / totalItems) * 90));
+      }
+
+      recorder.stop();
+      await new Promise(r => setTimeout(r, 400));
+
+      const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
+      const videoDataUrl = await new Promise<string>((resolve) => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(r.result as string);
+        r.readAsDataURL(blob);
+      });
+
+      setCompiledVideoUrl(videoDataUrl);
+      setIsCompiled(true);
+      setCompileProgress(100);
+      showToast('✅ Playlist video successfully compiled!');
+    } catch (err: any) {
+      console.error('Video compilation failed:', err);
+      showToast('⚠️ Video compilation failed. Standard frame player will be used.');
+    } finally {
+      setIsCompiling(false);
+    }
+  };
 
   // Widget Settings
   const [playlistWidgetType, setPlaylistWidgetType] = useState<string | undefined>(undefined);
@@ -594,7 +715,10 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         active: true,
         scheduleStatus: 'Running',
         mediaIds: playlistItems.map(item => item.mediaId),
-        orientation: playlistOrientation,
+        allowCustomOrientation: allowCustomOrientation,
+        orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
+        isCompiled: isCompiled,
+        compiledVideoUrl: compiledVideoUrl,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
         widgetLink: finalWidgetLink,
@@ -614,7 +738,10 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         createdBy: userEmail,
         mediaIds: playlistItems.map(item => item.mediaId),
         assignedScreenIds: [],
-        orientation: playlistOrientation,
+        allowCustomOrientation: allowCustomOrientation,
+        orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
+        isCompiled: isCompiled,
+        compiledVideoUrl: compiledVideoUrl,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
         widgetLink: finalWidgetLink,
@@ -815,14 +942,29 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
             onDrop={handleTimelineDrop}
             className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 min-h-[300px] shadow-xs"
           >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
               <div>
                 <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Sequence Timeline</h3>
                 <p className="text-[9.5px] text-gray-400 mt-0.5">Drag assets from left pool to populate sequence, or click "+". Set duration in seconds.</p>
               </div>
-              <span className="text-[10px] bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg font-black uppercase">
-                Length: {playlistItems.reduce((acc, curr) => acc + curr.duration, 0)}s
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCompilePlaylistVideo}
+                  disabled={isCompiling || playlistItems.length === 0}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                    isCompiled
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50'
+                  }`}
+                >
+                  <Sparkles size={13} className={isCompiling ? 'animate-spin' : ''} />
+                  <span>{isCompiling ? `Compiling (${compileProgress}%)...` : isCompiled ? 'Video Compiled ✓' : 'Compile Video Loop'}</span>
+                </button>
+                <span className="text-[10px] bg-slate-100 text-slate-700 px-2.5 py-1.5 rounded-xl font-black uppercase">
+                  Length: {playlistItems.reduce((acc, curr) => acc + curr.duration, 0)}s
+                </span>
+              </div>
             </div>
 
             {totalFilesToUpload > 0 && (
@@ -1070,21 +1212,39 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 />
               </div>
 
-              {/* Display orientation */}
-              <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Playlist Orientation</label>
-                <div className="flex border border-slate-200 rounded-xl overflow-hidden font-bold h-[42px] bg-white shadow-xs">
+              {/* Display orientation with Enable Toggle Switch */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black">Enable Custom Orientation</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAllowCustomOrientation(prev => {
+                        const next = !prev;
+                        if (!next) setPlaylistOrientation('horizontal');
+                        return next;
+                      });
+                    }}
+                    className={`w-9 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${allowCustomOrientation ? 'bg-blue-600' : 'bg-gray-200'}`}
+                  >
+                    <div className={`bg-white w-4 h-4 rounded-full shadow transition-transform ${allowCustomOrientation ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                
+                <div className={`flex border rounded-xl overflow-hidden font-bold h-[42px] transition-all shadow-xs ${allowCustomOrientation ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
                   <button 
                     type="button"
+                    disabled={!allowCustomOrientation}
                     onClick={() => setPlaylistOrientation('horizontal')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${playlistOrientation === 'horizontal' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                    className={`flex-1 flex items-center justify-center gap-1.5 transition-colors ${playlistOrientation === 'horizontal' ? 'bg-blue-600 text-white font-black' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
-                    <span>Landscape</span>
+                    <span>Landscape (Default)</span>
                   </button>
                   <button 
                     type="button"
+                    disabled={!allowCustomOrientation}
                     onClick={() => setPlaylistOrientation('vertical')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${playlistOrientation === 'vertical' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                    className={`flex-1 flex items-center justify-center gap-1.5 transition-colors ${playlistOrientation === 'vertical' ? 'bg-blue-600 text-white font-black' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <span>Portrait</span>
                   </button>

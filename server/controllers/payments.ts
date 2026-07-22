@@ -186,24 +186,80 @@ export async function verifyPayment(req: any, res: any) {
   }
 }
 
+export async function getPaymentHistory(req: any, res: any) {
+  try {
+    await ensurePBAuth();
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    const paymentsResult = await pb.collection('payments').getList(1, 500, {
+      sort: '-created'
+    }).catch(() => ({ items: [] }));
+
+    res.status(200).json({
+      status: 'success',
+      items: paymentsResult.items
+    });
+  } catch (error: any) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({ message: error.message || 'Error fetching payment history' });
+  }
+}
+
 export async function handleWebhook(req: any, res: any) {
   try {
     await ensurePBAuth();
     const { event, payload } = req.body;
-    if (event === 'order.paid' && payload && payload.payment) {
+    console.log(`[Razorpay Webhook] Received event: "${event}"`);
+
+    if (payload && payload.payment && payload.payment.entity) {
       const paymentEntity = payload.payment.entity;
       const paymentId = paymentEntity.id;
-      const orderId = paymentEntity.order_id;
+      const orderId = paymentEntity.order_id || `ord_${paymentId}`;
+      const amountPaise = paymentEntity.amount || 0;
+      const amountRupees = amountPaise > 0 ? amountPaise / 100 : 0;
+      const email = paymentEntity.email || 'client@demo.com';
+      const status = event === 'payment.failed' ? 'failed' : 'success';
 
-      const licensesResult = await pb.collection('licenses').getList(1, 100, {
-        filter: 'status = "pending_payment"'
-      });
-      const licenses = licensesResult.items;
+      // Find matching license if available
+      const licensesResult = await pb.collection('licenses').getList(1, 10, {
+        filter: pb.filter('assignedUserEmail = {:email}', { email })
+      }).catch(() => ({ items: [] }));
 
-      if (licenses.length > 0) {
-        const license = licenses[0];
-        await verifyAndProcessPayment(license.id, paymentId, orderId);
-        console.log(`Processed webhook payment for license: ${license.id}`);
+      const matchingLicense = licensesResult.items[0];
+      const licenseId = matchingLicense?.id || 'LIC-GENERAL';
+      const licenseName = matchingLicense?.name || 'General License';
+
+      if (event === 'order.paid' || event === 'payment.captured') {
+        if (matchingLicense) {
+          await verifyAndProcessPayment(matchingLicense.id, paymentId, orderId);
+        } else {
+          await pb.collection('payments').create({
+            licenseId,
+            licenseName,
+            clientName: email.split('@')[0],
+            clientEmail: email,
+            amount: amountRupees || 5000,
+            paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
+            status: 'success',
+            razorpayPaymentId: paymentId,
+            razorpayOrderId: orderId
+          }).catch(err => console.error('Failed to create payment log for webhook:', err.message));
+        }
+        console.log(`[Razorpay Webhook] Successfully processed "${event}" for ${email}`);
+      } else if (event === 'payment.failed') {
+        await pb.collection('payments').create({
+          licenseId,
+          licenseName,
+          clientName: email.split('@')[0],
+          clientEmail: email,
+          amount: amountRupees || 5000,
+          paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
+          status: 'failed',
+          razorpayPaymentId: paymentId,
+          razorpayOrderId: orderId
+        }).catch(err => console.error('Failed to log failed payment webhook:', err.message));
       }
     }
 

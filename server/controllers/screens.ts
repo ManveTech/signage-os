@@ -1,4 +1,4 @@
-import { pb } from '../db';
+import { pb, ensurePBAuth } from '../db';
 import { syncScreenSchedule } from '../scheduler';
 import { redis, isRedisReady, acquireLock, releaseLock } from '../redis';
 
@@ -443,18 +443,23 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
       }
     } else {
       // --- FALLBACK (DIRECT POCKETBASE PATH IF REDIS OFFLINE) ---
-      const thresholdTime = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-      const filter = `(status = "online" || status = "active") && (lastHeartbeat < "${thresholdTime}" || lastHeartbeat = null || lastHeartbeat = "")`;
-      
+      const now = Date.now();
+      const thresholdMs = now - 90 * 1000; // 90 seconds timeout
+
       const screensResult = await pb.collection('screens').getList(1, 500, {
-        filter: filter
+        filter: 'status = "online" || status = "active"'
       });
       
-      const staleScreens = screensResult.items;
+      const staleScreens = screensResult.items.filter(s => {
+        if (!s.lastHeartbeat) return true;
+        const hbTime = new Date(s.lastHeartbeat).getTime();
+        return isNaN(hbTime) || hbTime < thresholdMs;
+      });
+
       devicesCheckedCount = staleScreens.length;
 
       if (devicesCheckedCount > 0) {
-        console.log(`[Status Checker] Fallback found ${devicesCheckedCount} stale screens. Processing status updates...`);
+        console.log(`[Status Checker] Found ${devicesCheckedCount} stale online screens. Transitioning to offline...`);
         
         await runWithConcurrencyLimit(STATUS_CHECK_CONCURRENCY, staleScreens, async (screen) => {
           const release = await getScreenLock(screen.id).acquire();
@@ -463,8 +468,7 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
             if (!latestScreen) return;
 
             const lastHeartbeatTime = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : 0;
-            const now = Date.now();
-            if (now - lastHeartbeatTime <= 2 * 60 * 1000 && lastHeartbeatTime > 0) {
+            if (now - lastHeartbeatTime <= 90 * 1000 && lastHeartbeatTime > 0) {
               console.log(`[Status Checker] Screen "${latestScreen.name}" (${latestScreen.id}) received a heartbeat recently. Skipping offline status update.`);
               return;
             }
@@ -473,7 +477,7 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
               return;
             }
 
-            console.log(`[Status Checker] 🔴 OFFLINE: Screen "${latestScreen.name}" (ID: ${latestScreen.id}) missed heartbeat. Marked offline in database (Fallback detection).`);
+            console.log(`[Status Checker] 🔴 OFFLINE: Screen "${latestScreen.name}" (ID: ${latestScreen.id}) missed heartbeat. Marked offline in database.`);
             
             let additionalUptime = 0;
             let additionalLoops = 0;

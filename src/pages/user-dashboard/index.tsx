@@ -24,11 +24,10 @@ import Organizations from './views/Organizations';
 import Settings from './views/Settings';
 import Support from './views/Support';
 import Profile from './views/Profile';
-import LicenseBillingView from './views/LicenseBillingView';
-
 import { licensingStore, License } from '../../lib/licensingStore';
 import { syncCollection, pushToDatabase } from '../../lib/syncHelper';
-import { X, CheckCircle, Key, Lock, Image } from 'lucide-react';
+import { X, CheckCircle, Lock, Image } from 'lucide-react';
+
 
 function renderView(view: string, navigate: (v: string) => void, userEmail: string) {
   switch (view) {
@@ -63,8 +62,8 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'support-tickets': return <Support activeTab="tickets" userEmail={userEmail} onNavigate={navigate} />;
     case 'support-help': return <Support activeTab="help" userEmail={userEmail} onNavigate={navigate} />;
     case 'profile': return <Profile userEmail={userEmail} />;
-    case 'license-billing': return <LicenseBillingView userEmail={userEmail} />;
     default: return <Dashboard userEmail={userEmail} />;
+
   }
 }
 
@@ -73,12 +72,6 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
   const [clientLicense, setClientLicense] = useState<License | null>(null);
-
-  // Razorpay Checkout states inside paywall
-  const [isRzpOpen, setIsRzpOpen] = useState(false);
-  const [rzpStep, setRzpStep] = useState<'methods' | 'processing' | 'success'>('methods');
-  const [selectedMethod, setSelectedMethod] = useState<'upi' | 'card' | null>(null);
-  const [paymentLoading, setPaymentLoading] = useState(false);
 
   // First time login states
   const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
@@ -161,190 +154,6 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, [userEmail]);
-
-  // Real Razorpay Payment checkout logic
-  const handleInitiateRealPayment = async () => {
-    try {
-      if (!clientLicense) return;
-      setPaymentLoading(true);
-
-      const token = localStorage.getItem('signageos_token');
-      const response = await fetch(`${API_BASE}/payments/create-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ licenseId: clientLicense.id })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create order on server');
-      }
-
-      const orderData = await response.json();
-
-      if ((window as any).Razorpay) {
-        const options = {
-          key: orderData.razorpayKeyId || 'rzp_live_demo83920194',
-          amount: orderData.amount,
-          currency: orderData.currency || 'INR',
-          name: 'SignageOS Technologies',
-          description: `License Reactivation for ${clientLicense.name}`,
-          order_id: orderData.orderId,
-          handler: async function (response: any) {
-            setPaymentLoading(true);
-            try {
-              const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                  razorpayPaymentId: response.razorpay_payment_id,
-                  razorpayOrderId: response.razorpay_order_id,
-                  razorpaySignature: response.razorpay_signature,
-                  licenseId: clientLicense.id
-                })
-              });
-
-              if (verifyRes.ok) {
-                const durationDays = clientLicense.tenure === 'monthly' ? 30 : 365;
-                const today = new Date();
-                today.setDate(today.getDate() + durationDays);
-                const newExpiry = today.toISOString().split('T')[0];
-
-                licensingStore.updateLicense(clientLicense.id, {
-                  status: 'active',
-                  expiryDate: newExpiry
-                });
-
-                setIsPaywallOpen(false);
-                checkLicense();
-              } else {
-                const err = await verifyRes.json().catch(() => ({}));
-                toast.error(`Payment verification failed: ${err.message || 'Signature mismatch'}`);
-              }
-            } catch (err) {
-              console.error(err);
-              toast.error('Network error verifying payment.');
-            } finally {
-              setPaymentLoading(false);
-            }
-          },
-          prefill: {
-            email: userEmail
-          },
-          theme: {
-            color: '#0EA5E9'
-          },
-          modal: {
-            ondismiss: function() {
-              setPaymentLoading(false);
-            }
-          }
-        };
-
-        const rzp = new (window as any).Razorpay(options);
-        setPaymentLoading(false);
-        rzp.open();
-      } else {
-        // Fallback to simulated UI
-        setPaymentLoading(false);
-        setIsRzpOpen(true);
-        setRzpStep('methods');
-      }
-    } catch (error: any) {
-      console.error('Error initiating payment:', error);
-      toast.error('Failed to initiate payment. Please try again.');
-      setPaymentLoading(false);
-    }
-  };
-
-  // Connected simulated pay success
-  const handlePaySuccess = async () => {
-    if (!clientLicense) return;
-    setRzpStep('processing');
-
-    const token = localStorage.getItem('signageos_token');
-    const razorpayPaymentId = 'pay_' + Math.random().toString(36).substring(2, 11);
-    const razorpayOrderId = 'order_' + Math.random().toString(36).substring(2, 11);
-
-    try {
-      const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          razorpayPaymentId,
-          razorpayOrderId,
-          razorpaySignature: 'simulated_sig',
-          licenseId: clientLicense.id
-        })
-      });
-
-      if (verifyRes.ok) {
-        setRzpStep('success');
-        
-        const durationDays = clientLicense.tenure === 'monthly' ? 30 : 365;
-        const today = new Date();
-        today.setDate(today.getDate() + durationDays);
-        const newExpiry = today.toISOString().split('T')[0];
-
-        licensingStore.updateLicense(clientLicense.id, {
-          status: 'active',
-          expiryDate: newExpiry
-        });
-
-        // Trigger local invoices sync (simulate locally for frontend store fallback too)
-        const invoices = licensingStore.getInvoices();
-        const unpaidInv = invoices.find(i => i.licenseId === clientLicense.id && i.status === 'unpaid');
-        const amountWithGst = Math.round(clientLicense.price * 1.18);
-        if (unpaidInv) {
-          const updatedInvoices = invoices.map(i => 
-            i.id === unpaidInv.id ? { ...i, status: 'paid' as const } : i
-          );
-          licensingStore.saveInvoices(updatedInvoices);
-        } else {
-          licensingStore.addInvoice({
-            id: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-            licenseId: clientLicense.id,
-            licenseName: clientLicense.name,
-            clientName: userEmail.split('@')[0],
-            clientEmail: userEmail,
-            amount: amountWithGst,
-            dueDate: newExpiry,
-            status: 'paid',
-            issuedDate: new Date().toISOString().split('T')[0]
-          });
-        }
-
-        setTimeout(() => {
-          setIsRzpOpen(false);
-          setIsPaywallOpen(false);
-          checkLicense();
-        }, 1500);
-      } else {
-        toast.error('Simulated payment verification failed on server.');
-        setRzpStep('methods');
-      }
-    } catch (err) {
-      console.error(err);
-      setRzpStep('methods');
-    }
-  };
-
-  const handleReactivateClick = () => {
-    if ((window as any).Razorpay) {
-      handleInitiateRealPayment();
-    } else {
-      setIsRzpOpen(true);
-      setRzpStep('methods');
-    }
-  };
 
   // First time login submit handler
   const handleFirstLoginSubmit = async (e: React.FormEvent) => {
@@ -456,11 +265,11 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
           <div className="p-8 space-y-6">
             {/* Icon + heading */}
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-2xl flex items-center justify-center flex-shrink-0 text-rose-500">
-                <Key size={22} />
+              <div className="w-12 h-12 bg-amber-50 border border-amber-100 rounded-2xl flex items-center justify-center flex-shrink-0 text-amber-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               </div>
               <div>
-                <h2 className="text-lg font-black text-slate-900 tracking-tight">Access Suspended</h2>
+                <h2 className="text-lg font-black text-slate-900 tracking-tight">License Expired</h2>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   License <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{clientLicense.id}</span> is unpaid or expired.
                 </p>
@@ -479,140 +288,26 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                   <span className="text-xs font-bold text-slate-800 capitalize">{clientLicense.tenure}</span>
                 </div>
                 <div className="flex justify-between items-center px-4 py-3">
-                  <span className="text-xs text-slate-500 font-semibold">Cycle Price</span>
-                  <span className="text-xs font-bold text-slate-800">₹{clientLicense.price.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center px-4 py-3 bg-blue-50/60">
-                  <span className="text-xs text-blue-700 font-black uppercase tracking-wider">Total Due (Testing Mode)</span>
-                  <span className="text-lg font-black text-blue-600">₹1</span>
+                  <span className="text-xs text-slate-500 font-semibold">Expiry Date</span>
+                  <span className="text-xs font-bold text-rose-600">{clientLicense.expiryDate || 'Expired'}</span>
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={handleReactivateClick}
-              disabled={paymentLoading}
-              className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {paymentLoading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Initiating Checkout...
-                </>
-              ) : (
-                'Pay & Reactivate License'
-              )}
-            </button>
+            {/* Admin contact notice — no payment UI for users */}
+            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-start gap-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0 text-blue-600 mt-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-blue-900">Contact your administrator</p>
+                <p className="text-xs text-blue-700 mt-0.5 leading-relaxed">
+                  Your license has expired or is pending payment. Please reach out to your system administrator to renew or reactivate your subscription.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Razorpay simulated modal popup */}
-        {isRzpOpen && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-            <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn">
-              {/* Modal Header */}
-              <div className="bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 px-5 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center text-[11px] font-black italic text-white">R</div>
-                  <div>
-                    <p className="text-[10px] font-black tracking-wider uppercase text-white">Razorpay Checkout</p>
-                    <p className="text-[8.5px] text-white/70 font-medium">SignageOS Technologies Ltd.</p>
-                  </div>
-                </div>
-                <button onClick={() => setIsRzpOpen(false)} className="text-white/70 hover:text-white cursor-pointer transition-colors">
-                  <X size={16} />
-                </button>
-              </div>
-
-              {rzpStep === 'methods' && (
-                <div className="p-5 space-y-4 text-left">
-                  {/* Amount display */}
-                  <div className="text-center py-3 bg-slate-50 rounded-2xl border border-slate-200">
-                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-wider">Total Payable Amount</p>
-                    <p className="text-3xl font-black mt-1 text-blue-600">₹1</p>
-                    <p className="text-[8.5px] text-slate-400 font-semibold mt-0.5">Testing Mode — GST Included</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Select Payment Method</p>
-
-                    <button
-                      onClick={() => setSelectedMethod('upi')}
-                      className={`w-full p-3.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
-                        selectedMethod === 'upi'
-                          ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-100'
-                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">UPI — Paytm / Google Pay</p>
-                        <p className="text-[9px] text-slate-500 mt-0.5">Pay instantly via QR code or phone number</p>
-                      </div>
-                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                        selectedMethod === 'upi' ? 'border-blue-500' : 'border-slate-300'
-                      }`}>
-                        {selectedMethod === 'upi' && <span className="w-2 h-2 bg-blue-500 rounded-full" />}
-                      </span>
-                    </button>
-
-                    <button
-                      onClick={() => setSelectedMethod('card')}
-                      className={`w-full p-3.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
-                        selectedMethod === 'card'
-                          ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-100'
-                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Credit / Debit Card</p>
-                        <p className="text-[9px] text-slate-500 mt-0.5">Visa, Mastercard, RuPay, Maestro</p>
-                      </div>
-                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                        selectedMethod === 'card' ? 'border-blue-500' : 'border-slate-300'
-                      }`}>
-                        {selectedMethod === 'card' && <span className="w-2 h-2 bg-blue-500 rounded-full" />}
-                      </span>
-                    </button>
-                  </div>
-
-                  <button
-                    disabled={!selectedMethod}
-                    onClick={handlePaySuccess}
-                    className={`w-full py-3.5 rounded-xl font-extrabold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                      selectedMethod
-                        ? 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-md shadow-blue-500/20'
-                        : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                    }`}
-                  >
-                    Pay Securely via Razorpay
-                  </button>
-                </div>
-              )}
-
-              {rzpStep === 'processing' && (
-                <div className="p-10 text-center space-y-4">
-                  <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-sm font-bold text-slate-800">Processing Payment...</p>
-                  <p className="text-xs text-slate-400">Please do not close this window.</p>
-                </div>
-              )}
-
-              {rzpStep === 'success' && (
-                <div className="p-10 text-center space-y-3">
-                  <div className="w-14 h-14 bg-emerald-50 border border-emerald-200 rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle size={28} className="text-emerald-500" />
-                  </div>
-                  <p className="text-base font-black text-slate-800">Payment Successful!</p>
-                  <p className="text-xs text-slate-500">Your license has been reactivated.</p>
-                </div>
-              )}
-
-              <div className="bg-slate-50 border-t border-slate-100 py-2.5 text-center text-[8px] text-slate-400 font-bold uppercase tracking-widest">
-                🔒 Secured by 256-bit SSL Encryption
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }

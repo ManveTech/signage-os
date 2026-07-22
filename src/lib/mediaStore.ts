@@ -40,7 +40,11 @@ export interface Playlist {
   createdBy: string; // client email or 'admin'
   mediaIds: string[];
   assignedScreenIds: string[];
+  allowCustomOrientation?: boolean;
   orientation?: 'horizontal' | 'vertical';
+  isCompiled?: boolean;
+  compiledVideoUrl?: string;
+  compiledVideoData?: string;
   widgetType?: 'weather' | 'clock' | 'rss' | 'qrcode';
   widgetPlacement?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   widgetLink?: string;

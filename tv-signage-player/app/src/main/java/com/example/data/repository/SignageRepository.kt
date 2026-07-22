@@ -271,18 +271,12 @@ class SignageRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error syncing screen status with backend", e)
             logErrorToServer("Sync Status Failure", e.message ?: "Unknown error")
-            
-            // Check if it has been offline (unable to sync) for more than 24 hours
-            val currentConfig = getOrCreateConfig()
-            if (currentConfig.screenId.isNotEmpty() && currentConfig.lastSyncedAt > 0L) {
-                val offlineDuration = System.currentTimeMillis() - currentConfig.lastSyncedAt
-                val oneDayMs = 24 * 60 * 60 * 1000L
-                if (offlineDuration > oneDayMs) {
-                    Log.w("SignageRepository", "Screen has been offline for more than 24 hours. Unpairing device.")
-                    clearCache()
-                }
-            }
-            
+
+            // Device is offline — keep playing cached content indefinitely.
+            // The device will auto-resume syncing once connectivity is restored.
+            // Only intentional unpairing paths are: server-side 404 (screen deleted)
+            // or admin disconnect via dashboard.
+
             Result.failure(e)
         }
     }

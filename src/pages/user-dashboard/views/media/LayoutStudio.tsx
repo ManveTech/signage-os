@@ -135,7 +135,7 @@ export default function LayoutStudio() {
             )}
             {addedWidgets.includes('clock') && (
               <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded font-mono">
-                14:32:10
+                02:32:10 PM
               </div>
             )}
           </div>

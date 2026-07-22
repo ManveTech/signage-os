@@ -3,8 +3,10 @@ import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Cl
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
+import { getEffectiveStatus } from './MyScreens';
 
-const renderStatusBadge = (status: string) => {
+const renderStatusBadge = (screenOrStatus: any) => {
+  const status = typeof screenOrStatus === 'string' ? screenOrStatus : getEffectiveStatus(screenOrStatus);
   let label = status;
   let bg = 'bg-slate-500/10 text-slate-700 border-slate-500/20';
   let dot = <span className="h-2 w-2 rounded-full bg-slate-500"></span>;
@@ -317,9 +319,9 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
             className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
           >
             <option value="all">All Organizations</option>
-            {Array.from(new Set(organizations.map(o => o.name)))
-              .filter(name => name && name !== 'x')
-              .map(orgName => (
+            {Array.from(new Set<string>(organizations.map((o: any) => o.name as string)))
+              .filter((name: string) => Boolean(name && name !== 'x'))
+              .map((orgName: string) => (
                 <option key={orgName} value={orgName}>{orgName}</option>
               ))
             }
@@ -335,9 +337,9 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
       {/* Stats bar */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Online', count: screens.filter(s => s.status === 'online').length, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Offline', count: screens.filter(s => s.status === 'offline').length, color: 'text-red-600', bg: 'bg-red-50' },
-          { label: 'Warning', count: screens.filter(s => s.status === 'warning').length, color: 'text-yellow-600', bg: 'bg-yellow-50' },
+          { label: 'Online', count: screens.filter(s => getEffectiveStatus(s) === 'online' || getEffectiveStatus(s) === 'active').length, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'Offline', count: screens.filter(s => getEffectiveStatus(s) === 'offline').length, color: 'text-red-600', bg: 'bg-red-50' },
+          { label: 'Warning', count: screens.filter(s => getEffectiveStatus(s) === 'warning').length, color: 'text-yellow-600', bg: 'bg-yellow-50' },
         ].map(s => (
           <div key={s.label} className={`${s.bg} rounded-lg px-4 py-2.5 flex items-center justify-between`}>
             <span className="text-xs font-medium text-gray-700">{s.label}</span>
@@ -406,7 +408,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {renderStatusBadge(screen.status)}
+                      {renderStatusBadge(screen)}
                     </td>
                     <td className="px-4 py-3">
                       {screen.groupId ? (() => {
