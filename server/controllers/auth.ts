@@ -38,7 +38,7 @@ export async function login(req: any, res: any) {
       });
     } catch (pbErr: any) {
       console.log('PocketBase auth failed, checking fallback:', pbErr.message);
-      
+
 
       return res.status(401).json({ message: 'Invalid access credentials.' });
     }
@@ -80,7 +80,7 @@ export async function forgotPassword(req: any, res: any) {
       exp: Math.floor(Date.now() / 1000) + 15 * 60
     });
 
-    const resetLink = `http://localhost:3000/?token=${token}&userId=${user.id}`;
+    const resetLink = `blu.manve.co/?token=${token}&userId=${user.id}`;
 
     // Send the email
     const emailSent = await sendPasswordResetEmail({

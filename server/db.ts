@@ -1,7 +1,7 @@
 import PocketBase from 'pocketbase';
-import { 
-  PB_URL, 
-  PB_ADMIN_EMAIL, 
+import {
+  PB_URL,
+  PB_ADMIN_EMAIL,
   PB_ADMIN_PASSWORD,
   SMTP_HOST,
   SMTP_PORT,
@@ -21,14 +21,14 @@ export function redactSensitiveData(text: string): string {
     if (PB_URL) {
       const escapedPBUrl = PB_URL.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
       result = result.replace(new RegExp(escapedPBUrl, 'gi'), '[POCKETBASE_URL]');
-      
+
       const pbUrlObj = new URL(PB_URL);
       if (pbUrlObj.hostname) {
         const escapedHost = pbUrlObj.hostname.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         result = result.replace(new RegExp(escapedHost, 'gi'), '[POCKETBASE_HOST]');
       }
     }
-  } catch (_) {}
+  } catch (_) { }
   return result;
 }
 
@@ -899,7 +899,7 @@ Notes:
     await pb.settings.update({
       meta: {
         appName: "SignageOS",
-        appUrl: "http://localhost:3000"
+        appUrl: "blu.manve.co"
       },
       smtp: {
         enabled: true,

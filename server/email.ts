@@ -44,7 +44,7 @@ export async function sendCredentialsEmail({
   const transporter = getTransporter();
 
   const appName = "SignageOS Technologies";
-  const loginUrl = "http://localhost:3000";
+  const loginUrl = "blu.manve.co";
 
   const emailHtml = `
     <!DOCTYPE html>

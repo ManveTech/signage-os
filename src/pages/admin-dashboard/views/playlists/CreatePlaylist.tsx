@@ -746,11 +746,17 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       return;
     }
 
-    let finalCompiledVideoUrl = compiledVideoUrl;
-    if (isCompiled && compiledVideoUrl && compiledVideoUrl.startsWith('data:')) {
+    let targetCompiledUrl = compiledVideoUrl;
+    if (!isCompiled || !targetCompiledUrl || targetCompiledUrl.startsWith('http')) {
+      showToast('🎬 Compiling playlist slides into single video container...');
+      targetCompiledUrl = await handleCompilePlaylistVideo();
+    }
+
+    let finalCompiledVideoUrl = targetCompiledUrl || '';
+    if (targetCompiledUrl && targetCompiledUrl.startsWith('data:')) {
       try {
-        showToast('Uploading compiled video to Cloudflare R2 storage...');
-        const base64Data = compiledVideoUrl.split(',')[1];
+        showToast('☁️ Uploading compiled video to Cloudflare R2 storage...');
+        const base64Data = targetCompiledUrl.split(',')[1];
         const fileName = `compiled_playlist_${Date.now()}.webm`;
         const res = await fetch(`${API_BASE}/media_items`, {
           method: 'POST',
@@ -768,6 +774,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
           const data = await res.json();
           finalCompiledVideoUrl = data.fileUrl || data.thumbnail;
           setCompiledVideoUrl(finalCompiledVideoUrl);
+          setIsCompiled(true);
           console.log('[R2 Upload] Compiled playlist video uploaded to Cloudflare R2:', finalCompiledVideoUrl);
         }
       } catch (err) {
@@ -798,8 +805,8 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       mediaIds: playlistItems.map(item => item.mediaId),
       allowCustomOrientation: allowCustomOrientation,
       orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
-      isCompiled: Boolean(isCompiled && finalCompiledVideoUrl),
-      compiledVideoUrl: finalCompiledVideoUrl || '',
+      isCompiled: Boolean(finalCompiledVideoUrl),
+      compiledVideoUrl: finalCompiledVideoUrl,
       widgetType: playlistWidgetType,
       widgetPlacement: playlistWidgetPlacement,
       widgetLink: finalWidgetLink,
@@ -810,61 +817,25 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       slides: playlistItems
     };
 
-    let savedPlaylistId = editingPlaylistId;
     if (editingPlaylistId) {
       mediaStore.updatePlaylist(editingPlaylistId, playlistPayload);
-      showToast(`✅ Playlist "${playlistName}" updated in database successfully!`);
+      showToast(`✅ Playlist "${playlistName}" updated with video container!`);
     } else {
       const created = mediaStore.createPlaylist({ ...playlistPayload, assignedScreenIds: [] });
-      savedPlaylistId = created.id;
       setEditingPlaylistId(created.id);
-      showToast(`✅ Playlist "${playlistName}" created and saved to database!`);
+      showToast(`✅ Playlist "${playlistName}" created with video container!`);
     }
 
     loadPlaylists();
 
-    // Background compilation if not already compiled
-    if (savedPlaylistId && (!isCompiled || !finalCompiledVideoUrl)) {
-      handleCompilePlaylistVideo().then(async (dataUrl) => {
-        if (dataUrl && dataUrl.startsWith('data:')) {
-          try {
-            const fileName = `compiled_playlist_${Date.now()}.webm`;
-            const res = await fetch(`${API_BASE}/media_items`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                fileData: dataUrl.split(',')[1],
-                fileName: fileName,
-                mimeType: 'video/webm',
-                title: `Compiled Loop - ${playlistName}`,
-                type: 'video',
-                uploadedBy: targetUserEmail
-              })
-            });
-            if (res.ok) {
-              const data = await res.json();
-              const r2Url = data.fileUrl || data.thumbnail;
-              setCompiledVideoUrl(r2Url);
-              setIsCompiled(true);
-              mediaStore.updatePlaylist(savedPlaylistId!, { isCompiled: true, compiledVideoUrl: r2Url });
-              console.log('[Background Compile] Playlist compiled and updated in database:', r2Url);
-            }
-          } catch (e) {
-            console.error('[Background Compile] Upload error:', e);
-          }
-        }
-      }).catch(err => {
-        console.warn('[Background Compile] Skipped background compile:', err);
-      });
-    }
-
-    // Navigate to all playlists / my playlists view
     if (onNavigate) {
-      if (userEmail === 'admin@demo.com') {
-        onNavigate('my-playlists');
-      } else {
-        onNavigate('playlists-all');
-      }
+      setTimeout(() => {
+        if (userEmail === 'admin@demo.com') {
+          onNavigate('my-playlists');
+        } else {
+          onNavigate('playlists-all');
+        }
+      }, 1000);
     }
   };
 
@@ -917,6 +888,38 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
               </div>
               <p className="text-[10px] text-slate-400 text-center">
                 Uploading to server and adding to your media library...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-page Video Compilation Progress Overlay */}
+      {isCompiling && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[70] flex items-center justify-center animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 w-full max-w-md mx-4 space-y-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-inner">
+              <Sparkles size={28} className="animate-spin" />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900">Compiling Single Video Container</h3>
+              <p className="text-xs text-slate-500 mt-1 font-medium">
+                Combining images & videos frame-by-frame for seamless smart TV playback...
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                <span>Compilation Progress</span>
+                <span className="text-indigo-600 font-extrabold">{compileProgress}%</span>
+              </div>
+              <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden p-0.5 border border-slate-200">
+                <div 
+                  className="bg-gradient-to-r from-indigo-500 via-blue-600 to-purple-600 h-full rounded-full transition-all duration-300 shadow-sm"
+                  style={{ width: `${compileProgress}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 font-semibold mt-1">
+                Please wait — video binary will upload to Cloudflare R2 automatically.
               </p>
             </div>
           </div>
