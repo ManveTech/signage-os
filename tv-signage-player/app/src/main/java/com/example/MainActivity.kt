@@ -169,50 +169,96 @@ fun SignagePlayerApp(
                                 val widgetType = uiState.widgetType
                                 val widgetLink = uiState.widgetLink ?: ""
                                 if (!widgetType.isNullOrEmpty()) {
-                                    val alignment = when (uiState.widgetPlacement) {
-                                        "top-left" -> Alignment.TopStart
-                                        "top-right" -> Alignment.TopEnd
-                                        "bottom-left" -> Alignment.BottomStart
-                                        "bottom-right" -> Alignment.BottomEnd
-                                        else -> Alignment.TopEnd
+                                    val activeWidgets = widgetType.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+                                    
+                                    var rssText = ""
+                                    var qrLink = ""
+                                    var weatherLoc = ""
+                                    var clockText = ""
+
+                                    if (widgetLink.startsWith("{") && widgetLink.endsWith("}")) {
+                                        try {
+                                            val json = org.json.JSONObject(widgetLink)
+                                            rssText = json.optString("rss", "")
+                                            qrLink = json.optString("qrcode", "")
+                                            weatherLoc = json.optString("weather", "")
+                                            clockText = json.optString("clock", "")
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("MainActivity", "Failed to parse widgetLink JSON", e)
+                                        }
+                                    } else {
+                                        // Fallback for single widget type
+                                        when {
+                                            activeWidgets.contains("rss") -> rssText = widgetLink
+                                            activeWidgets.contains("qrcode") -> qrLink = widgetLink
+                                            activeWidgets.contains("weather") -> weatherLoc = widgetLink
+                                            activeWidgets.contains("clock") -> clockText = widgetLink
+                                        }
                                     }
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(24.dp),
-                                        contentAlignment = alignment
-                                    ) {
-                                        if (widgetType == "qrcode") {
-                                            val encodedLink = try {
-                                                java.net.URLEncoder.encode(widgetLink, "UTF-8")
-                                            } catch (e: Exception) {
-                                                widgetLink
-                                            }
-                                            AsyncImage(
-                                                model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
-                                                contentDescription = "Scan QR Code Widget Overlay",
-                                                modifier = Modifier.size(120.dp),
-                                                contentScale = ContentScale.Fit
-                                            )
-                                        } else {
-                                            Card(
-                                                colors = CardDefaults.cardColors(
-                                                    containerColor = Color(0xCC111827) // Premium translucent dark HUD card
+
+                                    // Render RSS ticker bar at the bottom full-width if active
+                                    if (activeWidgets.contains("rss")) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.BottomCenter
+                                        ) {
+                                            RssTickerWidget(tickerText = rssText)
+                                        }
+                                    }
+
+                                    // Render float card overlay (qrcode, weather, clock) at widgetPlacement
+                                    val hasFloatWidget = activeWidgets.any { it == "qrcode" || it == "weather" || it == "clock" }
+                                    if (hasFloatWidget) {
+                                        val alignment = when (uiState.widgetPlacement) {
+                                            "top-left" -> Alignment.TopStart
+                                            "top-right" -> Alignment.TopEnd
+                                            "bottom-left" -> Alignment.BottomStart
+                                            "bottom-right" -> Alignment.BottomEnd
+                                            else -> Alignment.TopEnd
+                                        }
+                                        val extraBottomPadding = if (activeWidgets.contains("rss") && uiState.widgetPlacement?.startsWith("bottom") == true) 56.dp else 24.dp
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(
+                                                    start = 24.dp,
+                                                    top = 24.dp,
+                                                    end = 24.dp,
+                                                    bottom = extraBottomPadding
                                                 ),
-                                                shape = RoundedCornerShape(16.dp),
-                                                modifier = Modifier
-                                                    .width(200.dp)
-                                                    .padding(14.dp)
-                                            ) {
-                                                when (widgetType) {
-                                                    "weather" -> {
-                                                        WeatherWidget(location = widgetLink.ifEmpty { "Bengaluru" })
-                                                    }
-                                                    "clock" -> {
-                                                        ClockWidget(header = widgetLink.ifEmpty { "Lobby Clock" })
-                                                    }
-                                                    "rss" -> {
-                                                        RssTickerWidget(tickerText = widgetLink)
+                                            contentAlignment = alignment
+                                        ) {
+                                            val floatWidgetType = activeWidgets.firstOrNull { it == "qrcode" || it == "weather" || it == "clock" }
+                                            if (floatWidgetType == "qrcode") {
+                                                val encodedLink = try {
+                                                    java.net.URLEncoder.encode(qrLink, "UTF-8")
+                                                } catch (e: Exception) {
+                                                    qrLink
+                                                }
+                                                AsyncImage(
+                                                    model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
+                                                    contentDescription = "Scan QR Code Widget Overlay",
+                                                    modifier = Modifier.size(120.dp),
+                                                    contentScale = ContentScale.Fit
+                                                )
+                                            } else if (floatWidgetType != null) {
+                                                Card(
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = Color(0xCC111827) // Premium translucent dark HUD card
+                                                    ),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    modifier = Modifier
+                                                        .width(200.dp)
+                                                        .padding(14.dp)
+                                                ) {
+                                                    when (floatWidgetType) {
+                                                        "weather" -> {
+                                                            WeatherWidget(location = weatherLoc.ifEmpty { "Bengaluru" })
+                                                        }
+                                                        "clock" -> {
+                                                            ClockWidget(header = clockText.ifEmpty { "Lobby Clock" })
+                                                        }
                                                     }
                                                 }
                                             }
@@ -2006,37 +2052,40 @@ fun ClockWidget(header: String) {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RssTickerWidget(tickerText: String) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.fillMaxWidth()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .background(Color(0xE6111827)) // Solid premium dark bar
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "LIVE TICKER",
-            color = Color(0xFF94A3B8),
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            modifier = Modifier.fillMaxWidth()
-        )
+        // Red live badge
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0x22FFFFFF), RoundedCornerShape(8.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .background(Color(0xFFDC2626), RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             Text(
-                text = tickerText.ifEmpty { "Welcome to SignageOS Digital Display Player Network Ticker" },
+                text = "LIVE",
                 color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                modifier = Modifier.basicMarquee(
-                    iterations = Int.MAX_VALUE,
-                    velocity = 30.dp
-                )
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp
             )
         }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = tickerText.ifEmpty { "Welcome to SignageOS Digital Display Player Network Ticker" },
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.basicMarquee(
+                iterations = Int.MAX_VALUE,
+                velocity = 45.dp
+            )
+        )
     }
 }
 
