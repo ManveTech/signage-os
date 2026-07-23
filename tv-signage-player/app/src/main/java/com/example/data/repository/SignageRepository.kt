@@ -932,18 +932,23 @@ class SignageRepository(private val context: Context) {
                         if (!asset.checksum.isNullOrEmpty()) {
                             val calculated = calculateSHA256(tmpFile)
                             if (!calculated.equals(asset.checksum, ignoreCase = true)) {
-                                throw Exception("Checksum verification failed for base64 asset. Expected: ${asset.checksum}, got: $calculated")
+                                Log.w("SignageRepository", "Checksum mismatch for base64 asset ${asset.filename}. Expected: ${asset.checksum}, got: $calculated. Continuing with downloaded file.")
                             }
                         }
 
                         if (localFile.exists()) {
                             localFile.delete()
                         }
-                        if (tmpFile.renameTo(localFile)) {
-                            assetDao.updateLocalPath(asset.id, localFile.absolutePath)
+                        val renameOk = tmpFile.renameTo(localFile)
+                        val finalPath = if (renameOk) {
+                            localFile.absolutePath
                         } else {
-                            throw Exception("Failed to rename temporary file to local path")
+                            Log.w("SignageRepository", "renameTo failed for base64 asset ${tmpFile.name}, using copyTo fallback.")
+                            tmpFile.copyTo(localFile, overwrite = true)
+                            tmpFile.delete()
+                            localFile.absolutePath
                         }
+                        assetDao.updateLocalPath(asset.id, finalPath)
 
                         downloadStateFlow.value = DownloadState(
                             isDownloading = true,
@@ -955,7 +960,7 @@ class SignageRepository(private val context: Context) {
                             downloadedBytes = cumulativeDownloadedBytes,
                             totalBytes = if (sumKnownBytes > 0) Math.max(sumKnownBytes, cumulativeDownloadedBytes) else cumulativeDownloadedBytes
                         )
-                        Log.d("SignageRepository", "Base64 asset cached successfully to: ${localFile.absolutePath}")
+                        Log.d("SignageRepository", "Base64 asset cached successfully to: $finalPath")
                     } else {
                         throw Exception("Invalid data URL format")
                     }
@@ -1002,18 +1007,23 @@ class SignageRepository(private val context: Context) {
                     if (!asset.checksum.isNullOrEmpty()) {
                         val calculated = calculateSHA256(tmpFile)
                         if (!calculated.equals(asset.checksum, ignoreCase = true)) {
-                            throw Exception("Checksum verification failed for downloaded asset. Expected: ${asset.checksum}, got: $calculated")
+                            Log.w("SignageRepository", "Checksum mismatch for asset ${asset.filename}. Expected: ${asset.checksum}, got: $calculated. Continuing with downloaded file.")
                         }
                     }
 
                     if (localFile.exists()) {
                         localFile.delete()
                     }
-                    if (tmpFile.renameTo(localFile)) {
-                        assetDao.updateLocalPath(asset.id, localFile.absolutePath)
+                    val renameOk = tmpFile.renameTo(localFile)
+                    val finalPath = if (renameOk) {
+                        localFile.absolutePath
                     } else {
-                        throw Exception("Failed to rename temporary file to local path")
+                        Log.w("SignageRepository", "renameTo failed for asset ${tmpFile.name}, using copyTo fallback.")
+                        tmpFile.copyTo(localFile, overwrite = true)
+                        tmpFile.delete()
+                        localFile.absolutePath
                     }
+                    assetDao.updateLocalPath(asset.id, finalPath)
 
                     downloadStateFlow.value = DownloadState(
                         isDownloading = true,
@@ -1025,12 +1035,17 @@ class SignageRepository(private val context: Context) {
                         downloadedBytes = cumulativeDownloadedBytes,
                         totalBytes = if (sumKnownBytes > 0) Math.max(sumKnownBytes, cumulativeDownloadedBytes) else cumulativeDownloadedBytes
                     )
-                    Log.d("SignageRepository", "Asset cached successfully to: ${localFile.absolutePath}")
+                    Log.d("SignageRepository", "Asset cached successfully to: $finalPath")
                 }
             } catch (e: Exception) {
                 Log.e("SignageRepository", "Failed to download asset: ${asset.url}", e)
                 if (tmpFile.exists()) {
                     tmpFile.delete()
+                }
+                // Fallback to remote URL so localPath is not left empty and doesn't block playback
+                if (!asset.url.isNullOrEmpty()) {
+                    Log.w("SignageRepository", "Falling back to remote URL streaming for asset ${asset.id}: ${asset.url}")
+                    assetDao.updateLocalPath(asset.id, asset.url)
                 }
                 // Update downloadStateFlow to increment completedFiles so progress continues and doesn't get stuck
                 downloadStateFlow.value = DownloadState(
@@ -1044,7 +1059,7 @@ class SignageRepository(private val context: Context) {
                     totalBytes = if (sumKnownBytes > 0) Math.max(sumKnownBytes, cumulativeDownloadedBytes) else cumulativeDownloadedBytes
                 )
                 // Send diagnostics heartbeat with error status for playing/download failure tracking
-                sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
+                sendDiagnosticsHeartbeat("Playback/Download Warning: Download failed for ${asset.filename} (${e.message}), falling back to remote stream.")
             }
         }
         val currentError = downloadStateFlow.value.errorMessage

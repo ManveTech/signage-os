@@ -4,8 +4,8 @@
 
 (function () {
     // Config Constants (pointing to backend endpoints)
-    const SERVER_URL = 'https://dem1.manve.co'; // Target server URL. Will be resolved to match PocketBase settings.
-    let POCKETBASE_URL = 'https://demo.manve.co'; // Resolved during pairing
+    let SERVER_URL = localStorage.getItem('signage_tizen_server_url') || 'https://dem1.manve.co'; // Target server URL
+    let POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || 'https://demo.manve.co'; // Resolved during pairing
 
     // Local Storage state keys
     const KEYS = {
@@ -174,8 +174,14 @@
         });
     }
 
-    // Fetch helper with timeout to avoid AbortController incompatibility in Tizen 3.0/4.0
-    function fetchWithTimeout(url, options = {}, timeout = 2500) {
+    // Fetch helper with AbortController timeout to immediately release browser sockets in Tizen
+    function fetchWithTimeout(url, options = {}, timeout = 5000) {
+        if (typeof window.AbortController === 'function') {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeout);
+            const mergedOptions = Object.assign({}, options, { signal: controller.signal });
+            return fetch(url, mergedOptions).finally(() => clearTimeout(timer));
+        }
         return Promise.race([
             fetch(url, options),
             new Promise((_, reject) => {
@@ -367,6 +373,11 @@
         views.videoPlayer.addEventListener('error', (e) => {
             console.error("Video element error, skipping asset.", e);
             reportError('Video playback error', e.message || 'unknown');
+            sendHeartbeat('Playback error');
+            if (rotationTimeout) {
+                clearTimeout(rotationTimeout);
+                rotationTimeout = null;
+            }
             advancePlaylist();
         });
     }
@@ -502,6 +513,10 @@
             if (data.pocketbaseUrl) {
                 POCKETBASE_URL = data.pocketbaseUrl.replace('localhost', window.location.hostname).replace('127.0.0.1', window.location.hostname);
                 localStorage.setItem('signage_tizen_pb_url', POCKETBASE_URL);
+            }
+            if (data.serverUrl || data.backendUrl) {
+                SERVER_URL = (data.serverUrl || data.backendUrl).replace('localhost', window.location.hostname).replace('127.0.0.1', window.location.hostname);
+                localStorage.setItem('signage_tizen_server_url', SERVER_URL);
             }
 
             localStorage.setItem(KEYS.PAIRING_CODE, state.pairingCode);
@@ -734,26 +749,38 @@
             // Sync Playlist assets from slides or direct references
             let fetchedAssets = [];
 
-            const rawCompiledUrl = data.compiledVideoUrl || data.compiledVideo;
-            if (data.isCompiled || rawCompiledUrl) {
+            // Check for compiled video container first (client-side video compilation)
+            const rawCompiledUrl = data.compiledVideoUrl || data.compiledVideo || data.compiled_video_url || data.compiled_video || data.videoUrl || data.video_url;
+            if (data.isCompiled || data.is_compiled || rawCompiledUrl) {
                 const compiledUrl = (rawCompiledUrl && (rawCompiledUrl.startsWith('http') || rawCompiledUrl.startsWith('data:')))
                     ? rawCompiledUrl
                     : `${POCKETBASE_URL}/api/files/playlists/${playlistId}/${rawCompiledUrl}`;
 
-                console.log("🎬 Playlist IS COMPILED! Syncing single compiled video container in Tizen:", compiledUrl);
+                console.log("🎬 Playlist HAS COMPILED VIDEO! Downloading single compiled video container in Tizen:", compiledUrl);
+                
+                let slidesArr = data.slides || [];
+                if (typeof slidesArr === 'string') {
+                    try { slidesArr = JSON.parse(slidesArr); } catch (e) { slidesArr = []; }
+                }
+                const totalDuration = (Array.isArray(slidesArr) && slidesArr.length > 0)
+                    ? slidesArr.reduce((acc, s) => acc + (parseInt(s.duration, 10) || 10), 0)
+                    : 30;
+
+                const ext = compiledUrl.includes('.mp4') ? 'mp4' : 'webm';
+
                 fetchedAssets.push({
                     id: `${playlistId}_compiled_video`,
                     url: compiledUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
                     mediaType: 'video',
-                    filename: `compiled_playlist_${playlistId}.webm`,
-                    duration: (data.slides && data.slides.length) ? data.slides.reduce((a, s) => a + (parseInt(s.duration, 10) || 10), 0) : 30,
+                    filename: `compiled_playlist_${playlistId}.${ext}`,
+                    duration: totalDuration,
                     thumbnail: compiledUrl,
                     objectFit: 'cover',
                     scalePercent: 100
                 });
             }
             
-            // 1. Resolve from slides sequence (with custom durations, ordering) if not compiled
+            // 1. Resolve from slides sequence (with custom durations, ordering) if not compiled video
             let slides = data.slides || [];
             if (typeof slides === 'string') {
                 try {
@@ -769,12 +796,19 @@
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
-                        const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
+                        // Prefer actual media file or video URL over static thumbnail picture
+                        const rawUrl = media.file
+                            ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}`
+                            : (media.fileUrl || media.videoUrl || media.url || media.thumbnail);
+
+                        const isVideo = (media.type && media.type.toLowerCase() === 'video') ||
+                                        (rawUrl && (rawUrl.includes('.mp4') || rawUrl.includes('.webm') || rawUrl.includes('.mov')));
+
                         fetchedAssets.push({
                             id: media.id,
                             url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
-                            mediaType: media.type.toLowerCase(),
-                            filename: media.title,
+                            mediaType: isVideo ? 'video' : 'image',
+                            filename: media.title || `media_${media.id}`,
                             duration: parseInt(slide.duration || media.duration || 10, 10),
                             thumbnail: media.thumbnail || rawUrl,
                             objectFit: slide.objectFit || 'cover',
@@ -783,13 +817,15 @@
                     }
                 }
             } 
-            // 2. Fallback to assetsJson
-            else if (data.assetsJson && data.assetsJson.length > 0) {
+            // 2. Fallback to assetsJson if not compiled video
+            else if (fetchedAssets.length === 0 && data.assetsJson && data.assetsJson.length > 0) {
                 data.assetsJson.forEach((pbAsset) => {
+                    const isVideo = (pbAsset.mediaType && pbAsset.mediaType.toLowerCase() === 'video') ||
+                                    (pbAsset.url && (pbAsset.url.includes('.mp4') || pbAsset.url.includes('.webm')));
                     fetchedAssets.push({
                         id: pbAsset.id,
                         url: pbAsset.url + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
-                        mediaType: pbAsset.mediaType.toLowerCase(),
+                        mediaType: isVideo ? 'video' : (pbAsset.mediaType ? pbAsset.mediaType.toLowerCase() : 'image'),
                         filename: pbAsset.filename,
                         duration: pbAsset.duration || 10,
                         thumbnail: pbAsset.thumbnail || pbAsset.url,
@@ -798,14 +834,15 @@
                     });
                 });
             } 
-            // 3. Fallback to native files
-            else if (data.files && data.files.length > 0) {
+            // 3. Fallback to native files if not compiled video
+            else if (fetchedAssets.length === 0 && data.files && data.files.length > 0) {
                 data.files.forEach((fileName, index) => {
                     const rawUrl = `${POCKETBASE_URL}/api/files/playlists/${playlistId}/${fileName}`;
+                    const isVideo = fileName.endsWith('.mp4') || fileName.endsWith('.webm');
                     fetchedAssets.push({
                         id: `${playlistId}_${index}`,
                         url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
-                        mediaType: "image",
+                        mediaType: isVideo ? 'video' : 'image',
                         filename: fileName,
                         duration: 10,
                         thumbnail: rawUrl,
@@ -814,18 +851,24 @@
                     });
                 });
             }
-            // 4. Fallback to mediaIds
-            else if (data.mediaIds && data.mediaIds.length > 0) {
+            // 4. Fallback to mediaIds if not compiled video
+            else if (fetchedAssets.length === 0 && data.mediaIds && data.mediaIds.length > 0) {
                 for (const mediaId of data.mediaIds) {
                     const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
-                        const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
+                        const rawUrl = media.file
+                            ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}`
+                            : (media.fileUrl || media.videoUrl || media.url || media.thumbnail);
+
+                        const isVideo = (media.type && media.type.toLowerCase() === 'video') ||
+                                        (rawUrl && (rawUrl.includes('.mp4') || rawUrl.includes('.webm') || rawUrl.includes('.mov')));
+
                         fetchedAssets.push({
                             id: media.id,
                             url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
-                            mediaType: media.type.toLowerCase(),
-                            filename: media.title,
+                            mediaType: isVideo ? 'video' : 'image',
+                            filename: media.title || `media_${media.id}`,
                             duration: media.duration || 10,
                             thumbnail: media.thumbnail || rawUrl,
                             objectFit: 'cover',
@@ -881,6 +924,75 @@
         }
     }
 
+    // Write binary ArrayBuffer directly to Tizen FileStream safely & efficiently
+    async function writeBufferToFile(dir, filename, arrayBuffer) {
+        // Clean up pre-existing or partial file to prevent Tizen InvalidModificationError
+        try {
+            const existing = dir.resolve(filename);
+            if (existing) {
+                dir.deleteFile(existing.fullPath, () => {}, () => {});
+            }
+        } catch (e) {
+            // File does not exist yet
+        }
+
+        const file = dir.createFile(filename);
+        const bytes = new Uint8Array(arrayBuffer);
+
+        return new Promise((resolve, reject) => {
+            file.openStream("w", (stream) => {
+                try {
+                    if (typeof stream.writeDataNonBlocking === 'function') {
+                        stream.writeDataNonBlocking(bytes, () => {
+                            try { stream.close(); } catch (e) {}
+                            resolve();
+                        }, (writeErr) => {
+                            try { stream.close(); } catch (e) {}
+                            reject(writeErr);
+                        });
+                    } else if (typeof stream.writeData === 'function') {
+                        stream.writeData(bytes);
+                        try { stream.close(); } catch (e) {}
+                        resolve();
+                    } else {
+                        // Chunked Base64 encoding fallback for older Tizen APIs (max 16KB per chunk to prevent stack/RAM overflow)
+                        let binary = '';
+                        const len = bytes.byteLength;
+                        const chunkSize = 16384;
+                        for (let i = 0; i < len; i += chunkSize) {
+                            const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
+                            binary += String.fromCharCode.apply(null, chunk);
+                        }
+                        const base64Data = window.btoa(binary);
+
+                        if (typeof stream.writeBase64NonBlocking === 'function') {
+                            stream.writeBase64NonBlocking(base64Data, () => {
+                                try { stream.close(); } catch (e) {}
+                                resolve();
+                            }, (writeErr) => {
+                                try { stream.close(); } catch (e) {}
+                                reject(writeErr);
+                            });
+                        } else if (typeof stream.writeBase64 === 'function') {
+                            stream.writeBase64(base64Data);
+                            try { stream.close(); } catch (e) {}
+                            resolve();
+                        } else {
+                            stream.write(base64Data);
+                            try { stream.close(); } catch (e) {}
+                            resolve();
+                        }
+                    }
+                } catch (writeErr) {
+                    try { stream.close(); } catch (e) {}
+                    reject(writeErr);
+                }
+            }, (streamErr) => {
+                reject(streamErr);
+            });
+        });
+    }
+
     // Offline caching: sync remote files to local Tizen filesystem storage
     async function syncLocalFiles(assets) {
         if (!window.tizen || !window.tizen.filesystem) {
@@ -916,111 +1028,59 @@
                 const asset = assets[i];
                 if (!asset.url) continue;
 
-                // Determine file extension
+                // Determine file extension (strip query parameters first)
+                const cleanUrl = asset.url.split('?')[0];
                 let ext = 'png';
-                if (asset.mediaType === 'video') ext = 'mp4';
-                else if (asset.url.includes('.gif')) ext = 'gif';
-                else if (asset.url.includes('.jpg') || asset.url.includes('.jpeg')) ext = 'jpg';
-                else if (asset.url.includes('.webp')) ext = 'webp';
+                if (asset.mediaType === 'video' || cleanUrl.endsWith('.mp4')) ext = 'mp4';
+                else if (cleanUrl.endsWith('.gif')) ext = 'gif';
+                else if (cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg')) ext = 'jpg';
+                else if (cleanUrl.endsWith('.webp')) ext = 'webp';
 
                 const filename = `asset_${asset.id}.${ext}`;
 
                 try {
-                    // Check if file exists locally
+                    // Check if file exists locally and has non-zero bytes
                     const file = dir.resolve(filename);
-                    const localUri = getFileURI(file);
-                    console.log(`Asset ${filename} already exists locally: ${localUri}`);
-                    asset.url = localUri; // Replace remote URL with local URI
+                    if (file && file.fileSize && file.fileSize > 0) {
+                        const localUri = getFileURI(file);
+                        console.log(`Asset ${filename} already exists locally (${file.fileSize} bytes): ${localUri}`);
+                        asset.url = localUri;
+                    } else {
+                        throw new Error("Local file missing or 0 bytes");
+                    }
                 } catch (e) {
-                    // File does not exist, download it via fetch to follow redirects (S3/R2 compatibility)
+                    // File does not exist or is corrupt, download via fetch
                     console.log(`Downloading asset: ${asset.url} as ${filename}`);
                     
                     try {
                         let response;
                         try {
-                            response = await fetch(asset.url);
+                            response = await fetchWithTimeout(asset.url, {}, 5000);
                             if (!response.ok) throw new Error("Direct fetch failed");
                         } catch (directErr) {
-                            console.log(`Direct download failed (possibly CORS). Trying proxy: ${asset.url}`);
+                            console.log(`Direct download failed (CORS/network). Trying proxy for: ${asset.url}`);
                             const proxyUrl = `${SERVER_URL}/api/v1/public/proxy-media?url=${encodeURIComponent(asset.url)}`;
-                            response = await fetch(proxyUrl);
+                            response = await fetchWithTimeout(proxyUrl, {}, 15000);
                             if (!response.ok) throw new Error("Proxy download failed");
                         }
-                        const blob = await response.blob();
+                        
+                        const arrayBuffer = await response.arrayBuffer();
+                        if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+                            throw new Error("Downloaded media buffer is empty (0 bytes)");
+                        }
 
-                        // Convert blob to base64
-                        const base64Data = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                                const base64 = reader.result.split(',')[1];
-                                resolve(base64);
-                            };
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
+                        await writeBufferToFile(dir, filename, arrayBuffer);
 
-                        // Write Base64 data to local file using non-blocking Tizen FileStream APIs
-                        const file = dir.createFile(filename);
-                        await new Promise((resolve, reject) => {
-                            file.openStream("w", (stream) => {
-                                try {
-                                    if (typeof stream.writeBase64NonBlocking === 'function') {
-                                        stream.writeBase64NonBlocking(base64Data, () => {
-                                            stream.close();
-                                            resolve();
-                                        }, (writeErr) => {
-                                            stream.close();
-                                            reject(writeErr);
-                                        });
-                                    } else if (typeof stream.writeBase64 === 'function') {
-                                        stream.writeBase64(base64Data);
-                                        stream.close();
-                                        resolve();
-                                    } else if (typeof stream.writeDataNonBlocking === 'function') {
-                                        const binaryString = window.atob(base64Data);
-                                        const len = binaryString.length;
-                                        const bytes = new Uint8Array(len);
-                                        for (let j = 0; j < len; j++) {
-                                            bytes[j] = binaryString.charCodeAt(j);
-                                        }
-                                        stream.writeDataNonBlocking(bytes, () => {
-                                            stream.close();
-                                            resolve();
-                                        }, (writeErr) => {
-                                            stream.close();
-                                            reject(writeErr);
-                                        });
-                                    } else if (typeof stream.writeData === 'function') {
-                                        const binaryString = window.atob(base64Data);
-                                        const len = binaryString.length;
-                                        const bytes = new Uint8Array(len);
-                                        for (let j = 0; j < len; j++) {
-                                            bytes[j] = binaryString.charCodeAt(j);
-                                        }
-                                        stream.writeData(bytes);
-                                        stream.close();
-                                        resolve();
-                                    } else {
-                                        stream.write(base64Data);
-                                        stream.close();
-                                        resolve();
-                                    }
-                                } catch (writeErr) {
-                                    stream.close();
-                                    reject(writeErr);
-                                }
-                            }, reject);
-                        });
-
-                        console.log(`Successfully cached asset ${filename} locally.`);
+                        const file = dir.resolve(filename);
+                        console.log(`Successfully cached asset ${filename} locally (${arrayBuffer.byteLength} bytes).`);
                         asset.url = getFileURI(file);
                     } catch (dlErr) {
                         console.error(`Failed to download and write asset ${filename}:`, dlErr);
                     }
                 }
                 updateProgress(i + 1, assets.length);
-                // Add a 1-second delay between downloads to let the TV processor breathe
-                await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
+                // Brief 100ms pause between asset downloads to keep TV UI smooth
+                await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
             }
 
             // Sync QR Code Widget locally if active
@@ -1040,49 +1100,22 @@
                 const qrFilename = `qrcode_${safeUrlStr}.png`;
 
                 try {
-                    // Check if file exists locally
                     const file = dir.resolve(qrFilename);
-                    state.qrcodeLocalPath = getFileURI(file);
-                    localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
+                    if (file && file.fileSize && file.fileSize > 0) {
+                        state.qrcodeLocalPath = getFileURI(file);
+                        localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
+                    } else {
+                        throw new Error("QR file missing or 0 bytes");
+                    }
                 } catch (e) {
                     console.log(`Downloading updated QR code image: ${qrFilename}`);
                     try {
                         const response = await fetch(qrUrl);
                         if (!response.ok) throw new Error("QR network fetch failed");
-                        const blob = await response.blob();
-                        const base64Data = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
+                        const arrayBuffer = await response.arrayBuffer();
+                        await writeBufferToFile(dir, qrFilename, arrayBuffer);
 
-                        const file = dir.createFile(qrFilename);
-                        await new Promise((resolve, reject) => {
-                            file.openStream("w", (stream) => {
-                                try {
-                                    if (typeof stream.writeBase64 === 'function') {
-                                        stream.writeBase64(base64Data);
-                                    } else if (typeof stream.writeData === 'function') {
-                                        const binaryString = window.atob(base64Data);
-                                        const len = binaryString.length;
-                                        const bytes = new Uint8Array(len);
-                                        for (let j = 0; j < len; j++) {
-                                            bytes[j] = binaryString.charCodeAt(j);
-                                        }
-                                        stream.writeData(bytes);
-                                    } else {
-                                        stream.write(base64Data);
-                                    }
-                                    stream.close();
-                                    resolve();
-                                } catch (writeErr) {
-                                    stream.close();
-                                    reject(writeErr);
-                                }
-                            }, reject);
-                        });
-
+                        const file = dir.resolve(qrFilename);
                         state.qrcodeLocalPath = getFileURI(file);
                         localStorage.setItem('signage_qrcode_local_path', state.qrcodeLocalPath);
                     } catch (qrErr) {
@@ -1584,6 +1617,9 @@
             }
         }, 60000);
 
+        // Broadcast initial diagnostic heartbeat immediately
+        sendHeartbeat();
+
         // Diagnostic heartbeat every 30 seconds
         heartbeatInterval = setInterval(() => {
             sendHeartbeat();
@@ -1597,13 +1633,14 @@
 
         try {
             const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
-            const res = await fetchWithTimeout(url, {}, 2500);
+            const res = await fetchWithTimeout(url, {}, 5000);
             if (res.ok) {
                 const data = await res.json();
                 if (data.status && data.status !== 'pairing') {
                     console.log("Device has been successfully paired!");
                     state.status = data.status;
                     localStorage.setItem(KEYS.STATUS, state.status);
+                    sendHeartbeat();
                     updateUI();
                 }
             }
@@ -1613,16 +1650,17 @@
     }
 
     // Broadcast diagnostic heartbeat to backend API
-    async function sendHeartbeat() {
-        if (state.status === 'pairing' || !state.screenId) return;
+    async function sendHeartbeat(errorMessage) {
+        if (!state.uuid) return;
         if (window.navigator && window.navigator.onLine === false) return;
 
         try {
             const currentAsset = state.playlist[state.currentAssetIndex];
+            const assetInfo = errorMessage ? `Status/Error: ${errorMessage}` : (currentAsset ? (currentAsset.filename || currentAsset.id || 'None') : 'None');
             const payload = {
                 hardwareUuid: state.uuid,
                 cpuTemp: 45.0, // Mock temp since we are in sandboxed browser
-                currentPlayingAsset: currentAsset ? currentAsset.filename : 'None',
+                currentPlayingAsset: assetInfo,
                 storageUsedBytes: 15 * 1024 * 1024,
                 storageAvailableBytes: 85 * 1024 * 1024
             };
@@ -1631,7 +1669,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
-            }, 2500);
+            }, 5000);
         } catch (err) {
             console.error("Heartbeat broadcast failed:", err);
         }

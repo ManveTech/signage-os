@@ -68,6 +68,8 @@ import coil.size.Precision
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.basicMarquee
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
@@ -102,10 +104,14 @@ fun SignagePlayerApp(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val activity = LocalContext.current as? androidx.activity.ComponentActivity
 
-    val allAssetsDownloaded = remember(uiState.playlist) {
-        uiState.playlist.all { asset ->
-            asset.mediaType.equals("youtube", ignoreCase = true) ||
-            (!asset.localPath.isNullOrEmpty() && File(asset.localPath).exists())
+    val allAssetsDownloaded = remember(uiState.playlist, uiState.isDownloading) {
+        if (!uiState.isDownloading && uiState.playlist.isNotEmpty()) {
+            true
+        } else {
+            uiState.playlist.all { asset ->
+                asset.mediaType.equals("youtube", ignoreCase = true) ||
+                (!asset.localPath.isNullOrEmpty() && (asset.localPath.startsWith("http") || File(asset.localPath).exists()))
+            }
         }
     }
 

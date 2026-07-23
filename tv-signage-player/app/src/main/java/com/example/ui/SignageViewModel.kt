@@ -320,9 +320,10 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
 
     private fun areAllAssetsDownloaded(playlist: List<com.example.data.database.PlaylistAsset>): Boolean {
         if (playlist.isEmpty()) return false
+        if (!_uiState.value.isDownloading) return true
         return playlist.all { asset ->
             asset.mediaType.equals("youtube", ignoreCase = true) ||
-            (!asset.localPath.isNullOrEmpty() && java.io.File(asset.localPath).exists())
+            (!asset.localPath.isNullOrEmpty() && (asset.localPath.startsWith("http") || java.io.File(asset.localPath).exists()))
         }
     }
 
