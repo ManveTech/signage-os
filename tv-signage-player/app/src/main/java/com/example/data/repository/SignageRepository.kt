@@ -983,7 +983,7 @@ class SignageRepository(private val context: Context) {
                                     outputStream.write(buffer, 0, bytesRead)
                                     fileBytesRead += bytesRead
                                     val currentOverall = cumulativeDownloadedBytes + fileBytesRead
-                                    if (fileBytesRead - lastUpdateBytes >= 65536 || (contentLength > 0 && fileBytesRead == contentLength)) {
+                                    if (fileBytesRead - lastUpdateBytes >= 524288 || (contentLength > 0 && fileBytesRead == contentLength)) {
                                         lastUpdateBytes = fileBytesRead
                                         val progress = if (contentLength > 0) (fileBytesRead.toFloat() / contentLength) else 0f
                                         downloadStateFlow.value = DownloadState(

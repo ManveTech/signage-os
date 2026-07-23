@@ -92,13 +92,27 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
       if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-      const stream = canvas.captureStream(30);
-      let mimeType = 'video/webm;codecs=vp9';
+      const canvasStream = canvas.captureStream(30);
+
+      // Web Audio API setup for capturing sound from video slides
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioDest = audioCtx.createMediaStreamDestination();
+
+      const combinedTracks: MediaStreamTrack[] = [
+        ...canvasStream.getVideoTracks(),
+        ...audioDest.stream.getAudioTracks()
+      ];
+      const combinedStream = new MediaStream(combinedTracks);
+
+      let mimeType = 'video/webm;codecs=vp9,opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8,opus';
+      }
       if (!MediaRecorder.isTypeSupported(mimeType)) {
         mimeType = 'video/webm';
       }
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(combinedStream, { mimeType });
       const chunks: Blob[] = [];
 
       recorder.ondataavailable = (e) => {
@@ -110,53 +124,100 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       const totalItems = playlistItems.length;
       let completedItems = 0;
 
+      // Helper function to draw image/video with aspect ratio (object-fit: cover)
+      const drawCover = (imgOrVid: HTMLImageElement | HTMLVideoElement) => {
+        const sourceWidth = (imgOrVid as HTMLVideoElement).videoWidth || imgOrVid.width || width;
+        const sourceHeight = (imgOrVid as HTMLVideoElement).videoHeight || imgOrVid.height || height;
+        const imgRatio = sourceWidth / sourceHeight;
+        const canvasRatio = width / height;
+
+        let renderableWidth = width;
+        let renderableHeight = height;
+        let xStart = 0;
+        let yStart = 0;
+
+        if (imgRatio > canvasRatio) {
+          renderableWidth = height * imgRatio;
+          xStart = (width - renderableWidth) / 2;
+        } else if (imgRatio < canvasRatio) {
+          renderableHeight = width / imgRatio;
+          yStart = (height - renderableHeight) / 2;
+        }
+
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(imgOrVid, xStart, yStart, renderableWidth, renderableHeight);
+      };
+
       for (const item of playlistItems) {
         const media = mediaList.find(m => m.id === item.mediaId);
         if (!media) continue;
 
-        const durationMs = Math.min(item.duration, 10) * 1000;
+        const durationSec = Math.max(item.duration || 10, 1);
         const fps = 30;
-        const totalFrames = Math.max(15, Math.floor((durationMs / 1000) * fps));
+        const totalFrames = Math.floor(durationSec * fps);
         const frameIntervalMs = 1000 / fps;
 
-        if (media.type === 'video' && media.fileUrl) {
+        if (media.type === 'video' && (media.fileUrl || media.thumbnail)) {
           const vid = document.createElement('video');
           vid.crossOrigin = 'anonymous';
           vid.src = getCorsProxyUrl(media.fileUrl || media.thumbnail);
-          vid.muted = true;
+          vid.muted = false;
+          vid.volume = 1.0;
+
+          let audioSourceNode: MediaElementAudioSourceNode | null = null;
+          try {
+            audioSourceNode = audioCtx.createMediaElementSource(vid);
+            audioSourceNode.connect(audioDest);
+          } catch (e) {
+            console.warn('Audio node connection warning:', e);
+          }
+
           await new Promise(r => {
             vid.onloadeddata = r;
             vid.onerror = r;
-            setTimeout(r, 1200);
+            setTimeout(r, 1500);
           });
+
+          vid.currentTime = 0;
           vid.play().catch(() => {});
 
+          const startTime = Date.now();
           for (let f = 0; f < totalFrames; f++) {
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, width, height);
             try {
-              ctx.drawImage(vid, 0, 0, width, height);
+              drawCover(vid);
             } catch (_) {}
-            await new Promise(r => setTimeout(r, frameIntervalMs));
+
+            const targetTimeMs = (f + 1) * frameIntervalMs;
+            const elapsedMs = Date.now() - startTime;
+            const sleepMs = Math.max(0, targetTimeMs - elapsedMs);
+            await new Promise(r => setTimeout(r, sleepMs));
           }
+
           vid.pause();
+          if (audioSourceNode) {
+            try { audioSourceNode.disconnect(); } catch (e) {}
+          }
         } else {
           const img = new Image();
           img.crossOrigin = 'anonymous';
-          img.src = getCorsProxyUrl(media.thumbnail || media.fileUrl || '');
+          img.src = getCorsProxyUrl(media.fileUrl || media.thumbnail || '');
           await new Promise(r => {
             img.onload = r;
             img.onerror = r;
-            setTimeout(r, 800);
+            setTimeout(r, 1000);
           });
 
+          const startTime = Date.now();
           for (let f = 0; f < totalFrames; f++) {
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, width, height);
             try {
-              ctx.drawImage(img, 0, 0, width, height);
+              drawCover(img);
             } catch (_) {}
-            await new Promise(r => setTimeout(r, frameIntervalMs));
+
+            const targetTimeMs = (f + 1) * frameIntervalMs;
+            const elapsedMs = Date.now() - startTime;
+            const sleepMs = Math.max(0, targetTimeMs - elapsedMs);
+            await new Promise(r => setTimeout(r, sleepMs));
           }
         }
 
@@ -165,7 +226,8 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       }
 
       recorder.stop();
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 500));
+      try { audioCtx.close(); } catch (e) {}
 
       const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
       const videoDataUrl = await new Promise<string>((resolve) => {
@@ -177,11 +239,11 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       setCompiledVideoUrl(videoDataUrl);
       setIsCompiled(true);
       setCompileProgress(100);
-      showToast('✅ Playlist video successfully compiled!');
+      showToast('✅ Playlist video successfully compiled with sound!');
       return videoDataUrl;
     } catch (err: any) {
       console.error('Video compilation failed:', err);
-      showToast('⚠️ Video compilation failed.');
+      showToast('❌ Video compilation failed.');
       return undefined;
     } finally {
       setIsCompiling(false);

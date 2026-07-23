@@ -1,11 +1,12 @@
 /**
- * SignageOS Player - Tizen Web Client Engine (v1.0.55-rollback)
+ * SignageOS Player - Tizen Web Client Engine
+ * Complete refactored architecture aligned with Android tv-signage-player repository.
  */
 
 (function () {
-    // Config Constants (pointing to backend endpoints)
-    let SERVER_URL = localStorage.getItem('signage_tizen_server_url') || 'https://dem1.manve.co'; // Target server URL
-    let POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || 'https://demo.manve.co'; // Resolved during pairing
+    // Config Constants & Server Endpoints
+    let SERVER_URL = localStorage.getItem('signage_tizen_server_url') || 'https://dem1.manve.co';
+    let POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || 'https://demo.manve.co';
 
     // Local Storage state keys
     const KEYS = {
@@ -19,7 +20,7 @@
         BRANDING: 'signage_tizen_branding'
     };
 
-    // State Variables
+    // Application State Variables
     let state = {
         uuid: getOrGenerateUUID(),
         screenId: localStorage.getItem(KEYS.SCREEN_ID) || '',
@@ -27,7 +28,7 @@
         status: localStorage.getItem(KEYS.STATUS) || 'pairing',
         playlist: JSON.parse(localStorage.getItem(KEYS.PLAYLIST) || '[]'),
         currentAssetIndex: 0,
-        volume: parseInt(localStorage.getItem(KEYS.VOLUME) || '80'),
+        volume: parseInt(localStorage.getItem(KEYS.VOLUME) || '80', 10),
         branding: JSON.parse(localStorage.getItem(KEYS.BRANDING) || '{}'),
         widget: JSON.parse(localStorage.getItem(KEYS.WIDGET) || '{}'),
         orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
@@ -37,13 +38,15 @@
         qrcodeLocalPath: localStorage.getItem('signage_qrcode_local_path') || '',
         playlistId: localStorage.getItem('signage_tizen_playlist_id') || '',
         screenUpdated: localStorage.getItem('signage_tizen_screen_updated') || '',
+        lastSyncedAt: parseInt(localStorage.getItem('signage_tizen_last_sync') || '0', 10),
+        isOutOfRange: false,
         imageElementsCache: {}
     };
 
-    // Inactivity / Idle Auto Launch Timeout
+    // Auto-launch & Idle Timer
     let idleTimeout = null;
 
-    // Elements
+    // DOM Element Registries
     const views = {
         splash: document.getElementById('splash-screen'),
         pairing: document.getElementById('pairing-screen'),
@@ -77,101 +80,22 @@
         rssTextDup: document.getElementById('rss-text-dup')
     };
 
-    // Loop Timers
+    // Loop Timers & Double Buffering State
     let rotationTimeout = null;
     let rotationToken = 0;
-    let activeImagePlayerNum = 1; // Double-buffering index: tracks which image tag (1 or 2) is active
+    let activeImagePlayerNum = 1;
     let syncInterval = null;
     let heartbeatInterval = null;
     let clockInterval = null;
 
-    // Detect physical screen diagonal and model name to verify size limit (under 43 inches)
-    function checkScreenSize() {
-        return new Promise((resolve) => {
-            // Query parameter override for testing (e.g. ?test_inches=50)
-            const urlParams = new URLSearchParams(window.location.search);
-            const testInches = urlParams.get('test_inches');
-            if (testInches) {
-                const inches = parseInt(testInches, 10);
-                console.log(`Query parameter test override detected: ${inches} inches`);
-                resolve({ allowed: inches <= 43, size: inches });
-                return;
-            }
-
-            if (!window.tizen || !window.tizen.systeminfo) {
-                console.log("Not in Tizen environment, allowing all sizes.");
-                resolve({ allowed: true, size: 0 });
-                return;
-            }
-
-            let detectedInches = null;
-            let displayDone = false;
-            let buildDone = false;
-
-            function checkDone() {
-                if (displayDone && buildDone) {
-                    if (detectedInches !== null && detectedInches > 43) {
-                        resolve({ allowed: false, size: detectedInches });
-                    } else {
-                        resolve({ allowed: true, size: detectedInches || 0 });
-                    }
-                }
-            }
-
-            // Method 1: Check DISPLAY physical dimensions
-            try {
-                window.tizen.systeminfo.getPropertyValue("DISPLAY", (disp) => {
-                    if (disp.physicalWidth && disp.physicalHeight) {
-                        const widthMm = disp.physicalWidth;
-                        const heightMm = disp.physicalHeight;
-                        const diagonalMm = Math.sqrt(Math.pow(widthMm, 2) + Math.pow(heightMm, 2));
-                        const inches = diagonalMm / 25.4;
-                        console.log(`DISPLAY physical diagonal: ${inches.toFixed(2)} inches`);
-                        if (inches > 0) {
-                            detectedInches = Math.round(inches);
-                        }
-                    }
-                    displayDone = true;
-                    checkDone();
-                }, (err) => {
-                    console.warn("DISPLAY systeminfo fetch error:", err);
-                    displayDone = true;
-                    checkDone();
-                });
-            } catch (e) {
-                console.error("DISPLAY property access exception:", e);
-                displayDone = true;
-                checkDone();
-            }
-
-            // Method 2: Check BUILD model code for size digits (e.g. QB43C, LH55QB, UN65RU...)
-            try {
-                window.tizen.systeminfo.getPropertyValue("BUILD", (build) => {
-                    if (build.model) {
-                        console.log(`BUILD model detected: ${build.model}`);
-                        // Find first sequence of two or more digits in the model name
-                        const matches = build.model.match(/\d{2,}/);
-                        if (matches && matches[0]) {
-                            const sizeFromModel = parseInt(matches[0], 10);
-                            console.log(`Parsed size from model code: ${sizeFromModel} inches`);
-                            if (sizeFromModel > 0 && (!detectedInches || sizeFromModel > detectedInches)) {
-                                detectedInches = sizeFromModel;
-                            }
-                        }
-                    }
-                    buildDone = true;
-                    checkDone();
-                }, (err) => {
-                    console.warn("BUILD systeminfo fetch error:", err);
-                    buildDone = true;
-                    checkDone();
-                });
-            } catch (e) {
-                console.error("BUILD property access exception:", e);
-                buildDone = true;
-                checkDone();
-            }
-        });
+    // Retrieve or generate persistent hardware UUID
+    function getOrGenerateUUID() {
+        let uuid = localStorage.getItem(KEYS.UUID);
+        if (!uuid) {
+            uuid = 'tizen-uuid-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            localStorage.setItem(KEYS.UUID, uuid);
+        }
+        return uuid;
     }
 
     // Fetch helper with AbortController timeout to immediately release browser sockets in Tizen
@@ -190,22 +114,6 @@
         ]);
     }
 
-    // Call Express backend to clear commands safely without PocketBase auth conflicts
-    async function clearScreenCommandOnServer(command) {
-        try {
-            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/clear-command`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    screenId: state.screenId,
-                    command: command
-                })
-            }, 3000);
-        } catch (e) {
-            console.error(`Failed to clear command ${command} on server:`, e);
-        }
-    }
-
     // Resolve file URI safely (handles method vs property across Tizen versions)
     function getFileURI(file) {
         if (file) {
@@ -218,26 +126,55 @@
         return '';
     }
 
+    // Verify physical screen diagonal size (limit under 43 inches)
+    function checkScreenSize() {
+        return new Promise((resolve) => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const testInches = urlParams.get('test_inches');
+            if (testInches) {
+                const inches = parseInt(testInches, 10);
+                resolve({ allowed: inches <= 43, size: inches });
+                return;
+            }
+
+            try {
+                if (window.tizen && window.tizen.systeminfo) {
+                    window.tizen.systeminfo.getPropertyValue('DISPLAY', (display) => {
+                        const diagonalInches = Math.round(display.diagonalSize || 0);
+                        if (diagonalInches > 0) {
+                            resolve({ allowed: diagonalInches <= 43, size: diagonalInches });
+                        } else {
+                            resolve({ allowed: true, size: 0 });
+                        }
+                    }, () => resolve({ allowed: true, size: 0 }));
+                } else {
+                    resolve({ allowed: true, size: 0 });
+                }
+            } catch (e) {
+                resolve({ allowed: true, size: 0 });
+            }
+        });
+    }
+
     // Initialize application
     function init() {
         console.log("Initializing SignageOS Tizen App...");
         applyBranding();
         bindEvents();
 
-        // Clear any pending auto-launch alarms (if we just opened)
+        // Clear any pending auto-launch alarms
         cancelAutoLaunchAlarm();
 
-        // Listen for keydown/click to reset the auto-launch idle timer
+        // Event listeners for resetting auto-launch idle timer
         window.addEventListener('keydown', resetIdleTimer);
         window.addEventListener('click', resetIdleTimer);
-
-        // Listen for visibility changes (background / exit state)
         document.addEventListener("visibilitychange", handleVisibilityChange);
 
-        // If paired already, immediately query config, else start in pairing mode
+        // If paired already, immediately fetch screen config and start, else request pairing code
         if (state.screenId) {
             POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || POCKETBASE_URL;
-            // If we have a cached playlist, hide splash immediately to play cached content offline / without delay
+            SERVER_URL = localStorage.getItem('signage_tizen_server_url') || SERVER_URL;
+
             if (state.playlist && state.playlist.length > 0) {
                 views.splash.classList.remove('active');
             }
@@ -246,17 +183,16 @@
                 updateUI();
             });
         } else {
-            // Generate/request code
             requestPairingCode().then(() => {
                 views.splash.classList.remove('active');
             });
         }
 
-        // Start periodic sync and heartbeat processes
+        // Start periodic sync and diagnostic heartbeat loops
         startSyncLoops();
         startClockWidget();
 
-        // Run screen size hardware check in the background (does not block load)
+        // Hardware screen size check in background
         checkScreenSize().then((result) => {
             state.isOutOfRange = !result.allowed;
             if (state.isOutOfRange) {
@@ -266,243 +202,151 @@
         });
     }
 
+    // Bind event listeners
+    function bindEvents() {
+        if (views.refreshCodeBtn) {
+            views.refreshCodeBtn.addEventListener('click', () => {
+                views.pairingStatusMsg.innerText = "Requesting new code...";
+                requestPairingCode();
+            });
+        }
+
+        if (views.videoPlayer) {
+            views.videoPlayer.addEventListener('error', (e) => {
+                console.error("Video element error, skipping asset.", e);
+                reportError('Video playback error', e.message || 'unknown');
+                sendHeartbeat('Playback error');
+                if (rotationTimeout) {
+                    clearTimeout(rotationTimeout);
+                    rotationTimeout = null;
+                }
+                advancePlaylist();
+            });
+        }
+    }
+
     // Handle background transition or exit
     function handleVisibilityChange() {
         if (document.hidden) {
-            console.log("App moved to background / hidden. Scheduling auto-launch alarm in 15 seconds...");
+            console.log("App moved to background. Scheduling auto-launch alarm in 15 seconds...");
             scheduleAutoLaunchAlarm();
         } else {
             console.log("App returned to foreground. Cancelling auto-launch alarm and resuming playback...");
             cancelAutoLaunchAlarm();
-
-            // Resume active media and loop
-            if (state.status === 'active') {
-                try {
-                    const currentAsset = state.playlist[state.currentAssetIndex];
-                    if (currentAsset && currentAsset.mediaType === 'video') {
-                        views.videoPlayer.play().catch(e => console.warn("Failed to resume video on wake:", e));
-                    }
-                    // Only start rotation if the playlist loop is not already running
-                    if (!rotationTimeout && rotationToken === 0) {
-                        startPlaylistRotation();
-                    }
-                } catch (err) {
-                    console.error("Failed to restore playback state on wake:", err);
+            if (state.status === 'active' || state.status === 'online') {
+                updateUI();
+                if (views.videoPlayer && views.videoPlayer.style.display !== 'none' && views.videoPlayer.paused) {
+                    views.videoPlayer.play().catch(e => console.warn("Failed to resume video on wake:", e));
                 }
             }
         }
     }
 
-    // Schedule Tizen Alarm to launch this app in 15 seconds
+    // Reset inactivity timer
+    function resetIdleTimer() {
+        if (idleTimeout) clearTimeout(idleTimeout);
+        idleTimeout = setTimeout(() => {
+            if (state.status === 'active' || state.status === 'online') {
+                updateUI();
+            }
+        }, 120000);
+    }
+
+    // Schedule SSSP alarm to automatically relaunch app
     function scheduleAutoLaunchAlarm() {
         try {
-            if (window.tizen && window.tizen.alarm && window.tizen.application) {
-                const appId = window.tizen.application.getCurrentApplication().appInfo.id;
-                
-                // Clear any existing alarms first
-                cancelAutoLaunchAlarm();
-
-                // Schedule alarm for 15 seconds from now
-                const alarm = new window.tizen.AlarmRelative(15);
-                window.tizen.alarm.add(alarm, appId);
-                console.log(`Successfully scheduled Tizen auto-launch alarm for appId: ${appId}`);
-            } else {
-                console.warn("Tizen Alarm API not available in this environment.");
+            if (window.tizen && window.tizen.alarm) {
+                const alarm = new window.tizen.alarm.AlarmRelative(15);
+                window.tizen.alarm.add(alarm, window.tizen.application.getCurrentApplication().appInfo.id);
+                console.log("Auto-launch alarm scheduled in 15 seconds.");
             }
         } catch (e) {
             console.error("Failed to schedule auto-launch alarm:", e);
         }
     }
 
-    // Cancel any scheduled auto-launch alarms
+    // Cancel pending auto-launch alarms
     function cancelAutoLaunchAlarm() {
         try {
-            if (window.tizen && window.tizen.alarm && window.tizen.application) {
-                const appId = window.tizen.application.getCurrentApplication().appInfo.id;
-                const alarms = window.tizen.alarm.getAll();
-                alarms.forEach(alarm => {
-                    // Tizen Alarm object contains the ID and target appId
-                    if (alarm.appId === appId || alarm.id) {
-                        window.tizen.alarm.remove(alarm.id);
-                    }
-                });
-                console.log("Cleared all pending Tizen auto-launch alarms.");
+            if (window.tizen && window.tizen.alarm) {
+                window.tizen.alarm.removeAll();
+                console.log("Cleared pending auto-launch alarms.");
             }
         } catch (e) {
             console.error("Failed to clear auto-launch alarms:", e);
         }
     }
 
-    // Bind event handlers
-    function bindEvents() {
-        views.refreshCodeBtn.addEventListener('click', () => {
-            views.refreshCodeBtn.disabled = true;
-            views.refreshCodeBtn.innerText = "Requesting...";
-            requestPairingCode().finally(() => {
-                views.refreshCodeBtn.disabled = false;
-                views.refreshCodeBtn.innerText = "Get New Code";
-            });
-        });
-
-        // Remote navigation / spatial select support for Tizen TVs
-        window.addEventListener('keydown', (e) => {
-            const keyCode = e.keyCode;
-            const isPairingScreenActive = views.pairing && views.pairing.classList.contains('active');
-
-            if (isPairingScreenActive) {
-                // Focus the refresh button on any navigation key press to show visual feedback highlight
-                if (document.activeElement !== views.refreshCodeBtn) {
-                    views.refreshCodeBtn.focus();
-                }
-
-                // If Enter / OK is pressed (Tizen KeyCodes: 13, 29443, 10190)
-                if (keyCode === 13 || keyCode === 29443 || keyCode === 10190 || e.key === 'Enter') {
-                    e.preventDefault();
-                    views.refreshCodeBtn.click();
-                }
-            }
-        });
-
-        // Loop next media on video end
-        // Disabled to strictly respect custom slide durations rather than video length
-        // views.videoPlayer.addEventListener('ended', () => {
-        //     console.log("Video playback complete, advancing index.");
-        //     advancePlaylist();
-        // });
-
-        views.videoPlayer.addEventListener('error', (e) => {
-            console.error("Video element error, skipping asset.", e);
-            reportError('Video playback error', e.message || 'unknown');
-            sendHeartbeat('Playback error');
-            if (rotationTimeout) {
-                clearTimeout(rotationTimeout);
-                rotationTimeout = null;
-            }
-            advancePlaylist();
-        });
-    }
-
-    // Get or generate hardware UUID
-    function getOrGenerateUUID() {
-        let uuid = localStorage.getItem(KEYS.UUID);
-        if (!uuid) {
-            uuid = 'tizen-uuid-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            localStorage.setItem(KEYS.UUID, uuid);
-        }
-        return uuid;
-    }
-
-    // Render whitelabel branding
+    // Apply branding settings
     function applyBranding() {
-        const defaultLogo = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230ea5e9'><path d='M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7l-2 3v1h8v-1l-2-3h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z'/></svg>";
-        const logoUrl = (state.branding && state.branding.isWhiteLabel && state.branding.logoUrl) 
-            ? state.branding.logoUrl 
-            : defaultLogo;
+        const b = state.branding;
+        const logoUrl = (b.isWhiteLabel && b.logoUrl) ? b.logoUrl : 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=200&auto=format&fit=crop&q=60';
+        const appName = (b.isWhiteLabel && b.name) ? b.name : 'SignageOS';
 
         if (views.splashLogo) views.splashLogo.src = logoUrl;
         if (views.pairingLogo) views.pairingLogo.src = logoUrl;
         if (views.standbyLogo) views.standbyLogo.src = logoUrl;
-
-        if (state.branding && state.branding.isWhiteLabel && state.branding.name) {
-            if (views.splashName) views.splashName.innerText = state.branding.name;
-            const standbyTitle = document.getElementById('standby-title');
-            const standbyDesc = document.getElementById('standby-desc');
-            if (standbyTitle) standbyTitle.innerText = `READY FOR ${state.branding.name.toUpperCase()} CONTENT`;
-            if (standbyDesc) standbyDesc.innerText = "Assign playlist from Whitelabel CMS Portal.";
-        } else {
-            const standbyTitle = document.getElementById('standby-title');
-            const standbyDesc = document.getElementById('standby-desc');
-            if (standbyTitle) standbyTitle.innerText = "Standby Mode";
-            if (standbyDesc) standbyDesc.innerText = "No playlist assigned to this screen. Please assign a playlist from the SignageOS Dashboard.";
-        }
+        if (views.splashName) views.splashName.innerText = appName;
     }
 
-    // Apply orientation rotation CSS class
+    // Apply orientation transforms (horizontal vs vertical/portrait)
     function applyOrientation() {
-        const orientation = state.orientation || 'horizontal';
-        if (orientation === 'vertical' && window.innerWidth > window.innerHeight) {
-            views.playback.classList.add('rotate-portrait');
+        const isVertical = state.orientation === 'vertical' || state.orientation === 'portrait';
+        const body = document.body;
+
+        if (isVertical) {
+            body.classList.add('portrait-mode');
         } else {
-            views.playback.classList.remove('rotate-portrait');
+            body.classList.remove('portrait-mode');
         }
     }
 
-    // Show appropriate screen based on state
+    // Update UI View Controllers based on state.status
     function updateUI() {
-        // Deactivate all screens
-        Object.values(views).forEach(v => {
-            if (v && v.classList && v.classList.contains('screen')) {
-                v.classList.remove('active');
-            }
-        });
+        applyOrientation();
 
-        // Hide overlay widgets by default
-        widgets.qrcode.classList.add('hidden');
-        widgets.weather.classList.add('hidden');
-        widgets.clock.classList.add('hidden');
-        widgets.rss.classList.add('hidden');
-
-        console.log(`Updating UI state: ${state.status}`);
+        // Hide all primary views
+        views.pairing.classList.remove('active');
+        views.standby.classList.remove('active');
+        views.suspended.classList.remove('active');
+        views.playback.classList.remove('active');
 
         switch (state.status) {
             case 'pairing':
-                views.pairingCodeText.innerText = state.pairingCode || '------';
                 views.pairing.classList.add('active');
-                resetIdleTimer();
+                views.pairingCodeText.innerText = state.pairingCode || '------';
                 break;
             case 'suspended':
                 views.suspended.classList.add('active');
                 break;
+            case 'standby':
+                views.standby.classList.add('active');
+                break;
             case 'active':
             case 'online':
             case 'offline':
-                if (idleTimeout) {
-                    clearTimeout(idleTimeout);
-                    idleTimeout = null;
-                }
                 if (!state.playlist || state.playlist.length === 0) {
                     views.standby.classList.add('active');
                 } else {
-                    applyOrientation();
                     views.playback.classList.add('active');
-                    // Only start rotation if the playlist loop is not already running
-                    if (!rotationTimeout && rotationToken === 0) {
-                        startPlaylistRotation();
-                    }
-                    renderWidgets();
+                    syncWidgets();
+                    startPlaylistRotation();
                 }
                 break;
             default:
                 views.pairing.classList.add('active');
-                resetIdleTimer();
                 break;
-        }
-    }
-
-    // Reset inactivity / idle auto launch timer
-    function resetIdleTimer() {
-        if (idleTimeout) clearTimeout(idleTimeout);
-
-        // Auto-launch playlist if device is already paired and has slides
-        if (state.playlist && state.playlist.length > 0 && state.status !== 'active' && state.status !== 'online' && state.status !== 'offline' && state.status !== 'suspended') {
-            console.log("Inactivity timer started. Auto-launching in 2 minutes.");
-            idleTimeout = setTimeout(() => {
-                console.log("Inactivity timeout: launching playlist full screen.");
-                state.status = 'active';
-                localStorage.setItem(KEYS.STATUS, 'active');
-                updateUI();
-            }, 120000);
         }
     }
 
     // Request Pairing Code from backend API
     async function requestPairingCode() {
         try {
-            const res = await fetch(`${SERVER_URL}/api/v1/devices/pairing-code`, {
+            const res = await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/pairing-code`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ hardwareUuid: state.uuid })
-            });
+            }, 6000);
 
             if (!res.ok) throw new Error('API pairing code call failed');
             const data = await res.json();
@@ -542,25 +386,32 @@
 
         try {
             const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
-            const res = await fetchWithTimeout(url, {}, 2500);
+            const res = await fetchWithTimeout(url, {}, 5000);
+            
+            // Screen deleted or un-paired on CMS dashboard -> Unpair device!
             if (!res.ok) {
                 if (res.status === 404) {
-                    // Screen was deleted/disconnected on CMS. Go back to pairing.
+                    console.log("Screen record not found on server (HTTP 404). Unpairing device and purging local cache...");
                     disconnectDevice();
                     return;
                 }
-                throw new Error('Failed to retrieve screen record');
+                throw new Error(`Failed to retrieve screen record: ${res.status}`);
             }
 
             const data = await res.json();
-            
-            // Update last synced timestamp
+
+            // Check if status indicates deleted or unpaired
+            if (data.status === 'deleted' || data.status === 'unpaired') {
+                console.log("Screen status is deleted/unpaired. Disconnecting device...");
+                disconnectDevice();
+                return;
+            }
+
             state.lastSyncedAt = Date.now();
             localStorage.setItem('signage_tizen_last_sync', state.lastSyncedAt);
-            
+
             let hasChanged = false;
 
-            // Check status transition
             const oldStatus = state.status;
             const oldVolume = state.volume;
             state.status = data.status || 'pairing';
@@ -572,7 +423,7 @@
                 localStorage.setItem(KEYS.VOLUME, state.volume);
             }
 
-            // Sync branding
+            // Sync white-label branding
             const oldBranding = JSON.stringify(state.branding);
             state.branding = {
                 isWhiteLabel: !!data.whiteLabel,
@@ -585,7 +436,7 @@
                 applyBranding();
             }
 
-            // 1. Clear Cache commands
+            // Command 1: Clear Cache
             if (data.clear_cache) {
                 console.log("Received clear cache instruction.");
                 state.cacheBust = Date.now().toString();
@@ -596,7 +447,7 @@
                 await clearScreenCommandOnServer('clear_cache');
             }
 
-            // 2. Force Sync command
+            // Command 2: Force Sync
             if (data.force_sync) {
                 console.log("Received force sync instruction.");
                 state.cacheBust = Date.now().toString();
@@ -608,7 +459,7 @@
                 await clearScreenCommandOnServer('force_sync');
             }
 
-            // 3. Restart Playlist command
+            // Command 3: Restart Playlist
             if (data.restart_playlist) {
                 console.log("Received restart playlist instruction.");
                 state.currentAssetIndex = 0;
@@ -617,7 +468,7 @@
                 startPlaylistRotation();
             }
 
-            // 4. Scheduled playlist check
+            // Scheduled playlist check
             let activePlaylistId = data.playlistId || data.playlist;
             if (data.schedulePlaylist && data.scheduleDate && data.scheduleTime) {
                 if (isScheduleDue(data.scheduleDate, data.scheduleTime)) {
@@ -626,7 +477,6 @@
                     if (scheduledPlaylistId) {
                         activePlaylistId = scheduledPlaylistId;
                         hasChanged = true;
-                        // Update on server
                         await fetch(url, {
                             method: 'PATCH',
                             headers: { 'Content-Type': 'application/json' },
@@ -664,7 +514,7 @@
                         state.playlist = [];
                         state.playlistId = '';
                         state.screenUpdated = '';
-                        localStorage.setItem(KEYS.PLAYLIST, '[]');
+                        localStorage.removeItem(KEYS.PLAYLIST);
                         localStorage.removeItem('signage_tizen_playlist_id');
                         localStorage.removeItem('signage_tizen_screen_updated');
                         hasChanged = true;
@@ -672,42 +522,41 @@
                 }
             }
 
+            // Sync Widget overlays
+            const oldWidget = JSON.stringify(state.widget);
+            state.widget = {
+                type: data.widgetType || '',
+                placement: data.widgetPlacement || 'bottom-right',
+                link: data.widgetLink || ''
+            };
+            if (oldWidget !== JSON.stringify(state.widget)) {
+                hasChanged = true;
+                localStorage.setItem(KEYS.WIDGET, JSON.stringify(state.widget));
+            }
+
             if (hasChanged) {
                 updateUI();
             }
         } catch (err) {
             console.error("Error fetching screen configuration:", err);
-            // 5. Offline unpair check (24 hour threshold)
-            const lastSync = parseInt(localStorage.getItem('signage_tizen_last_sync') || '0');
-            if (lastSync > 0) {
-                const durationOffline = Date.now() - lastSync;
-                const oneDayMs = 24 * 60 * 60 * 1000;
-                if (durationOffline > oneDayMs) {
-                    console.warn("Player offline for > 24 hours. Resetting to pairing mode.");
-                    disconnectDevice();
-                }
-            }
         }
     }
 
-    // Check if scheduled time is reached
-    function isScheduleDue(scheduleDate, scheduleTime) {
-        if (!scheduleDate || !scheduleTime) return false;
+    // Check if scheduled date/time is due
+    function isScheduleDue(dateStr, timeStr) {
         try {
-            const scheduled = new Date(`${scheduleDate}T${scheduleTime}`);
-            return new Date() >= scheduled;
+            const target = new Date(`${dateStr}T${timeStr}`);
+            const now = new Date();
+            return now >= target;
         } catch (e) {
-            console.error("Error comparing schedule time:", e);
             return false;
         }
     }
 
-    // Resolve Scheduled Playlist ID by Name
+    // Fetch playlist record ID from title
     async function fetchScheduledPlaylistId(playlistName) {
         try {
-            if (playlistName === "Normal" || playlistName === "Unassigned") return "";
-            const url = `${POCKETBASE_URL}/api/collections/playlists/records?filter=name%3D%22${encodeURIComponent(playlistName)}%22`;
-            const res = await fetch(url);
+            const res = await fetch(`${POCKETBASE_URL}/api/collections/playlists/records?filter=(name='${encodeURIComponent(playlistName)}')`);
             if (res.ok) {
                 const data = await res.json();
                 if (data.items && data.items.length > 0) {
@@ -715,28 +564,39 @@
                 }
             }
         } catch (e) {
-            console.error("Failed to query scheduled playlist ID:", e);
+            console.error("Error finding scheduled playlist ID:", e);
         }
-        return "";
+        return null;
     }
 
-    // Sync Playlist details
+    // Fetch playlist details and sync media items
     async function fetchPlaylist(playlistId) {
         try {
-            const url = `${POCKETBASE_URL}/api/collections/playlists/records/${playlistId}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('Playlist retrieval failed');
+            const res = await fetchWithTimeout(`${POCKETBASE_URL}/api/collections/playlists/records/${playlistId}`, {}, 5000);
+            if (!res.ok) {
+                if (res.status === 404) {
+                    console.log("Assigned playlist record was deleted (HTTP 404). Clearing playlist.");
+                    state.playlist = [];
+                    state.playlistId = '';
+                    localStorage.removeItem(KEYS.PLAYLIST);
+                    updateUI();
+                    return;
+                }
+                throw new Error(`Playlist record fetch failed: ${res.status}`);
+            }
+
             const data = await res.json();
 
-            // Cache Widget details
-            state.widget = {
-                type: data.widgetType || null,
-                placement: data.widgetPlacement || 'top-right',
-                link: data.widgetLink || ''
-            };
-            localStorage.setItem(KEYS.WIDGET, JSON.stringify(state.widget));
+            // Sync widget settings from playlist if set
+            if (data.widgetType) {
+                state.widget = {
+                    type: data.widgetType,
+                    placement: data.widgetPlacement || 'bottom-right',
+                    link: data.widgetLink || ''
+                };
+                localStorage.setItem(KEYS.WIDGET, JSON.stringify(state.widget));
+            }
 
-            // Check if playlist updated timestamp actually changed!
             const lastUpdated = data.updated;
             const cachedPlaylistUpdated = localStorage.getItem('signage_tizen_playlist_updated') || '';
             const isPlaylistEmpty = !state.playlist || state.playlist.length === 0;
@@ -746,7 +606,6 @@
                 return;
             }
 
-            // Sync Playlist assets from slides or direct references
             let fetchedAssets = [];
 
             // Check for compiled video container first (client-side video compilation)
@@ -793,10 +652,9 @@
 
             if (fetchedAssets.length === 0 && Array.isArray(slides) && slides.length > 0) {
                 for (const slide of slides) {
-                    const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
+                    const mediaRes = await fetchWithTimeout(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`, {}, 5000);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
-                        // Prefer actual media file or video URL over static thumbnail picture
                         const rawUrl = media.file
                             ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}`
                             : (media.fileUrl || media.videoUrl || media.url || media.thumbnail);
@@ -854,7 +712,7 @@
             // 4. Fallback to mediaIds if not compiled video
             else if (fetchedAssets.length === 0 && data.mediaIds && data.mediaIds.length > 0) {
                 for (const mediaId of data.mediaIds) {
-                    const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`);
+                    const mediaRes = await fetchWithTimeout(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`, {}, 5000);
                     if (mediaRes.ok) {
                         const media = await mediaRes.json();
                         const rawUrl = media.file
@@ -878,14 +736,14 @@
                 }
             }
 
-            // Apply shuffle if the playlist setting is enabled
+            // Apply shuffle if configured
             if (data.shuffle && fetchedAssets.length > 0) {
                 fetchedAssets = fetchedAssets.sort(() => Math.random() - 0.5);
             }
 
             // Sync transitions and loop flags
             state.playlistTransition = data.transition || 'fade';
-            state.playlistLoop = data.loop !== false; // Default to true
+            state.playlistLoop = data.loop !== false;
             state.orientation = data.orientation || 'horizontal';
 
             localStorage.setItem('signage_tizen_transition', state.playlistTransition);
@@ -894,7 +752,7 @@
 
             applyOrientation();
 
-            // Sync files to TV internal storage and block until finished to play 100% offline local files
+            // Sync files to TV internal storage and block until finished
             try {
                 const localAssets = await syncLocalFiles(fetchedAssets.map(a => Object.assign({}, a)));
                 
@@ -902,16 +760,17 @@
                 const currentKeys = state.playlist.map(a => `${a.id}_${a.duration}`);
                 const isDifferent = JSON.stringify(newKeys) !== JSON.stringify(currentKeys);
                 
-                // Always populate playlist state with the offline local paths
                 state.playlist = localAssets;
                 localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
+
+                // Purge unreferenced local cache files to free storage
+                purgeUnusedCacheFiles(localAssets);
 
                 if (isDifferent || isPlaylistEmpty) {
                     state.currentAssetIndex = 0;
                     updateUI();
                     startPlaylistRotation();
                 } else {
-                    // Update UI elements to bind the new local paths
                     updateUI();
                 }
             } catch (syncErr) {
@@ -926,7 +785,6 @@
 
     // Write binary ArrayBuffer directly to Tizen FileStream safely & efficiently
     async function writeBufferToFile(dir, filename, arrayBuffer) {
-        // Clean up pre-existing or partial file to prevent Tizen InvalidModificationError
         try {
             const existing = dir.resolve(filename);
             if (existing) {
@@ -955,7 +813,7 @@
                         try { stream.close(); } catch (e) {}
                         resolve();
                     } else {
-                        // Chunked Base64 encoding fallback for older Tizen APIs (max 16KB per chunk to prevent stack/RAM overflow)
+                        // Chunked Base64 encoding fallback for older Tizen APIs
                         let binary = '';
                         const len = bytes.byteLength;
                         const chunkSize = 16384;
@@ -1023,12 +881,10 @@
             console.log("Local wgt-private storage resolved. Syncing assets...");
             updateProgress(0, assets.length);
 
-            // Process all media items sequentially
             for (let i = 0; i < assets.length; i++) {
                 const asset = assets[i];
                 if (!asset.url) continue;
 
-                // Determine file extension (strip query parameters first)
                 const cleanUrl = asset.url.split('?')[0];
                 let ext = 'png';
                 if (asset.mediaType === 'video' || cleanUrl.endsWith('.mp4')) ext = 'mp4';
@@ -1039,7 +895,6 @@
                 const filename = `asset_${asset.id}.${ext}`;
 
                 try {
-                    // Check if file exists locally and has non-zero bytes
                     const file = dir.resolve(filename);
                     if (file && file.fileSize && file.fileSize > 0) {
                         const localUri = getFileURI(file);
@@ -1049,7 +904,6 @@
                         throw new Error("Local file missing or 0 bytes");
                     }
                 } catch (e) {
-                    // File does not exist or is corrupt, download via fetch
                     console.log(`Downloading asset: ${asset.url} as ${filename}`);
                     
                     try {
@@ -1079,7 +933,6 @@
                     }
                 }
                 updateProgress(i + 1, assets.length);
-                // Brief 100ms pause between asset downloads to keep TV UI smooth
                 await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
             }
 
@@ -1110,7 +963,7 @@
                 } catch (e) {
                     console.log(`Downloading updated QR code image: ${qrFilename}`);
                     try {
-                        const response = await fetch(qrUrl);
+                        const response = await fetchWithTimeout(qrUrl, {}, 5000);
                         if (!response.ok) throw new Error("QR network fetch failed");
                         const arrayBuffer = await response.arrayBuffer();
                         await writeBufferToFile(dir, qrFilename, arrayBuffer);
@@ -1128,27 +981,12 @@
                 state.imageElementsCache = {};
             }
 
-            console.log("Starting upfront asset pre-decoding...");
+            // Pre-decode images into DOM/memory
             const imageAssets = assets.filter(a => a.mediaType === 'image' && a.url);
             if (imageAssets.length > 0) {
-                if (views.splashStatus) {
-                    views.splashStatus.innerText = "Optimizing display cache for smooth transitions...";
-                }
-                if (progressBar) progressBar.style.width = '0%';
-
                 for (let k = 0; k < imageAssets.length; k++) {
                     const asset = imageAssets[k];
-                    if (views.splashStatus) {
-                        views.splashStatus.innerText = `Optimizing graphics cache... ${k + 1}/${imageAssets.length}`;
-                    }
-                    if (progressBar) {
-                        const percent = ((k + 1) / imageAssets.length) * 100;
-                        progressBar.style.width = `${percent}%`;
-                    }
-
-                    // Skip loading if this asset URL is already in-memory and pre-decoded
                     if (state.imageElementsCache[asset.id] && state.imageElementsCache[asset.id].src === asset.url) {
-                        console.log(`Asset ${asset.id} already exists in pre-decode cache.`);
                         continue;
                     }
 
@@ -1161,12 +999,10 @@
                             img.style.zIndex = '1';
 
                             img.onload = () => {
-                                // Append to DOM immediately to activate GPU compositor caching
                                 const container = document.getElementById('media-container');
                                 if (container && img.parentNode !== container) {
                                     container.appendChild(img);
                                 }
-
                                 if (typeof img.decode === 'function') {
                                     img.decode().then(() => {
                                         state.imageElementsCache[asset.id] = img;
@@ -1176,16 +1012,6 @@
                                         resolve();
                                     });
                                 } else {
-                                    // Fallback: force synchronous decode on GPU via 1x1 canvas rendering
-                                    try {
-                                        const tempCanvas = document.createElement('canvas');
-                                        tempCanvas.width = 1;
-                                        tempCanvas.height = 1;
-                                        const tempCtx = tempCanvas.getContext('2d');
-                                        if (tempCtx) {
-                                            tempCtx.drawImage(img, 0, 0, 1, 1);
-                                        }
-                                    } catch (e) {}
                                     state.imageElementsCache[asset.id] = img;
                                     resolve();
                                 }
@@ -1194,54 +1020,101 @@
                             img.src = asset.url;
                         });
                     } catch (decodeErr) {
-                        console.warn(`Upfront pre-decoding failed for ${asset.filename}:`, decodeErr);
+                        console.warn(`Pre-decoding failed for ${asset.filename}:`, decodeErr);
                     }
-
-                    // Brief pause to keep TV processor fully responsive
-                    await new Promise(r => setTimeout(r, 150));
                 }
             }
 
-            // Cleanup obsolete cache entries that are no longer in the playlist to free up RAM
-            const activeAssetIds = assets.map(a => a.id);
-            Object.keys(state.imageElementsCache).forEach(cachedId => {
-                if (!activeAssetIds.includes(cachedId)) {
-                    const img = state.imageElementsCache[cachedId];
-                    if (img && img.parentNode) {
-                        img.parentNode.removeChild(img);
-                    }
-                    delete state.imageElementsCache[cachedId];
-                }
-            });
-
+            return assets;
         } catch (err) {
-            console.error("Local filesystem synchronization failed:", err);
+            console.error("Local filesystem sync failed:", err);
+            return assets;
+        } finally {
+            if (progressContainer) progressContainer.classList.add('hidden');
         }
-
-        if (progressContainer) progressContainer.classList.add('hidden');
-        return assets;
     }
 
-    // Playback playlist rotation loop
+    // Purge unreferenced local cache files from Tizen filesystem storage
+    async function purgeUnusedCacheFiles(activeAssets) {
+        if (!window.tizen || !window.tizen.filesystem) return;
+        try {
+            const dir = await new Promise((resolve, reject) => {
+                window.tizen.filesystem.resolve("wgt-private", resolve, reject, "rw");
+            });
+
+            const activeLocalPaths = activeAssets.map(a => a.url).filter(url => url && url.startsWith('file:'));
+            if (state.qrcodeLocalPath) activeLocalPaths.push(state.qrcodeLocalPath);
+
+            dir.listFiles((files) => {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (!file.isFile) continue;
+                    const uri = getFileURI(file);
+                    if (file.name.startsWith('asset_') || file.name.startsWith('qrcode_')) {
+                        if (!activeLocalPaths.includes(uri) && !activeLocalPaths.includes(file.fullPath)) {
+                            console.log(`Purging unreferenced local Tizen file: ${file.name}`);
+                            try { dir.deleteFile(file.fullPath); } catch (e) {}
+                        }
+                    }
+                }
+            }, (err) => console.error("Error listing files for cache purge:", err));
+        } catch (e) {
+            console.error("Cache purge failed:", e);
+        }
+    }
+
+    // Start playlist rotation loop
     function startPlaylistRotation() {
-        if (rotationTimeout) clearTimeout(rotationTimeout);
-        if (!state.playlist || state.playlist.length === 0) return;
+        if (rotationTimeout) {
+            clearTimeout(rotationTimeout);
+            rotationTimeout = null;
+        }
+        rotationToken++;
 
-        const currentToken = ++rotationToken; // Capture a unique token for this loop cycle
-
-        const asset = state.playlist[state.currentAssetIndex];
-        if (!asset) {
-            console.warn(`Asset at index ${state.currentAssetIndex} is undefined. Resetting to index 0.`);
-            state.currentAssetIndex = 0;
-            if (state.playlist && state.playlist[0]) {
-                startPlaylistRotation();
-            }
+        if (!state.playlist || state.playlist.length === 0) {
+            console.log("No items in playlist. Returning to standby.");
+            updateUI();
             return;
         }
 
-        console.log(`Rotating to asset index ${state.currentAssetIndex}: ${asset.filename} (${asset.mediaType})`);
- 
-        // If device is out of range, replace background media with placeholder but continue loop
+        renderAsset();
+    }
+
+    // Advance to next playlist asset
+    function advancePlaylist() {
+        if (!state.playlist || state.playlist.length === 0) return;
+
+        state.currentAssetIndex++;
+        if (state.currentAssetIndex >= state.playlist.length) {
+            if (state.playlistLoop) {
+                state.currentAssetIndex = 0;
+            } else {
+                state.currentAssetIndex = state.playlist.length - 1;
+                return;
+            }
+        }
+        renderAsset();
+    }
+
+    // Render current asset (image or video)
+    function renderAsset() {
+        if (rotationTimeout) {
+            clearTimeout(rotationTimeout);
+            rotationTimeout = null;
+        }
+        const currentToken = ++rotationToken;
+
+        if (!state.playlist || state.playlist.length === 0) return;
+
+        if (state.currentAssetIndex >= state.playlist.length) {
+            state.currentAssetIndex = 0;
+        }
+
+        const asset = state.playlist[state.currentAssetIndex];
+        if (!asset) return;
+
+        console.log(`Rendering asset [${state.currentAssetIndex + 1}/${state.playlist.length}]: ${asset.filename || asset.id} (${asset.mediaType})`);
+
         if (state.isOutOfRange) {
             views.imagePlayer1.style.display = 'none';
             views.imagePlayer2.style.display = 'none';
@@ -1259,12 +1132,10 @@
             return;
         }
 
-        // Hide out of range placeholder if allowed size
         if (views.outOfRange) {
             views.outOfRange.style.display = 'none';
         }
 
-        // Get transition styling animations
         const transitionName = state.playlistTransition || 'fade';
         const animClass = 'animate-' + (
             transitionName === 'slide' ? 'slideIn' :
@@ -1275,21 +1146,17 @@
             transitionName === 'bounce' ? 'bounceIn' : 'fadeIn'
         );
 
-        // Determine active and inactive players for double buffering
         const activePlayer = activeImagePlayerNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
         const inactivePlayer = activeImagePlayerNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
 
         if (asset.mediaType === 'video') {
-            // Apply scale mode configuration
             views.videoPlayer.style.objectFit = asset.objectFit || 'cover';
             activePlayer.style.objectFit = asset.objectFit || 'cover';
 
-            // Apply scale zoom configuration
             const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
             views.videoPlayer.style.transform = scale;
             activePlayer.style.transform = scale;
 
-            // Show video thumbnail on active image player during buffering to avoid blank black screen
             if (asset.thumbnail) {
                 activePlayer.className = 'media-element';
                 activePlayer.src = asset.thumbnail;
@@ -1307,7 +1174,6 @@
                 views.videoPlayer.className = 'media-element';
                 views.videoPlayer.style.opacity = '1';
                 
-                // Fade out and hide all image players
                 activePlayer.style.opacity = '0';
                 inactivePlayer.style.opacity = '0';
                 setTimeout(() => {
@@ -1329,7 +1195,6 @@
             views.videoPlayer.addEventListener('playing', handleVideoPlaying);
 
             views.videoPlayer.play().then(() => {
-                // Set rotation timeout to cut off video when the slide duration completes (minimum 3 seconds)
                 const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
@@ -1340,7 +1205,7 @@
             }).catch(e => {
                 console.warn("Autoplay block / playback error on video", e);
                 views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
-                // Advance automatically if blocked
+                sendHeartbeat(`Video autoplay error: ${asset.filename || asset.id}`);
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
                         advancePlaylist();
@@ -1348,7 +1213,7 @@
                 }, 5000);
             });
         } else {
-            // Hide video player immediately if we are switching to an image
+            // Image playback logic using pre-decoded or double-buffered player
             views.videoPlayer.style.opacity = '0.001';
             setTimeout(() => {
                 if (currentToken === rotationToken) {
@@ -1356,7 +1221,6 @@
                 }
             }, 600);
             
-            // Get or create pre-decoded Image element from state cache
             if (!state.imageElementsCache[asset.id]) {
                 const img = new Image();
                 img.className = 'media-element';
@@ -1368,239 +1232,124 @@
             }
 
             const imgElement = state.imageElementsCache[asset.id];
-            
-            // Configure scale mode and zoom transform
             imgElement.style.objectFit = asset.objectFit || 'cover';
             const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
             imgElement.style.transform = scale;
 
-            // Ensure the image element is appended to the media container
+            // Transition animations
             const container = document.getElementById('media-container');
-            if (imgElement.parentNode !== container) {
+            if (container && imgElement.parentNode !== container) {
                 container.appendChild(imgElement);
             }
 
-            const startTransition = () => {
-                if (currentToken !== rotationToken) return;
+            imgElement.className = 'media-element';
+            imgElement.style.display = 'block';
+            imgElement.style.opacity = '1';
+            imgElement.style.zIndex = '10';
 
-                // Bring new image to foreground on top of the old one
-                imgElement.style.display = 'block';
-                imgElement.style.zIndex = '2';
-                
-                // Fade in the new image (only animate this top layer to keep GPU blending load low)
-                setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        imgElement.style.opacity = '1';
-                        
-                        if (transitionName !== 'none') {
-                            imgElement.className = 'media-element ' + animClass;
-                        } else {
-                            imgElement.className = 'media-element';
-                        }
-                    }
-                }, 20);
+            if (transitionName !== 'none') {
+                imgElement.classList.add(animClass);
+            }
 
-                // Wait for the transition to finish (600ms), then push old image to background
-                setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        const children = container.querySelectorAll('.media-element');
-                        children.forEach(child => {
-                            if (child !== imgElement && child.id !== 'video-player') {
-                                child.style.opacity = '0.001';
-                                child.style.zIndex = '1';
-                            }
-                        });
-                    }
-                }, 600);
-
-                // Schedule the next transition duration (enforce a safe minimum of 3 seconds to prevent rapid skipping)
-                const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        advancePlaylist();
-                    }
-                }, duration);
-            };
-
-            if (imgElement.complete) {
-                if (typeof imgElement.decode === 'function') {
-                    imgElement.decode().then(startTransition).catch(startTransition);
-                } else {
-                    startTransition();
+            activePlayer.style.opacity = '0';
+            inactivePlayer.style.opacity = '0';
+            setTimeout(() => {
+                if (currentToken === rotationToken) {
+                    activePlayer.style.display = 'none';
+                    inactivePlayer.style.display = 'none';
                 }
-            } else {
-                const handleLoad = () => {
-                    imgElement.removeEventListener('load', handleLoad);
-                    imgElement.removeEventListener('error', handleError);
-                    // Append to DOM to ensure GPU caching starts immediately
-                    if (container && imgElement.parentNode !== container) {
-                        container.appendChild(imgElement);
-                    }
-                    if (typeof imgElement.decode === 'function') {
-                        imgElement.decode().then(startTransition).catch(startTransition);
-                    } else {
-                        startTransition();
-                    }
-                };
-                const handleError = (err) => {
-                    console.error(`Dynamic image element load failed: ${asset.url}`, err);
-                    imgElement.removeEventListener('load', handleLoad);
-                    imgElement.removeEventListener('error', handleError);
+            }, 600);
+
+            activeImagePlayerNum = activeImagePlayerNum === 1 ? 2 : 1;
+
+            const duration = Math.max(parseInt(asset.duration, 10) || 10, 2) * 1000;
+            rotationTimeout = setTimeout(() => {
+                if (currentToken === rotationToken) {
                     advancePlaylist();
-                };
-                imgElement.addEventListener('load', handleLoad);
-                imgElement.addEventListener('error', handleError);
-                if (!imgElement.src) {
-                    imgElement.src = asset.url;
                 }
-            }
-        }
-
-        // Background preloader: preload the next image slide so it loads instantly with zero lag
-        if (state.playlist.length > 1) {
-            const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
-            const nextAsset = state.playlist[nextIndex];
-            if (nextAsset && nextAsset.url && nextAsset.mediaType === 'image') {
-                const preloadImg = new Image();
-                preloadImg.src = nextAsset.url;
-            }
+            }, duration);
         }
     }
 
-    function advancePlaylist() {
-        if (rotationTimeout) clearTimeout(rotationTimeout);
-        if (state.playlist.length > 0) {
-            // Respect loop settings
-            if (state.currentAssetIndex === state.playlist.length - 1 && !state.playlistLoop) {
-                console.log("End of playlist reached and loop is disabled. Stopping rotation.");
-                return;
-            }
-            state.currentAssetIndex = (state.currentAssetIndex + 1) % state.playlist.length;
-            startPlaylistRotation();
-        }
-    }
-
-    // Display overlay widgets (QR, clock, weather, RSS news ticker)
-    function renderWidgets() {
+    // Sync overlay widgets (QR code, weather, clock, RSS)
+    function syncWidgets() {
         const w = state.widget;
-        if (!w || !w.type) return;
+        if (!w || !w.type) {
+            widgets.overlay.style.display = 'none';
+            return;
+        }
 
-        console.log("Rendering widget overlay:", w.type, w.placement);
-
-        // Split active types (e.g. "rss,qrcode")
+        widgets.overlay.style.display = 'block';
         const activeTypes = w.type.split(',').map(s => s.trim().toLowerCase());
 
-        // Hide all widgets first by default and apply placement
-        const placement = w.placement || 'top-right';
-        [widgets.qrcode, widgets.weather, widgets.clock].forEach(el => {
-            el.className = 'widget-item ' + (el.id === 'widget-qrcode' ? '' : 'card hud') + ' ' + placement + ' hidden';
-        });
-        widgets.rss.className = 'rss-ticker-container hidden';
+        // Placement class
+        widgets.overlay.className = 'widgets-overlay-container ' + (w.placement || 'bottom-right');
 
-        // Parse individual links from multi-link JSON configuration if present
-        let qrcodeLink = w.link;
-        let rssLink = w.link;
-        let weatherLink = w.link;
-        let clockLink = w.link;
-
-        if (w.link && w.link.trim().startsWith('{')) {
-            try {
-                const parsed = JSON.parse(w.link);
-                if (parsed.qrcode) qrcodeLink = parsed.qrcode;
-                if (parsed.rss) rssLink = typeof parsed.rss === 'object' ? JSON.stringify(parsed.rss) : parsed.rss;
-                if (parsed.weather) weatherLink = parsed.weather;
-                if (parsed.clock) clockLink = parsed.clock;
-            } catch (e) {
-                console.warn("Could not parse widget multi-link JSON:", e);
-            }
-        }
-
-        // Render QR Code widget
-        if (activeTypes.includes('qrcode')) {
-            const link = qrcodeLink || SERVER_URL;
-            widgets.qrcodeImg.src = state.qrcodeLocalPath || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
-            widgets.qrcode.className = 'widget-item ' + placement;
+        // QR Code
+        if (activeTypes.includes('qrcode') && w.link) {
             widgets.qrcode.classList.remove('hidden');
+            let qrcodeLink = w.link;
+            if (w.link.trim().startsWith('{')) {
+                try {
+                    const parsed = JSON.parse(w.link);
+                    if (parsed.qrcode) qrcodeLink = parsed.qrcode;
+                } catch (e) {}
+            }
+            const qrSrc = state.qrcodeLocalPath || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrcodeLink)}`;
+            widgets.qrcodeImg.src = qrSrc;
+        } else {
+            widgets.qrcode.classList.add('hidden');
         }
 
-        // Render Weather widget
+        // Weather HUD
         if (activeTypes.includes('weather')) {
-            widgets.weather.className = 'widget-item card hud ' + placement;
-            widgets.weather.querySelector('.location-name').innerText = weatherLink || 'Bengaluru';
             widgets.weather.classList.remove('hidden');
+        } else {
+            widgets.weather.classList.add('hidden');
         }
 
-        // Render Clock widget
+        // Clock HUD
         if (activeTypes.includes('clock')) {
-            widgets.clock.className = 'widget-item clock-nobg ' + placement;
             widgets.clock.classList.remove('hidden');
+        } else {
+            widgets.clock.classList.add('hidden');
         }
 
-        // Render RSS News Ticker widget
+        // RSS Ticker
         if (activeTypes.includes('rss')) {
-            let tickerText = rssLink || 'SignageOS Player online and running.';
-            let labelText = '';
-            let bgColor = '#ffffff';
-            let textColor = '#1e293b';
-
-            try {
-                const config = JSON.parse(rssLink);
-                if (config && typeof config === 'object') {
-                    if (config.label) labelText = config.label;
-                    if (Array.isArray(config.items)) {
-                        tickerText = config.items.filter(item => item && item.trim() !== '').join('         |         ');
-                    }
-                    if (config.bgColor) bgColor = config.bgColor;
-                    if (config.textColor) textColor = config.textColor;
-                }
-            } catch (e) {
-                // Not JSON, format plain text with space-pipe-space separator if pipes are present
-                if (typeof rssLink === 'string') {
-                    tickerText = rssLink.split('|').map(s => s.trim()).filter(Boolean).join('         |         ');
+            widgets.rss.classList.remove('hidden');
+            let rssMsg = "Welcome to SignageOS Digital Signage Network";
+            if (w.link) {
+                if (w.link.trim().startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(w.link);
+                        if (parsed.rss) rssMsg = parsed.rss;
+                    } catch (e) {}
+                } else if (!w.link.startsWith('http')) {
+                    rssMsg = w.link;
                 }
             }
-
-            const rssLabelEl = widgets.rss.querySelector('.rss-label');
-            if (rssLabelEl) {
-                if (labelText && labelText.trim() !== '') {
-                    rssLabelEl.innerText = labelText;
-                    rssLabelEl.style.display = 'block';
-                } else {
-                    rssLabelEl.style.display = 'none';
-                }
-            }
-            widgets.rssText.innerText = tickerText + '         |         ';
-            if (widgets.rssTextDup) {
-                widgets.rssTextDup.innerText = tickerText + '         |         ';
-                widgets.rssTextDup.style.color = textColor;
-            }
-            widgets.rss.style.backgroundColor = bgColor;
-            widgets.rssText.style.color = textColor;
-            widgets.rss.className = 'rss-ticker-container'; // Make visible (removed hidden)
-
-            // Force animation reflow for Tizen to prevent freeze / stop scrolling
-            widgets.rssText.style.animation = 'none';
-            if (widgets.rssTextDup) widgets.rssTextDup.style.animation = 'none';
-            void widgets.rssText.offsetHeight; // trigger reflow
-            widgets.rssText.style.animation = '';
-            if (widgets.rssTextDup) widgets.rssTextDup.style.animation = '';
+            widgets.rssText.innerText = rssMsg;
+            widgets.rssTextDup.innerText = rssMsg;
+        } else {
+            widgets.rss.classList.add('hidden');
         }
     }
 
-    // Start Clock widget loop
+    // Start Live Clock Overlay Interval
     function startClockWidget() {
         if (clockInterval) clearInterval(clockInterval);
-        clockInterval = setInterval(() => {
-            const now = new Date();
-            let hours = now.getHours();
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12; // the hour '0' should be '12'
-            const timeStr = `${String(hours).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`;
-            widgets.clockTime.innerText = timeStr;
-        }, 1000);
+        const updateClock = () => {
+            if (widgets.clockTime) {
+                const now = new Date();
+                const hrs = String(now.getHours()).padStart(2, '0');
+                const mins = String(now.getMinutes()).padStart(2, '0');
+                const secs = String(now.getSeconds()).padStart(2, '0');
+                widgets.clockTime.innerText = `${hrs}:${mins}:${secs}`;
+            }
+        };
+        updateClock();
+        clockInterval = setInterval(updateClock, 1000);
     }
 
     // Start periodic background loops
@@ -1608,7 +1357,7 @@
         if (syncInterval) clearInterval(syncInterval);
         if (heartbeatInterval) clearInterval(heartbeatInterval);
 
-        // Config Sync every 60 seconds (1 minute)
+        // Config Sync every 60 seconds
         syncInterval = setInterval(() => {
             if (state.screenId) {
                 fetchScreenConfig();
@@ -1617,7 +1366,7 @@
             }
         }, 60000);
 
-        // Broadcast initial diagnostic heartbeat immediately
+        // Send initial diagnostic heartbeat immediately
         sendHeartbeat();
 
         // Diagnostic heartbeat every 30 seconds
@@ -1634,15 +1383,24 @@
         try {
             const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
             const res = await fetchWithTimeout(url, {}, 5000);
-            if (res.ok) {
-                const data = await res.json();
-                if (data.status && data.status !== 'pairing') {
-                    console.log("Device has been successfully paired!");
-                    state.status = data.status;
-                    localStorage.setItem(KEYS.STATUS, state.status);
-                    sendHeartbeat();
-                    updateUI();
+            
+            // Screen record deleted on CMS during pairing check -> unpair device
+            if (!res.ok) {
+                if (res.status === 404) {
+                    console.log("Screen record 404 during pairing check. Resetting device...");
+                    disconnectDevice();
+                    return;
                 }
+                return;
+            }
+
+            const data = await res.json();
+            if (data.status && data.status !== 'pairing') {
+                console.log("Device has been successfully paired!");
+                state.status = data.status;
+                localStorage.setItem(KEYS.STATUS, state.status);
+                sendHeartbeat();
+                updateUI();
             }
         } catch (err) {
             console.error("Error checking pairing status:", err);
@@ -1659,46 +1417,85 @@
             const assetInfo = errorMessage ? `Status/Error: ${errorMessage}` : (currentAsset ? (currentAsset.filename || currentAsset.id || 'None') : 'None');
             const payload = {
                 hardwareUuid: state.uuid,
-                cpuTemp: 45.0, // Mock temp since we are in sandboxed browser
+                cpuTemp: 45.0,
                 currentPlayingAsset: assetInfo,
                 storageUsedBytes: 15 * 1024 * 1024,
                 storageAvailableBytes: 85 * 1024 * 1024
             };
 
-            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/heartbeat`, {
+            const res = await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/heartbeat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             }, 5000);
+
+            // Screen un-paired or removed on backend -> trigger disconnect
+            if (res.status === 404) {
+                console.log("Heartbeat returned HTTP 404 (screen removed). Disconnecting device...");
+                disconnectDevice();
+            }
         } catch (err) {
             console.error("Heartbeat broadcast failed:", err);
         }
     }
 
-    // Disconnect and reset pairing
+    // Disconnect device, clear all local state & storage, and return to pairing screen
     function disconnectDevice() {
-        console.log("Disconnecting device and resetting pairing states.");
-        localStorage.removeItem(KEYS.SCREEN_ID);
-        localStorage.removeItem(KEYS.PAIRING_CODE);
-        localStorage.removeItem(KEYS.STATUS);
-        localStorage.removeItem(KEYS.PLAYLIST);
-        localStorage.removeItem(KEYS.WIDGET);
+        console.log("Disconnecting device, clearing storage, and resetting pairing states.");
 
+        if (rotationTimeout) {
+            clearTimeout(rotationTimeout);
+            rotationTimeout = null;
+        }
+
+        if (views.videoPlayer) {
+            try { views.videoPlayer.pause(); } catch (e) {}
+        }
+
+        const persistentUuid = state.uuid;
+
+        // Clear local storage state
+        localStorage.clear();
+        localStorage.setItem(KEYS.UUID, persistentUuid);
+
+        // Reset state object
         state.screenId = '';
         state.pairingCode = '';
         state.status = 'pairing';
         state.playlist = [];
         state.widget = {};
+        state.playlistId = '';
+        state.screenUpdated = '';
+        state.imageElementsCache = {};
+
+        // Purge local cached media files
+        purgeUnusedCacheFiles([]);
 
         updateUI();
         requestPairingCode();
     }
 
-    // Report playback logs/errors directly to pocketbase logs collection
+    // Clear Express backend commands
+    async function clearScreenCommandOnServer(command) {
+        try {
+            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/clear-command`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    screenId: state.screenId,
+                    command: command
+                })
+            }, 3000);
+        } catch (e) {
+            console.error(`Failed to clear command ${command} on server:`, e);
+        }
+    }
+
+    // Report error logs directly to PocketBase screen_logs collection
     async function reportError(event, detail) {
         if (!state.screenId) return;
         try {
-            await fetch(`${POCKETBASE_URL}/api/collections/screen_logs/records`, {
+            await fetchWithTimeout(`${POCKETBASE_URL}/api/collections/screen_logs/records`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1708,12 +1505,12 @@
                     detail: detail,
                     type: 'error'
                 })
-            });
+            }, 3000);
         } catch (err) {
             console.error("Failed to post error logs:", err);
         }
     }
 
-    // Start App
+    // Boot application
     window.onload = init;
 })();
