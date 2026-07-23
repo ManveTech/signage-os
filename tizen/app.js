@@ -1499,8 +1499,7 @@
 
         // Render Clock widget
         if (activeTypes.includes('clock')) {
-            widgets.clock.className = 'widget-item card hud ' + placement;
-            widgets.clockTitle.innerText = clockLink || 'Lobby Clock';
+            widgets.clock.className = 'widget-item clock-nobg ' + placement;
             widgets.clock.classList.remove('hidden');
         }
 

@@ -41,7 +41,9 @@ data class DownloadState(
     val completedFiles: Int = 0,
     val currentFileProgress: Float = 0.0f,
     val currentFileName: String = "",
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = 0L
 )
 
 class SignageRepository(private val context: Context) {
@@ -462,6 +464,7 @@ class SignageRepository(private val context: Context) {
                 if (assetDao.getAllAssets().isNotEmpty()) {
                     assetDao.clearAllAssets()
                 }
+                purgeUnusedCacheFiles(emptyList(), config.whiteLabelLogoUrl)
                 return@withContext
             }
 
@@ -477,6 +480,7 @@ class SignageRepository(private val context: Context) {
                 if (assetDao.getAllAssets().isNotEmpty()) {
                     assetDao.clearAllAssets()
                 }
+                purgeUnusedCacheFiles(emptyList(), config.whiteLabelLogoUrl)
                 return@withContext
             }
 
@@ -490,6 +494,7 @@ class SignageRepository(private val context: Context) {
                 if (assetDao.getAllAssets().isNotEmpty()) {
                     assetDao.clearAllAssets()
                 }
+                purgeUnusedCacheFiles(emptyList(), config.whiteLabelLogoUrl)
                 return@withContext
             }
 
@@ -758,6 +763,7 @@ class SignageRepository(private val context: Context) {
                     // Update database
                     assetDao.clearAllAssets()
                     assetDao.insertAssets(mergedAssets)
+                    purgeUnusedCacheFiles(mergedAssets, logoUrlNow)
                 } else if (wasWhiteLabelLogoMissing) {
                     startDownloadingPendingAssets()
                 }
@@ -768,6 +774,36 @@ class SignageRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e("SignageRepository", "Failed to sync playlist details", e)
+        }
+    }
+
+    private fun purgeUnusedCacheFiles(activeAssets: List<PlaylistAsset>, activeLogoUrl: String? = null) {
+        try {
+            val cacheDir = File(context.filesDir, "signage_cache")
+            if (!cacheDir.exists() || !cacheDir.isDirectory) return
+
+            val activePaths = activeAssets.mapNotNull { it.localPath }.toMutableSet()
+            val activeFilenames = activeAssets.map { getCacheFileName(it.url, it.filename) }.toMutableSet()
+            if (!activeLogoUrl.isNullOrEmpty()) {
+                val logoFileName = getCacheFileName(activeLogoUrl, "whitelabel_logo.png")
+                activeFilenames.add(logoFileName)
+                val logoFile = File(cacheDir, logoFileName)
+                if (logoFile.exists()) {
+                    activePaths.add(logoFile.absolutePath)
+                }
+            }
+
+            val files = cacheDir.listFiles() ?: return
+            for (file in files) {
+                val path = file.absolutePath
+                val name = file.name
+                if (!path.endsWith(".tmp") && !activePaths.contains(path) && !activeFilenames.contains(name)) {
+                    Log.d("SignageRepository", "Purging unreferenced playlist cache file: $name")
+                    file.delete()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Error purging unused cache files", e)
         }
     }
 
@@ -858,16 +894,21 @@ class SignageRepository(private val context: Context) {
 
         val totalToDownload = pending.size
         val startIndex = 0
+        val sumKnownBytes = pending.sumOf { it.fileSizeBytes ?: 0L }
+        var cumulativeDownloadedBytes = 0L
 
         pending.forEachIndexed { index, asset ->
             Log.d("SignageRepository", "Downloading playlist asset: ${asset.url}")
+            val initialOverall = cumulativeDownloadedBytes
             downloadStateFlow.value = DownloadState(
                 isDownloading = true,
                 totalFiles = totalToDownload,
                 completedFiles = startIndex + index,
                 currentFileProgress = 0.0f,
                 currentFileName = asset.filename,
-                errorMessage = downloadStateFlow.value.errorMessage
+                errorMessage = downloadStateFlow.value.errorMessage,
+                downloadedBytes = initialOverall,
+                totalBytes = if (sumKnownBytes > 0) sumKnownBytes else initialOverall
             )
 
             val localFile = if (!asset.localPath.isNullOrEmpty()) {
@@ -885,6 +926,7 @@ class SignageRepository(private val context: Context) {
                         FileOutputStream(tmpFile).use { outputStream ->
                             outputStream.write(bytes)
                         }
+                        cumulativeDownloadedBytes += bytes.size.toLong()
 
                         // Calculate SHA-256 and verify
                         if (!asset.checksum.isNullOrEmpty()) {
@@ -909,7 +951,9 @@ class SignageRepository(private val context: Context) {
                             completedFiles = startIndex + index + 1,
                             currentFileProgress = 0.0f,
                             currentFileName = asset.filename,
-                            errorMessage = downloadStateFlow.value.errorMessage
+                            errorMessage = downloadStateFlow.value.errorMessage,
+                            downloadedBytes = cumulativeDownloadedBytes,
+                            totalBytes = if (sumKnownBytes > 0) Math.max(sumKnownBytes, cumulativeDownloadedBytes) else cumulativeDownloadedBytes
                         )
                         Log.d("SignageRepository", "Base64 asset cached successfully to: ${localFile.absolutePath}")
                     } else {
@@ -921,31 +965,35 @@ class SignageRepository(private val context: Context) {
                         if (!response.isSuccessful) throw Exception("Failed download status: ${response.code}")
                         val body = response.body ?: throw Exception("Null response body")
                         val contentLength = body.contentLength()
+                        val currentAssetTotal = if (contentLength > 0) contentLength else (asset.fileSizeBytes ?: 0L)
+                        val totalTargetBytes = if (sumKnownBytes > 0) sumKnownBytes else (cumulativeDownloadedBytes + currentAssetTotal)
+
                         body.byteStream().use { inputStream ->
                             FileOutputStream(tmpFile).use { outputStream ->
                                 val buffer = ByteArray(8192)
                                 var bytesRead: Int
-                                var totalBytesRead = 0L
-                                var lastProgressUpdatePercent = -1
+                                var fileBytesRead = 0L
+                                var lastUpdateBytes = 0L
                                 while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                                     outputStream.write(buffer, 0, bytesRead)
-                                    totalBytesRead += bytesRead
-                                    if (contentLength > 0) {
-                                        val progress = totalBytesRead.toFloat() / contentLength
-                                        val percent = (progress * 100).toInt()
-                                        if (percent > lastProgressUpdatePercent) {
-                                            lastProgressUpdatePercent = percent
-                                            downloadStateFlow.value = DownloadState(
-                                                isDownloading = true,
-                                                totalFiles = totalToDownload,
-                                                completedFiles = startIndex + index,
-                                                currentFileProgress = progress.coerceIn(0f, 1f),
-                                                currentFileName = asset.filename,
-                                                errorMessage = downloadStateFlow.value.errorMessage
-                                            )
-                                        }
+                                    fileBytesRead += bytesRead
+                                    val currentOverall = cumulativeDownloadedBytes + fileBytesRead
+                                    if (fileBytesRead - lastUpdateBytes >= 65536 || (contentLength > 0 && fileBytesRead == contentLength)) {
+                                        lastUpdateBytes = fileBytesRead
+                                        val progress = if (contentLength > 0) (fileBytesRead.toFloat() / contentLength) else 0f
+                                        downloadStateFlow.value = DownloadState(
+                                            isDownloading = true,
+                                            totalFiles = totalToDownload,
+                                            completedFiles = startIndex + index,
+                                            currentFileProgress = progress.coerceIn(0f, 1f),
+                                            currentFileName = asset.filename,
+                                            errorMessage = downloadStateFlow.value.errorMessage,
+                                            downloadedBytes = currentOverall,
+                                            totalBytes = if (totalTargetBytes > 0) Math.max(totalTargetBytes, currentOverall) else currentOverall
+                                        )
                                     }
                                 }
+                                cumulativeDownloadedBytes += fileBytesRead
                             }
                         }
                     }
@@ -973,7 +1021,9 @@ class SignageRepository(private val context: Context) {
                         completedFiles = startIndex + index + 1,
                         currentFileProgress = 0.0f,
                         currentFileName = asset.filename,
-                        errorMessage = downloadStateFlow.value.errorMessage
+                        errorMessage = downloadStateFlow.value.errorMessage,
+                        downloadedBytes = cumulativeDownloadedBytes,
+                        totalBytes = if (sumKnownBytes > 0) Math.max(sumKnownBytes, cumulativeDownloadedBytes) else cumulativeDownloadedBytes
                     )
                     Log.d("SignageRepository", "Asset cached successfully to: ${localFile.absolutePath}")
                 }
@@ -989,14 +1039,23 @@ class SignageRepository(private val context: Context) {
                     completedFiles = startIndex + index + 1,
                     currentFileProgress = 0.0f,
                     currentFileName = asset.filename,
-                    errorMessage = e.message ?: "Unknown download error"
+                    errorMessage = e.message ?: "Unknown download error",
+                    downloadedBytes = cumulativeDownloadedBytes,
+                    totalBytes = if (sumKnownBytes > 0) Math.max(sumKnownBytes, cumulativeDownloadedBytes) else cumulativeDownloadedBytes
                 )
                 // Send diagnostics heartbeat with error status for playing/download failure tracking
                 sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
             }
         }
         val currentError = downloadStateFlow.value.errorMessage
-        downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = currentError)
+        val finalDownloaded = downloadStateFlow.value.downloadedBytes
+        val finalTotal = downloadStateFlow.value.totalBytes
+        downloadStateFlow.value = DownloadState(
+            isDownloading = false,
+            errorMessage = currentError,
+            downloadedBytes = finalDownloaded,
+            totalBytes = finalTotal
+        )
     }
 
     private fun calculateSHA256(file: File): String {

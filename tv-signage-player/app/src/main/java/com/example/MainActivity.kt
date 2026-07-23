@@ -242,6 +242,8 @@ fun SignagePlayerApp(
                                                     modifier = Modifier.size(120.dp),
                                                     contentScale = ContentScale.Fit
                                                 )
+                                            } else if (floatWidgetType == "clock") {
+                                                ClockWidget(header = "")
                                             } else if (floatWidgetType != null) {
                                                 Card(
                                                     colors = CardDefaults.cardColors(
@@ -255,9 +257,6 @@ fun SignagePlayerApp(
                                                     when (floatWidgetType) {
                                                         "weather" -> {
                                                             WeatherWidget(location = weatherLoc.ifEmpty { "Bengaluru" })
-                                                        }
-                                                        "clock" -> {
-                                                            ClockWidget(header = clockText.ifEmpty { "Lobby Clock" })
                                                         }
                                                     }
                                                 }
@@ -961,7 +960,10 @@ fun PlaybackLoopScreen(
 
             override fun onPlayerError(error: PlaybackException) {
                 android.util.Log.e("PlaybackLoopScreen", "ExoPlayer playback error: ${currentActiveAsset.filename}", error)
-                currentOnVideoCompleted()
+                kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
+                    kotlinx.coroutines.delay(2500)
+                    currentOnVideoCompleted()
+                }
             }
         }
         sharedExoPlayer.addListener(listener)
@@ -1105,34 +1107,6 @@ fun PlaybackLoopScreen(
                 ) {
                     LocalImageRenderer(asset = asset)
                 }
-            }
-        }
-
-
-
-        // Overlay element displaying active asset name and playback progress (bottom-right edge, clean)
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp)
-                .background(Color(0xBF101116), RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = "Media classification",
-                    tint = Color(0xFF90CAF9),
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "${currentIndex + 1}/${playlist.size}",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.Monospace
-                )
             }
         }
     }
@@ -1557,6 +1531,12 @@ fun DownloadProgressScreen(
         (!asset.localPath.isNullOrEmpty() && java.io.File(asset.localPath).exists())
     }
 
+    val animatedProgress by animateFloatAsState(
+        targetValue = uiState.downloadProgressFraction,
+        animationSpec = tween(durationMillis = 300, easing = LinearOutSlowInEasing),
+        label = "smooth_download_progress"
+    )
+
     if (isLandscape) {
         Row(
             modifier = Modifier
@@ -1603,7 +1583,7 @@ fun DownloadProgressScreen(
                     modifier = Modifier.size(150.dp)
                 ) {
                     CircularProgressIndicator(
-                        progress = { uiState.downloadProgressFraction },
+                        progress = { animatedProgress },
                         modifier = Modifier.size(130.dp),
                         color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
                         strokeWidth = 8.dp,
@@ -1614,7 +1594,7 @@ fun DownloadProgressScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "${Math.round(uiState.downloadProgressFraction * 100)}%",
+                            text = "${Math.round(animatedProgress * 100)}%",
                             color = Color.White,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -1668,6 +1648,17 @@ fun DownloadProgressScreen(
                             fontSize = 12.sp,
                             textAlign = TextAlign.Center,
                             lineHeight = 16.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        LinearProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
+                            trackColor = Color(0xFF2B2930)
                         )
 
 
@@ -1739,7 +1730,7 @@ fun DownloadProgressScreen(
             ) {
                 // Background pulsing glow ring
                 CircularProgressIndicator(
-                    progress = { uiState.downloadProgressFraction },
+                    progress = { animatedProgress },
                     modifier = Modifier.size(160.dp),
                     color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
                     strokeWidth = 10.dp,
@@ -1751,7 +1742,7 @@ fun DownloadProgressScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "${Math.round(uiState.downloadProgressFraction * 100)}%",
+                        text = "${Math.round(animatedProgress * 100)}%",
                         color = Color.White,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.ExtraBold
@@ -1800,6 +1791,17 @@ fun DownloadProgressScreen(
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center,
                         lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        color = if (uiState.isDownloading) Color(0xFFD0BCFF) else Color(0xFFE57373),
+                        trackColor = Color(0xFF2B2930)
                     )
 
 
@@ -2028,22 +2030,29 @@ fun ClockWidget(header: String) {
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = header.ifEmpty { "CLOCK" }.uppercase(),
-            color = Color(0xFF94A3B8),
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            modifier = Modifier.fillMaxWidth()
-        )
+        if (header.isNotEmpty()) {
+            Text(
+                text = header.uppercase(),
+                color = Color(0xFF94A3B8),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+        }
         Text(
             text = timeText,
             color = Color.White,
-            fontSize = 15.sp,
+            fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
+            style = androidx.compose.ui.text.TextStyle(
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black,
+                    blurRadius = 10f
+                )
+            ),
             modifier = Modifier.padding(vertical = 4.dp)
         )
     }

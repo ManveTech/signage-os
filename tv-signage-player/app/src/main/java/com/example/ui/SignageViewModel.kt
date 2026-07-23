@@ -35,6 +35,8 @@ data class SignageUiState(
     val isDownloading: Boolean = false,
     val downloadProgressMessage: String = "",
     val downloadProgressFraction: Float = 0f,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
     val showSplash: Boolean = true,
     // Playlist playback settings
     val playlistOrientation: String = "vertical", // "horizontal" | "vertical"
@@ -157,9 +159,15 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     val totalAssets = it.playlist.size
 
                     val progressMessage = if (downloadState.isDownloading && downloadState.totalFiles > 0) {
-                        val alreadyCached = (totalAssets - downloadState.totalFiles).coerceAtLeast(0)
-                        val displayCompleted = (alreadyCached + downloadState.completedFiles + 1).coerceAtMost(totalAssets)
-                        "Downloading ${downloadState.currentFileName} ($displayCompleted/$totalAssets)"
+                        if (downloadState.totalBytes > 0) {
+                            val downloadedMB = downloadState.downloadedBytes.toFloat() / (1024 * 1024)
+                            val totalMB = downloadState.totalBytes.toFloat() / (1024 * 1024)
+                            String.format(java.util.Locale.US, "Downloaded: %.1f MB / %.1f MB", downloadedMB, totalMB)
+                        } else {
+                            val alreadyCached = (totalAssets - downloadState.totalFiles).coerceAtLeast(0)
+                            val displayCompleted = (alreadyCached + downloadState.completedFiles + 1).coerceAtMost(totalAssets)
+                            "Downloading ${downloadState.currentFileName} ($displayCompleted/$totalAssets)"
+                        }
                     } else {
                         ""
                     }
@@ -173,9 +181,13 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                         
                         if (totalAssets > 0) {
                             if (downloadState.isDownloading && downloadState.totalFiles > 0) {
-                                val pendingCount = downloadState.totalFiles
-                                val initialDownloadedCount = totalAssets - pendingCount
-                                ((initialDownloadedCount.toFloat() + downloadState.completedFiles + downloadState.currentFileProgress) / totalAssets).coerceIn(0f, 1f)
+                                if (downloadState.totalBytes > 0) {
+                                    (downloadState.downloadedBytes.toFloat() / downloadState.totalBytes.toFloat()).coerceIn(0f, 1f)
+                                } else {
+                                    val pendingCount = downloadState.totalFiles
+                                    val initialDownloadedCount = totalAssets - pendingCount
+                                    ((initialDownloadedCount.toFloat() + downloadState.completedFiles + downloadState.currentFileProgress) / totalAssets).coerceIn(0f, 1f)
+                                }
                             } else {
                                 (alreadyDownloaded.toFloat() / totalAssets).coerceIn(0f, 1f)
                             }
@@ -190,6 +202,8 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                         isDownloading = downloadState.isDownloading,
                         downloadProgressMessage = progressMessage,
                         downloadProgressFraction = overallProgress,
+                        downloadedBytes = downloadState.downloadedBytes,
+                        totalBytes = downloadState.totalBytes,
                         errorMessage = downloadState.errorMessage
                     )
                 }

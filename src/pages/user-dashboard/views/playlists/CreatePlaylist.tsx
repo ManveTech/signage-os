@@ -719,12 +719,15 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     }
 
     let targetCompiledUrl = compiledVideoUrl;
-    if (!isCompiled || !targetCompiledUrl || targetCompiledUrl.startsWith('http')) {
+    if (!targetCompiledUrl || (!isCompiled && !targetCompiledUrl.startsWith('http'))) {
       showToast('🎬 Compiling playlist slides into single video container...');
-      targetCompiledUrl = await handleCompilePlaylistVideo();
+      const newlyCompiled = await handleCompilePlaylistVideo();
+      if (newlyCompiled) {
+        targetCompiledUrl = newlyCompiled;
+      }
     }
 
-    let finalCompiledVideoUrl = targetCompiledUrl || '';
+    let finalCompiledVideoUrl = targetCompiledUrl || compiledVideoUrl || '';
     if (targetCompiledUrl && targetCompiledUrl.startsWith('data:')) {
       try {
         showToast('☁️ Uploading compiled video to Cloudflare R2 storage...');
@@ -1675,7 +1678,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       </div>
                     </div>
                   )}
-                                      {/* Render Widget Overlay (Clean, Elegant Modern Cards) */}
+                  {/* Render Widget Overlay (Clean, Transparent or Card Container) */}
                   {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (() => {
                     const positionClasses = {
                       'top-left': 'top-5 left-5',
@@ -1683,6 +1686,18 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       'bottom-left': 'bottom-5 left-5',
                       'bottom-right': 'bottom-5 right-5',
                     }[playlistWidgetPlacement];
+
+                    const isClockOnly = isWidgetActive('clock') && !isWidgetActive('weather') && !isWidgetActive('qrcode');
+
+                    if (isClockOnly) {
+                      return (
+                        <div className={`absolute ${positionClasses} z-10 p-2 animate-fadeIn`}>
+                          <div className="text-xl sm:text-2xl font-mono font-black text-white tracking-wider" style={{ textShadow: '0 2px 12px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.85)' }}>
+                            {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                          </div>
+                        </div>
+                      );
+                    }
 
                     return (
                       <div className={`absolute ${positionClasses} z-10 shadow-md bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl p-3 w-48 flex flex-col justify-between animate-fadeIn text-slate-800`}>
@@ -1742,11 +1757,8 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                         })()}
 
                         {isWidgetActive('clock') && (
-                          <div className="text-center font-normal">
-                            <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">
-                              {playlistWidgetLink || 'Lobby Clock'}
-                            </span>
-                            <div className="text-base font-mono font-bold text-slate-800 mt-1">
+                          <div className="text-center font-normal py-1">
+                            <div className="text-base font-mono font-black text-slate-900 tracking-wide">
                               {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
                             </div>
                           </div>
