@@ -351,9 +351,17 @@ class SignageRepository(private val context: Context) {
     }
 
     private fun resolveUrl(url: String, pocketbaseUrl: String, serverUrl: String): String {
+        if (url.isEmpty()) return ""
         if (url.startsWith("data:", ignoreCase = true)) return url
+        var absoluteUrl = url
+        if (absoluteUrl.startsWith("/")) {
+            val base = if (!pocketbaseUrl.isNullOrEmpty()) pocketbaseUrl else serverUrl
+            if (!base.isNullOrEmpty()) {
+                absoluteUrl = "${base.trimEnd('/')}$absoluteUrl"
+            }
+        }
         val targetHost = getReplacementHost(serverUrl)
-        return url.replace("localhost", targetHost).replace("127.0.0.1", targetHost)
+        return absoluteUrl.replace("localhost", targetHost).replace("127.0.0.1", targetHost)
     }
 
     private fun getCacheFileName(url: String, filename: String): String {

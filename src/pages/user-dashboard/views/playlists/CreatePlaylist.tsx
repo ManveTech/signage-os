@@ -13,7 +13,11 @@ import { API_BASE } from '../../../../config';
 const getCorsProxyUrl = (url: string) => {
   if (!url) return '';
   if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-  return `${API_BASE}/public/proxy-media?url=${encodeURIComponent(url)}`;
+  let targetUrl = url;
+  if (url.startsWith('/')) {
+    targetUrl = `${window.location.origin}${url}`;
+  }
+  return `${API_BASE}/public/proxy-media?url=${encodeURIComponent(targetUrl)}`;
 };
 
 const getAuthHeaders = () => {
@@ -79,7 +83,10 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     }
 
     setIsCompiling(true);
-    setCompileProgress(5);
+    setCompileProgress(0);
+
+    let audioCtx: AudioContext | null = null;
+    let recorder: MediaRecorder | null = null;
 
     try {
       const width = playlistOrientation === 'vertical' ? 1080 : 1920;
@@ -95,12 +102,23 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       const canvasStream = canvas.captureStream(30);
 
       // Web Audio API setup for capturing sound from video slides
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const audioDest = audioCtx.createMediaStreamDestination();
+      let audioDest: MediaStreamAudioDestinationNode | null = null;
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume().catch(() => {});
+          }
+          audioDest = audioCtx.createMediaStreamDestination();
+        }
+      } catch (e) {
+        console.warn('AudioContext setup warning:', e);
+      }
 
       const combinedTracks: MediaStreamTrack[] = [
         ...canvasStream.getVideoTracks(),
-        ...audioDest.stream.getAudioTracks()
+        ...(audioDest ? audioDest.stream.getAudioTracks() : [])
       ];
       const combinedStream = new MediaStream(combinedTracks);
 
@@ -112,7 +130,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         mimeType = 'video/webm';
       }
 
-      const recorder = new MediaRecorder(combinedStream, { mimeType });
+      recorder = new MediaRecorder(combinedStream, { mimeType });
       const chunks: Blob[] = [];
 
       recorder.ondataavailable = (e) => {
@@ -121,8 +139,18 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
       recorder.start(100);
 
-      const totalItems = playlistItems.length;
-      let completedItems = 0;
+      // Calculate total frames for smooth global progress tracking
+      const fps = 30;
+      let grandTotalFrames = 0;
+      const itemsToProcess = playlistItems.map(item => {
+        const media = mediaList.find(m => m.id === item.mediaId);
+        const durationSec = Math.max(item.duration || 10, 1);
+        const totalFrames = media?.type === 'video' ? Math.floor(durationSec * fps) : Math.min(Math.floor(durationSec * fps), 40);
+        grandTotalFrames += Math.max(totalFrames, 1);
+        return { item, media, durationSec, totalFrames };
+      });
+
+      let processedFrames = 0;
 
       // Helper function to draw image/video with aspect ratio (object-fit: cover)
       const drawCover = (imgOrVid: HTMLImageElement | HTMLVideoElement) => {
@@ -149,97 +177,145 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         ctx.drawImage(imgOrVid, xStart, yStart, renderableWidth, renderableHeight);
       };
 
-      for (const item of playlistItems) {
-        const media = mediaList.find(m => m.id === item.mediaId);
+      for (const { media, durationSec, totalFrames } of itemsToProcess) {
         if (!media) continue;
-
-        const durationSec = Math.max(item.duration || 10, 1);
-        const fps = 30;
-        const totalFrames = Math.floor(durationSec * fps);
-        const frameIntervalMs = 1000 / fps;
 
         if (media.type === 'video' && (media.fileUrl || media.thumbnail)) {
           const vid = document.createElement('video');
           vid.crossOrigin = 'anonymous';
           vid.src = getCorsProxyUrl(media.fileUrl || media.thumbnail);
-          vid.muted = false;
-          vid.volume = 1.0;
+          vid.muted = true;
+          vid.preload = 'auto';
 
           let audioSourceNode: MediaElementAudioSourceNode | null = null;
-          try {
-            audioSourceNode = audioCtx.createMediaElementSource(vid);
-            audioSourceNode.connect(audioDest);
-          } catch (e) {
-            console.warn('Audio node connection warning:', e);
+          if (audioCtx && audioDest) {
+            try {
+              audioSourceNode = audioCtx.createMediaElementSource(vid);
+              audioSourceNode.connect(audioDest);
+            } catch (e) {
+              console.warn('Audio node connection warning:', e);
+            }
           }
 
-          await new Promise(r => {
-            vid.onloadeddata = r;
-            vid.onerror = r;
-            setTimeout(r, 1500);
+          let loadedSuccess = false;
+          await new Promise<void>(r => {
+            let done = false;
+            const finish = (success: boolean) => {
+              if (!done) { done = true; loadedSuccess = success; r(); }
+            };
+            vid.onloadedmetadata = () => finish(true);
+            vid.onloadeddata = () => finish(true);
+            vid.onerror = () => finish(false);
+            setTimeout(() => finish(false), 4000);
           });
 
-          vid.currentTime = 0;
-          vid.play().catch(() => {});
+          if (!loadedSuccess || !vid.videoWidth) {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(media.title || 'Video Content', width / 2, height / 2);
+            processedFrames += totalFrames;
+            setCompileProgress(Math.min(99, Math.round((processedFrames / grandTotalFrames) * 98)));
+            await new Promise(r => setTimeout(r, 100));
+          } else {
+            vid.pause();
+            const stepSec = durationSec / totalFrames;
 
-          const startTime = Date.now();
-          for (let f = 0; f < totalFrames; f++) {
-            try {
-              drawCover(vid);
-            } catch (_) {}
+            for (let f = 0; f < totalFrames; f++) {
+              const targetTime = Math.min(f * stepSec, (vid.duration || durationSec) - 0.05);
+              vid.currentTime = Math.max(0, targetTime);
 
-            const targetTimeMs = (f + 1) * frameIntervalMs;
-            const elapsedMs = Date.now() - startTime;
-            const sleepMs = Math.max(0, targetTimeMs - elapsedMs);
-            await new Promise(r => setTimeout(r, sleepMs));
-          }
+              await new Promise<void>(r => {
+                let done = false;
+                const finish = () => { if (!done) { done = true; r(); } };
+                vid.onseeked = finish;
+                setTimeout(finish, 35);
+              });
 
-          vid.pause();
-          if (audioSourceNode) {
-            try { audioSourceNode.disconnect(); } catch (e) {}
+              try {
+                drawCover(vid);
+              } catch (_) {}
+
+              processedFrames++;
+              setCompileProgress(Math.min(99, Math.round((processedFrames / grandTotalFrames) * 98)));
+              await new Promise(r => setTimeout(r, 10));
+            }
+
+            if (audioSourceNode) {
+              try { audioSourceNode.disconnect(); } catch (e) {}
+            }
           }
         } else {
           const img = new Image();
           img.crossOrigin = 'anonymous';
           img.src = getCorsProxyUrl(media.fileUrl || media.thumbnail || '');
-          await new Promise(r => {
-            img.onload = r;
-            img.onerror = r;
-            setTimeout(r, 1000);
+
+          let loadedSuccess = false;
+          await new Promise<void>(r => {
+            let done = false;
+            const finish = (success: boolean) => {
+              if (!done) { done = true; loadedSuccess = success; r(); }
+            };
+            img.onload = () => finish(true);
+            img.onerror = () => finish(false);
+            setTimeout(() => finish(false), 2000);
           });
 
-          const startTime = Date.now();
-          for (let f = 0; f < totalFrames; f++) {
-            try {
-              drawCover(img);
-            } catch (_) {}
+          if (loadedSuccess) {
+            try { drawCover(img); } catch (_) {}
+          } else {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(media.title || 'Image Content', width / 2, height / 2);
+          }
 
-            const targetTimeMs = (f + 1) * frameIntervalMs;
-            const elapsedMs = Date.now() - startTime;
-            const sleepMs = Math.max(0, targetTimeMs - elapsedMs);
-            await new Promise(r => setTimeout(r, sleepMs));
+          // Smooth fast frame rendering for static images
+          for (let f = 0; f < totalFrames; f++) {
+            if (loadedSuccess) {
+              try { drawCover(img); } catch (_) {}
+            }
+            processedFrames++;
+            setCompileProgress(Math.min(99, Math.round((processedFrames / grandTotalFrames) * 98)));
+            await new Promise(r => setTimeout(r, 15));
           }
         }
-
-        completedItems++;
-        setCompileProgress(Math.round((completedItems / totalItems) * 90));
       }
 
-      recorder.stop();
-      await new Promise(r => setTimeout(r, 500));
-      try { audioCtx.close(); } catch (e) {}
+      await new Promise<void>(resolve => {
+        if (!recorder || recorder.state === 'inactive') {
+          resolve();
+          return;
+        }
+        recorder.onstop = () => resolve();
+        setTimeout(resolve, 1000);
+        try { recorder.stop(); } catch (_) { resolve(); }
+      });
+
+      if (audioCtx) {
+        try { audioCtx.close(); } catch (e) {}
+      }
+
+      if (chunks.length === 0) {
+        throw new Error('Compilation produced no video data');
+      }
 
       const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
-      const videoDataUrl = await new Promise<string>((resolve) => {
+      const videoDataUrl = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
         r.onloadend = () => resolve(r.result as string);
+        r.onerror = () => reject(new Error('FileReader failed'));
         r.readAsDataURL(blob);
       });
 
       setCompiledVideoUrl(videoDataUrl);
       setIsCompiled(true);
       setCompileProgress(100);
-      showToast('✅ Playlist video successfully compiled with sound!');
+      showToast('✅ Playlist video successfully compiled!');
       return videoDataUrl;
     } catch (err: any) {
       console.error('Video compilation failed:', err);
@@ -782,10 +858,17 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
     let targetCompiledUrl = compiledVideoUrl;
     if (!targetCompiledUrl || (!isCompiled && !targetCompiledUrl.startsWith('http'))) {
-      showToast('🎬 Compiling playlist slides into single video container...');
-      const newlyCompiled = await handleCompilePlaylistVideo();
-      if (newlyCompiled) {
-        targetCompiledUrl = newlyCompiled;
+      try {
+        showToast('🎬 Compiling playlist slides into single video container...');
+        const newlyCompiled = await Promise.race([
+          handleCompilePlaylistVideo(),
+          new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 15000))
+        ]);
+        if (newlyCompiled) {
+          targetCompiledUrl = newlyCompiled;
+        }
+      } catch (e) {
+        console.warn('Video compilation skipped during save:', e);
       }
     }
 

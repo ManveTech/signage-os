@@ -1,4 +1,5 @@
 import express from 'express';
+import { PORT } from '../config';
 import authRouter from './auth';
 import usersRouter from './users';
 import screensRouter from './screens';
@@ -49,7 +50,10 @@ apiRouter.get('/public/proxy-media', async (req, res) => {
   }
 
   try {
-    const cleanUrl = decodeURIComponent(mediaUrl);
+    let cleanUrl = decodeURIComponent(mediaUrl);
+    if (cleanUrl.startsWith('/')) {
+      cleanUrl = `http://127.0.0.1:${PORT}${cleanUrl}`;
+    }
     // Fetch the remote media item
     const mediaRes = await fetch(cleanUrl);
     if (!mediaRes.ok) {
