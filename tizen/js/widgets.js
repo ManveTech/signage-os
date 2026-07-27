@@ -130,7 +130,10 @@ window.SignageWidgets = (function () {
 
     function startClockWidget(widgets) {
         if (clockInterval) clearInterval(clockInterval);
-        clockInterval = setInterval(() => {
+
+        function tick() {
+            const clockEl = document.getElementById('clock-time') || (widgets ? widgets.clockTime : null);
+            if (!clockEl) return;
             const now = new Date();
             let hours = now.getHours();
             const minutes = String(now.getMinutes()).padStart(2, '0');
@@ -139,8 +142,13 @@ window.SignageWidgets = (function () {
             hours = hours % 12;
             hours = hours ? hours : 12;
             const timeStr = `${String(hours).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`;
-            if (widgets.clockTime) widgets.clockTime.innerText = timeStr;
-        }, 1000);
+            if (clockEl.innerText !== timeStr) {
+                clockEl.innerText = timeStr;
+            }
+        }
+
+        tick();
+        clockInterval = setInterval(tick, 250);
     }
 
     return {

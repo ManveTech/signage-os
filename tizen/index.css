@@ -82,9 +82,7 @@ body {
 
 /* Cards (HUD-style) */
 .card {
-    background-color: rgba(17, 24, 39, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background-color: rgba(15, 23, 42, 0.94);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 16px;
     padding: 40px;
@@ -168,6 +166,8 @@ body {
     height: 100%;
     object-fit: cover;
     transition: opacity 0.5s ease-in-out;
+    will-change: opacity, transform;
+    transform: translateZ(0);
 }
 
 /* Overlay Widgets */
@@ -196,9 +196,7 @@ body {
 
 /* Translucent HUD Card for widgets */
 .hud {
-    background-color: rgba(17, 24, 39, 0.8);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background-color: rgba(15, 23, 42, 0.92);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 12px;
     padding: 14px;
@@ -325,9 +323,7 @@ body {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(15, 23, 42, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(15, 23, 42, 0.96);
     z-index: 9999;
     display: flex;
     justify-content: center;

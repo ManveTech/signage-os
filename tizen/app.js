@@ -424,13 +424,14 @@
         if (syncInterval) clearInterval(syncInterval);
         if (heartbeatInterval) clearInterval(heartbeatInterval);
 
+        // Poll screen config every 15 seconds when active to keep main JS thread super smooth
         syncInterval = setInterval(() => {
             if (state.status === 'pairing') {
                 checkPairingStatusOnServer(state, updateUI);
             } else if (state.screenId) {
                 fetchScreenConfig();
             }
-        }, 2000);
+        }, state.status === 'pairing' ? 3000 : 15000);
 
         heartbeatInterval = setInterval(() => {
             sendHeartbeat(state);

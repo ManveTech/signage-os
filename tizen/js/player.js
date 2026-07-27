@@ -472,61 +472,41 @@ window.SignagePlayer = (function () {
             });
         } else {
             views.videoPlayer.style.opacity = '0.001';
+            views.videoPlayer.style.zIndex = '1';
             setTimeout(() => {
                 if (currentToken === rotationToken) {
                     views.videoPlayer.style.display = 'none';
+                    try { views.videoPlayer.pause(); } catch (_) {}
                 }
-            }, 600);
+            }, 500);
 
-            if (!state.imageElementsCache[asset.id]) {
-                const img = new Image();
-                img.className = 'media-element';
-                img.style.display = 'block';
-                img.style.opacity = '0.001';
-                img.style.zIndex = '1';
-                img.src = asset.url;
-                state.imageElementsCache[asset.id] = img;
-            }
+            const activePlayer = activeImagePlayerNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
+            const inactivePlayer = activeImagePlayerNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
+            activeImagePlayerNum = activeImagePlayerNum === 1 ? 2 : 1;
 
-            const imgElement = state.imageElementsCache[asset.id];
-            imgElement.style.objectFit = asset.objectFit || 'cover';
+            activePlayer.style.objectFit = asset.objectFit || 'cover';
             const scale = asset.scalePercent ? `scale(${asset.scalePercent / 100})` : 'scale(1)';
-            imgElement.style.transform = scale;
-
-            const container = document.getElementById('media-container');
-            if (imgElement.parentNode !== container) {
-                container.appendChild(imgElement);
-            }
+            activePlayer.style.transform = scale;
+            activePlayer.style.display = 'block';
 
             const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
 
             const startTransition = () => {
                 if (currentToken !== rotationToken) return;
 
-                imgElement.style.display = 'block';
-                imgElement.style.zIndex = '2';
+                activePlayer.style.zIndex = '2';
+                inactivePlayer.style.zIndex = '1';
+                activePlayer.style.opacity = '1';
 
-                requestAnimationFrame(() => {
-                    if (currentToken === rotationToken) {
-                        imgElement.style.opacity = '1';
-                        
-                        if (transitionName !== 'none') {
-                            imgElement.className = 'media-element ' + animClass;
-                        } else {
-                            imgElement.className = 'media-element';
-                        }
-                    }
-                });
+                if (transitionName !== 'none') {
+                    activePlayer.className = 'media-element ' + animClass;
+                } else {
+                    activePlayer.className = 'media-element';
+                }
 
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
-                        const children = container.querySelectorAll('.media-element');
-                        children.forEach(child => {
-                            if (child !== imgElement && child.id !== 'video-player') {
-                                child.style.opacity = '0.001';
-                                child.style.zIndex = '1';
-                            }
-                        });
+                        inactivePlayer.style.opacity = '0.001';
                     }
                 }, 500);
 
@@ -537,49 +517,31 @@ window.SignagePlayer = (function () {
                     }
                 }, duration);
 
-                // Pre-decode next slide in background for instant transition
                 if (state.playlist && state.playlist.length > 1) {
                     const nextIdx = (state.currentAssetIndex + 1) % state.playlist.length;
                     const nextAsset = state.playlist[nextIdx];
                     if (nextAsset && nextAsset.mediaType === 'image' && nextAsset.url) {
-                        if (!state.imageElementsCache[nextAsset.id]) {
-                            const nxtImg = new Image();
-                            nxtImg.className = 'media-element';
-                            nxtImg.style.display = 'block';
-                            nxtImg.style.opacity = '0.001';
-                            nxtImg.style.zIndex = '1';
-                            nxtImg.src = nextAsset.url;
-                            state.imageElementsCache[nextAsset.id] = nxtImg;
-                            if (container && nxtImg.parentNode !== container) {
-                                container.appendChild(nxtImg);
-                            }
-                            if (typeof nxtImg.decode === 'function') {
-                                nxtImg.decode().catch(() => {});
-                            }
-                        }
+                        inactivePlayer.src = nextAsset.url;
                     }
                 }
             };
 
-            if (imgElement.complete && imgElement.naturalWidth > 0) {
+            if (activePlayer.src === asset.url && activePlayer.complete) {
                 startTransition();
             } else {
                 const handleLoad = () => {
-                    imgElement.removeEventListener('load', handleLoad);
-                    imgElement.removeEventListener('error', handleError);
+                    activePlayer.removeEventListener('load', handleLoad);
+                    activePlayer.removeEventListener('error', handleError);
                     startTransition();
                 };
-                const handleError = (err) => {
-                    console.error(`Dynamic image element load failed: ${asset.url}`, err);
-                    imgElement.removeEventListener('load', handleLoad);
-                    imgElement.removeEventListener('error', handleError);
+                const handleError = () => {
+                    activePlayer.removeEventListener('load', handleLoad);
+                    activePlayer.removeEventListener('error', handleError);
                     advancePlaylist(state, views, updateUICallback);
                 };
-                imgElement.addEventListener('load', handleLoad);
-                imgElement.addEventListener('error', handleError);
-                if (!imgElement.src) {
-                    imgElement.src = asset.url;
-                }
+                activePlayer.addEventListener('load', handleLoad);
+                activePlayer.addEventListener('error', handleError);
+                activePlayer.src = asset.url;
             }
         }
     }
