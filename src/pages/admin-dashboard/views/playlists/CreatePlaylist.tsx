@@ -17,6 +17,8 @@ type PlaylistItem = {
   duration: number;
   layoutType: 'single' | '50-50' | '70-30' | '30-70';
   secondMediaId?: string;
+  objectFit?: string;
+  scalePercent?: number;
 };
 
 interface Props {
