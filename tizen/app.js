@@ -71,6 +71,8 @@
 
     function init() {
         console.log("Initializing SignageOS Tizen App (Modular)...");
+        window.widgetsRef = widgets;
+        window.SignageWidgetsRef = window.SignageWidgets;
         applyBranding(state, views);
         bindRemoteKeys(views, () => requestPairingCode(state, views, updateUI));
 
@@ -349,20 +351,8 @@
 
             if (state.status === "active" || state.status === "online") {
                 if (activePlaylistId) {
-                    const screenUpdated = data.updated;
-                    const hasPlaylistChanged = activePlaylistId !== state.playlistId;
-                    const hasScreenUpdated = screenUpdated !== state.screenUpdated;
-                    const isPlaylistEmpty = !state.playlist || state.playlist.length === 0;
-
-                    if (hasPlaylistChanged || hasScreenUpdated || isPlaylistEmpty) {
-                        console.log(`Syncing playlist. Reason: playlistChanged=${hasPlaylistChanged}, screenUpdated=${hasScreenUpdated}, isEmpty=${isPlaylistEmpty}`);
-                        state.playlistId = activePlaylistId;
-                        state.screenUpdated = screenUpdated;
-                        localStorage.setItem('signage_tizen_playlist_id', state.playlistId);
-                        localStorage.setItem('signage_tizen_screen_updated', state.screenUpdated);
-                        await fetchPlaylist(activePlaylistId, state, views, updateUI);
-                        hasChanged = true;
-                    }
+                    state.playlistId = activePlaylistId;
+                    await fetchPlaylist(activePlaylistId, state, views, updateUI);
                 } else {
                     if (state.playlistId || state.playlist.length > 0) {
                         state.playlist = [];
@@ -432,7 +422,7 @@
             } else if (state.status === 'pairing') {
                 checkPairingStatusOnServer(state, updateUI);
             }
-        }, 60000);
+        }, 2000);
 
         heartbeatInterval = setInterval(() => {
             sendHeartbeat(state);

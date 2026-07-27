@@ -23,25 +23,39 @@ window.SignageWidgets = (function () {
         const activeTypes = w.type.split(',').map(s => s.trim().toLowerCase());
         const placement = w.placement || 'top-right';
 
-        let qrcodeLink = w.link;
-        let rssLink = w.link;
-        let weatherLink = w.link;
-        let clockLink = w.link;
+        let qrcodeLink = '';
+        let rssLink = '';
+        let weatherLink = '';
+        let clockLink = '';
+        let isMultiJson = false;
 
         if (w.link && typeof w.link === 'string' && w.link.trim().startsWith('{')) {
             try {
                 const parsed = JSON.parse(w.link);
-                if (parsed.qrcode) qrcodeLink = parsed.qrcode;
-                if (parsed.rss) rssLink = typeof parsed.rss === 'object' ? JSON.stringify(parsed.rss) : parsed.rss;
-                if (parsed.weather) weatherLink = parsed.weather;
-                if (parsed.clock) clockLink = parsed.clock;
+                if (parsed && typeof parsed === 'object') {
+                    isMultiJson = true;
+                    qrcodeLink = parsed.qrcode || parsed.QRCODE || parsed.qr || '';
+                    weatherLink = parsed.weather || parsed.WEATHER || '';
+                    clockLink = parsed.clock || parsed.CLOCK || '';
+                    const r = parsed.rss !== undefined ? parsed.rss : parsed.RSS;
+                    if (r !== undefined) {
+                        rssLink = typeof r === 'object' ? JSON.stringify(r) : r;
+                    }
+                }
             } catch (e) {
                 console.warn("Could not parse widget multi-link JSON:", e);
             }
         }
 
+        if (!isMultiJson) {
+            qrcodeLink = w.link || '';
+            weatherLink = w.link || '';
+            clockLink = w.link || '';
+            rssLink = w.link || '';
+        }
+
         if (activeTypes.includes('qrcode') && widgets.qrcode) {
-            const link = (typeof qrcodeLink === 'string' && qrcodeLink.trim()) ? qrcodeLink : SERVER_URL;
+            const link = (typeof qrcodeLink === 'string' && qrcodeLink.trim() && !qrcodeLink.trim().startsWith('{')) ? qrcodeLink : SERVER_URL;
             if (widgets.qrcodeImg) {
                 widgets.qrcodeImg.src = state.qrcodeLocalPath || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}`;
             }
@@ -52,13 +66,18 @@ window.SignageWidgets = (function () {
         if (activeTypes.includes('weather') && widgets.weather) {
             widgets.weather.className = 'widget-item card hud ' + placement;
             const locEl = widgets.weather.querySelector('.location-name');
-            if (locEl) locEl.innerText = (typeof weatherLink === 'string' && weatherLink.trim()) ? weatherLink : 'Bengaluru';
+            if (locEl) {
+                locEl.innerText = (typeof weatherLink === 'string' && weatherLink.trim() && !weatherLink.trim().startsWith('{')) ? weatherLink : 'Bengaluru';
+            }
             widgets.weather.classList.remove('hidden');
         }
 
         if (activeTypes.includes('clock') && widgets.clock) {
             widgets.clock.className = 'widget-item card hud ' + placement;
-            if (widgets.clockTitle) widgets.clockTitle.innerText = (typeof clockLink === 'string' && clockLink.trim()) ? clockLink : 'Lobby Clock';
+            if (widgets.clockTitle) {
+                const titleStr = (typeof clockLink === 'string' && clockLink.trim() && !clockLink.trim().startsWith('{')) ? clockLink : 'Lobby Clock';
+                widgets.clockTitle.innerText = titleStr;
+            }
             widgets.clock.classList.remove('hidden');
         }
 
@@ -73,19 +92,25 @@ window.SignageWidgets = (function () {
                 rawRssStr = JSON.stringify(rssLink);
             }
 
-            if (rawRssStr && typeof rawRssStr === 'string') {
+            if (rawRssStr && typeof rawRssStr === 'string' && rawRssStr.trim() !== '') {
                 try {
                     const config = JSON.parse(rawRssStr);
                     if (config && typeof config === 'object') {
                         if (config.label) labelText = config.label;
                         if (Array.isArray(config.items)) {
-                            tickerText = config.items.filter(item => item && item.trim() !== '').join('         |         ');
+                            const validItems = config.items.filter(item => item && item.trim() !== '');
+                            if (validItems.length > 0) {
+                                tickerText = validItems.join('         |         ');
+                            }
                         }
                         if (config.bgColor) bgColor = config.bgColor;
                         if (config.textColor) textColor = config.textColor;
                     }
                 } catch (e) {
-                    tickerText = rawRssStr.split('|').map(s => s.trim()).filter(Boolean).join('         |         ');
+                    const parts = rawRssStr.split('|').map(s => s.trim()).filter(Boolean);
+                    if (parts.length > 0) {
+                        tickerText = parts.join('         |         ');
+                    }
                 }
             }
 

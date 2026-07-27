@@ -34,10 +34,9 @@ window.SignagePlayer = (function () {
         if (!window.tizen || !window.tizen.filesystem) {
             console.log("Not running on Tizen filesystem. Pre-buffering assets for browser playback...");
             updateProgress(0, assets.length, '');
-            for (let i = 0; i < assets.length; i++) {
-                const asset = assets[i];
+            let completedCount = 0;
+            await Promise.all(assets.map(async (asset) => {
                 if (asset.url) {
-                    updateProgress(i + 1, assets.length, asset.filename || asset.id);
                     try {
                         if (asset.mediaType === 'image') {
                             await new Promise((resolve) => {
@@ -55,12 +54,14 @@ window.SignagePlayer = (function () {
                                 vid.oncanplay = resolve;
                                 vid.onerror = resolve;
                                 vid.src = asset.url;
-                                setTimeout(resolve, 600);
+                                setTimeout(resolve, 300);
                             });
                         }
                     } catch (_) {}
+                    completedCount++;
+                    updateProgress(completedCount, assets.length, asset.filename || asset.id);
                 }
-            }
+            }));
             if (overlay) overlay.classList.add('hidden');
             return assets;
         }
@@ -322,11 +323,13 @@ window.SignagePlayer = (function () {
                 activePlayer.style.opacity = '1';
             }
 
-            views.videoPlayer.muted = true;
+            const targetVol = (state.volume !== undefined && state.volume !== null ? state.volume : 80) / 100;
             views.videoPlayer.playsInline = true;
             views.videoPlayer.setAttribute('playsinline', 'true');
             views.videoPlayer.src = asset.url;
-            views.videoPlayer.volume = (state.volume || 80) / 100;
+            views.videoPlayer.volume = targetVol > 0 ? targetVol : 0.8;
+            views.videoPlayer.muted = false;
+            views.videoPlayer.removeAttribute('muted');
             views.videoPlayer.style.display = 'block';
             views.videoPlayer.style.zIndex = '3';
 
@@ -386,10 +389,7 @@ window.SignagePlayer = (function () {
 
             const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
 
-            views.videoPlayer.play().then(() => {
-                if (state.volume > 0) {
-                    try { views.videoPlayer.muted = false; } catch (_) {}
-                }
+            const startRotationTimer = () => {
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
                         cleanupVideoListeners();
@@ -397,15 +397,33 @@ window.SignagePlayer = (function () {
                         advancePlaylist(state, views, updateUICallback);
                     }
                 }, duration);
+            };
+
+            views.videoPlayer.play().then(() => {
+                console.log("Unmuted video playback started at volume:", views.videoPlayer.volume);
+                startRotationTimer();
             }).catch(e => {
-                console.warn("Autoplay block / playback error on video", e);
-                showVideo();
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        cleanupVideoListeners();
-                        advancePlaylist(state, views, updateUICallback);
-                    }
-                }, duration);
+                console.warn("Unmuted autoplay restricted by browser policy. Retrying muted...", e);
+                views.videoPlayer.muted = true;
+                views.videoPlayer.play().then(() => {
+                    startRotationTimer();
+                    const unmuteOnInteraction = () => {
+                        try {
+                            views.videoPlayer.muted = false;
+                            views.videoPlayer.removeAttribute('muted');
+                            views.videoPlayer.volume = targetVol > 0 ? targetVol : 0.8;
+                            console.log("Unmuted video via user interaction!");
+                        } catch (_) {}
+                        window.removeEventListener('click', unmuteOnInteraction);
+                        window.removeEventListener('keydown', unmuteOnInteraction);
+                    };
+                    window.addEventListener('click', unmuteOnInteraction, { once: true });
+                    window.addEventListener('keydown', unmuteOnInteraction, { once: true });
+                }).catch(err => {
+                    console.error("Muted video playback fallback failed:", err);
+                    showVideo();
+                    startRotationTimer();
+                });
             });
         } else {
             views.videoPlayer.style.opacity = '0.001';
@@ -550,20 +568,26 @@ window.SignagePlayer = (function () {
             if (!res.ok) throw new Error('Playlist retrieval failed');
             const data = await res.json();
 
+            const oldWidgetStr = JSON.stringify(state.widget || {});
             state.widget = {
                 type: data.widgetType || null,
                 placement: data.widgetPlacement || 'top-right',
                 link: data.widgetLink || ''
             };
             localStorage.setItem(KEYS.WIDGET, JSON.stringify(state.widget));
+            const widgetChanged = oldWidgetStr !== JSON.stringify(state.widget || {});
 
             const lastUpdated = data.updated;
             const cachedPlaylistUpdated = localStorage.getItem('signage_tizen_playlist_updated') || '';
             const isPlaylistEmpty = !state.playlist || state.playlist.length === 0;
 
             if (lastUpdated === cachedPlaylistUpdated && !isPlaylistEmpty) {
-                console.log("Playlist content timestamp is unchanged. Re-evaluating widgets and skipping media file sync.");
-                if (updateUICallback) updateUICallback();
+                if (widgetChanged) {
+                    console.log("Widget configuration updated on playlist. Re-rendering overlay in-place.");
+                    if (window.SignageWidgetsRef && typeof window.SignageWidgetsRef.renderWidgets === 'function') {
+                        window.SignageWidgetsRef.renderWidgets(state, views.widgets || window.widgetsRef, SERVER_URL);
+                    }
+                }
                 return;
             }
 
@@ -574,23 +598,27 @@ window.SignagePlayer = (function () {
             }
 
             if (Array.isArray(slides) && slides.length > 0) {
-                for (const slide of slides) {
-                    const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
-                    if (mediaRes.ok) {
-                        const media = await mediaRes.json();
-                        const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
-                        fetchedAssets.push({
-                            id: media.id,
-                            url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
-                            mediaType: media.type.toLowerCase(),
-                            filename: media.title,
-                            duration: parseInt(slide.duration || media.duration || 10, 10),
-                            thumbnail: media.thumbnail || rawUrl,
-                            objectFit: slide.objectFit || 'cover',
-                            scalePercent: slide.scalePercent || 100
-                        });
-                    }
-                }
+                const results = await Promise.all(slides.map(async (slide) => {
+                    try {
+                        const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
+                        if (mediaRes.ok) {
+                            const media = await mediaRes.json();
+                            const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
+                            return {
+                                id: media.id,
+                                url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
+                                mediaType: media.type.toLowerCase(),
+                                filename: media.title,
+                                duration: parseInt(slide.duration || media.duration || 10, 10),
+                                thumbnail: media.thumbnail || rawUrl,
+                                objectFit: slide.objectFit || 'cover',
+                                scalePercent: slide.scalePercent || 100
+                            };
+                        }
+                    } catch (e) {}
+                    return null;
+                }));
+                fetchedAssets = results.filter(Boolean);
             } else if (data.assetsJson && data.assetsJson.length > 0) {
                 data.assetsJson.forEach((pbAsset) => {
                     fetchedAssets.push({
@@ -619,23 +647,27 @@ window.SignagePlayer = (function () {
                     });
                 });
             } else if (data.mediaIds && data.mediaIds.length > 0) {
-                for (const mediaId of data.mediaIds) {
-                    const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`);
-                    if (mediaRes.ok) {
-                        const media = await mediaRes.json();
-                        const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
-                        fetchedAssets.push({
-                            id: media.id,
-                            url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
-                            mediaType: media.type.toLowerCase(),
-                            filename: media.title,
-                            duration: media.duration || 10,
-                            thumbnail: media.thumbnail || rawUrl,
-                            objectFit: 'cover',
-                            scalePercent: 100
-                        });
-                    }
-                }
+                const results = await Promise.all(data.mediaIds.map(async (mediaId) => {
+                    try {
+                        const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`);
+                        if (mediaRes.ok) {
+                            const media = await mediaRes.json();
+                            const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
+                            return {
+                                id: media.id,
+                                url: rawUrl + (state.cacheBust ? `?cb=${state.cacheBust}` : ''),
+                                mediaType: media.type.toLowerCase(),
+                                filename: media.title,
+                                duration: media.duration || 10,
+                                thumbnail: media.thumbnail || rawUrl,
+                                objectFit: 'cover',
+                                scalePercent: 100
+                            };
+                        }
+                    } catch (e) {}
+                    return null;
+                }));
+                fetchedAssets = results.filter(Boolean);
             }
 
             if (data.shuffle && fetchedAssets.length > 0) {
@@ -659,6 +691,7 @@ window.SignagePlayer = (function () {
                 
                 state.playlist = localAssets;
                 localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
+                if (lastUpdated) localStorage.setItem('signage_tizen_playlist_updated', lastUpdated);
 
                 if (isDifferent || isPlaylistEmpty) {
                     state.currentAssetIndex = 0;
