@@ -6,6 +6,7 @@ window.SignageKeys = (function () {
     function bindRemoteKeys(views, onRequestPairingCode) {
         if (views.refreshCodeBtn) {
             views.refreshCodeBtn.addEventListener('click', () => {
+                if (views.refreshCodeBtn.disabled) return;
                 views.refreshCodeBtn.disabled = true;
                 views.refreshCodeBtn.innerText = "Requesting...";
                 onRequestPairingCode().finally(() => {
@@ -26,7 +27,7 @@ window.SignageKeys = (function () {
 
                 if (keyCode === 13 || keyCode === 29443 || keyCode === 10190 || e.key === 'Enter') {
                     e.preventDefault();
-                    if (views.refreshCodeBtn) views.refreshCodeBtn.click();
+                    if (views.refreshCodeBtn && !views.refreshCodeBtn.disabled) views.refreshCodeBtn.click();
                 }
             }
         });

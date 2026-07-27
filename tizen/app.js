@@ -82,7 +82,7 @@
         window.addEventListener('click', resetIdleTimer);
         document.addEventListener("visibilitychange", handleVisibilityChange);
 
-        if (state.screenId) {
+        if (state.screenId && state.status !== 'pairing') {
             if (state.playlist && state.playlist.length > 0) {
                 views.splash.classList.remove('active');
             }
@@ -90,6 +90,9 @@
                 views.splash.classList.remove('active');
                 updateUI();
             });
+        } else if (state.pairingCode && state.screenId) {
+            views.splash.classList.remove('active');
+            updateUI();
         } else {
             requestPairingCode(state, views, updateUI).then(() => {
                 views.splash.classList.remove('active');
@@ -417,10 +420,10 @@
         if (heartbeatInterval) clearInterval(heartbeatInterval);
 
         syncInterval = setInterval(() => {
-            if (state.screenId) {
-                fetchScreenConfig();
-            } else if (state.status === 'pairing') {
+            if (state.status === 'pairing') {
                 checkPairingStatusOnServer(state, updateUI);
+            } else if (state.screenId) {
+                fetchScreenConfig();
             }
         }, 2000);
 
