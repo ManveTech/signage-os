@@ -131,8 +131,19 @@ export async function getPairingCode(req: any, res: any) {
           pocketbaseUrl: pb.baseUrl
         });
       }
+
+      const { forceRefresh } = req.body;
+      const isExpired = existing.pairing_code_expires ? new Date(existing.pairing_code_expires) <= new Date() : false;
+      if (existing.pairing_code && !isExpired && !forceRefresh) {
+        return res.status(200).json({
+          screenId: existing.id,
+          pairingCode: existing.pairing_code,
+          status: existing.status || 'pairing',
+          pocketbaseUrl: pb.baseUrl
+        });
+      }
       
-      // Update existing record
+      // Update existing record with a new code
       screenRecord = await pb.collection('screens').update(existing.id, {
         pairing_code: pairingCode,
         pairing_code_expires: pairingCodeExpires,

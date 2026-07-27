@@ -12,6 +12,38 @@ type PlaylistItem = {
   secondFile?: string;
 };
 
+const getCleanWidgetLink = (link: any): string => {
+  if (!link) return '';
+  if (typeof link === 'object') {
+    if (typeof link.qrcode === 'string') return link.qrcode;
+    if (typeof link.weather === 'string') return link.weather;
+    if (typeof link.clock === 'string') return link.clock;
+    if (typeof link.url === 'string') return link.url;
+    if (typeof link.link === 'string') return link.link;
+    return '';
+  }
+  if (typeof link === 'string') {
+    const trimmed = link.trim();
+    if (trimmed.startsWith('{') || trimmed.includes('[object')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.qrcode === 'string') return parsed.qrcode;
+          if (typeof parsed.weather === 'string') return parsed.weather;
+          if (typeof parsed.clock === 'string') return parsed.clock;
+          if (typeof parsed.url === 'string') return parsed.url;
+          if (typeof parsed.link === 'string') return parsed.link;
+          return '';
+        }
+      } catch {
+        return '';
+      }
+    }
+    return link;
+  }
+  return String(link);
+};
+
 export default function UploadMedia() {
   const [dragging, setDragging] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -569,7 +601,7 @@ export default function UploadMedia() {
                   </label>
                   <input
                     type={playlistWidgetType === 'qrcode' ? 'url' : 'text'}
-                    value={playlistWidgetLink}
+                    value={getCleanWidgetLink(playlistWidgetLink)}
                     onChange={e => setPlaylistWidgetLink(e.target.value)}
                     placeholder={
                       playlistWidgetType === 'qrcode' ? 'https://example.com/menu.pdf' :

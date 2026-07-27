@@ -74,7 +74,7 @@
         window.widgetsRef = widgets;
         window.SignageWidgetsRef = window.SignageWidgets;
         applyBranding(state, views);
-        bindRemoteKeys(views, () => requestPairingCode(state, views, updateUI));
+        bindRemoteKeys(views, (force) => requestPairingCode(state, views, updateUI, force));
 
         cancelAutoLaunchAlarm();
 

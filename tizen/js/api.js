@@ -29,12 +29,15 @@ window.SignageApi = (function () {
         }
     }
 
-    async function requestPairingCode(state, views, updateUICallback) {
+    async function requestPairingCode(state, views, updateUICallback, forceRefresh = false) {
         try {
             const res = await fetch(`${SERVER_URL}/api/v1/devices/pairing-code`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hardwareUuid: state.uuid })
+                body: JSON.stringify({
+                    hardwareUuid: state.uuid,
+                    forceRefresh: !!forceRefresh
+                })
             });
 
             if (!res.ok) throw new Error('API pairing code call failed');
@@ -42,7 +45,7 @@ window.SignageApi = (function () {
 
             state.pairingCode = data.pairingCode;
             state.screenId = data.screenId;
-            state.status = 'pairing';
+            state.status = data.status || 'pairing';
             if (data.pocketbaseUrl) {
                 setPocketBaseUrl(data.pocketbaseUrl);
             }
@@ -70,12 +73,24 @@ window.SignageApi = (function () {
             const res = await fetchWithTimeout(url, {}, 2500);
             if (res.ok) {
                 const data = await res.json();
+                if (data.pairing_code && data.pairing_code !== state.pairingCode) {
+                    state.pairingCode = data.pairing_code;
+                    localStorage.setItem(KEYS.PAIRING_CODE, state.pairingCode);
+                    if (updateUICallback) updateUICallback();
+                }
                 if (data.status && data.status !== 'pairing') {
                     console.log("Device has been successfully paired!");
                     state.status = data.status;
                     localStorage.setItem(KEYS.STATUS, state.status);
                     if (updateUICallback) updateUICallback();
                 }
+            } else if (res.status === 404 || res.status === 403) {
+                console.warn("Screen record missing on server (404/403). Resetting pairing.");
+                state.screenId = '';
+                state.pairingCode = '';
+                localStorage.removeItem(KEYS.SCREEN_ID);
+                localStorage.removeItem(KEYS.PAIRING_CODE);
+                requestPairingCode(state, window.viewsRef || {}, updateUICallback, true);
             }
         } catch (err) {
             console.error("Error checking pairing status:", err);

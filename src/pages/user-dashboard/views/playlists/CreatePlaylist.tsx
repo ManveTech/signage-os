@@ -19,6 +19,38 @@ type PlaylistItem = {
   scalePercent?: number;
 };
 
+const getCleanWidgetLink = (link: any): string => {
+  if (!link) return '';
+  if (typeof link === 'object') {
+    if (typeof link.qrcode === 'string') return link.qrcode;
+    if (typeof link.weather === 'string') return link.weather;
+    if (typeof link.clock === 'string') return link.clock;
+    if (typeof link.url === 'string') return link.url;
+    if (typeof link.link === 'string') return link.link;
+    return '';
+  }
+  if (typeof link === 'string') {
+    const trimmed = link.trim();
+    if (trimmed.startsWith('{') || trimmed.includes('[object')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.qrcode === 'string') return parsed.qrcode;
+          if (typeof parsed.weather === 'string') return parsed.weather;
+          if (typeof parsed.clock === 'string') return parsed.clock;
+          if (typeof parsed.url === 'string') return parsed.url;
+          if (typeof parsed.link === 'string') return parsed.link;
+          return '';
+        }
+      } catch {
+        return '';
+      }
+    }
+    return link;
+  }
+  return String(link);
+};
+
 interface Props {
   userEmail: string;
   onNavigate?: (view: string) => void;
@@ -129,7 +161,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       setPlaylistVolume(play.volume !== undefined ? play.volume : 80);
       setPlaylistWidgetType(play.widgetType);
       setPlaylistWidgetPlacement(play.widgetPlacement || 'top-right');
-      setPlaylistWidgetLink(play.widgetLink || '');
+      setPlaylistWidgetLink(getCleanWidgetLink(play.widgetLink));
 
       // Load ticker specific states (handling both single widget and multi-widget formats)
       let hasRss = false;
@@ -140,8 +172,10 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
       if (hasRss && play.widgetLink) {
         try {
-          if (play.widgetLink.startsWith('{')) {
-            const parsed = JSON.parse(play.widgetLink);
+          const rawLink = play.widgetLink;
+          const linkStr = typeof rawLink === 'object' ? JSON.stringify(rawLink) : String(rawLink);
+          if (linkStr.trim().startsWith('{')) {
+            const parsed = typeof rawLink === 'object' ? rawLink : JSON.parse(linkStr);
             if (parsed.rss && typeof parsed.rss === 'object') {
               // It's a combined JSON structure
               const rssData = parsed.rss;
@@ -151,32 +185,36 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               setTickerLabel(rssData.label !== undefined ? rssData.label : 'WORLD NEWS');
               
               // Unpack secondary widget link
-              if (parsed.qrcode) setPlaylistWidgetLink(parsed.qrcode);
-              else if (parsed.weather) setPlaylistWidgetLink(parsed.weather);
-              else if (parsed.clock) setPlaylistWidgetLink(parsed.clock);
+              if (parsed.qrcode) setPlaylistWidgetLink(String(parsed.qrcode));
+              else if (parsed.weather) setPlaylistWidgetLink(String(parsed.weather));
+              else if (parsed.clock) setPlaylistWidgetLink(String(parsed.clock));
+              else setPlaylistWidgetLink('');
             } else if (parsed.items) {
               // Standard single RSS JSON structure
               setTickerBgColor(parsed.bgColor || '#111827');
               setTickerTextColor(parsed.textColor || '#ffffff');
               setTickerParagraphs(Array.isArray(parsed.items) ? parsed.items : ['']);
               setTickerLabel(parsed.label !== undefined ? parsed.label : 'WORLD NEWS');
+              setPlaylistWidgetLink('');
             } else {
-              setTickerParagraphs([play.widgetLink]);
+              setTickerParagraphs([linkStr]);
               setTickerBgColor('#111827');
               setTickerTextColor('#ffffff');
               setTickerLabel('WORLD NEWS');
             }
           } else {
-            setTickerParagraphs([play.widgetLink]);
+            setTickerParagraphs([linkStr]);
             setTickerBgColor('#111827');
             setTickerTextColor('#ffffff');
             setTickerLabel('WORLD NEWS');
+            setPlaylistWidgetLink('');
           }
         } catch (e) {
-          setTickerParagraphs([play.widgetLink]);
+          setTickerParagraphs([String(play.widgetLink)]);
           setTickerBgColor('#111827');
           setTickerTextColor('#ffffff');
           setTickerLabel('WORLD NEWS');
+          setPlaylistWidgetLink('');
         }
       } else {
         setTickerBgColor('#111827');
@@ -1333,7 +1371,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                   </label>
                   <input
                     type={playlistWidgetType === 'qrcode' ? 'url' : 'text'}
-                    value={playlistWidgetLink}
+                    value={getCleanWidgetLink(playlistWidgetLink)}
                     onChange={e => setPlaylistWidgetLink(e.target.value)}
                     placeholder={
                       playlistWidgetType === 'qrcode' ? 'https://example.com/menu.pdf' :

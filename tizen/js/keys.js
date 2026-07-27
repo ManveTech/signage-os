@@ -9,7 +9,7 @@ window.SignageKeys = (function () {
                 if (views.refreshCodeBtn.disabled) return;
                 views.refreshCodeBtn.disabled = true;
                 views.refreshCodeBtn.innerText = "Requesting...";
-                onRequestPairingCode().finally(() => {
+                onRequestPairingCode(true).finally(() => {
                     views.refreshCodeBtn.disabled = false;
                     views.refreshCodeBtn.innerText = "Get New Code";
                 });
