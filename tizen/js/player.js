@@ -326,7 +326,13 @@ window.SignagePlayer = (function () {
             const targetVol = (state.volume !== undefined && state.volume !== null ? state.volume : 80) / 100;
             views.videoPlayer.playsInline = true;
             views.videoPlayer.setAttribute('playsinline', 'true');
-            views.videoPlayer.src = asset.url;
+            views.videoPlayer.loop = false;
+            views.videoPlayer.removeAttribute('loop');
+
+            if (views.videoPlayer.src !== asset.url) {
+                views.videoPlayer.src = asset.url;
+            }
+            try { views.videoPlayer.currentTime = 0; } catch (_) {}
             views.videoPlayer.volume = targetVol > 0 ? targetVol : 0.8;
             views.videoPlayer.muted = false;
             views.videoPlayer.removeAttribute('muted');
@@ -371,6 +377,7 @@ window.SignagePlayer = (function () {
 
             const handleEnded = () => {
                 if (currentToken !== rotationToken) return;
+                console.log(`Video playback finished: ${asset.filename}`);
                 cleanupVideoListeners();
                 advancePlaylist(state, views, updateUICallback);
             };
@@ -382,43 +389,63 @@ window.SignagePlayer = (function () {
                 advancePlaylist(state, views, updateUICallback);
             };
 
+            const enableAudio = () => {
+                try {
+                    if (views.videoPlayer) {
+                        views.videoPlayer.muted = false;
+                        views.videoPlayer.removeAttribute('muted');
+                        views.videoPlayer.volume = targetVol > 0 ? targetVol : 0.8;
+                        console.log("Video sound enabled!");
+                    }
+                } catch (_) {}
+            };
+
+            const setupAudioUnmuteListeners = () => {
+                const handler = () => {
+                    enableAudio();
+                    window.removeEventListener('click', handler);
+                    window.removeEventListener('keydown', handler);
+                    window.removeEventListener('touchstart', handler);
+                };
+                window.addEventListener('click', handler, { once: true });
+                window.addEventListener('keydown', handler, { once: true });
+                window.addEventListener('touchstart', handler, { once: true });
+            };
+
             views.videoPlayer.addEventListener('playing', showVideo);
             views.videoPlayer.addEventListener('canplay', showVideo);
             views.videoPlayer.addEventListener('ended', handleEnded);
             views.videoPlayer.addEventListener('error', handleError);
 
-            const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
+            const fallbackSec = Math.max(parseInt(asset.duration, 10) || 10, 5);
 
             const startRotationTimer = () => {
+                const videoDurationSec = (views.videoPlayer.duration && !isNaN(views.videoPlayer.duration) && views.videoPlayer.duration > 0)
+                    ? views.videoPlayer.duration
+                    : fallbackSec;
+                const timeoutMs = Math.max(videoDurationSec, fallbackSec) * 1000 + 4000;
+
+                if (rotationTimeout) clearTimeout(rotationTimeout);
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
+                        console.warn(`Safety timer fired for video ${asset.filename}`);
                         cleanupVideoListeners();
                         try { views.videoPlayer.pause(); } catch (_) {}
                         advancePlaylist(state, views, updateUICallback);
                     }
-                }, duration);
+                }, timeoutMs);
             };
 
             views.videoPlayer.play().then(() => {
-                console.log("Unmuted video playback started at volume:", views.videoPlayer.volume);
+                showVideo();
                 startRotationTimer();
             }).catch(e => {
-                console.warn("Unmuted autoplay restricted by browser policy. Retrying muted...", e);
+                console.warn("Unmuted autoplay restricted. Retrying muted...", e);
                 views.videoPlayer.muted = true;
+                setupAudioUnmuteListeners();
                 views.videoPlayer.play().then(() => {
+                    showVideo();
                     startRotationTimer();
-                    const unmuteOnInteraction = () => {
-                        try {
-                            views.videoPlayer.muted = false;
-                            views.videoPlayer.removeAttribute('muted');
-                            views.videoPlayer.volume = targetVol > 0 ? targetVol : 0.8;
-                            console.log("Unmuted video via user interaction!");
-                        } catch (_) {}
-                        window.removeEventListener('click', unmuteOnInteraction);
-                        window.removeEventListener('keydown', unmuteOnInteraction);
-                    };
-                    window.addEventListener('click', unmuteOnInteraction, { once: true });
-                    window.addEventListener('keydown', unmuteOnInteraction, { once: true });
                 }).catch(err => {
                     console.error("Muted video playback fallback failed:", err);
                     showVideo();
@@ -453,6 +480,8 @@ window.SignagePlayer = (function () {
                 container.appendChild(imgElement);
             }
 
+            const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
+
             const startTransition = () => {
                 if (currentToken !== rotationToken) return;
 
@@ -483,6 +512,13 @@ window.SignagePlayer = (function () {
                     }
                 }, 500);
 
+                if (rotationTimeout) clearTimeout(rotationTimeout);
+                rotationTimeout = setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        advancePlaylist(state, views, updateUICallback);
+                    }
+                }, duration);
+
                 // Pre-decode next slide in background for instant transition
                 if (state.playlist && state.playlist.length > 1) {
                     const nextIdx = (state.currentAssetIndex + 1) % state.playlist.length;
@@ -505,33 +541,15 @@ window.SignagePlayer = (function () {
                         }
                     }
                 }
-
-                const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        advancePlaylist(state, views, updateUICallback);
-                    }
-                }, duration);
             };
 
-            if (imgElement.complete) {
-                if (typeof imgElement.decode === 'function') {
-                    imgElement.decode().then(startTransition).catch(startTransition);
-                } else {
-                    startTransition();
-                }
+            if (imgElement.complete && imgElement.naturalWidth > 0) {
+                startTransition();
             } else {
                 const handleLoad = () => {
                     imgElement.removeEventListener('load', handleLoad);
                     imgElement.removeEventListener('error', handleError);
-                    if (container && imgElement.parentNode !== container) {
-                        container.appendChild(imgElement);
-                    }
-                    if (typeof imgElement.decode === 'function') {
-                        imgElement.decode().then(startTransition).catch(startTransition);
-                    } else {
-                        startTransition();
-                    }
+                    startTransition();
                 };
                 const handleError = (err) => {
                     console.error(`Dynamic image element load failed: ${asset.url}`, err);
@@ -685,8 +703,8 @@ window.SignagePlayer = (function () {
             try {
                 const localAssets = await syncLocalFiles(fetchedAssets.map(a => Object.assign({}, a)), state, views);
                 
+                const currentKeys = (state.playlist || []).map(a => `${a.id}_${a.duration}`);
                 const newKeys = localAssets.map(a => `${a.id}_${a.duration}`);
-                const currentKeys = state.playlist.map(a => `${a.id}_${a.duration}`);
                 const isDifferent = JSON.stringify(newKeys) !== JSON.stringify(currentKeys);
                 
                 state.playlist = localAssets;
@@ -695,6 +713,7 @@ window.SignagePlayer = (function () {
 
                 if (isDifferent || isPlaylistEmpty) {
                     state.currentAssetIndex = 0;
+                    state.isRotating = false;
                     if (updateUICallback) updateUICallback();
                     startPlaylistRotation(state, views, updateUICallback);
                 } else {

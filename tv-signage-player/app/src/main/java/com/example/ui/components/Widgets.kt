@@ -342,11 +342,72 @@ fun ClockWidget(header: String) {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RssTickerWidget(tickerText: String) {
+    var labelText = "LIVE"
+    var displayText = ""
+    var bgColor = Color(0xE6111827)
+    var textColor = Color.White
+
+    if (tickerText.isNotEmpty()) {
+        try {
+            val jsonStr = tickerText.trim()
+            if (jsonStr.startsWith("{") && jsonStr.endsWith("}")) {
+                val json = org.json.JSONObject(jsonStr)
+                val config = json.optJSONObject("rss") ?: json
+
+                if (config.has("label") && !config.optString("label").isNullOrEmpty()) {
+                    labelText = config.optString("label")
+                }
+
+                val itemsArray = config.optJSONArray("items")
+                if (itemsArray != null && itemsArray.length() > 0) {
+                    val itemList = mutableListOf<String>()
+                    for (i in 0 until itemsArray.length()) {
+                        val item = itemsArray.optString(i, "").trim()
+                        if (item.isNotEmpty()) {
+                            itemList.add(item)
+                        }
+                    }
+                    if (itemList.isNotEmpty()) {
+                        displayText = itemList.joinToString("   + + +   ")
+                    }
+                } else if (config.has("text")) {
+                    displayText = config.optString("text", "")
+                }
+
+                if (config.has("bgColor")) {
+                    val bgStr = config.optString("bgColor")
+                    if (bgStr.startsWith("#")) {
+                        try { bgColor = Color(android.graphics.Color.parseColor(bgStr)) } catch (_: Exception) {}
+                    }
+                }
+                if (config.has("textColor")) {
+                    val textStr = config.optString("textColor")
+                    if (textStr.startsWith("#")) {
+                        try { textColor = Color(android.graphics.Color.parseColor(textStr)) } catch (_: Exception) {}
+                    }
+                }
+            } else {
+                val parts = jsonStr.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.isNotEmpty()) {
+                    displayText = parts.joinToString("   + + +   ")
+                } else {
+                    displayText = jsonStr
+                }
+            }
+        } catch (e: Exception) {
+            displayText = tickerText
+        }
+    }
+
+    if (displayText.isEmpty()) {
+        displayText = "Welcome to SignageOS Digital Display Player Network Ticker"
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .background(Color(0xE6111827))
+            .background(bgColor)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -356,7 +417,7 @@ fun RssTickerWidget(tickerText: String) {
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             Text(
-                text = "LIVE",
+                text = labelText.uppercase(),
                 color = Color.White,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
@@ -365,8 +426,8 @@ fun RssTickerWidget(tickerText: String) {
         }
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = tickerText.ifEmpty { "Welcome to SignageOS Digital Display Player Network Ticker" },
-            color = Color.White,
+            text = displayText,
+            color = textColor,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,

@@ -204,15 +204,20 @@
                     idleTimeout = null;
                 }
                 if (!state.playlist || state.playlist.length === 0) {
+                    state.isRotating = false;
                     if (views.standby) views.standby.classList.add('active');
                 } else {
                     applyOrientation();
                     if (views.playback) views.playback.classList.add('active');
-                    startPlaylistRotation(state, views, updateUI);
+                    if (!state.isRotating) {
+                        state.isRotating = true;
+                        startPlaylistRotation(state, views, updateUI);
+                    }
                     renderWidgets(state, widgets, SERVER_URL);
                 }
                 break;
             default:
+                state.isRotating = false;
                 if (views.pairing) views.pairing.classList.add('active');
                 resetIdleTimer();
                 break;
@@ -443,6 +448,7 @@
         state.screenId = '';
         state.pairingCode = '';
         state.status = 'pairing';
+        state.isRotating = false;
         state.playlist = [];
         state.widget = {};
 
