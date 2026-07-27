@@ -45,36 +45,7 @@ window.SignagePlayer = (function () {
         }
 
         if (!window.tizen || !window.tizen.filesystem) {
-            console.log("Not running on Tizen filesystem. Pre-buffering assets for browser playback...");
-            updateProgress(0, assets.length, '');
-            let completedCount = 0;
-            await Promise.all(assets.map(async (asset) => {
-                if (asset.url) {
-                    try {
-                        if (asset.mediaType === 'image') {
-                            await new Promise((resolve) => {
-                                const img = new Image();
-                                img.onload = resolve;
-                                img.onerror = resolve;
-                                img.src = asset.url;
-                                if (typeof img.decode === 'function') {
-                                    img.decode().then(resolve).catch(resolve);
-                                }
-                            });
-                        } else if (asset.mediaType === 'video') {
-                            await new Promise((resolve) => {
-                                const vid = document.createElement('video');
-                                vid.oncanplay = resolve;
-                                vid.onerror = resolve;
-                                vid.src = asset.url;
-                                setTimeout(resolve, 300);
-                            });
-                        }
-                    } catch (_) {}
-                    completedCount++;
-                    updateProgress(completedCount, assets.length, asset.filename || asset.id);
-                }
-            }));
+            console.log("Not running on Tizen filesystem. Assets ready for browser playback.");
             if (overlay) overlay.classList.add('hidden');
             return assets;
         }
@@ -84,9 +55,7 @@ window.SignagePlayer = (function () {
                 window.tizen.filesystem.resolve("wgt-private", resolve, reject, "rw");
             });
 
-            console.log("Local wgt-private storage resolved. Syncing assets...");
-            updateProgress(0, assets.length, '');
-
+            const missingAssets = [];
             for (let i = 0; i < assets.length; i++) {
                 const asset = assets[i];
                 if (!asset.url) continue;
@@ -98,16 +67,24 @@ window.SignagePlayer = (function () {
                 else if (asset.url.includes('.webp')) ext = 'webp';
 
                 const filename = `asset_${asset.id}.${ext}`;
-
                 try {
                     const file = dir.resolve(filename);
-                    const localUri = getFileURI(file);
-                    console.log(`Asset ${filename} already exists locally: ${localUri}`);
-                    asset.url = localUri;
-                    updateProgress(i + 1, assets.length, asset.filename || filename);
+                    asset.url = getFileURI(file);
                 } catch (e) {
-                    console.log(`Downloading asset: ${asset.url} as ${filename}`);
-                    
+                    missingAssets.push({ index: i, asset, filename });
+                }
+            }
+
+            if (missingAssets.length === 0) {
+                console.log("All assets already cached locally.");
+                if (overlay) overlay.classList.add('hidden');
+            } else {
+                console.log(`Local storage resolved. Downloading ${missingAssets.length} missing assets...`);
+                if (overlay) overlay.classList.remove('hidden');
+                updateProgress(0, missingAssets.length, '');
+
+                for (let k = 0; k < missingAssets.length; k++) {
+                    const { asset, filename } = missingAssets[k];
                     try {
                         let response;
                         try {
@@ -139,12 +116,12 @@ window.SignagePlayer = (function () {
                                 if (done) break;
                                 chunks.push(value);
                                 receivedBytes += value.length;
-                                updateProgress(i + 1, assets.length, asset.filename || filename, receivedBytes, contentLength);
+                                updateProgress(k + 1, missingAssets.length, asset.filename || filename, receivedBytes, contentLength);
                             }
                             blob = new Blob(chunks);
                         } else {
                             blob = await response.blob();
-                            updateProgress(i + 1, assets.length, asset.filename || filename, blob.size, blob.size);
+                            updateProgress(k + 1, missingAssets.length, asset.filename || filename, blob.size, blob.size);
                         }
 
                         const base64Data = await new Promise((resolve, reject) => {
@@ -211,8 +188,9 @@ window.SignagePlayer = (function () {
                     } catch (dlErr) {
                         console.error(`Failed to download and write asset ${filename}:`, dlErr);
                     }
+                    updateProgress(k + 1, missingAssets.length, asset.filename || filename);
                 }
-                updateProgress(i + 1, assets.length, asset.filename || filename);
+                if (overlay) overlay.classList.add('hidden');
             }
 
             if (!state.imageElementsCache) {
@@ -222,21 +200,8 @@ window.SignagePlayer = (function () {
             console.log("Starting upfront asset pre-decoding...");
             const imageAssets = assets.filter(a => a.mediaType === 'image' && a.url);
             if (imageAssets.length > 0) {
-                if (views.splashStatus) {
-                    views.splashStatus.innerText = "Optimizing display cache for smooth transitions...";
-                }
-                if (progressBar) progressBar.style.width = '0%';
-
                 for (let k = 0; k < imageAssets.length; k++) {
                     const asset = imageAssets[k];
-                    if (views.splashStatus) {
-                        views.splashStatus.innerText = `Optimizing graphics cache... ${k + 1}/${imageAssets.length}`;
-                    }
-                    if (progressBar) {
-                        const percent = ((k + 1) / imageAssets.length) * 100;
-                        progressBar.style.width = `${percent}%`;
-                    }
-
                     if (state.imageElementsCache[asset.id] && state.imageElementsCache[asset.id].src === asset.url) {
                         continue;
                     }
@@ -371,6 +336,7 @@ window.SignagePlayer = (function () {
 
             if (views.videoPlayer.src !== asset.url) {
                 views.videoPlayer.src = asset.url;
+                try { views.videoPlayer.load(); } catch (_) {}
             }
             try { views.videoPlayer.currentTime = 0; } catch (_) {}
             views.videoPlayer.volume = targetVol > 0 ? targetVol : 0.8;
@@ -378,6 +344,7 @@ window.SignagePlayer = (function () {
             views.videoPlayer.removeAttribute('muted');
             views.videoPlayer.style.display = 'block';
             views.videoPlayer.style.zIndex = '3';
+            views.videoPlayer.style.opacity = '1';
 
             let videoShown = false;
             const showVideo = () => {
@@ -474,6 +441,8 @@ window.SignagePlayer = (function () {
             views.videoPlayer.addEventListener('ended', handleEnded);
             views.videoPlayer.addEventListener('error', handleError);
             views.videoPlayer.addEventListener('loadedmetadata', setupMetadataSafetyTimer);
+
+            showVideo();
 
             const initialSafetySec = Math.max(parseInt(asset.duration, 10) || 30, 30);
             if (rotationTimeout) clearTimeout(rotationTimeout);
