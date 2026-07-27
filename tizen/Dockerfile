@@ -10,5 +10,6 @@ COPY Debug/tizen.wgt /usr/share/nginx/html/tizen.wgt
 COPY index.html /usr/share/nginx/html/index.html
 COPY app.js /usr/share/nginx/html/app.js
 COPY index.css /usr/share/nginx/html/index.css
+COPY js/ /usr/share/nginx/html/js/
 
 EXPOSE 80
