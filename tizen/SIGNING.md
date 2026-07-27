@@ -74,7 +74,7 @@ Whenever you make code updates inside the `tizen/` folder (such as editing `app.
 Run the following compound command in your terminal:
 
 ```bash
-zip -j tizen/Debug/tizen_unsigned.wgt tizen/README.md tizen/app.js tizen/config.xml tizen/index.css tizen/index.html && node tizen/sign.cjs && rm tizen/Debug/tizen_unsigned.wgt
+rm -f tizen/Debug/tizen_unsigned.wgt && (cd tizen && zip -r Debug/tizen_unsigned.wgt README.md app.js config.xml index.css index.html js/) && node tizen/sign.cjs && rm -f tizen/Debug/tizen_unsigned.wgt
 ```
 
 ### Step 2: Commit & Deploy
@@ -126,7 +126,7 @@ Whenever you modify any code inside the `tizen/` directory (e.g. `app.js` or `in
 ### 1. Package Unsigned Files
 Zip the 5 core code files into a temporary archive:
 ```bash
-zip -j tizen/Debug/tizen_unsigned.wgt tizen/README.md tizen/app.js tizen/config.xml tizen/index.css tizen/index.html
+(cd tizen && zip -r Debug/tizen_unsigned.wgt README.md app.js config.xml index.css index.html js/)
 ```
 
 ### 2. Sign and Update SSSP Manifest

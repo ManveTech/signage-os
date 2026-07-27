@@ -31,7 +31,7 @@ function resignPackage(certificates, packageBuffer, newVer) {
                     if (file.name.includes('signature') && file.name.endsWith('.xml')) return null;
                     const data = await file.async('nodebuffer');
                     return {
-                        uri: encodeURIComponent(filename),
+                        uri: encodeURI(filename),
                         data
                     };
                 })
@@ -52,7 +52,7 @@ function resignPackage(certificates, packageBuffer, newVer) {
             // Create a new zip
             const newZip = new JSZip();
             for (const file of signedFiles) {
-                newZip.file(decodeURIComponent(file.uri), file.data);
+                newZip.file(decodeURI(file.uri), file.data);
             }
 
             resolve(await newZip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
