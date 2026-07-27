@@ -4,7 +4,10 @@ const { Signature } = require('tizen');
 const forge = require('node-forge');
 const JSZip = require('jszip');
 
-const configPath = '/Users/preethamreddy/share/tizenbrewInstallerConfig.json';
+const userHome = process.env.HOME || '/home/manve';
+const configPath = fs.existsSync(path.join(userHome, 'share/tizenbrewInstallerConfig.json'))
+    ? path.join(userHome, 'share/tizenbrewInstallerConfig.json')
+    : '/Users/preethamreddy/share/tizenbrewInstallerConfig.json';
 const unsignedWgtPath = path.join(__dirname, 'Debug/tizen_unsigned.wgt');
 const signedWgtPath = path.join(__dirname, 'Debug/tizen.wgt');
 const ssspConfigPath = path.join(__dirname, 'sssp_config.xml');
@@ -67,7 +70,7 @@ async function run() {
         }
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         
-        const localAuthorCertPath = '/Users/preethamreddy/Projects/signage-os/tizen/certs/manve_author.p12';
+        const localAuthorCertPath = path.join(__dirname, 'certs/manve_author.p12');
         const certificates = {
             authorCert: fs.readFileSync(localAuthorCertPath, 'binary'),
             authorPassword: 'Alpha@2004',

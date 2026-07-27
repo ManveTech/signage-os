@@ -169,6 +169,19 @@ class SignageRepository(private val context: Context) {
                     !File(currentConfig.whiteLabelLogoPath).exists()
             )
 
+            // If screen status on backend was reset to pairing, unpair device locally
+            if (response.status == "pairing") {
+                Log.d("SignageRepository", "Screen status reset to pairing on backend. Unpairing device.")
+                val unassignedConfig = currentConfig.copy(
+                    screenId = "",
+                    pairingCode = "",
+                    status = "pairing"
+                )
+                configDao.saveConfig(unassignedConfig)
+                clearDeviceAssets()
+                return@withContext Result.success(Unit)
+            }
+
             val updatedConfig = currentConfig.copy(
                 status = response.status,
                 screenName = response.name ?: currentConfig.screenName,
@@ -263,9 +276,16 @@ class SignageRepository(private val context: Context) {
 
             Result.success(Unit)
         } catch (e: retrofit2.HttpException) {
-            if (e.code() == 404) {
-                Log.d("SignageRepository", "Screen record not found (404). Unpairing device and purging cache.")
-                clearCache()
+            if (e.code() == 404 || e.code() == 403) {
+                Log.d("SignageRepository", "Screen record not found/deleted (404/403). Unpairing device and purging cache.")
+                val currentConfig = getOrCreateConfig()
+                val unassignedConfig = currentConfig.copy(
+                    screenId = "",
+                    pairingCode = "",
+                    status = "pairing"
+                )
+                configDao.saveConfig(unassignedConfig)
+                clearDeviceAssets()
             }
             Log.e("SignageRepository", "HTTP error syncing screen status with backend", e)
             logErrorToServer("Sync Status HTTP Error", "HTTP ${e.code()}: ${e.message()}")

@@ -240,7 +240,8 @@
             const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
             const res = await fetchWithTimeout(url, {}, 2500);
             if (!res.ok) {
-                if (res.status === 404) {
+                if (res.status === 404 || res.status === 403) {
+                    console.log("Screen record deleted/removed on server. Disconnecting and resetting pairing.");
                     disconnectDevice();
                     return;
                 }
@@ -248,6 +249,12 @@
             }
 
             const data = await res.json();
+
+            if (data.status === 'pairing') {
+                console.log("Screen status reset to pairing on server. Disconnecting.");
+                disconnectDevice();
+                return;
+            }
             
             state.lastSyncedAt = Date.now();
             localStorage.setItem('signage_tizen_last_sync', state.lastSyncedAt);

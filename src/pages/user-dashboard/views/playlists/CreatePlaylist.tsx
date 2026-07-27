@@ -51,125 +51,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
   const [playlistLoop, setPlaylistLoop] = useState<boolean>(true);
   const [playlistVolume, setPlaylistVolume] = useState<number>(80);
 
-  // Client-Side Video Compilation State
-  const [isCompiling, setIsCompiling] = useState<boolean>(false);
-  const [compileProgress, setCompileProgress] = useState<number>(0);
-  const [isCompiled, setIsCompiled] = useState<boolean>(false);
-  const [compiledVideoUrl, setCompiledVideoUrl] = useState<string | undefined>(undefined);
 
-  const handleCompilePlaylistVideo = async () => {
-    if (playlistItems.length === 0) {
-      showToast('⚠️ Add at least one media item before compiling.');
-      return;
-    }
-
-    setIsCompiling(true);
-    setCompileProgress(5);
-
-    try {
-      const width = playlistOrientation === 'vertical' ? 1080 : 1920;
-      const height = playlistOrientation === 'vertical' ? 1920 : 1080;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-
-      if (!ctx) throw new Error('Canvas 2D context unavailable');
-
-      const stream = canvas.captureStream(30);
-      let mimeType = 'video/webm;codecs=vp9';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm';
-      }
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      const chunks: Blob[] = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
-      };
-
-      recorder.start(100);
-
-      const totalItems = playlistItems.length;
-      let completedItems = 0;
-
-      for (const item of playlistItems) {
-        const media = mediaList.find(m => m.id === item.mediaId);
-        if (!media) continue;
-
-        const durationMs = Math.min(item.duration, 10) * 1000;
-        const fps = 30;
-        const totalFrames = Math.max(15, Math.floor((durationMs / 1000) * fps));
-        const frameIntervalMs = 1000 / fps;
-
-        if (media.type === 'video' && media.fileUrl) {
-          const vid = document.createElement('video');
-          vid.crossOrigin = 'anonymous';
-          vid.src = media.fileUrl || media.thumbnail;
-          vid.muted = true;
-          await new Promise(r => {
-            vid.onloadeddata = r;
-            vid.onerror = r;
-            setTimeout(r, 1200);
-          });
-          vid.play().catch(() => {});
-
-          for (let f = 0; f < totalFrames; f++) {
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, width, height);
-            try {
-              ctx.drawImage(vid, 0, 0, width, height);
-            } catch (_) {}
-            await new Promise(r => setTimeout(r, frameIntervalMs));
-          }
-          vid.pause();
-        } else {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.src = media.thumbnail || media.fileUrl || '';
-          await new Promise(r => {
-            img.onload = r;
-            img.onerror = r;
-            setTimeout(r, 800);
-          });
-
-          for (let f = 0; f < totalFrames; f++) {
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, width, height);
-            try {
-              ctx.drawImage(img, 0, 0, width, height);
-            } catch (_) {}
-            await new Promise(r => setTimeout(r, frameIntervalMs));
-          }
-        }
-
-        completedItems++;
-        setCompileProgress(Math.round((completedItems / totalItems) * 90));
-      }
-
-      recorder.stop();
-      await new Promise(r => setTimeout(r, 400));
-
-      const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
-      const videoDataUrl = await new Promise<string>((resolve) => {
-        const r = new FileReader();
-        r.onloadend = () => resolve(r.result as string);
-        r.readAsDataURL(blob);
-      });
-
-      setCompiledVideoUrl(videoDataUrl);
-      setIsCompiled(true);
-      setCompileProgress(100);
-      showToast('✅ Playlist video successfully compiled!');
-    } catch (err: any) {
-      console.error('Video compilation failed:', err);
-      showToast('⚠️ Video compilation failed. Standard frame player will be used.');
-    } finally {
-      setIsCompiling(false);
-    }
-  };
 
   // Widget Settings
   const [playlistWidgetType, setPlaylistWidgetType] = useState<string | undefined>(undefined);
@@ -719,8 +601,6 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         mediaIds: playlistItems.map(item => item.mediaId),
         allowCustomOrientation: allowCustomOrientation,
         orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
-        isCompiled: isCompiled,
-        compiledVideoUrl: compiledVideoUrl,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
         widgetLink: finalWidgetLink,
@@ -742,8 +622,6 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         assignedScreenIds: [],
         allowCustomOrientation: allowCustomOrientation,
         orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
-        isCompiled: isCompiled,
-        compiledVideoUrl: compiledVideoUrl,
         widgetType: playlistWidgetType,
         widgetPlacement: playlistWidgetPlacement,
         widgetLink: finalWidgetLink,
@@ -950,19 +828,6 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 <p className="text-[9.5px] text-gray-400 mt-0.5">Drag assets from left pool to populate sequence, or click "+". Set duration in seconds.</p>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCompilePlaylistVideo}
-                  disabled={isCompiling || playlistItems.length === 0}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer ${
-                    isCompiled
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                      : 'bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50'
-                  }`}
-                >
-                  <Sparkles size={13} className={isCompiling ? 'animate-spin' : ''} />
-                  <span>{isCompiling ? `Compiling (${compileProgress}%)...` : isCompiled ? 'Video Compiled ✓' : 'Compile Video Loop'}</span>
-                </button>
                 <span className="text-[10px] bg-slate-100 text-slate-700 px-2.5 py-1.5 rounded-xl font-black uppercase">
                   Length: {playlistItems.reduce((acc, curr) => acc + curr.duration, 0)}s
                 </span>

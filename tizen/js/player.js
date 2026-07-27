@@ -139,7 +139,6 @@ window.SignagePlayer = (function () {
                     }
                 }
                 updateProgress(i + 1, assets.length);
-                await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
             }
 
             if (!state.imageElementsCache) {
@@ -201,8 +200,6 @@ window.SignagePlayer = (function () {
                     } catch (decodeErr) {
                         console.warn(`Upfront pre-decoding failed for ${asset.filename}:`, decodeErr);
                     }
-
-                    await new Promise(r => setTimeout(r, 150));
                 }
             }
 
@@ -373,7 +370,7 @@ window.SignagePlayer = (function () {
                 imgElement.style.display = 'block';
                 imgElement.style.zIndex = '2';
 
-                setTimeout(() => {
+                requestAnimationFrame(() => {
                     if (currentToken === rotationToken) {
                         imgElement.style.opacity = '1';
                         
@@ -383,7 +380,7 @@ window.SignagePlayer = (function () {
                             imgElement.className = 'media-element';
                         }
                     }
-                }, 20);
+                });
 
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
@@ -395,7 +392,30 @@ window.SignagePlayer = (function () {
                             }
                         });
                     }
-                }, 600);
+                }, 500);
+
+                // Pre-decode next slide in background for instant transition
+                if (state.playlist && state.playlist.length > 1) {
+                    const nextIdx = (state.currentAssetIndex + 1) % state.playlist.length;
+                    const nextAsset = state.playlist[nextIdx];
+                    if (nextAsset && nextAsset.mediaType === 'image' && nextAsset.url) {
+                        if (!state.imageElementsCache[nextAsset.id]) {
+                            const nxtImg = new Image();
+                            nxtImg.className = 'media-element';
+                            nxtImg.style.display = 'block';
+                            nxtImg.style.opacity = '0.001';
+                            nxtImg.style.zIndex = '1';
+                            nxtImg.src = nextAsset.url;
+                            state.imageElementsCache[nextAsset.id] = nxtImg;
+                            if (container && nxtImg.parentNode !== container) {
+                                container.appendChild(nxtImg);
+                            }
+                            if (typeof nxtImg.decode === 'function') {
+                                nxtImg.decode().catch(() => {});
+                            }
+                        }
+                    }
+                }
 
                 const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
                 rotationTimeout = setTimeout(() => {
