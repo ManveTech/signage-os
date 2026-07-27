@@ -284,6 +284,17 @@
                 applyBranding(state, views);
             }
 
+            const screenWidget = {
+                type: data.widgetType !== undefined ? data.widgetType : (state.widget ? state.widget.type : null),
+                placement: data.widgetPlacement || (state.widget ? state.widget.placement : 'top-right'),
+                link: data.widgetLink !== undefined ? data.widgetLink : (state.widget ? state.widget.link : '')
+            };
+            if (JSON.stringify(state.widget) !== JSON.stringify(screenWidget)) {
+                state.widget = screenWidget;
+                hasChanged = true;
+                localStorage.setItem(KEYS.WIDGET, JSON.stringify(state.widget));
+            }
+
             if (data.clear_cache) {
                 console.log("Received clear cache instruction.");
                 state.cacheBust = Date.now().toString();

@@ -12,24 +12,57 @@ window.SignagePlayer = (function () {
     let activeImagePlayerNum = 1;
 
     async function syncLocalFiles(assets, state, views) {
-        if (!window.tizen || !window.tizen.filesystem) {
-            console.log("Not running on Tizen screen. Skipping offline local filesystem sync.");
-            return assets;
-        }
-
-        const progressContainer = document.getElementById('download-progress-container');
+        const overlay = document.getElementById('download-progress-overlay');
         const progressBar = document.getElementById('download-progress-bar');
-        if (progressContainer) progressContainer.classList.remove('hidden');
-        if (progressBar) progressBar.style.width = '0%';
+        const statusDetail = document.getElementById('download-status-detail');
 
-        function updateProgress(completed, total) {
+        if (overlay) overlay.classList.remove('hidden');
+
+        function updateProgress(completed, total, currentName) {
             if (views.splashStatus) {
                 views.splashStatus.innerText = `Downloading offline assets... ${completed}/${total}`;
+            }
+            if (statusDetail) {
+                statusDetail.innerText = `Downloading asset ${completed} of ${total}${currentName ? `: ${currentName}` : ''}`;
             }
             if (progressBar) {
                 const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
                 progressBar.style.width = `${pct}%`;
             }
+        }
+
+        if (!window.tizen || !window.tizen.filesystem) {
+            console.log("Not running on Tizen filesystem. Pre-buffering assets for browser playback...");
+            updateProgress(0, assets.length, '');
+            for (let i = 0; i < assets.length; i++) {
+                const asset = assets[i];
+                if (asset.url) {
+                    updateProgress(i + 1, assets.length, asset.filename || asset.id);
+                    try {
+                        if (asset.mediaType === 'image') {
+                            await new Promise((resolve) => {
+                                const img = new Image();
+                                img.onload = resolve;
+                                img.onerror = resolve;
+                                img.src = asset.url;
+                                if (typeof img.decode === 'function') {
+                                    img.decode().then(resolve).catch(resolve);
+                                }
+                            });
+                        } else if (asset.mediaType === 'video') {
+                            await new Promise((resolve) => {
+                                const vid = document.createElement('video');
+                                vid.oncanplay = resolve;
+                                vid.onerror = resolve;
+                                vid.src = asset.url;
+                                setTimeout(resolve, 600);
+                            });
+                        }
+                    } catch (_) {}
+                }
+            }
+            if (overlay) overlay.classList.add('hidden');
+            return assets;
         }
 
         try {
@@ -38,7 +71,7 @@ window.SignagePlayer = (function () {
             });
 
             console.log("Local wgt-private storage resolved. Syncing assets...");
-            updateProgress(0, assets.length);
+            updateProgress(0, assets.length, '');
 
             for (let i = 0; i < assets.length; i++) {
                 const asset = assets[i];
@@ -218,7 +251,7 @@ window.SignagePlayer = (function () {
             console.error("Local filesystem synchronization failed:", err);
         }
 
-        if (progressContainer) progressContainer.classList.add('hidden');
+        if (overlay) overlay.classList.add('hidden');
         return assets;
     }
 
@@ -289,52 +322,90 @@ window.SignagePlayer = (function () {
                 activePlayer.style.opacity = '1';
             }
 
-            views.videoPlayer.style.opacity = '0';
-            views.videoPlayer.style.display = 'block';
+            views.videoPlayer.muted = true;
+            views.videoPlayer.playsInline = true;
+            views.videoPlayer.setAttribute('playsinline', 'true');
             views.videoPlayer.src = asset.url;
-            views.videoPlayer.volume = state.volume / 100;
+            views.videoPlayer.volume = (state.volume || 80) / 100;
+            views.videoPlayer.style.display = 'block';
+            views.videoPlayer.style.zIndex = '3';
 
-            const handleVideoPlaying = () => {
-                if (currentToken !== rotationToken) return;
-                views.videoPlayer.className = 'media-element';
+            let videoShown = false;
+            const showVideo = () => {
+                if (currentToken !== rotationToken || videoShown) return;
+                videoShown = true;
                 views.videoPlayer.style.opacity = '1';
-                
-                activePlayer.style.opacity = '0';
-                inactivePlayer.style.opacity = '0';
+                if (transitionName !== 'none') {
+                    views.videoPlayer.className = 'media-element ' + animClass;
+                } else {
+                    views.videoPlayer.className = 'media-element';
+                }
+
                 setTimeout(() => {
                     if (currentToken === rotationToken) {
-                        activePlayer.style.display = 'none';
-                        inactivePlayer.style.display = 'none';
-                    }
-                }, 600);
-
-                if (transitionName !== 'none') {
-                    setTimeout(() => {
-                        if (currentToken === rotationToken) {
-                            views.videoPlayer.classList.add(animClass);
+                        activePlayer.style.opacity = '0';
+                        inactivePlayer.style.opacity = '0';
+                        const container = document.getElementById('media-container');
+                        if (container) {
+                            const children = container.querySelectorAll('.media-element');
+                            children.forEach(child => {
+                                if (child !== views.videoPlayer) {
+                                    child.style.opacity = '0.001';
+                                    child.style.zIndex = '1';
+                                }
+                            });
                         }
-                    }, 20);
-                }
-                views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
+                    }
+                }, 400);
             };
-            views.videoPlayer.addEventListener('playing', handleVideoPlaying);
+
+            const cleanupVideoListeners = () => {
+                views.videoPlayer.removeEventListener('playing', showVideo);
+                views.videoPlayer.removeEventListener('canplay', showVideo);
+                views.videoPlayer.removeEventListener('ended', handleEnded);
+                views.videoPlayer.removeEventListener('error', handleError);
+            };
+
+            const handleEnded = () => {
+                if (currentToken !== rotationToken) return;
+                cleanupVideoListeners();
+                advancePlaylist(state, views, updateUICallback);
+            };
+
+            const handleError = (err) => {
+                console.warn("Video playback error for asset:", asset.filename, err);
+                if (currentToken !== rotationToken) return;
+                cleanupVideoListeners();
+                advancePlaylist(state, views, updateUICallback);
+            };
+
+            views.videoPlayer.addEventListener('playing', showVideo);
+            views.videoPlayer.addEventListener('canplay', showVideo);
+            views.videoPlayer.addEventListener('ended', handleEnded);
+            views.videoPlayer.addEventListener('error', handleError);
+
+            const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
 
             views.videoPlayer.play().then(() => {
-                const duration = Math.max(parseInt(asset.duration, 10) || 10, 3) * 1000;
+                if (state.volume > 0) {
+                    try { views.videoPlayer.muted = false; } catch (_) {}
+                }
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
-                        views.videoPlayer.pause();
+                        cleanupVideoListeners();
+                        try { views.videoPlayer.pause(); } catch (_) {}
                         advancePlaylist(state, views, updateUICallback);
                     }
                 }, duration);
             }).catch(e => {
                 console.warn("Autoplay block / playback error on video", e);
-                views.videoPlayer.removeEventListener('playing', handleVideoPlaying);
+                showVideo();
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
+                        cleanupVideoListeners();
                         advancePlaylist(state, views, updateUICallback);
                     }
-                }, 5000);
+                }, duration);
             });
         } else {
             views.videoPlayer.style.opacity = '0.001';
@@ -491,7 +562,8 @@ window.SignagePlayer = (function () {
             const isPlaylistEmpty = !state.playlist || state.playlist.length === 0;
 
             if (lastUpdated === cachedPlaylistUpdated && !isPlaylistEmpty) {
-                console.log("Playlist content timestamp is unchanged. Skipping media item fetch and file sync.");
+                console.log("Playlist content timestamp is unchanged. Re-evaluating widgets and skipping media file sync.");
+                if (updateUICallback) updateUICallback();
                 return;
             }
 
