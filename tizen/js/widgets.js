@@ -63,14 +63,7 @@ window.SignageWidgets = (function () {
             widgets.qrcode.classList.remove('hidden');
         }
 
-        if (activeTypes.includes('weather') && widgets.weather) {
-            widgets.weather.className = 'widget-item card hud ' + placement;
-            const locEl = widgets.weather.querySelector('.location-name');
-            if (locEl) {
-                locEl.innerText = (typeof weatherLink === 'string' && weatherLink.trim() && !weatherLink.trim().startsWith('{')) ? weatherLink : 'Bengaluru';
-            }
-            widgets.weather.classList.remove('hidden');
-        }
+        if (widgets.weather) widgets.weather.className = 'widget-item card hud hidden';
 
         if (activeTypes.includes('clock') && widgets.clock) {
             widgets.clock.className = 'widget-item card hud ' + placement;

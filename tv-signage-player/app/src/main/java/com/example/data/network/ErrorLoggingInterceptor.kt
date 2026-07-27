@@ -17,6 +17,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
 class ErrorLoggingInterceptor(private val context: Context) : Interceptor {
+    companion object {
+        private val sharedClient by lazy { OkHttpClient() }
+    }
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val path = request.url.encodedPath
@@ -45,7 +49,7 @@ class ErrorLoggingInterceptor(private val context: Context) : Interceptor {
                 val config = db.screenConfigDao().getConfig() ?: return@launch
                 if (config.screenId.isEmpty()) return@launch
 
-                val client = OkHttpClient()
+                val client = sharedClient
                 val fields = mapOf(
                     "screenId" to config.screenId,
                     "screenName" to config.screenName,

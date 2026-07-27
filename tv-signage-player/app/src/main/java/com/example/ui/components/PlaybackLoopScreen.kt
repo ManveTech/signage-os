@@ -274,7 +274,8 @@ fun LocalImageRenderer(asset: PlaylistAsset) {
     AsyncImage(
         model = ImageRequest.Builder(context)
             .data(imageSource)
-            .crossfade(true)
+            .crossfade(false)
+            .allowHardware(true)
             .build(),
         contentDescription = asset.filename,
         modifier = Modifier
@@ -325,6 +326,10 @@ fun LocalVideoRenderer(
     DisposableEffect(Unit) {
         onDispose {
             playerViewRef?.player = null
+            try {
+                sharedExoPlayer.stop()
+                sharedExoPlayer.clearMediaItems()
+            } catch (_: Exception) {}
         }
     }
 

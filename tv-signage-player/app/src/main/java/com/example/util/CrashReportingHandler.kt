@@ -16,6 +16,10 @@ class CrashReportingHandler(
     private val context: Context,
     private val defaultHandler: Thread.UncaughtExceptionHandler?
 ) : Thread.UncaughtExceptionHandler {
+    companion object {
+        private val sharedClient by lazy { OkHttpClient() }
+    }
+
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
         logCrashSynchronously(throwable)
         defaultHandler?.uncaughtException(thread, throwable)
@@ -27,7 +31,7 @@ class CrashReportingHandler(
             val config = runBlocking { db.screenConfigDao().getConfig() } ?: return
             if (config.screenId.isEmpty()) return
 
-            val client = OkHttpClient()
+            val client = sharedClient
             val errorMsg = "Crash: ${throwable.message ?: throwable.javaClass.simpleName}\n" +
                     throwable.stackTraceToString()
             

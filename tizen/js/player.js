@@ -18,16 +18,29 @@ window.SignagePlayer = (function () {
 
         if (overlay) overlay.classList.remove('hidden');
 
-        function updateProgress(completed, total, currentName) {
+        function updateProgress(completed, total, currentName, downloadedBytes = 0, fileTotalBytes = 0) {
+            const currentMB = (downloadedBytes / (1024 * 1024)).toFixed(1);
+            const totalMB = fileTotalBytes > 0 ? (fileTotalBytes / (1024 * 1024)).toFixed(1) : null;
+
+            let detailStr = `Downloading asset ${completed} of ${total}`;
+            if (currentName) detailStr += `: ${currentName}`;
+            if (totalMB && parseFloat(totalMB) > 0) {
+                detailStr += ` — ${currentMB} MB / ${totalMB} MB`;
+            } else if (downloadedBytes > 0) {
+                detailStr += ` — ${currentMB} MB`;
+            }
+
             if (views.splashStatus) {
                 views.splashStatus.innerText = `Downloading offline assets... ${completed}/${total}`;
             }
             if (statusDetail) {
-                statusDetail.innerText = `Downloading asset ${completed} of ${total}${currentName ? `: ${currentName}` : ''}`;
+                statusDetail.innerText = detailStr;
             }
             if (progressBar) {
-                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-                progressBar.style.width = `${pct}%`;
+                let filePct = (fileTotalBytes > 0) ? (downloadedBytes / fileTotalBytes) : 0;
+                const baseIdx = Math.max(0, completed - 1);
+                const overallPct = total > 0 ? Math.round(((baseIdx + filePct) / total) * 100) : 0;
+                progressBar.style.width = `${Math.min(100, Math.max(0, overallPct))}%`;
             }
         }
 
@@ -91,21 +104,48 @@ window.SignagePlayer = (function () {
                     const localUri = getFileURI(file);
                     console.log(`Asset ${filename} already exists locally: ${localUri}`);
                     asset.url = localUri;
+                    updateProgress(i + 1, assets.length, asset.filename || filename);
                 } catch (e) {
                     console.log(`Downloading asset: ${asset.url} as ${filename}`);
                     
                     try {
                         let response;
                         try {
-                            response = await fetch(asset.url);
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 45000);
+                            response = await fetch(asset.url, { signal: controller.signal });
+                            clearTimeout(timeoutId);
                             if (!response.ok) throw new Error("Direct fetch failed");
                         } catch (directErr) {
-                            console.log(`Direct download failed (possibly CORS). Trying proxy: ${asset.url}`);
+                            console.log(`Direct download failed. Trying proxy: ${asset.url}`);
                             const proxyUrl = `${SERVER_URL}/api/v1/public/proxy-media?url=${encodeURIComponent(asset.url)}`;
-                            response = await fetch(proxyUrl);
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 45000);
+                            response = await fetch(proxyUrl, { signal: controller.signal });
+                            clearTimeout(timeoutId);
                             if (!response.ok) throw new Error("Proxy download failed");
                         }
-                        const blob = await response.blob();
+
+                        const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+                        let blob;
+
+                        if (response.body && typeof response.body.getReader === 'function') {
+                            const reader = response.body.getReader();
+                            const chunks = [];
+                            let receivedBytes = 0;
+
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                chunks.push(value);
+                                receivedBytes += value.length;
+                                updateProgress(i + 1, assets.length, asset.filename || filename, receivedBytes, contentLength);
+                            }
+                            blob = new Blob(chunks);
+                        } else {
+                            blob = await response.blob();
+                            updateProgress(i + 1, assets.length, asset.filename || filename, blob.size, blob.size);
+                        }
 
                         const base64Data = await new Promise((resolve, reject) => {
                             const reader = new FileReader();
@@ -172,7 +212,7 @@ window.SignagePlayer = (function () {
                         console.error(`Failed to download and write asset ${filename}:`, dlErr);
                     }
                 }
-                updateProgress(i + 1, assets.length);
+                updateProgress(i + 1, assets.length, asset.filename || filename);
             }
 
             if (!state.imageElementsCache) {
@@ -373,11 +413,12 @@ window.SignagePlayer = (function () {
                 views.videoPlayer.removeEventListener('canplay', showVideo);
                 views.videoPlayer.removeEventListener('ended', handleEnded);
                 views.videoPlayer.removeEventListener('error', handleError);
+                views.videoPlayer.removeEventListener('loadedmetadata', setupMetadataSafetyTimer);
             };
 
             const handleEnded = () => {
                 if (currentToken !== rotationToken) return;
-                console.log(`Video playback finished: ${asset.filename}`);
+                console.log(`Video playback completed naturally: ${asset.filename}`);
                 cleanupVideoListeners();
                 advancePlaylist(state, views, updateUICallback);
             };
@@ -387,6 +428,22 @@ window.SignagePlayer = (function () {
                 if (currentToken !== rotationToken) return;
                 cleanupVideoListeners();
                 advancePlaylist(state, views, updateUICallback);
+            };
+
+            const setupMetadataSafetyTimer = () => {
+                const dur = views.videoPlayer.duration;
+                if (dur && !isNaN(dur) && dur > 0) {
+                    const timeoutMs = (dur + 6) * 1000;
+                    if (rotationTimeout) clearTimeout(rotationTimeout);
+                    rotationTimeout = setTimeout(() => {
+                        if (currentToken === rotationToken) {
+                            console.warn(`Safety backup timer fired for video ${asset.filename}`);
+                            cleanupVideoListeners();
+                            try { views.videoPlayer.pause(); } catch (_) {}
+                            advancePlaylist(state, views, updateUICallback);
+                        }
+                    }, timeoutMs);
+                }
             };
 
             const enableAudio = () => {
@@ -416,40 +473,32 @@ window.SignagePlayer = (function () {
             views.videoPlayer.addEventListener('canplay', showVideo);
             views.videoPlayer.addEventListener('ended', handleEnded);
             views.videoPlayer.addEventListener('error', handleError);
+            views.videoPlayer.addEventListener('loadedmetadata', setupMetadataSafetyTimer);
 
-            const fallbackSec = Math.max(parseInt(asset.duration, 10) || 10, 5);
-
-            const startRotationTimer = () => {
-                const videoDurationSec = (views.videoPlayer.duration && !isNaN(views.videoPlayer.duration) && views.videoPlayer.duration > 0)
-                    ? views.videoPlayer.duration
-                    : fallbackSec;
-                const timeoutMs = Math.max(videoDurationSec, fallbackSec) * 1000 + 4000;
-
-                if (rotationTimeout) clearTimeout(rotationTimeout);
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        console.warn(`Safety timer fired for video ${asset.filename}`);
-                        cleanupVideoListeners();
-                        try { views.videoPlayer.pause(); } catch (_) {}
-                        advancePlaylist(state, views, updateUICallback);
-                    }
-                }, timeoutMs);
-            };
+            const initialSafetySec = Math.max(parseInt(asset.duration, 10) || 30, 30);
+            if (rotationTimeout) clearTimeout(rotationTimeout);
+            rotationTimeout = setTimeout(() => {
+                if (currentToken === rotationToken) {
+                    console.warn(`Initial safety timer fired for video ${asset.filename}`);
+                    cleanupVideoListeners();
+                    try { views.videoPlayer.pause(); } catch (_) {}
+                    advancePlaylist(state, views, updateUICallback);
+                }
+            }, initialSafetySec * 1000 + 10000);
 
             views.videoPlayer.play().then(() => {
                 showVideo();
-                startRotationTimer();
+                setupMetadataSafetyTimer();
             }).catch(e => {
                 console.warn("Unmuted autoplay restricted. Retrying muted...", e);
                 views.videoPlayer.muted = true;
                 setupAudioUnmuteListeners();
                 views.videoPlayer.play().then(() => {
                     showVideo();
-                    startRotationTimer();
+                    setupMetadataSafetyTimer();
                 }).catch(err => {
                     console.error("Muted video playback fallback failed:", err);
                     showVideo();
-                    startRotationTimer();
                 });
             });
         } else {
@@ -703,8 +752,8 @@ window.SignagePlayer = (function () {
             try {
                 const localAssets = await syncLocalFiles(fetchedAssets.map(a => Object.assign({}, a)), state, views);
                 
-                const currentKeys = (state.playlist || []).map(a => `${a.id}_${a.duration}`);
-                const newKeys = localAssets.map(a => `${a.id}_${a.duration}`);
+                const currentKeys = (state.playlist || []).map(a => a.id);
+                const newKeys = localAssets.map(a => a.id);
                 const isDifferent = JSON.stringify(newKeys) !== JSON.stringify(currentKeys);
                 
                 state.playlist = localAssets;
