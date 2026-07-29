@@ -1,5 +1,5 @@
 /**
- * SignageOS Player - High Performance Download & Drift-Corrected Playlist Rotation Engine
+ * SignageOS Player - High Performance Download & Rolling Pre-Decoded Playlist Rotation Engine
  */
 
 window.SignagePlayer = (function () {
@@ -10,7 +10,7 @@ window.SignagePlayer = (function () {
     let rotationToken = 0;
     let activeImageNum = 1;
     let isDownloading = false;
-    let expectedTargetTime = 0;
+    const rollingDecodedMap = new Map();
 
     function updateDownloadProgress(completed, total, currentName, downloadedBytes = 0, fileTotalBytes = 0) {
         const overlay = document.getElementById('download-progress-overlay');
@@ -46,7 +46,7 @@ window.SignagePlayer = (function () {
     }
 
     /**
-     * Batch execution helper (concurrency limit = 5) to prevent launching hundreds of simultaneous requests
+     * Batch execution helper (concurrency limit = 5)
      */
     async function fetchInBatches(items, batchSize, fetchFn) {
         const results = new Array(items.length);
@@ -58,6 +58,50 @@ window.SignagePlayer = (function () {
             }
         }
         return results;
+    }
+
+    /**
+     * Rolling Pre-Decode Buffer: keeps the current + next 2 upcoming images pre-decoded in memory.
+     */
+    function updateRollingBuffer(state) {
+        if (!state.playlist || state.playlist.length === 0) return;
+        const len = state.playlist.length;
+        const windowIndices = [
+            state.currentAssetIndex,
+            (state.currentAssetIndex + 1) % len,
+            (state.currentAssetIndex + 2) % len
+        ];
+
+        const activeUrls = new Set();
+        windowIndices.forEach((idx) => {
+            const asset = state.playlist[idx];
+            if (asset && asset.mediaType === 'image' && asset.url) {
+                activeUrls.add(asset.url);
+                if (!rollingDecodedMap.has(asset.url)) {
+                    const img = new Image();
+                    img.onload = () => {
+                        if (typeof img.decode === 'function') {
+                            img.decode().catch(() => {});
+                        }
+                    };
+                    img.src = asset.url;
+                    rollingDecodedMap.set(asset.url, img);
+                }
+            }
+        });
+
+        // Prune items outside the 3-item rolling window
+        for (const url of rollingDecodedMap.keys()) {
+            if (!activeUrls.has(url)) {
+                const oldImg = rollingDecodedMap.get(url);
+                if (oldImg) {
+                    oldImg.onload = null;
+                    oldImg.onerror = null;
+                    oldImg.src = '';
+                }
+                rollingDecodedMap.delete(url);
+            }
+        }
     }
 
     async function syncLocalFiles(assets) {
@@ -199,7 +243,7 @@ window.SignagePlayer = (function () {
     }
 
     /**
-     * Drift-Corrected Playlist Rotation Engine
+     * Zero-Black-Screen Double-Buffered Rotation Engine
      */
     function startPlaylistRotation(state, views, updateUICallback) {
         if (rotationTimeout) clearTimeout(rotationTimeout);
@@ -210,7 +254,6 @@ window.SignagePlayer = (function () {
 
         if (!asset) {
             state.currentAssetIndex = 0;
-            expectedTargetTime = 0;
             if (state.playlist && state.playlist[0]) {
                 startPlaylistRotation(state, views, updateUICallback);
             }
@@ -218,27 +261,12 @@ window.SignagePlayer = (function () {
         }
 
         const duration = Math.max(parseInt(asset.duration, 10) || 10, 2) * 1000;
-        const now = performance.now();
+        console.log(`[Player] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} (${asset.mediaType}, ${asset.duration}s)`);
 
-        if (expectedTargetTime === 0) {
-            expectedTargetTime = now + duration;
-        } else {
-            expectedTargetTime += duration;
-        }
-
-        let delay = expectedTargetTime - now;
-        if (delay < 0) {
-            console.warn(`[Player] Execution fell behind by ${Math.abs(delay).toFixed(1)}ms. Resetting timing baseline.`);
-            expectedTargetTime = now + duration;
-            delay = duration;
-        }
-
-        console.log(`[Player] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} (${asset.mediaType}, ${asset.duration}s, delay=${delay.toFixed(0)}ms)`);
+        // Maintain 3-item rolling pre-decoded image window
+        updateRollingBuffer(state);
 
         if (asset.mediaType === 'video') {
-            if (views.imagePlayer1) views.imagePlayer1.style.display = 'none';
-            if (views.imagePlayer2) views.imagePlayer2.style.display = 'none';
-
             const video = views.videoPlayer;
             if (!video) {
                 advancePlaylist(state, views, updateUICallback);
@@ -285,62 +313,86 @@ window.SignagePlayer = (function () {
                     console.warn("[Player] Video safety backup timer fired");
                     onVideoEnd();
                 }
-            }, Math.max(delay, duration + 3000));
+            }, duration + 3000);
 
         } else {
-            // Video -> Image Memory & Decoded Frame Release Cleanup
-            if (views.videoPlayer) {
-                views.videoPlayer.style.display = 'none';
-                try {
-                    views.videoPlayer.pause();
-                    views.videoPlayer.removeAttribute('src');
-                    views.videoPlayer.load(); // Forces WebKit to release hardware video decoder & frames
-                } catch (_) {}
-            }
-
+            // Image Playback - Strict Zero-Black-Screen Swap Engine
             const activeImg = activeImageNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
             const inactiveImg = activeImageNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
-            activeImageNum = activeImageNum === 1 ? 2 : 1;
 
-            if (activeImg) {
-                activeImg.style.objectFit = asset.objectFit || 'cover';
-                activeImg.style.display = 'block';
-                activeImg.style.zIndex = '3';
-                activeImg.classList.add('active');
-
-                if (activeImg.src !== asset.url) {
-                    activeImg.src = asset.url;
-                }
-
-                // Decode current image when presented
-                if (typeof activeImg.decode === 'function') {
-                    activeImg.decode().catch(() => {});
-                }
-
-                if (inactiveImg) {
-                    inactiveImg.classList.remove('active');
-                    inactiveImg.style.zIndex = '1';
-                }
+            if (!activeImg || !inactiveImg) {
+                advancePlaylist(state, views, updateUICallback);
+                return;
             }
 
-            // Schedule drift-corrected timer
-            rotationTimeout = setTimeout(() => {
-                if (currentToken === rotationToken) {
-                    advancePlaylist(state, views, updateUICallback);
-                }
-            }, delay);
+            inactiveImg.style.objectFit = asset.objectFit || 'cover';
 
-            // Preload ONLY the next single image into inactive element (avoiding full playlist memory decoding)
-            if (state.playlist.length > 1 && inactiveImg) {
-                const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
-                const nextAsset = state.playlist[nextIndex];
-                if (nextAsset && nextAsset.mediaType === 'image' && nextAsset.url) {
-                    if (inactiveImg.src !== nextAsset.url) {
-                        inactiveImg.src = nextAsset.url;
-                        if (typeof inactiveImg.decode === 'function') {
-                            inactiveImg.decode().catch(() => {});
-                        }
+            const performSwapAndStartTimer = () => {
+                if (currentToken !== rotationToken) return;
+
+                // Hide video player ONLY AFTER image is 100% loaded and decoded
+                if (views.videoPlayer) {
+                    views.videoPlayer.style.display = 'none';
+                    try { views.videoPlayer.pause(); } catch (_) {}
+                }
+
+                // Swap active image index
+                activeImageNum = activeImageNum === 1 ? 2 : 1;
+
+                // Bring inactiveImg to front over activeImg
+                inactiveImg.style.display = 'block';
+                inactiveImg.style.zIndex = '3';
+                inactiveImg.classList.add('active');
+
+                // After cross-fade completes, move inactiveImg to standard zIndex and hide activeImg
+                setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        activeImg.classList.remove('active');
+                        activeImg.style.zIndex = '1';
                     }
+                }, 350);
+
+                // START SLIDE TIMER STRICTLY AFTER IMAGE IS FULLY VISIBLE ON SCREEN
+                if (rotationTimeout) clearTimeout(rotationTimeout);
+                rotationTimeout = setTimeout(() => {
+                    if (currentToken === rotationToken) {
+                        advancePlaylist(state, views, updateUICallback);
+                    }
+                }, duration);
+            };
+
+            // Only update inactiveImg.src if it actually changed to avoid reloads!
+            if (inactiveImg.src !== asset.url) {
+                inactiveImg.onload = () => {
+                    if (typeof inactiveImg.decode === 'function') {
+                        inactiveImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
+                    } else {
+                        performSwapAndStartTimer();
+                    }
+                };
+                inactiveImg.onerror = () => {
+                    console.warn("[Player] Failed to load image asset:", asset.filename);
+                    if (currentToken !== rotationToken) advancePlaylist(state, views, updateUICallback);
+                };
+                inactiveImg.src = asset.url;
+            } else {
+                if (inactiveImg.complete) {
+                    if (typeof inactiveImg.decode === 'function') {
+                        inactiveImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
+                    } else {
+                        performSwapAndStartTimer();
+                    }
+                } else {
+                    inactiveImg.onload = () => {
+                        if (typeof inactiveImg.decode === 'function') {
+                            inactiveImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
+                        } else {
+                            performSwapAndStartTimer();
+                        }
+                    };
+                    inactiveImg.onerror = () => {
+                        if (currentToken !== rotationToken) advancePlaylist(state, views, updateUICallback);
+                    };
                 }
             }
         }
@@ -368,7 +420,6 @@ window.SignagePlayer = (function () {
                 try { slides = JSON.parse(slides); } catch (e) { slides = []; }
             }
 
-            // Batched media fetching (concurrency batch size = 5)
             if (Array.isArray(slides) && slides.length > 0) {
                 const results = await fetchInBatches(slides, 5, async (slide) => {
                     try {
@@ -429,7 +480,6 @@ window.SignagePlayer = (function () {
                             };
                         }
                     } catch (e) {}
-                    return null;
                 });
                 fetchedAssets = results.filter(Boolean);
             }
@@ -448,7 +498,6 @@ window.SignagePlayer = (function () {
 
             if (isDifferent || !state.isRotating) {
                 state.currentAssetIndex = 0;
-                expectedTargetTime = 0;
                 state.isRotating = true;
                 if (updateUICallback) updateUICallback();
                 startPlaylistRotation(state, views, updateUICallback);
