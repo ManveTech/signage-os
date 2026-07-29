@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="index.css">
 </head>
 <body>
+    <!-- Global Download Progress Overlay -->
+    <div id="download-progress-overlay" class="download-overlay hidden">
+        <div class="download-overlay-card">
+            <div class="spinner"></div>
+            <h3 id="download-status-title">Downloading Playlist Assets...</h3>
+            <p id="download-status-detail">Preparing download...</p>
+            <div class="progress-bar-container">
+                <div id="download-progress-bar" class="progress-bar" style="width: 0%;"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Pairing Screen -->
     <div id="pairing-screen" class="screen active">
         <div class="pairing-content">

@@ -1,5 +1,5 @@
 /**
- * SignageOS Player - Tizen Web Client (Lightweight Pair & Play Engine)
+ * SignageOS Player - Tizen Web Client Engine
  */
 
 (function () {
@@ -36,7 +36,7 @@
     let syncInterval = null;
 
     function init() {
-        console.log("Initializing SignageOS Tizen App (Ultra-Lightweight Engine)...");
+        console.log("Initializing SignageOS Tizen App Engine...");
         window.viewsRef = views;
         bindRemoteKeys(views, (force) => requestPairingCode(state, views, updateUI, force));
 
@@ -141,12 +141,12 @@
 
             const activePlaylistId = data.playlistId || data.playlist;
             if ((state.status === "active" || state.status === "online") && activePlaylistId) {
-                if (state.playlistId !== activePlaylistId || state.playlist.length === 0) {
+                if (state.playlistId !== activePlaylistId || !state.playlist || state.playlist.length === 0) {
                     state.playlistId = activePlaylistId;
                     localStorage.setItem('signage_tizen_playlist_id', activePlaylistId);
                     await fetchPlaylist(activePlaylistId, state, views, updateUI);
                 }
-            } else if (!activePlaylistId && state.playlist.length > 0) {
+            } else if (!activePlaylistId && state.playlist && state.playlist.length > 0) {
                 state.playlist = [];
                 state.playlistId = '';
                 localStorage.setItem(KEYS.PLAYLIST, '[]');
