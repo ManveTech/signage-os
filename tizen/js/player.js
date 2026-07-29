@@ -309,6 +309,7 @@ window.SignagePlayer = (function () {
 
         } else {
             // Image Playback - Strict Exact-Duration Double-Buffering
+            activeImageNum = activeImageNum === 1 ? 2 : 1;
             const activeImg = activeImageNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
             const inactiveImg = activeImageNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
 
