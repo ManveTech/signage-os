@@ -1,11 +1,11 @@
 /**
- * SignageOS Player - Backend Network API & Sync Module
+ * SignageOS Player - API & Server Communication Module
  */
 
 window.SignageApi = (function () {
     const { SERVER_URL, KEYS, getPocketBaseUrl, setPocketBaseUrl } = window.SignageConfig;
 
-    function fetchWithTimeout(url, options = {}, timeout = 2500) {
+    function fetchWithTimeout(url, options = {}, timeout = 3000) {
         return Promise.race([
             fetch(url, options),
             new Promise((_, reject) => {
@@ -31,6 +31,7 @@ window.SignageApi = (function () {
 
     async function requestPairingCode(state, views, updateUICallback, forceRefresh = false) {
         try {
+            if (views.pairingStatusMsg) views.pairingStatusMsg.innerText = "Requesting code...";
             const res = await fetch(`${SERVER_URL}/api/v1/devices/pairing-code`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -79,13 +80,13 @@ window.SignageApi = (function () {
                     if (updateUICallback) updateUICallback();
                 }
                 if (data.status && data.status !== 'pairing') {
-                    console.log("Device has been successfully paired!");
+                    console.log("Device paired successfully!");
                     state.status = data.status;
                     localStorage.setItem(KEYS.STATUS, state.status);
                     if (updateUICallback) updateUICallback();
                 }
             } else if (res.status === 404 || res.status === 403) {
-                console.warn("Screen record missing on server (404/403). Resetting pairing.");
+                console.warn("Screen record missing on server. Resetting pairing.");
                 state.screenId = '';
                 state.pairingCode = '';
                 localStorage.removeItem(KEYS.SCREEN_ID);
@@ -97,56 +98,10 @@ window.SignageApi = (function () {
         }
     }
 
-    async function sendHeartbeat(state) {
-        if (state.status === 'pairing' || !state.screenId) return;
-        if (window.navigator && window.navigator.onLine === false) return;
-
-        try {
-            const currentAsset = state.playlist[state.currentAssetIndex];
-            const payload = {
-                hardwareUuid: state.uuid,
-                cpuTemp: 45.0,
-                currentPlayingAsset: currentAsset ? currentAsset.filename : 'None',
-                storageUsedBytes: 15 * 1024 * 1024,
-                storageAvailableBytes: 85 * 1024 * 1024
-            };
-
-            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/heartbeat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }, 2500);
-        } catch (err) {
-            console.error("Heartbeat broadcast failed:", err);
-        }
-    }
-
-    async function reportError(state, event, detail) {
-        if (!state.screenId) return;
-        try {
-            const POCKETBASE_URL = getPocketBaseUrl();
-            await fetch(`${POCKETBASE_URL}/api/collections/screen_logs/records`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    screenId: state.screenId,
-                    screenName: 'Tizen Player',
-                    event: event,
-                    detail: detail,
-                    type: 'error'
-                })
-            });
-        } catch (err) {
-            console.error("Failed to post error logs:", err);
-        }
-    }
-
     return {
         fetchWithTimeout,
         clearScreenCommandOnServer,
         requestPairingCode,
-        checkPairingStatusOnServer,
-        sendHeartbeat,
-        reportError
+        checkPairingStatusOnServer
     };
 })();

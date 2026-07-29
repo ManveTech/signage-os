@@ -1,5 +1,5 @@
 /**
- * SignageOS Player - Remote Keys & Control Handler Module
+ * SignageOS Player - Key Navigation Module
  */
 
 window.SignageKeys = (function () {

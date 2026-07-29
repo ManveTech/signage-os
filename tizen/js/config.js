@@ -1,5 +1,5 @@
 /**
- * SignageOS Player - Configuration & Endpoints Module
+ * SignageOS Player - Configuration & Constants
  */
 
 window.SignageConfig = (function () {
@@ -11,10 +11,7 @@ window.SignageConfig = (function () {
         SCREEN_ID: 'signage_tizen_screen_id',
         PAIRING_CODE: 'signage_tizen_pairing_code',
         STATUS: 'signage_tizen_status',
-        PLAYLIST: 'signage_tizen_playlist',
-        WIDGET: 'signage_tizen_widget',
-        VOLUME: 'signage_tizen_volume',
-        BRANDING: 'signage_tizen_branding'
+        PLAYLIST: 'signage_tizen_playlist'
     };
 
     function getPocketBaseUrl() {
