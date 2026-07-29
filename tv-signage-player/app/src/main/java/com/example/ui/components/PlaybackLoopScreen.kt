@@ -223,32 +223,6 @@ fun PlaybackLoopScreen(
                 ) {
                     LocalImageRenderer(asset = asset)
                 }
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp)
-                .background(Color(0xBF101116), RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = "Media classification",
-                    tint = Color(0xFF90CAF9),
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "${currentIndex + 1}/${playlist.size}",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
         }
     }
 }

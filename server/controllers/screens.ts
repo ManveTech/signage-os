@@ -541,6 +541,21 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
   }
 }
 
+export async function touchScreenPresence(screenId: string) {
+  try {
+    const now = Date.now();
+    if (isRedisReady()) {
+      const presenceKey = `presence:screen:${screenId}`;
+      const pipeline = redis.pipeline();
+      pipeline.set(presenceKey, 'online', 'EX', 90);
+      pipeline.zadd('presence:active_screens', now, screenId);
+      await pipeline.exec();
+    }
+  } catch (e) {
+    // Ignore presence touch errors
+  }
+}
+
 export async function recordHeartbeat(req: any, res: any) {
   const startTime = Date.now();
   let hardwareUuid = '';
@@ -616,34 +631,42 @@ export async function recordHeartbeat(req: any, res: any) {
 
         if (wasOffline) {
           transitionStatus = 'CAME_ONLINE';
-          // Transition online in PB
+        }
+
+        const lastHbTime = screenRecord.lastHeartbeat ? new Date(screenRecord.lastHeartbeat).getTime() : 0;
+        if (wasOffline || (now - lastHbTime) > DB_WRITE_THROTTLE_MS) {
+          // Update DB with throttled write
           const release = await getScreenLock(screenId).acquire();
           try {
-            const latest = await pb.collection('screens').getOne(screenId);
-            const updateData = {
+            const latest = await pb.collection('screens').getOne(screenId).catch(() => screenRecord);
+            const updateData: any = {
               status: 'online',
-              onlineSince: new Date().toISOString(),
               lastHeartbeat: new Date().toISOString(),
               storageUsed: storageUsed
             };
+            if (wasOffline || !latest.onlineSince) {
+              updateData.onlineSince = new Date().toISOString();
+            }
 
             await retryWithBackoff(() => pb.collection('screens').update(screenId, updateData));
-            
+
             // Re-cache updated screen
             const updated = { ...latest, ...updateData };
             await redis.set(cacheKey, JSON.stringify(updated), 'EX', 3600);
             await redis.set(`cache:screen:${screenId}`, JSON.stringify(updated), 'EX', 3600);
 
-            const metrics = await getLiveScreenMetrics(latest);
-            retryWithBackoff(async () => pb.collection('screen_logs').create(
-              await buildScreenLog(screenRecord, {
-                event: 'Screen came online',
-                type: 'online',
-                detail: `Heartbeat received (reconnected). CPU Temp: ${cpuTemp || 'N/A'}°C`,
-                totalUptime: metrics.totalUptime,
-                loopsPlayed: metrics.loopsPlayed
-              })
-            )).catch(err => console.error('Error logging screen online:', err));
+            if (wasOffline) {
+              const metrics = await getLiveScreenMetrics(latest);
+              retryWithBackoff(async () => pb.collection('screen_logs').create(
+                await buildScreenLog(screenRecord, {
+                  event: 'Screen came online',
+                  type: 'online',
+                  detail: `Heartbeat received (reconnected). CPU Temp: ${cpuTemp || 'N/A'}°C`,
+                  totalUptime: metrics.totalUptime,
+                  loopsPlayed: metrics.loopsPlayed
+                })
+              )).catch(err => console.error('Error logging screen online:', err));
+            }
           } finally {
             release();
           }

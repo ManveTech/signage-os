@@ -298,8 +298,8 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 } catch (e: Exception) {
                     Log.e("SignageViewModel", "Heartbeat broadcast failed", e)
                 }
-                // Broadcase diagnostic heartbeats once a minute
-                delay(60000)
+                // Broadcast diagnostic heartbeats every 20 seconds
+                delay(20000L)
             }
         }
     }

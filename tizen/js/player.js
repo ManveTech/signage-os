@@ -1,5 +1,5 @@
 /**
- * SignageOS Player - High Performance Download & Playlist Rotation Engine
+ * SignageOS Player - High Performance Download & Drift-Corrected Playlist Rotation Engine
  */
 
 window.SignagePlayer = (function () {
@@ -9,7 +9,8 @@ window.SignagePlayer = (function () {
     let rotationTimeout = null;
     let rotationToken = 0;
     let activeImageNum = 1;
-    let preloadedImagesCache = {};
+    let isDownloading = false;
+    let expectedTargetTime = 0;
 
     function updateDownloadProgress(completed, total, currentName, downloadedBytes = 0, fileTotalBytes = 0) {
         const overlay = document.getElementById('download-progress-overlay');
@@ -44,9 +45,27 @@ window.SignagePlayer = (function () {
         if (overlay) overlay.classList.add('hidden');
     }
 
+    /**
+     * Batch execution helper (concurrency limit = 5) to prevent launching hundreds of simultaneous requests
+     */
+    async function fetchInBatches(items, batchSize, fetchFn) {
+        const results = new Array(items.length);
+        for (let i = 0; i < items.length; i += batchSize) {
+            const batch = items.slice(i, i + batchSize);
+            const batchResults = await Promise.all(batch.map((item, idx) => fetchFn(item, i + idx)));
+            for (let j = 0; j < batchResults.length; j++) {
+                results[i + j] = batchResults[j];
+            }
+        }
+        return results;
+    }
+
     async function syncLocalFiles(assets) {
         if (!assets || assets.length === 0) return assets;
+        if (isDownloading) return assets;
 
+        isDownloading = true;
+        const totalAssets = assets.length;
         const isTizen = window.tizen && window.tizen.filesystem;
         let tizenDir = null;
 
@@ -61,6 +80,7 @@ window.SignagePlayer = (function () {
         }
 
         const missingAssets = [];
+        let cachedCount = 0;
 
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
@@ -76,20 +96,25 @@ window.SignagePlayer = (function () {
                 try {
                     const file = tizenDir.resolve(filename);
                     asset.url = getFileURI(file);
+                    cachedCount++;
                 } catch (_) {
                     missingAssets.push({ index: i, asset, filename });
                 }
-            } else if (!asset.url.startsWith('blob:') && !asset.url.startsWith('file:')) {
+            } else if (asset.url.startsWith('blob:') || asset.url.startsWith('file:')) {
+                cachedCount++;
+            } else {
                 missingAssets.push({ index: i, asset, filename: asset.filename || `asset_${asset.id}` });
             }
         }
 
         if (missingAssets.length > 0) {
-            console.log(`[Player] Downloading ${missingAssets.length} assets upfront...`);
-            updateDownloadProgress(0, missingAssets.length, '');
+            console.log(`[Player] Total Assets: ${totalAssets}, Cached: ${cachedCount}, Downloading: ${missingAssets.length}`);
+            updateDownloadProgress(cachedCount, totalAssets, '');
 
             for (let k = 0; k < missingAssets.length; k++) {
                 const { asset, filename } = missingAssets[k];
+                const currentProgressIdx = cachedCount + k + 1;
+
                 try {
                     let response;
                     try {
@@ -121,12 +146,12 @@ window.SignagePlayer = (function () {
                             if (done) break;
                             chunks.push(value);
                             receivedBytes += value.length;
-                            updateDownloadProgress(k + 1, missingAssets.length, asset.filename || filename, receivedBytes, contentLength);
+                            updateDownloadProgress(currentProgressIdx, totalAssets, asset.filename || filename, receivedBytes, contentLength);
                         }
                         blob = new Blob(chunks);
                     } else {
                         blob = await response.blob();
-                        updateDownloadProgress(k + 1, missingAssets.length, asset.filename || filename, blob.size, blob.size);
+                        updateDownloadProgress(currentProgressIdx, totalAssets, asset.filename || filename, blob.size, blob.size);
                     }
 
                     if (tizenDir) {
@@ -164,37 +189,18 @@ window.SignagePlayer = (function () {
                 } catch (dlErr) {
                     console.error(`[Player] Download failed for asset ${asset.filename}:`, dlErr);
                 }
-                updateDownloadProgress(k + 1, missingAssets.length, asset.filename || filename);
+                updateDownloadProgress(currentProgressIdx, totalAssets, asset.filename || filename);
             }
         }
 
         hideDownloadOverlay();
-
-        // Upfront Image Pre-Decoding (Decode into GPU memory to prevent black screen flashes)
-        console.log("[Player] Pre-decoding images for zero-lag playback...");
-        for (let i = 0; i < assets.length; i++) {
-            const asset = assets[i];
-            if (asset.mediaType === 'image' && asset.url) {
-                try {
-                    await new Promise((resolve) => {
-                        const img = new Image();
-                        img.onload = () => {
-                            if (typeof img.decode === 'function') {
-                                img.decode().then(resolve).catch(resolve);
-                            } else {
-                                resolve();
-                            }
-                        };
-                        img.onerror = resolve;
-                        img.src = asset.url;
-                    });
-                } catch (_) {}
-            }
-        }
-
+        isDownloading = false;
         return assets;
     }
 
+    /**
+     * Drift-Corrected Playlist Rotation Engine
+     */
     function startPlaylistRotation(state, views, updateUICallback) {
         if (rotationTimeout) clearTimeout(rotationTimeout);
         if (!state.playlist || state.playlist.length === 0) return;
@@ -204,15 +210,30 @@ window.SignagePlayer = (function () {
 
         if (!asset) {
             state.currentAssetIndex = 0;
+            expectedTargetTime = 0;
             if (state.playlist && state.playlist[0]) {
                 startPlaylistRotation(state, views, updateUICallback);
             }
             return;
         }
 
-        console.log(`[Player] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} (${asset.mediaType}, ${asset.duration}s)`);
-
         const duration = Math.max(parseInt(asset.duration, 10) || 10, 2) * 1000;
+        const now = performance.now();
+
+        if (expectedTargetTime === 0) {
+            expectedTargetTime = now + duration;
+        } else {
+            expectedTargetTime += duration;
+        }
+
+        let delay = expectedTargetTime - now;
+        if (delay < 0) {
+            console.warn(`[Player] Execution fell behind by ${Math.abs(delay).toFixed(1)}ms. Resetting timing baseline.`);
+            expectedTargetTime = now + duration;
+            delay = duration;
+        }
+
+        console.log(`[Player] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} (${asset.mediaType}, ${asset.duration}s, delay=${delay.toFixed(0)}ms)`);
 
         if (asset.mediaType === 'video') {
             if (views.imagePlayer1) views.imagePlayer1.style.display = 'none';
@@ -264,13 +285,17 @@ window.SignagePlayer = (function () {
                     console.warn("[Player] Video safety backup timer fired");
                     onVideoEnd();
                 }
-            }, duration + 5000);
+            }, Math.max(delay, duration + 3000));
 
         } else {
-            // Image playback - Zero Lag Swap Engine
+            // Video -> Image Memory & Decoded Frame Release Cleanup
             if (views.videoPlayer) {
                 views.videoPlayer.style.display = 'none';
-                try { views.videoPlayer.pause(); } catch (_) {}
+                try {
+                    views.videoPlayer.pause();
+                    views.videoPlayer.removeAttribute('src');
+                    views.videoPlayer.load(); // Forces WebKit to release hardware video decoder & frames
+                } catch (_) {}
             }
 
             const activeImg = activeImageNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
@@ -279,36 +304,45 @@ window.SignagePlayer = (function () {
 
             if (activeImg) {
                 activeImg.style.objectFit = asset.objectFit || 'cover';
+                activeImg.style.display = 'block';
+                activeImg.style.zIndex = '3';
+                activeImg.classList.add('active');
 
-                const displayImage = () => {
-                    if (currentToken !== rotationToken) return;
-
-                    activeImg.style.display = 'block';
-                    activeImg.style.zIndex = '3';
-                    activeImg.classList.add('active');
-
-                    setTimeout(() => {
-                        if (currentToken === rotationToken && inactiveImg) {
-                            inactiveImg.classList.remove('active');
-                            inactiveImg.style.zIndex = '1';
-                        }
-                    }, 350);
-                };
-
-                if (activeImg.src === asset.url && activeImg.complete) {
-                    displayImage();
-                } else {
-                    activeImg.onload = displayImage;
-                    activeImg.onerror = () => advancePlaylist(state, views, updateUICallback);
+                if (activeImg.src !== asset.url) {
                     activeImg.src = asset.url;
+                }
+
+                // Decode current image when presented
+                if (typeof activeImg.decode === 'function') {
+                    activeImg.decode().catch(() => {});
+                }
+
+                if (inactiveImg) {
+                    inactiveImg.classList.remove('active');
+                    inactiveImg.style.zIndex = '1';
                 }
             }
 
+            // Schedule drift-corrected timer
             rotationTimeout = setTimeout(() => {
                 if (currentToken === rotationToken) {
                     advancePlaylist(state, views, updateUICallback);
                 }
-            }, duration);
+            }, delay);
+
+            // Preload ONLY the next single image into inactive element (avoiding full playlist memory decoding)
+            if (state.playlist.length > 1 && inactiveImg) {
+                const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
+                const nextAsset = state.playlist[nextIndex];
+                if (nextAsset && nextAsset.mediaType === 'image' && nextAsset.url) {
+                    if (inactiveImg.src !== nextAsset.url) {
+                        inactiveImg.src = nextAsset.url;
+                        if (typeof inactiveImg.decode === 'function') {
+                            inactiveImg.decode().catch(() => {});
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -334,8 +368,9 @@ window.SignagePlayer = (function () {
                 try { slides = JSON.parse(slides); } catch (e) { slides = []; }
             }
 
+            // Batched media fetching (concurrency batch size = 5)
             if (Array.isArray(slides) && slides.length > 0) {
-                const results = await Promise.all(slides.map(async (slide) => {
+                const results = await fetchInBatches(slides, 5, async (slide) => {
                     try {
                         const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                         if (mediaRes.ok) {
@@ -352,7 +387,7 @@ window.SignagePlayer = (function () {
                         }
                     } catch (e) {}
                     return null;
-                }));
+                });
                 fetchedAssets = results.filter(Boolean);
             } else if (data.assetsJson && data.assetsJson.length > 0) {
                 data.assetsJson.forEach((pbAsset) => {
@@ -378,7 +413,7 @@ window.SignagePlayer = (function () {
                     });
                 });
             } else if (data.mediaIds && data.mediaIds.length > 0) {
-                const results = await Promise.all(data.mediaIds.map(async (mediaId) => {
+                const results = await fetchInBatches(data.mediaIds, 5, async (mediaId) => {
                     try {
                         const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`);
                         if (mediaRes.ok) {
@@ -395,7 +430,7 @@ window.SignagePlayer = (function () {
                         }
                     } catch (e) {}
                     return null;
-                }));
+                });
                 fetchedAssets = results.filter(Boolean);
             }
 
@@ -413,6 +448,7 @@ window.SignagePlayer = (function () {
 
             if (isDifferent || !state.isRotating) {
                 state.currentAssetIndex = 0;
+                expectedTargetTime = 0;
                 state.isRotating = true;
                 if (updateUICallback) updateUICallback();
                 startPlaylistRotation(state, views, updateUICallback);
