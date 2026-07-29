@@ -223,6 +223,7 @@ fun PlaybackLoopScreen(
                 ) {
                     LocalImageRenderer(asset = asset)
                 }
+            }
         }
     }
 }
@@ -330,4 +331,4 @@ fun LocalVideoRenderer(
                 scaleY = scale
             )
     )
-}}
+}
