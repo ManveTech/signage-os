@@ -159,7 +159,10 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     val progressMessage = if (downloadState.isDownloading && downloadState.totalFiles > 0) {
                         val alreadyCached = (totalAssets - downloadState.totalFiles).coerceAtLeast(0)
                         val displayCompleted = (alreadyCached + downloadState.completedFiles + 1).coerceAtMost(totalAssets)
-                        "Downloading ${downloadState.currentFileName} ($displayCompleted/$totalAssets)"
+                        val downloadedMB = String.format("%.1f", downloadState.downloadedBytes / (1024.0 * 1024.0))
+                        val totalMB = if (downloadState.totalFileBytes > 0) String.format("%.1f", downloadState.totalFileBytes / (1024.0 * 1024.0)) else ""
+                        val mbDetail = if (totalMB.isNotEmpty()) " — $downloadedMB MB / $totalMB MB" else if (downloadState.downloadedBytes > 0) " — $downloadedMB MB" else ""
+                        "Downloading asset $displayCompleted of $totalAssets: ${downloadState.currentFileName}$mbDetail"
                     } else {
                         ""
                     }

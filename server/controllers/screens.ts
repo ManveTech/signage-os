@@ -565,32 +565,38 @@ export async function recordHeartbeat(req: any, res: any) {
   let transitionStatus = 'ALREADY_ONLINE';
   
   try {
-    const { cpuTemp, currentPlayingAsset, storageUsedBytes, storageAvailableBytes } = req.body;
-    hardwareUuid = req.body.hardwareUuid;
-    if (!hardwareUuid) {
-      return res.status(400).json({ message: 'hardwareUuid is required.' });
+    const { screenId: reqScreenId, cpuTemp, currentPlayingAsset, storageUsedBytes, storageAvailableBytes } = req.body;
+    hardwareUuid = req.body.hardwareUuid || '';
+    const targetId = reqScreenId || hardwareUuid;
+    if (!targetId) {
+      return res.status(400).json({ message: 'hardwareUuid or screenId is required.' });
     }
 
     // 1. Resolve screen details via Redis Cache or PocketBase read-through
-    const cacheKey = `cache:screen_uuid:${hardwareUuid}`;
+    const cacheKey = `cache:screen_uuid:${targetId}`;
     
     if (isRedisReady()) {
-      const cached = await redis.get(cacheKey);
+      const cached = await redis.get(cacheKey) || await redis.get(`cache:screen:${targetId}`);
       if (cached) {
         screenRecord = JSON.parse(cached);
       }
     }
 
     if (!screenRecord) {
-      const screens = await pb.collection('screens').getList(1, 1, {
-        filter: pb.filter('hardware_uuid = {:hardwareUuid}', { hardwareUuid })
-      });
-      if (screens.items.length > 0) {
-        screenRecord = screens.items[0];
-        if (isRedisReady()) {
-          await redis.set(cacheKey, JSON.stringify(screenRecord), 'EX', 3600);
-          await redis.set(`cache:screen:${screenRecord.id}`, JSON.stringify(screenRecord), 'EX', 3600);
+      if (reqScreenId) {
+        screenRecord = await pb.collection('screens').getOne(reqScreenId).catch(() => null);
+      }
+      if (!screenRecord && hardwareUuid) {
+        const screens = await pb.collection('screens').getList(1, 1, {
+          filter: pb.filter('hardware_uuid = {:hardwareUuid} || id = {:hardwareUuid}', { hardwareUuid })
+        });
+        if (screens.items.length > 0) {
+          screenRecord = screens.items[0];
         }
+      }
+      if (screenRecord && isRedisReady()) {
+        await redis.set(cacheKey, JSON.stringify(screenRecord), 'EX', 3600);
+        await redis.set(`cache:screen:${screenRecord.id}`, JSON.stringify(screenRecord), 'EX', 3600);
       }
     }
 

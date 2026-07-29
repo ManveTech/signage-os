@@ -43,6 +43,8 @@ data class DownloadState(
     val completedFiles: Int = 0,
     val currentFileProgress: Float = 0.0f,
     val currentFileName: String = "",
+    val downloadedBytes: Long = 0L,
+    val totalFileBytes: Long = 0L,
     val errorMessage: String? = null
 )
 
@@ -850,174 +852,170 @@ class SignageRepository(private val context: Context) {
 
         val totalToDownload = pending.size
         val startIndex = 0
-        val semaphore = kotlinx.coroutines.sync.Semaphore(3)
-        var completedCount = 0
 
-        kotlinx.coroutines.coroutineScope {
-            pending.mapIndexed { index, asset ->
-                async(Dispatchers.IO) {
-                    semaphore.acquire()
-                    val tStart = System.currentTimeMillis()
-                    Log.d("DownloadMetrics", "--------------------------------------------------")
-                    Log.d("DownloadMetrics", "Download Started: ${asset.filename} (${asset.url})")
+        pending.forEachIndexed { index, asset ->
+            val tStart = System.currentTimeMillis()
+            Log.d("DownloadMetrics", "--------------------------------------------------")
+            Log.d("DownloadMetrics", "Download Started (${index + 1}/$totalToDownload): ${asset.filename} (${asset.url})")
+
+            downloadStateFlow.value = DownloadState(
+                isDownloading = true,
+                totalFiles = totalToDownload,
+                completedFiles = startIndex + index,
+                currentFileProgress = 0.0f,
+                currentFileName = asset.filename,
+                downloadedBytes = 0L,
+                totalFileBytes = 0L,
+                errorMessage = downloadStateFlow.value.errorMessage
+            )
+
+            val localFile = if (!asset.localPath.isNullOrEmpty()) {
+                File(asset.localPath)
+            } else {
+                File(cacheDir, getCacheFileName(asset.url, asset.filename))
+            }
+            val tmpFile = File(localFile.absolutePath + ".tmp")
+
+            try {
+                if (asset.url.startsWith("data:", ignoreCase = true)) {
+                    val commaIndex = asset.url.indexOf(",")
+                    if (commaIndex != -1) {
+                        val base64Data = asset.url.substring(commaIndex + 1)
+                        val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                        FileOutputStream(tmpFile).use { outputStream ->
+                            outputStream.write(bytes)
+                        }
+
+                        if (!asset.checksum.isNullOrEmpty()) {
+                            val calculated = calculateSHA256(tmpFile)
+                            if (!calculated.equals(asset.checksum, ignoreCase = true)) {
+                                throw Exception("Checksum verification failed for base64 asset. Expected: ${asset.checksum}, got: $calculated")
+                            }
+                        }
+
+                        if (localFile.exists()) {
+                            localFile.delete()
+                        }
+                        if (tmpFile.renameTo(localFile)) {
+                            assetDao.updateLocalPath(asset.id, localFile.absolutePath)
+                        } else {
+                            throw Exception("Failed to rename temporary file to local path")
+                        }
+
+                        downloadStateFlow.value = DownloadState(
+                            isDownloading = true,
+                            totalFiles = totalToDownload,
+                            completedFiles = startIndex + index + 1,
+                            currentFileProgress = 0.0f,
+                            currentFileName = asset.filename,
+                            downloadedBytes = bytes.size.toLong(),
+                            totalFileBytes = bytes.size.toLong(),
+                            errorMessage = downloadStateFlow.value.errorMessage
+                        )
+                        Log.d("SignageRepository", "Base64 asset cached successfully to: ${localFile.absolutePath}")
+                    } else {
+                        throw Exception("Invalid data URL format")
+                    }
+                } else {
+                    val tConnStart = System.currentTimeMillis()
+                    val request = Request.Builder().url(asset.url).build()
+
+                    okHttpClient.newCall(request).execute().use { response ->
+                        val tHeaders = System.currentTimeMillis()
+                        Log.d("DownloadMetrics", "Connection Opened / Headers Received: ${asset.filename} in ${tHeaders - tConnStart} ms")
+
+                        if (!response.isSuccessful) throw Exception("Failed download status: ${response.code}")
+                        val body = response.body ?: throw Exception("Null response body")
+                        val contentLength = body.contentLength()
+                        val tStreamStart = System.currentTimeMillis()
+
+                        body.byteStream().use { inputStream ->
+                            FileOutputStream(tmpFile).use { outputStream ->
+                                val buffer = ByteArray(64 * 1024)
+                                var bytesRead: Int
+                                var totalBytesRead = 0L
+                                var lastProgressMs = 0L
+
+                                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                                    outputStream.write(buffer, 0, bytesRead)
+                                    totalBytesRead += bytesRead
+
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastProgressMs > 100) {
+                                        lastProgressMs = now
+                                        val progress = if (contentLength > 0) totalBytesRead.toFloat() / contentLength else 0f
+                                        downloadStateFlow.value = DownloadState(
+                                            isDownloading = true,
+                                            totalFiles = totalToDownload,
+                                            completedFiles = startIndex + index,
+                                            currentFileProgress = progress.coerceIn(0f, 1f),
+                                            currentFileName = asset.filename,
+                                            downloadedBytes = totalBytesRead,
+                                            totalFileBytes = contentLength,
+                                            errorMessage = downloadStateFlow.value.errorMessage
+                                        )
+                                    }
+                                }
+
+                                val tStreamEnd = System.currentTimeMillis()
+                                val streamDurMs = Math.max(1L, tStreamEnd - tStreamStart)
+                                val streamMB = totalBytesRead / (1024.0 * 1024.0)
+                                val streamMBps = streamMB / (streamDurMs / 1000.0)
+                                Log.d("DownloadMetrics", "Streaming Completed: ${asset.filename} (${String.format("%.2f", streamMB)} MB in ${streamDurMs} ms | Speed: ${String.format("%.2f", streamMBps)} MB/s)")
+                            }
+                        }
+                    }
+
+                    val tVerificationStart = System.currentTimeMillis()
+                    if (!asset.checksum.isNullOrEmpty()) {
+                        val calculated = calculateSHA256(tmpFile)
+                        if (!calculated.equals(asset.checksum, ignoreCase = true)) {
+                            throw Exception("Checksum verification failed for downloaded asset. Expected: ${asset.checksum}, got: $calculated")
+                        }
+                    }
+
+                    if (localFile.exists()) {
+                        localFile.delete()
+                    }
+                    if (tmpFile.renameTo(localFile)) {
+                        assetDao.updateLocalPath(asset.id, localFile.absolutePath)
+                    } else {
+                        throw Exception("Failed to rename temporary file to local path")
+                    }
+
+                    val tEnd = System.currentTimeMillis()
+                    val totalDurMs = Math.max(1L, tEnd - tStart)
+                    val totalMB = localFile.length() / (1024.0 * 1024.0)
+                    val overallMBps = totalMB / (totalDurMs / 1000.0)
+                    Log.d("DownloadMetrics", "Disk Write & Verification Completed: ${asset.filename} in ${tEnd - tVerificationStart} ms")
+                    Log.d("DownloadMetrics", "TOTAL DURATION: ${asset.filename} | Total Time: ${totalDurMs} ms | Net Speed: ${String.format("%.2f", overallMBps)} MB/s")
 
                     downloadStateFlow.value = DownloadState(
                         isDownloading = true,
                         totalFiles = totalToDownload,
-                        completedFiles = startIndex + completedCount,
+                        completedFiles = startIndex + index + 1,
                         currentFileProgress = 0.0f,
                         currentFileName = asset.filename,
+                        downloadedBytes = localFile.length(),
+                        totalFileBytes = localFile.length(),
                         errorMessage = downloadStateFlow.value.errorMessage
                     )
-
-                    val localFile = if (!asset.localPath.isNullOrEmpty()) {
-                        File(asset.localPath)
-                    } else {
-                        File(cacheDir, getCacheFileName(asset.url, asset.filename))
-                    }
-                    val tmpFile = File(localFile.absolutePath + ".tmp")
-
-                    try {
-                        if (asset.url.startsWith("data:", ignoreCase = true)) {
-                            val commaIndex = asset.url.indexOf(",")
-                            if (commaIndex != -1) {
-                                val base64Data = asset.url.substring(commaIndex + 1)
-                                val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
-                                FileOutputStream(tmpFile).use { outputStream ->
-                                    outputStream.write(bytes)
-                                }
-
-                                if (!asset.checksum.isNullOrEmpty()) {
-                                    val calculated = calculateSHA256(tmpFile)
-                                    if (!calculated.equals(asset.checksum, ignoreCase = true)) {
-                                        throw Exception("Checksum verification failed for base64 asset. Expected: ${asset.checksum}, got: $calculated")
-                                    }
-                                }
-
-                                if (localFile.exists()) {
-                                    localFile.delete()
-                                }
-                                if (tmpFile.renameTo(localFile)) {
-                                    assetDao.updateLocalPath(asset.id, localFile.absolutePath)
-                                } else {
-                                    throw Exception("Failed to rename temporary file to local path")
-                                }
-
-                                synchronized(this@SignageRepository) {
-                                    completedCount++
-                                }
-                                Log.d("SignageRepository", "Base64 asset cached successfully to: ${localFile.absolutePath}")
-                            } else {
-                                throw Exception("Invalid data URL format")
-                            }
-                        } else {
-                            val tConnStart = System.currentTimeMillis()
-                            val request = Request.Builder().url(asset.url).build()
-                            
-                            okHttpClient.newCall(request).execute().use { response ->
-                                val tHeaders = System.currentTimeMillis()
-                                Log.d("DownloadMetrics", "Connection Opened / Headers Received: ${asset.filename} in ${tHeaders - tConnStart} ms")
-
-                                if (!response.isSuccessful) throw Exception("Failed download status: ${response.code}")
-                                val body = response.body ?: throw Exception("Null response body")
-                                val contentLength = body.contentLength()
-                                val tStreamStart = System.currentTimeMillis()
-
-                                body.byteStream().use { inputStream ->
-                                    FileOutputStream(tmpFile).use { outputStream ->
-                                        val buffer = ByteArray(64 * 1024) // 64 KB buffer
-                                        var bytesRead: Int
-                                        var totalBytesRead = 0L
-                                        var lastProgressMs = 0L
-
-                                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                                            outputStream.write(buffer, 0, bytesRead)
-                                            totalBytesRead += bytesRead
-
-                                            val now = System.currentTimeMillis()
-                                            if (contentLength > 0 && (now - lastProgressMs > 150)) {
-                                                lastProgressMs = now
-                                                val progress = totalBytesRead.toFloat() / contentLength
-                                                downloadStateFlow.value = DownloadState(
-                                                    isDownloading = true,
-                                                    totalFiles = totalToDownload,
-                                                    completedFiles = startIndex + completedCount,
-                                                    currentFileProgress = progress.coerceIn(0f, 1f),
-                                                    currentFileName = asset.filename,
-                                                    errorMessage = downloadStateFlow.value.errorMessage
-                                                )
-                                            }
-                                        }
-
-                                        val tStreamEnd = System.currentTimeMillis()
-                                        val streamDurMs = Math.max(1L, tStreamEnd - tStreamStart)
-                                        val streamMB = totalBytesRead / (1024.0 * 1024.0)
-                                        val streamMBps = streamMB / (streamDurMs / 1000.0)
-                                        Log.d("DownloadMetrics", "Streaming Completed: ${asset.filename} (${String.format("%.2f", streamMB)} MB in ${streamDurMs} ms | Speed: ${String.format("%.2f", streamMBps)} MB/s)")
-                                    }
-                                }
-                            }
-
-                            val tVerificationStart = System.currentTimeMillis()
-                            // Calculate SHA-256 and verify
-                            if (!asset.checksum.isNullOrEmpty()) {
-                                val calculated = calculateSHA256(tmpFile)
-                                if (!calculated.equals(asset.checksum, ignoreCase = true)) {
-                                    throw Exception("Checksum verification failed for downloaded asset. Expected: ${asset.checksum}, got: $calculated")
-                                }
-                            }
-
-                            if (localFile.exists()) {
-                                localFile.delete()
-                            }
-                            if (tmpFile.renameTo(localFile)) {
-                                assetDao.updateLocalPath(asset.id, localFile.absolutePath)
-                            } else {
-                                throw Exception("Failed to rename temporary file to local path")
-                            }
-
-                            val tEnd = System.currentTimeMillis()
-                            val totalDurMs = Math.max(1L, tEnd - tStart)
-                            val totalMB = localFile.length() / (1024.0 * 1024.0)
-                            val overallMBps = totalMB / (totalDurMs / 1000.0)
-                            Log.d("DownloadMetrics", "Disk Write & Verification Completed: ${asset.filename} in ${tEnd - tVerificationStart} ms")
-                            Log.d("DownloadMetrics", "TOTAL DURATION: ${asset.filename} | Total Time: ${totalDurMs} ms | Net Speed: ${String.format("%.2f", overallMBps)} MB/s")
-
-                            synchronized(this@SignageRepository) {
-                                completedCount++
-                            }
-
-                            downloadStateFlow.value = DownloadState(
-                                isDownloading = true,
-                                totalFiles = totalToDownload,
-                                completedFiles = startIndex + completedCount,
-                                currentFileProgress = 0.0f,
-                                currentFileName = asset.filename,
-                                errorMessage = downloadStateFlow.value.errorMessage
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Log.e("SignageRepository", "Failed to download asset: ${asset.url}", e)
-                        if (tmpFile.exists()) {
-                            tmpFile.delete()
-                        }
-                        synchronized(this@SignageRepository) {
-                            completedCount++
-                        }
-                        downloadStateFlow.value = DownloadState(
-                            isDownloading = true,
-                            totalFiles = totalToDownload,
-                            completedFiles = startIndex + completedCount,
-                            currentFileProgress = 0.0f,
-                            currentFileName = asset.filename,
-                            errorMessage = e.message ?: "Unknown download error"
-                        )
-                        sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
-                    } finally {
-                        semaphore.release()
-                    }
                 }
-            }.awaitAll()
+            } catch (e: Exception) {
+                Log.e("SignageRepository", "Failed to download asset: ${asset.url}", e)
+                if (tmpFile.exists()) {
+                    tmpFile.delete()
+                }
+                downloadStateFlow.value = DownloadState(
+                    isDownloading = true,
+                    totalFiles = totalToDownload,
+                    completedFiles = startIndex + index + 1,
+                    currentFileProgress = 0.0f,
+                    currentFileName = asset.filename,
+                    errorMessage = e.message ?: "Unknown download error"
+                )
+                sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
+            }
         }
         val currentError = downloadStateFlow.value.errorMessage
         downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = currentError)
@@ -1142,6 +1140,7 @@ class SignageRepository(private val context: Context) {
 
             val request = HeartbeatRequest(
                 hardwareUuid = config.hardwareUuid,
+                screenId = config.screenId.ifEmpty { null },
                 cpuTemp = cpuTemp,
                 currentPlayingAsset = currentPlayingAsset ?: "None",
                 storageUsedBytes = storageUsedBytes,

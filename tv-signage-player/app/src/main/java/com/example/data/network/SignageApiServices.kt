@@ -23,6 +23,7 @@ data class PairingResponse(
 @JsonClass(generateAdapter = true)
 data class HeartbeatRequest(
     val hardwareUuid: String,
+    val screenId: String? = null,
     val cpuTemp: Double,
     val currentPlayingAsset: String?,
     val storageUsedBytes: Long,

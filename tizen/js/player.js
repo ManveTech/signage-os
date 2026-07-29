@@ -1,5 +1,5 @@
 /**
- * SignageOS Player - High Performance Download & Rolling Pre-Decoded Playlist Rotation Engine
+ * SignageOS Player - High Performance Download & Zero-Lag Rolling Pre-Decoded Playlist Rotation Engine
  */
 
 window.SignagePlayer = (function () {
@@ -45,9 +45,6 @@ window.SignagePlayer = (function () {
         if (overlay) overlay.classList.add('hidden');
     }
 
-    /**
-     * Batch execution helper (concurrency limit = 5)
-     */
     async function fetchInBatches(items, batchSize, fetchFn) {
         const results = new Array(items.length);
         for (let i = 0; i < items.length; i += batchSize) {
@@ -60,9 +57,6 @@ window.SignagePlayer = (function () {
         return results;
     }
 
-    /**
-     * Rolling Pre-Decode Buffer: keeps the current + next 2 upcoming images pre-decoded in memory.
-     */
     function updateRollingBuffer(state) {
         if (!state.playlist || state.playlist.length === 0) return;
         const len = state.playlist.length;
@@ -90,7 +84,6 @@ window.SignagePlayer = (function () {
             }
         });
 
-        // Prune items outside the 3-item rolling window
         for (const url of rollingDecodedMap.keys()) {
             if (!activeUrls.has(url)) {
                 const oldImg = rollingDecodedMap.get(url);
@@ -243,7 +236,7 @@ window.SignagePlayer = (function () {
     }
 
     /**
-     * Zero-Black-Screen Double-Buffered Rotation Engine
+     * Exact Duration Double-Buffered Rotation Engine
      */
     function startPlaylistRotation(state, views, updateUICallback) {
         if (rotationTimeout) clearTimeout(rotationTimeout);
@@ -263,7 +256,6 @@ window.SignagePlayer = (function () {
         const duration = Math.max(parseInt(asset.duration, 10) || 10, 2) * 1000;
         console.log(`[Player] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} (${asset.mediaType}, ${asset.duration}s)`);
 
-        // Maintain 3-item rolling pre-decoded image window
         updateRollingBuffer(state);
 
         if (asset.mediaType === 'video') {
@@ -316,7 +308,7 @@ window.SignagePlayer = (function () {
             }, duration + 3000);
 
         } else {
-            // Image Playback - Strict Zero-Black-Screen Swap Engine
+            // Image Playback - Strict Exact-Duration Double-Buffering
             const activeImg = activeImageNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
             const inactiveImg = activeImageNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
 
@@ -325,72 +317,79 @@ window.SignagePlayer = (function () {
                 return;
             }
 
-            inactiveImg.style.objectFit = asset.objectFit || 'cover';
+            activeImg.style.objectFit = asset.objectFit || 'cover';
 
             const performSwapAndStartTimer = () => {
                 if (currentToken !== rotationToken) return;
 
-                // Hide video player ONLY AFTER image is 100% loaded and decoded
                 if (views.videoPlayer) {
                     views.videoPlayer.style.display = 'none';
                     try { views.videoPlayer.pause(); } catch (_) {}
                 }
 
-                // Swap active image index
-                activeImageNum = activeImageNum === 1 ? 2 : 1;
+                activeImg.style.display = 'block';
+                activeImg.style.zIndex = '3';
+                activeImg.classList.add('active');
 
-                // Bring inactiveImg to front over activeImg
-                inactiveImg.style.display = 'block';
-                inactiveImg.style.zIndex = '3';
-                inactiveImg.classList.add('active');
-
-                // After cross-fade completes, move inactiveImg to standard zIndex and hide activeImg
                 setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        activeImg.classList.remove('active');
-                        activeImg.style.zIndex = '1';
+                    if (currentToken === rotationToken && inactiveImg) {
+                        inactiveImg.classList.remove('active');
+                        inactiveImg.style.zIndex = '1';
                     }
                 }, 350);
 
-                // START SLIDE TIMER STRICTLY AFTER IMAGE IS FULLY VISIBLE ON SCREEN
+                // START DURATION TIMER STRICTLY WHEN IMAGE IS VISIBLE ON SCREEN
                 if (rotationTimeout) clearTimeout(rotationTimeout);
                 rotationTimeout = setTimeout(() => {
                     if (currentToken === rotationToken) {
                         advancePlaylist(state, views, updateUICallback);
                     }
                 }, duration);
+
+                // PRE-LOAD UPCOMING NEXT SLIDE INTO INACTIVE PLAYER IMMEDIATELY DURING CURRENT SLIDE'S PLAYBACK!
+                if (state.playlist.length > 1 && inactiveImg) {
+                    const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
+                    const nextAsset = state.playlist[nextIndex];
+                    if (nextAsset && nextAsset.mediaType === 'image' && nextAsset.url) {
+                        if (inactiveImg.src !== nextAsset.url) {
+                            inactiveImg.src = nextAsset.url;
+                            if (typeof inactiveImg.decode === 'function') {
+                                inactiveImg.decode().catch(() => {});
+                            }
+                        }
+                    }
+                }
             };
 
-            // Only update inactiveImg.src if it actually changed to avoid reloads!
-            if (inactiveImg.src !== asset.url) {
-                inactiveImg.onload = () => {
-                    if (typeof inactiveImg.decode === 'function') {
-                        inactiveImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
+            if (activeImg.src !== asset.url) {
+                activeImg.onload = () => {
+                    if (typeof activeImg.decode === 'function') {
+                        activeImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
                     } else {
                         performSwapAndStartTimer();
                     }
                 };
-                inactiveImg.onerror = () => {
+                activeImg.onerror = () => {
                     console.warn("[Player] Failed to load image asset:", asset.filename);
                     if (currentToken !== rotationToken) advancePlaylist(state, views, updateUICallback);
                 };
-                inactiveImg.src = asset.url;
+                activeImg.src = asset.url;
             } else {
-                if (inactiveImg.complete) {
-                    if (typeof inactiveImg.decode === 'function') {
-                        inactiveImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
+                if (activeImg.complete) {
+                    if (typeof activeImg.decode === 'function') {
+                        activeImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
                     } else {
                         performSwapAndStartTimer();
                     }
                 } else {
-                    inactiveImg.onload = () => {
-                        if (typeof inactiveImg.decode === 'function') {
-                            inactiveImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
+                    activeImg.onload = () => {
+                        if (typeof activeImg.decode === 'function') {
+                            activeImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
                         } else {
                             performSwapAndStartTimer();
                         }
                     };
-                    inactiveImg.onerror = () => {
+                    activeImg.onerror = () => {
                         if (currentToken !== rotationToken) advancePlaylist(state, views, updateUICallback);
                     };
                 }
@@ -480,6 +479,7 @@ window.SignagePlayer = (function () {
                             };
                         }
                     } catch (e) {}
+                    return null;
                 });
                 fetchedAssets = results.filter(Boolean);
             }
