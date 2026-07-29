@@ -447,14 +447,15 @@ window.SignagePlayer = (function () {
             }
 
             if (Array.isArray(slides) && slides.length > 0) {
-                const results = await fetchInBatches(slides, 5, async (slide) => {
+                const results = await fetchInBatches(slides, 5, async (slide, slideIdx) => {
                     try {
                         const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${slide.mediaId}`);
                         if (mediaRes.ok) {
                             const media = await mediaRes.json();
                             const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
                             return {
-                                id: media.id,
+                                id: `${media.id}_${slideIdx}`,
+                                mediaId: media.id,
                                 url: rawUrl,
                                 mediaType: (media.type || 'image').toLowerCase(),
                                 filename: media.title || media.file || 'Media Item',
@@ -467,9 +468,9 @@ window.SignagePlayer = (function () {
                 });
                 fetchedAssets = results.filter(Boolean);
             } else if (data.assetsJson && data.assetsJson.length > 0) {
-                data.assetsJson.forEach((pbAsset) => {
+                data.assetsJson.forEach((pbAsset, idx) => {
                     fetchedAssets.push({
-                        id: pbAsset.id,
+                        id: pbAsset.id ? `${pbAsset.id}_${idx}` : `asset_${idx}`,
                         url: pbAsset.url,
                         mediaType: (pbAsset.mediaType || 'image').toLowerCase(),
                         filename: pbAsset.filename || 'Asset',
@@ -490,14 +491,15 @@ window.SignagePlayer = (function () {
                     });
                 });
             } else if (data.mediaIds && data.mediaIds.length > 0) {
-                const results = await fetchInBatches(data.mediaIds, 5, async (mediaId) => {
+                const results = await fetchInBatches(data.mediaIds, 5, async (mediaId, mediaIdx) => {
                     try {
                         const mediaRes = await fetch(`${POCKETBASE_URL}/api/collections/media_items/records/${mediaId}`);
                         if (mediaRes.ok) {
                             const media = await mediaRes.json();
                             const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
                             return {
-                                id: media.id,
+                                id: `${media.id}_${mediaIdx}`,
+                                mediaId: media.id,
                                 url: rawUrl,
                                 mediaType: (media.type || 'image').toLowerCase(),
                                 filename: media.title || media.file || 'Media Item',
@@ -513,11 +515,12 @@ window.SignagePlayer = (function () {
 
             state.orientation = data.orientation || 'horizontal';
 
-            const localAssets = await syncLocalFiles(fetchedAssets);
+            // Compare structure signature (IDs + durations) BEFORE local path rewriting
+            const currentSignature = (state.playlist || []).map(a => `${a.id}:${a.duration}`).join('|');
+            const newSignature = fetchedAssets.map(a => `${a.id}:${a.duration}`).join('|');
+            const isDifferent = currentSignature !== newSignature;
 
-            const currentIds = (state.playlist || []).map(a => a.id).join(',');
-            const newIds = localAssets.map(a => a.id).join(',');
-            const isDifferent = currentIds !== newIds;
+            const localAssets = await syncLocalFiles(fetchedAssets);
 
             state.playlist = localAssets;
             localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
