@@ -17,12 +17,18 @@ import { ensureRedisRunning, isRedisReady, redis } from './redis';
 
 const app = express();
 
-// CORS — restrict to configured origin in production, allow all in dev
-const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || '*';
+// CORS — Allow dynamic origins for multi-tenant subdomains & TV player requests
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Assigned-To-User-Email');
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Assigned-To-User-Email, X-Screen-Id');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -42,6 +48,9 @@ app.use((err: any, req: any, res: any, next: any) => {
   }
   next(err);
 });
+
+// Favicon handler to silence browser 404 console errors
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // Health check endpoint
 app.get('/health', async (req, res) => {

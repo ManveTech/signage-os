@@ -2,6 +2,7 @@ import express from 'express';
 import { pb, ensurePBAuth } from '../db';
 import { checkDeviceStatuses, getLiveScreenMetrics, touchScreenPresence } from './screens';
 import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '../scheduler';
+import { isRedisReady, redis } from '../redis';
 
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
@@ -115,6 +116,23 @@ export function createCrudRouter(collectionName: string) {
           records = await fetchRecords();
         } else {
           throw firstErr;
+        }
+      }
+      if (collectionName === 'screens' && Array.isArray(records) && records.length > 0) {
+        if (isRedisReady()) {
+          try {
+            const pipeline = redis.pipeline();
+            records.forEach((s: any) => pipeline.exists(`presence:screen:${s.id}`));
+            const presenceResults = await pipeline.exec();
+            if (presenceResults) {
+              records.forEach((s: any, idx: number) => {
+                const isOnlineInRedis = presenceResults[idx] && presenceResults[idx][1] === 1;
+                if (isOnlineInRedis) {
+                  s.status = 'online';
+                }
+              });
+            }
+          } catch (_) {}
         }
       }
       res.json(records);

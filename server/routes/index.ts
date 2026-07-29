@@ -73,12 +73,14 @@ apiRouter.get('/public/proxy-media', async (req, res) => {
   }
 });
 
-// 2. Token protection middleware for all following API routes
+// 2. Unprotected Device Hardware Endpoints (Pairing, Heartbeats, Device Status)
+apiRouter.use('/devices', devicesRouter);
+
+// 3. Token protection middleware for all following API routes
 apiRouter.use(authenticateToken);
 
-// 3. Mount Custom Routers (Priority matching)
+// 4. Mount Custom Routers (Priority matching)
 apiRouter.use('/screens', screensRouter);
-apiRouter.use('/devices', devicesRouter);
 apiRouter.use('/payments', paymentsRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/media_items', mediaItemsRouter);

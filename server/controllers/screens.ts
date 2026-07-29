@@ -551,6 +551,23 @@ export async function touchScreenPresence(screenId: string) {
       pipeline.zadd('presence:active_screens', now, screenId);
       await pipeline.exec();
     }
+
+    // Sync PocketBase status if currently offline or missing onlineSince
+    const lastTouchKey = `touch:${screenId}`;
+    const lastTouch = lastBrandingSync.get(lastTouchKey) || 0;
+    if (now - lastTouch > 10000) { // Throttled to once every 10 seconds per screen
+      lastBrandingSync.set(lastTouchKey, now);
+      pb.collection('screens').getOne(screenId).then(screen => {
+        if (screen && (screen.status === 'offline' || screen.status === 'pairing' || !screen.onlineSince)) {
+          const updateObj: any = {
+            status: 'online',
+            lastHeartbeat: new Date().toISOString()
+          };
+          if (!screen.onlineSince) updateObj.onlineSince = new Date().toISOString();
+          pb.collection('screens').update(screenId, updateObj).catch(() => {});
+        }
+      }).catch(() => {});
+    }
   } catch (e) {
     // Ignore presence touch errors
   }
