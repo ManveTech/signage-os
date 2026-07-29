@@ -308,7 +308,7 @@ window.SignagePlayer = (function () {
             }, duration + 3000);
 
         } else {
-            // Image Playback - Strict Exact-Duration Double-Buffering
+            // Image Playback - Strict Exact-Duration Double-Buffering with Paint Guarantee
             activeImageNum = activeImageNum === 1 ? 2 : 1;
             const activeImg = activeImageNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
             const inactiveImg = activeImageNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
@@ -320,6 +320,8 @@ window.SignagePlayer = (function () {
 
             activeImg.style.objectFit = asset.objectFit || 'cover';
 
+            const tSwapRequested = performance.now();
+
             const performSwapAndStartTimer = () => {
                 if (currentToken !== rotationToken) return;
 
@@ -328,38 +330,62 @@ window.SignagePlayer = (function () {
                     try { views.videoPlayer.pause(); } catch (_) {}
                 }
 
+                // 1. Double Buffer Layer Preparation: Active to front (zIndex: 3, opacity: 1)
                 activeImg.style.display = 'block';
                 activeImg.style.zIndex = '3';
+                activeImg.style.opacity = '1';
                 activeImg.classList.add('active');
 
-                setTimeout(() => {
-                    if (currentToken === rotationToken && inactiveImg) {
-                        inactiveImg.classList.remove('active');
-                        inactiveImg.style.zIndex = '1';
-                    }
-                }, 350);
-
-                // START DURATION TIMER STRICTLY WHEN IMAGE IS VISIBLE ON SCREEN
-                if (rotationTimeout) clearTimeout(rotationTimeout);
-                rotationTimeout = setTimeout(() => {
-                    if (currentToken === rotationToken) {
-                        advancePlaylist(state, views, updateUICallback);
-                    }
-                }, duration);
-
-                // PRE-LOAD UPCOMING NEXT SLIDE INTO INACTIVE PLAYER IMMEDIATELY DURING CURRENT SLIDE'S PLAYBACK!
-                if (state.playlist.length > 1 && inactiveImg) {
-                    const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
-                    const nextAsset = state.playlist[nextIndex];
-                    if (nextAsset && nextAsset.mediaType === 'image' && nextAsset.url) {
-                        if (inactiveImg.src !== nextAsset.url) {
-                            inactiveImg.src = nextAsset.url;
-                            if (typeof inactiveImg.decode === 'function') {
-                                inactiveImg.decode().catch(() => {});
-                            }
-                        }
-                    }
+                // Send inactive container behind (zIndex: 1, opacity: 0)
+                if (inactiveImg) {
+                    inactiveImg.classList.remove('active');
+                    inactiveImg.style.zIndex = '1';
+                    inactiveImg.style.opacity = '0';
                 }
+
+                // 2. Double requestAnimationFrame guarantees pixels are painted onto TV panel BEFORE starting timer!
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (currentToken !== rotationToken) return;
+
+                        const tPainted = performance.now();
+                        const paintLatency = Math.round(tPainted - tSwapRequested);
+
+                        // START DURATION TIMER STRICTLY WHEN IMAGE IS PAINTED ON SCREEN
+                        if (rotationTimeout) clearTimeout(rotationTimeout);
+                        rotationTimeout = setTimeout(() => {
+                            if (currentToken === rotationToken) {
+                                const tExpired = performance.now();
+                                const actualVisibleDuration = Math.round(tExpired - tPainted);
+                                const drift = actualVisibleDuration - duration;
+                                console.log(
+                                    `[TIMING METRICS] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} | ` +
+                                    `Expected: ${duration}ms | Paint Latency: ${paintLatency}ms | ` +
+                                    `Timer Started: ${Math.round(tPainted)}ms | Expired: ${Math.round(tExpired)}ms | ` +
+                                    `Actual Visible Duration: ${actualVisibleDuration}ms | Drift: ${drift >= 0 ? '+' : ''}${drift}ms`
+                                );
+                                advancePlaylist(state, views, updateUICallback);
+                            }
+                        }, duration);
+
+                        // 3. Pre-load next slide into inactive container AFTER paint frame finishes
+                        setTimeout(() => {
+                            if (currentToken !== rotationToken || state.playlist.length <= 1 || !inactiveImg) return;
+                            const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
+                            const nextAsset = state.playlist[nextIndex];
+                            if (nextAsset && nextAsset.mediaType === 'image' && nextAsset.url) {
+                                if (inactiveImg.src !== nextAsset.url) {
+                                    inactiveImg.style.display = 'none';
+                                    inactiveImg.style.opacity = '0';
+                                    inactiveImg.src = nextAsset.url;
+                                    if (typeof inactiveImg.decode === 'function') {
+                                        inactiveImg.decode().catch(() => {});
+                                    }
+                                }
+                            }
+                        }, 100);
+                    });
+                });
             };
 
             if (activeImg.src !== asset.url) {
