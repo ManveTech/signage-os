@@ -6,7 +6,6 @@
 
 window.SignageWidgets = (function () {
     let clockInterval = null;
-    let currentWidgetPlacement = 'top-right';
 
     // ---- Clock Widget ----------------------------------------------------
 
@@ -48,28 +47,28 @@ window.SignageWidgets = (function () {
 
     // ---- Ticker Widget ---------------------------------------------------
 
-    function startTicker(text, label = 'ANNOUNCEMENT') {
+    function startTicker(text, label = 'NOTICE') {
         const tickerEl = document.getElementById('widget-ticker');
         const textEl = document.getElementById('ticker-text');
         const labelEl = document.getElementById('ticker-label');
 
         if (!tickerEl || !textEl) return;
 
-        if (!text || text.trim() === '') {
+        if (!text || String(text).trim() === '') {
             tickerEl.classList.add('hidden');
             return;
         }
 
+        const cleanText = String(text).trim();
         if (labelEl) labelEl.innerText = (label || 'NOTICE').toUpperCase();
-        textEl.innerText = text;
+        textEl.innerText = cleanText;
 
-        // Reset marquee animation to restart smoothly
+        // Force reflow to restart CSS marquee animation smoothly
         textEl.style.animation = 'none';
-        void textEl.offsetHeight; // trigger reflow
+        void textEl.offsetHeight;
 
-        // Dynamic speed based on text length (longer text = longer duration so reading speed is consistent)
-        const textLen = text.length;
-        const durationSec = Math.max(15, Math.min(60, Math.round(textLen * 0.3)));
+        const textLen = cleanText.length;
+        const durationSec = Math.max(12, Math.min(60, Math.round(textLen * 0.3)));
         textEl.style.animation = `marquee-scroll ${durationSec}s linear infinite`;
 
         tickerEl.classList.remove('hidden');
@@ -80,14 +79,14 @@ window.SignageWidgets = (function () {
         if (tickerEl) tickerEl.classList.add('hidden');
     }
 
-    // ---- QR Code Widget (SVG Vector Generator) ---------------------------
+    // ---- QR Code Widget (SVG / Vector Renderer) --------------------------
 
-    // Lightweight SVG QR code matrix renderer fallback
     function generateQrSvg(text) {
-        // High contrast fallback vector representation of QR data / URL
+        if (!text) return '';
         const encodedUrl = encodeURIComponent(text);
-        const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodedUrl}`;
-        return `<img src="${qrApiUrl}" alt="QR Code" style="width: 100px; height: 100px; display: block; border-radius: 4px;" />`;
+        // Clean high-contrast vector QR display
+        const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodedUrl}`;
+        return `<img src="${qrApiUrl}" alt="QR Code" style="width: 90px; height: 90px; display: block; border-radius: 6px; background: #ffffff;" />`;
     }
 
     function startQR(url, placement = 'top-right') {
@@ -106,48 +105,97 @@ window.SignageWidgets = (function () {
         if (qrEl) qrEl.classList.add('hidden');
     }
 
+    // ---- Helper: Flexible Type Normalizer --------------------------------
+
+    function parseWidgetTypes(rawInput) {
+        let items = [];
+        if (Array.isArray(rawInput)) {
+            items = rawInput.map(s => String(s).toLowerCase().trim());
+        } else if (typeof rawInput === 'string' && rawInput.trim()) {
+            items = rawInput.toLowerCase().split(',').map(s => s.trim());
+        }
+
+        const normalized = new Set();
+        items.forEach(t => {
+            if (t === 'clock' || t === 'time') normalized.add('clock');
+            if (t === 'ticker' || t === 'rss' || t === 'news' || t === 'announcement') normalized.add('ticker');
+            if (t === 'qr' || t === 'qrcode' || t === 'scan') normalized.add('qr');
+        });
+        return normalized;
+    }
+
     // ---- Unified Widgets Synchronization Logic ---------------------------
 
     function syncWidgets(state, currentAsset) {
         if (!state) return;
 
-        // Extract widget settings from active playlist or slide payload
-        const playlist = state.playlist || [];
         const activePlaylist = state.activePlaylistObj || {};
 
-        // Merge attributes: slide settings override playlist settings
-        const widgetTypeStr = (currentAsset && currentAsset.widgetType) || activePlaylist.widgetType || state.widgetType || '';
-        const widgetPlacement = (currentAsset && currentAsset.widgetPlacement) || activePlaylist.widgetPlacement || state.widgetPlacement || 'top-right';
-        const widgetLink = (currentAsset && currentAsset.widgetLink) || activePlaylist.widgetLink || state.widgetLink || '';
-        const tickerText = (currentAsset && currentAsset.tickerText) || activePlaylist.tickerText || state.tickerText || widgetLink || '';
-        const tickerLabel = (currentAsset && currentAsset.tickerLabel) || activePlaylist.tickerLabel || state.tickerLabel || 'NOTICE';
+        // Merge widget attributes across slide and playlist objects
+        const rawWidgetType = (currentAsset && currentAsset.widgetType) ||
+                              state.widgetType ||
+                              activePlaylist.widgetType ||
+                              '';
 
-        const activeTypes = widgetTypeStr.toLowerCase().split(',').map(s => s.trim());
+        const activeTypes = parseWidgetTypes(rawWidgetType);
 
-        // 1. Clock Widget
-        if (activeTypes.includes('clock')) {
+        const widgetPlacement = (currentAsset && currentAsset.widgetPlacement) ||
+                                state.widgetPlacement ||
+                                activePlaylist.widgetPlacement ||
+                                'top-right';
+
+        let widgetLink = (currentAsset && currentAsset.widgetLink) ||
+                         state.widgetLink ||
+                         activePlaylist.widgetLink ||
+                         '';
+
+        let tickerText = (currentAsset && currentAsset.tickerText) ||
+                         state.tickerText ||
+                         activePlaylist.tickerText ||
+                         widgetLink ||
+                         '';
+
+        const tickerLabel = (currentAsset && currentAsset.tickerLabel) ||
+                            state.tickerLabel ||
+                            activePlaylist.tickerLabel ||
+                            'NOTICE';
+
+        const overlayEl = document.getElementById('widgets-overlay');
+
+        // 1. Ticker Widget
+        if (activeTypes.has('ticker') && tickerText.trim()) {
+            if (overlayEl) overlayEl.classList.add('has-ticker');
+            startTicker(tickerText, tickerLabel);
+        } else {
+            if (overlayEl) overlayEl.classList.remove('has-ticker');
+            stopTicker();
+        }
+
+        // 2. Clock Widget
+        if (activeTypes.has('clock')) {
             startClock(widgetPlacement);
         } else {
             stopClock();
         }
 
-        // 2. QR Code Widget
-        if (activeTypes.includes('qr') && widgetLink) {
-            // Offset QR code position if Clock is in the exact same corner
+        // 3. QR Code Widget
+        if (activeTypes.has('qr')) {
+            if (!widgetLink || widgetLink.trim() === '') {
+                const domain = window.location.hostname || 'tizen.manve.co';
+                widgetLink = `http://${domain}`;
+            }
+
+            // Offset placement if Clock & QR are assigned to the same corner
             let qrPlacement = widgetPlacement;
-            if (activeTypes.includes('clock') && widgetPlacement === 'top-right') {
-                qrPlacement = 'bottom-right';
+            if (activeTypes.has('clock')) {
+                if (widgetPlacement === 'top-right') qrPlacement = 'bottom-right';
+                else if (widgetPlacement === 'top-left') qrPlacement = 'bottom-left';
+                else if (widgetPlacement === 'bottom-right') qrPlacement = 'top-right';
+                else if (widgetPlacement === 'bottom-left') qrPlacement = 'top-left';
             }
             startQR(widgetLink, qrPlacement);
         } else {
             stopQR();
-        }
-
-        // 3. Ticker Widget
-        if (activeTypes.includes('ticker') && tickerText) {
-            startTicker(tickerText, tickerLabel);
-        } else {
-            stopTicker();
         }
     }
 
@@ -155,6 +203,8 @@ window.SignageWidgets = (function () {
         stopClock();
         stopTicker();
         stopQR();
+        const overlayEl = document.getElementById('widgets-overlay');
+        if (overlayEl) overlayEl.classList.remove('has-ticker');
     }
 
     return {

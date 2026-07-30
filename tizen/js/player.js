@@ -648,7 +648,12 @@ window.SignagePlayer = (function () {
                                 mediaType: mediaType,
                                 filename: media.title || media.file || 'Media Item',
                                 duration: parseInt(slide.duration || media.duration || 10, 10),
-                                objectFit: slide.objectFit || 'cover'
+                                objectFit: slide.objectFit || 'cover',
+                                widgetType: slide.widgetType || data.widgetType || '',
+                                widgetPlacement: slide.widgetPlacement || data.widgetPlacement || 'top-right',
+                                widgetLink: slide.widgetLink || data.widgetLink || '',
+                                tickerText: slide.tickerText || data.tickerText || '',
+                                tickerLabel: slide.tickerLabel || data.tickerLabel || ''
                             };
                         }
                     } catch (e) {}
@@ -665,7 +670,12 @@ window.SignagePlayer = (function () {
                         mediaType: mediaType,
                         filename: pbAsset.filename || 'Asset',
                         duration: parseInt(pbAsset.duration || 10, 10),
-                        objectFit: pbAsset.objectFit || 'cover'
+                        objectFit: pbAsset.objectFit || 'cover',
+                        widgetType: pbAsset.widgetType || data.widgetType || '',
+                        widgetPlacement: pbAsset.widgetPlacement || data.widgetPlacement || 'top-right',
+                        widgetLink: pbAsset.widgetLink || data.widgetLink || '',
+                        tickerText: pbAsset.tickerText || data.tickerText || '',
+                        tickerLabel: pbAsset.tickerLabel || data.tickerLabel || ''
                     });
                 });
             } else if (data.files && data.files.length > 0) {
@@ -678,7 +688,12 @@ window.SignagePlayer = (function () {
                         mediaType: 'image',
                         filename: fileName,
                         duration: 10,
-                        objectFit: 'cover'
+                        objectFit: 'cover',
+                        widgetType: data.widgetType || '',
+                        widgetPlacement: data.widgetPlacement || 'top-right',
+                        widgetLink: data.widgetLink || '',
+                        tickerText: data.tickerText || '',
+                        tickerLabel: data.tickerLabel || ''
                     });
                 });
             } else if (data.mediaIds && data.mediaIds.length > 0) {
@@ -696,7 +711,12 @@ window.SignagePlayer = (function () {
                                 mediaType: mediaType,
                                 filename: media.title || media.file || 'Media Item',
                                 duration: parseInt(media.duration || 10, 10),
-                                objectFit: 'cover'
+                                objectFit: 'cover',
+                                widgetType: data.widgetType || '',
+                                widgetPlacement: data.widgetPlacement || 'top-right',
+                                widgetLink: data.widgetLink || '',
+                                tickerText: data.tickerText || '',
+                                tickerLabel: data.tickerLabel || ''
                             };
                         }
                     } catch (e) {}
