@@ -148,11 +148,9 @@
 
             const activePlaylistId = data.playlistId || data.playlist;
             if ((state.status === "active" || state.status === "online") && activePlaylistId) {
-                if (state.playlistId !== activePlaylistId || !state.playlist || state.playlist.length === 0) {
-                    state.playlistId = activePlaylistId;
-                    localStorage.setItem('signage_tizen_playlist_id', activePlaylistId);
-                    await fetchPlaylist(activePlaylistId, state, views, updateUI);
-                }
+                state.playlistId = activePlaylistId;
+                localStorage.setItem('signage_tizen_playlist_id', activePlaylistId);
+                await fetchPlaylist(activePlaylistId, state, views, updateUI);
             } else if (!activePlaylistId && state.playlist && state.playlist.length > 0) {
                 state.playlist = [];
                 state.playlistId = '';

@@ -12,46 +12,71 @@ window.SignageWidgets = (function () {
     function extractTickerText(input) {
         if (!input) return '';
 
-        let parsed = input;
+        let obj = input;
 
         if (typeof input === 'string') {
             const trimmed = input.trim();
-            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+            if (trimmed === '[object Object]' || trimmed === 'object Object') return '';
+
+            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+                (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+                trimmed.includes('{') || trimmed.includes(':')) {
                 try {
-                    parsed = JSON.parse(trimmed);
+                    obj = JSON.parse(trimmed);
                 } catch (_) {
-                    return trimmed;
+                    return trimmed.replace(/\[object Object\]/gi, '').trim();
                 }
             } else {
-                return trimmed;
+                return trimmed.replace(/\[object Object\]/gi, '').trim();
             }
         }
 
-        function getItemString(item) {
-            if (!item) return '';
-            if (typeof item === 'string' || typeof item === 'number') return String(item).trim();
-            if (typeof item === 'object') {
-                return item.text || item.title || item.headline || item.message || item.content || item.value || item.name || '';
+        function walk(target) {
+            if (!target) return [];
+            if (typeof target === 'string' || typeof target === 'number') {
+                const s = String(target).replace(/\[object Object\]/gi, '').trim();
+                return (s && s !== '[object Object]' && s !== 'object Object') ? [s] : [];
             }
-            return '';
-        }
-
-        if (Array.isArray(parsed)) {
-            const texts = parsed.map(getItemString).filter(t => t && t.trim() !== '');
-            if (texts.length > 0) return texts.join('   •   ');
-        }
-
-        if (typeof parsed === 'object') {
-            const single = getItemString(parsed);
-            if (single) return single;
-            const arr = parsed.items || parsed.news || parsed.headlines || parsed.data || parsed.slides;
-            if (Array.isArray(arr)) {
-                const texts = arr.map(getItemString).filter(t => t && t.trim() !== '');
-                if (texts.length > 0) return texts.join('   •   ');
+            if (Array.isArray(target)) {
+                let res = [];
+                target.forEach(item => {
+                    res = res.concat(walk(item));
+                });
+                return res;
             }
+            if (typeof target === 'object') {
+                const priorityKeys = ['text', 'title', 'headline', 'message', 'content', 'value', 'name', 'paragraph', 'label'];
+                for (const key of priorityKeys) {
+                    if (target[key]) {
+                        const found = walk(target[key]);
+                        if (found.length > 0) return found;
+                    }
+                }
+                const containerKeys = ['paragraphs', 'items', 'news', 'headlines', 'data', 'slides'];
+                for (const key of containerKeys) {
+                    if (target[key]) {
+                        const found = walk(target[key]);
+                        if (found.length > 0) return found;
+                    }
+                }
+                let res = [];
+                Object.keys(target).forEach(k => {
+                    if (target[k] && typeof target[k] !== 'function') {
+                        res = res.concat(walk(target[k]));
+                    }
+                });
+                return res;
+            }
+            return [];
         }
 
-        return String(parsed).replace(/[\{\}\[\]"]/g, '').trim();
+        const extracted = walk(obj).filter(t => t && t !== '[object Object]' && t !== 'object Object');
+        if (extracted.length > 0) {
+            const unique = Array.from(new Set(extracted));
+            return unique.join('   •   ');
+        }
+
+        return '';
     }
 
     // ---- Clock Widget ----------------------------------------------------
