@@ -202,13 +202,13 @@ html, body {
 
 /* Orientation Rotation Support */
 .rotate-portrait {
-    transform: rotate(90deg);
-    transform-origin: center center;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
     width: 100vh !important;
     height: 100vw !important;
-    position: absolute;
-    top: calc(50% - 50vw);
-    left: calc(50% - 50vh);
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+    transform-origin: center center !important;
 }
 
 /* Overlay Widgets Layer */

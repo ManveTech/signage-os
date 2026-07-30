@@ -54,8 +54,8 @@
     }
 
     function applyOrientation() {
-        const orientation = state.orientation || 'horizontal';
-        if (orientation === 'vertical' && window.innerWidth > window.innerHeight) {
+        const orientation = (state.orientation || 'horizontal').toLowerCase();
+        if ((orientation === 'vertical' || orientation === 'portrait') && window.innerWidth > window.innerHeight) {
             views.playback.classList.add('rotate-portrait');
         } else {
             views.playback.classList.remove('rotate-portrait');
