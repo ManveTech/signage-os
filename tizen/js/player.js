@@ -1,16 +1,71 @@
 /**
- * SignageOS Player - High Performance Download & Zero-Lag Rolling Pre-Decoded Playlist Rotation Engine
+ * SignageOS Player - Lightweight Offline-First Playback Engine
+ *
+ * Design goals for low-power Samsung Tizen panels (QBC class, ~2GB RAM):
+ *   1. Download every asset once to persistent wgt-private storage, then play
+ *      from disk so the screen keeps looping even with no network.
+ *   2. Stream downloads straight to disk (no whole-file base64 in memory) so
+ *      large videos/images never blow the tiny webview memory budget.
+ *   3. Request display-sized images (1920 long edge) so the panel decodes a
+ *      ~2MP JPEG instead of a multi-megapixel 4K source. This is what keeps
+ *      each slide's decode near-instant and the duration accurate.
+ *   4. Keep only the two on-screen <img> buffers decoded at any time.
  */
 
 window.SignagePlayer = (function () {
     const { KEYS, SERVER_URL, getPocketBaseUrl } = window.SignageConfig;
     const { getFileURI } = window.SignageStorage;
 
+    // Longest edge (px) we ever want the TV to download/decode for a still image.
+    // A 1080p panel (landscape or rotated portrait) never needs more than this.
+    const TARGET_EDGE = 1920;
+
     let rotationTimeout = null;
     let rotationToken = 0;
     let activeImageNum = 1;
     let isDownloading = false;
-    const rollingDecodedMap = new Map();
+
+    /**
+     * Rewrite a raw media URL into a display-sized variant so the TV downloads
+     * and decodes a small image. Videos and already-local resources are left
+     * untouched.
+     *   - PocketBase files (`/api/files/...`) -> on-the-fly `?thumb=` (zero cost
+     *     server dependency, cached by PocketBase after first request).
+     *   - R2 / external images -> routed through our resizing media proxy.
+     */
+    function optimizeImageUrl(rawUrl) {
+        if (!rawUrl) return rawUrl;
+        if (rawUrl.startsWith('file:') || rawUrl.startsWith('blob:')) return rawUrl;
+
+        if (rawUrl.includes('/api/files/')) {
+            const sep = rawUrl.includes('?') ? '&' : '?';
+            // `f` = fit within the box preserving aspect ratio (no crop, no pad).
+            return `${rawUrl}${sep}thumb=${TARGET_EDGE}x${TARGET_EDGE}f`;
+        }
+        return `${SERVER_URL}/api/v1/public/proxy-media?url=${encodeURIComponent(rawUrl)}&w=${TARGET_EDGE}`;
+    }
+
+    function optimizeAssetUrl(rawUrl, mediaType) {
+        return mediaType === 'video' ? rawUrl : optimizeImageUrl(rawUrl);
+    }
+
+    // Stable, filesystem-safe cache key. Keyed by mediaId (not slide index) so
+    // reordering a playlist or reusing the same media never re-downloads.
+    function cacheKeyOf(asset) {
+        const key = asset.mediaId || asset.id || asset.filename || 'asset';
+        return String(key).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    function cacheFilenameOf(asset) {
+        let ext = asset.mediaType === 'video' ? 'mp4' : 'jpg';
+        const src = asset.url || '';
+        if (asset.mediaType !== 'video') {
+            if (src.includes('.png')) ext = 'png';
+            else if (src.includes('.webp')) ext = 'webp';
+            else if (src.includes('.gif')) ext = 'gif';
+        }
+        return `asset_${cacheKeyOf(asset)}.${ext}`;
+    }
 
     function updateDownloadProgress(completed, total, currentName, downloadedBytes = 0, fileTotalBytes = 0) {
         const overlay = document.getElementById('download-progress-overlay');
@@ -57,95 +112,139 @@ window.SignagePlayer = (function () {
         return results;
     }
 
-    function updateRollingBuffer(state) {
-        if (!state.playlist || state.playlist.length === 0) return;
-        const len = state.playlist.length;
-        const windowIndices = [
-            state.currentAssetIndex,
-            (state.currentAssetIndex + 1) % len,
-            (state.currentAssetIndex + 2) % len
-        ];
+    // ---- Tizen filesystem helpers -----------------------------------------
 
-        const activeUrls = new Set();
-        windowIndices.forEach((idx) => {
-            const asset = state.playlist[idx];
-            if (asset && asset.mediaType === 'image' && asset.url) {
-                activeUrls.add(asset.url);
-                if (!rollingDecodedMap.has(asset.url)) {
-                    const img = new Image();
-                    img.onload = () => {
-                        if (typeof img.decode === 'function') {
-                            img.decode().catch(() => {});
-                        }
-                    };
-                    img.src = asset.url;
-                    rollingDecodedMap.set(asset.url, img);
-                }
-            }
+    function resolveDir(path, mode) {
+        return new Promise((resolve, reject) => {
+            window.tizen.filesystem.resolve(path, resolve, reject, mode);
         });
+    }
 
-        for (const url of rollingDecodedMap.keys()) {
-            if (!activeUrls.has(url)) {
-                const oldImg = rollingDecodedMap.get(url);
-                if (oldImg) {
-                    oldImg.onload = null;
-                    oldImg.onerror = null;
-                    oldImg.src = '';
+    // Stream an HTTP response body directly to a Tizen file, writing each chunk
+    // as it arrives so the full asset is never held in memory at once.
+    async function streamResponseToFile(response, file, onChunk) {
+        const canStream = response.body && typeof response.body.getReader === 'function';
+
+        return new Promise((resolve, reject) => {
+            file.openStream('w', async (stream) => {
+                try {
+                    let received = 0;
+                    if (canStream) {
+                        const reader = response.body.getReader();
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            // writeBytes needs a plain octet array; convert per
+                            // small chunk to keep memory flat.
+                            stream.writeBytes(Array.prototype.slice.call(value));
+                            received += value.length;
+                            if (onChunk) onChunk(received);
+                        }
+                    } else {
+                        // Fallback for webviews without a streaming body reader.
+                        const buf = new Uint8Array(await response.arrayBuffer());
+                        stream.writeBytes(Array.prototype.slice.call(buf));
+                        received = buf.length;
+                        if (onChunk) onChunk(received);
+                    }
+                    stream.close();
+                    resolve(received);
+                } catch (e) {
+                    try { stream.close(); } catch (_) {}
+                    reject(e);
                 }
-                rollingDecodedMap.delete(url);
+            }, reject, 'UTF-8');
+        });
+    }
+
+    // Remove cached files that are no longer referenced by the active playlist,
+    // so storage doesn't fill up over time and start rejecting writes.
+    async function cleanupOrphans(tizenDir, keepFilenames) {
+        try {
+            const files = await new Promise((resolve, reject) => {
+                tizenDir.listFiles(resolve, reject);
+            });
+            for (const f of files) {
+                if (f && f.isFile && f.name.indexOf('asset_') === 0 && !keepFilenames.has(f.name)) {
+                    try {
+                        await new Promise((resolve) => {
+                            tizenDir.deleteFile(f.fullPath, resolve, resolve);
+                        });
+                        console.log(`[Player] Removed stale cached asset: ${f.name}`);
+                    } catch (_) {}
+                }
             }
+        } catch (e) {
+            console.warn('[Player] Orphan cleanup skipped:', e);
         }
     }
 
+    async function fetchWithTimeout(url, timeoutMs) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { signal: controller.signal });
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
+    /**
+     * Ensure every asset is available locally. On Tizen, downloads stream to
+     * wgt-private and `asset.url` is rewritten to the persistent file:// URI so
+     * playback (and offline reloads) read from disk. Assets that fail to cache
+     * keep their remote URL so a later online sync can retry them.
+     */
     async function syncLocalFiles(assets) {
         if (!assets || assets.length === 0) return assets;
         if (isDownloading) return assets;
 
         isDownloading = true;
         const totalAssets = assets.length;
-        const isTizen = window.tizen && window.tizen.filesystem;
+        const isTizen = !!(window.tizen && window.tizen.filesystem);
         let tizenDir = null;
 
         if (isTizen) {
             try {
-                tizenDir = await new Promise((resolve, reject) => {
-                    window.tizen.filesystem.resolve("wgt-private", resolve, reject, "rw");
-                });
+                tizenDir = await resolveDir('wgt-private', 'rw');
             } catch (e) {
-                console.warn("[Player] Tizen storage resolve error:", e);
+                console.warn('[Player] Tizen storage resolve error:', e);
             }
         }
 
+        const keepFilenames = new Set();
         const missingAssets = [];
         let cachedCount = 0;
 
+        // Pass 1: resolve what is already on disk.
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
             if (!asset.url) continue;
 
             if (tizenDir) {
-                let ext = asset.mediaType === 'video' ? 'mp4' : 'png';
-                if (asset.url.includes('.jpg') || asset.url.includes('.jpeg')) ext = 'jpg';
-                else if (asset.url.includes('.gif')) ext = 'gif';
-                else if (asset.url.includes('.webp')) ext = 'webp';
-
-                const filename = `asset_${asset.id}.${ext}`;
+                const filename = cacheFilenameOf(asset);
+                keepFilenames.add(filename);
                 try {
                     const file = tizenDir.resolve(filename);
-                    asset.url = getFileURI(file);
-                    cachedCount++;
+                    if (file && file.fileSize > 0) {
+                        asset.url = getFileURI(file);
+                        cachedCount++;
+                    } else {
+                        missingAssets.push({ index: i, asset, filename });
+                    }
                 } catch (_) {
                     missingAssets.push({ index: i, asset, filename });
                 }
             } else if (asset.url.startsWith('blob:') || asset.url.startsWith('file:')) {
                 cachedCount++;
             } else {
-                missingAssets.push({ index: i, asset, filename: asset.filename || `asset_${asset.id}` });
+                missingAssets.push({ index: i, asset, filename: cacheFilenameOf(asset) });
             }
         }
 
+        // Pass 2: download whatever is missing (sequential = gentle on memory).
         if (missingAssets.length > 0) {
-            console.log(`[Player] Total Assets: ${totalAssets}, Cached: ${cachedCount}, Downloading: ${missingAssets.length}`);
+            console.log(`[Player] Total: ${totalAssets}, Cached: ${cachedCount}, Downloading: ${missingAssets.length}`);
             updateDownloadProgress(cachedCount, totalAssets, '');
 
             for (let k = 0; k < missingAssets.length; k++) {
@@ -155,79 +254,74 @@ window.SignagePlayer = (function () {
                 try {
                     let response;
                     try {
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 60000);
-                        response = await fetch(asset.url, { signal: controller.signal });
-                        clearTimeout(timeoutId);
-                        if (!response.ok) throw new Error("Direct fetch failed");
+                        response = await fetchWithTimeout(asset.url, 60000);
+                        if (!response.ok) throw new Error('Direct fetch failed');
                     } catch (directErr) {
                         console.log(`[Player] Direct download failed for ${asset.url}, using proxy...`);
                         const proxyUrl = `${SERVER_URL}/api/v1/public/proxy-media?url=${encodeURIComponent(asset.url)}`;
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 60000);
-                        response = await fetch(proxyUrl, { signal: controller.signal });
-                        clearTimeout(timeoutId);
-                        if (!response.ok) throw new Error("Proxy download failed");
+                        response = await fetchWithTimeout(proxyUrl, 60000);
+                        if (!response.ok) throw new Error('Proxy download failed');
                     }
 
                     const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
-                    let blob;
-
-                    if (response.body && typeof response.body.getReader === 'function') {
-                        const reader = response.body.getReader();
-                        const chunks = [];
-                        let receivedBytes = 0;
-
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-                            chunks.push(value);
-                            receivedBytes += value.length;
-                            updateDownloadProgress(currentProgressIdx, totalAssets, asset.filename || filename, receivedBytes, contentLength);
-                        }
-                        blob = new Blob(chunks);
-                    } else {
-                        blob = await response.blob();
-                        updateDownloadProgress(currentProgressIdx, totalAssets, asset.filename || filename, blob.size, blob.size);
-                    }
+                    const displayName = asset.filename || filename;
 
                     if (tizenDir) {
-                        const base64Data = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
-
                         const file = tizenDir.createFile(filename);
-                        await new Promise((resolve, reject) => {
-                            file.openStream("w", (stream) => {
-                                try {
-                                    if (typeof stream.writeBase64 === 'function') {
-                                        stream.writeBase64(base64Data);
-                                        stream.close();
-                                        resolve();
-                                    } else {
-                                        stream.close();
-                                        reject(new Error("writeBase64 unavailable"));
-                                    }
-                                } catch (e) {
-                                    stream.close();
-                                    reject(e);
-                                }
-                            }, reject);
+                        const written = await streamResponseToFile(response, file, (bytes) => {
+                            updateDownloadProgress(currentProgressIdx, totalAssets, displayName, bytes, contentLength);
                         });
 
-                        asset.url = getFileURI(file);
+                        // Verify the write landed intact before trusting it for
+                        // offline playback. A truncated file is deleted and the
+                        // asset keeps its remote URL for a later retry.
+                        let ok = written > 0;
+                        try {
+                            const check = tizenDir.resolve(filename);
+                            const size = check ? check.fileSize : 0;
+                            if (contentLength > 0 && size !== contentLength) ok = false;
+                            if (!size) ok = false;
+                            if (ok) {
+                                asset.url = getFileURI(check);
+                                console.log(`[Player] Cached ${displayName} (${size} bytes)`);
+                            }
+                        } catch (_) {
+                            ok = false;
+                        }
+
+                        if (!ok) {
+                            console.warn(`[Player] Verification failed for ${displayName}; will retry on next sync`);
+                            try {
+                                await new Promise((resolve) => tizenDir.deleteFile(file.fullPath, resolve, resolve));
+                            } catch (_) {}
+                            keepFilenames.delete(filename);
+                        }
                     } else {
+                        // Non-Tizen (browser/dev only): blob URL is fine for the
+                        // session. Real panels always take the disk path above.
+                        const blob = await response.blob();
                         asset.url = URL.createObjectURL(blob);
+                        updateDownloadProgress(currentProgressIdx, totalAssets, displayName, blob.size, blob.size);
                     }
-                    console.log(`[Player] Successfully downloaded asset ${asset.filename}`);
                 } catch (dlErr) {
-                    console.error(`[Player] Download failed for asset ${asset.filename}:`, dlErr);
+                    console.error(`[Player] Download failed for ${asset.filename}:`, dlErr);
+                    keepFilenames.delete(filename);
+                    // Drop any partial file so it isn't mistaken for a valid
+                    // cache entry on the next sync.
+                    if (tizenDir) {
+                        try {
+                            const partial = tizenDir.resolve(filename);
+                            if (partial) {
+                                await new Promise((resolve) => tizenDir.deleteFile(partial.fullPath, resolve, resolve));
+                            }
+                        } catch (_) {}
+                    }
                 }
-                updateDownloadProgress(currentProgressIdx, totalAssets, asset.filename || filename);
             }
+        }
+
+        if (tizenDir) {
+            await cleanupOrphans(tizenDir, keepFilenames);
         }
 
         hideDownloadOverlay();
@@ -236,7 +330,9 @@ window.SignagePlayer = (function () {
     }
 
     /**
-     * Exact Duration Double-Buffered Rotation Engine
+     * Exact-duration double-buffered rotation. Only the two on-screen <img>
+     * elements are ever decoded; the next slide is prefetched into the hidden
+     * buffer during the current slide.
      */
     function startPlaylistRotation(state, views, updateUICallback) {
         if (rotationTimeout) clearTimeout(rotationTimeout);
@@ -255,8 +351,6 @@ window.SignagePlayer = (function () {
 
         const duration = Math.max(parseInt(asset.duration, 10) || 10, 2) * 1000;
         console.log(`[Player] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} (${asset.mediaType}, ${asset.duration}s)`);
-
-        updateRollingBuffer(state);
 
         if (asset.mediaType === 'video') {
             const video = views.videoPlayer;
@@ -283,7 +377,7 @@ window.SignagePlayer = (function () {
             };
 
             const onVideoError = (err) => {
-                console.warn("[Player] Video error:", err);
+                console.warn('[Player] Video error:', err);
                 if (currentToken !== rotationToken || videoDone) return;
                 videoDone = true;
                 video.removeEventListener('ended', onVideoEnd);
@@ -295,20 +389,20 @@ window.SignagePlayer = (function () {
             video.addEventListener('error', onVideoError);
 
             video.play().catch((e) => {
-                console.warn("[Player] Muted video fallback...", e);
+                console.warn('[Player] Muted video fallback...', e);
                 video.muted = true;
                 video.play().catch(() => onVideoError(e));
             });
 
             rotationTimeout = setTimeout(() => {
                 if (currentToken === rotationToken && !videoDone) {
-                    console.warn("[Player] Video safety backup timer fired");
+                    console.warn('[Player] Video safety backup timer fired');
                     onVideoEnd();
                 }
             }, duration + 3000);
 
         } else {
-            // Image Playback - Strict Exact-Duration Double-Buffering with Paint Guarantee
+            // Image playback - double-buffered swap, duration timed from paint.
             activeImageNum = activeImageNum === 1 ? 2 : 1;
             const activeImg = activeImageNum === 1 ? views.imagePlayer1 : views.imagePlayer2;
             const inactiveImg = activeImageNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
@@ -319,31 +413,60 @@ window.SignagePlayer = (function () {
             }
 
             activeImg.style.objectFit = asset.objectFit || 'cover';
-
             const tSwapRequested = performance.now();
 
+            let settled = false;
+            let loadWatchdog = null;
+            const clearWatchdog = () => {
+                if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
+            };
+
+            // If an image can't load (offline + not cached, or a hung request),
+            // skip to the next slide instead of freezing the screen.
+            loadWatchdog = setTimeout(() => {
+                if (currentToken !== rotationToken || settled) return;
+                settled = true;
+                console.warn('[Player] Image load watchdog fired, skipping:', asset.filename);
+                advancePlaylist(state, views, updateUICallback);
+            }, Math.max(duration, 8000) + 4000);
+
+            const onImgError = () => {
+                if (currentToken !== rotationToken || settled) return;
+                settled = true;
+                clearWatchdog();
+                console.warn('[Player] Failed to load image asset:', asset.filename);
+                // Small delay avoids a tight CPU spin if an entire uncached
+                // playlist is unreachable while offline.
+                setTimeout(() => {
+                    if (currentToken === rotationToken) advancePlaylist(state, views, updateUICallback);
+                }, 800);
+            };
+
             const performSwapAndStartTimer = () => {
-                if (currentToken !== rotationToken) return;
+                if (currentToken !== rotationToken || settled) return;
+                settled = true;
+                clearWatchdog();
 
                 if (views.videoPlayer) {
                     views.videoPlayer.style.display = 'none';
                     try { views.videoPlayer.pause(); } catch (_) {}
                 }
 
-                // 1. Double Buffer Layer Preparation: Active to front (zIndex: 3, opacity: 1)
+                // Active buffer to front (painted), inactive buffer behind.
                 activeImg.style.display = 'block';
                 activeImg.style.zIndex = '3';
                 activeImg.style.opacity = '1';
                 activeImg.classList.add('active');
 
-                // Send inactive container behind (zIndex: 1, opacity: 0)
                 if (inactiveImg) {
                     inactiveImg.classList.remove('active');
                     inactiveImg.style.zIndex = '1';
                     inactiveImg.style.opacity = '0';
                 }
 
-                // 2. Double requestAnimationFrame guarantees pixels are painted onto TV panel BEFORE starting timer!
+                // Double rAF guarantees the pixels are on the panel before the
+                // duration timer starts, so each slide is visible for its full
+                // configured time.
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
                         if (currentToken !== rotationToken) return;
@@ -351,24 +474,16 @@ window.SignagePlayer = (function () {
                         const tPainted = performance.now();
                         const paintLatency = Math.round(tPainted - tSwapRequested);
 
-                        // START DURATION TIMER STRICTLY WHEN IMAGE IS PAINTED ON SCREEN
                         if (rotationTimeout) clearTimeout(rotationTimeout);
                         rotationTimeout = setTimeout(() => {
                             if (currentToken === rotationToken) {
-                                const tExpired = performance.now();
-                                const actualVisibleDuration = Math.round(tExpired - tPainted);
-                                const drift = actualVisibleDuration - duration;
-                                console.log(
-                                    `[TIMING METRICS] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} | ` +
-                                    `Expected: ${duration}ms | Paint Latency: ${paintLatency}ms | ` +
-                                    `Timer Started: ${Math.round(tPainted)}ms | Expired: ${Math.round(tExpired)}ms | ` +
-                                    `Actual Visible Duration: ${actualVisibleDuration}ms | Drift: ${drift >= 0 ? '+' : ''}${drift}ms`
-                                );
+                                const drift = Math.round(performance.now() - tPainted) - duration;
+                                console.log(`[TIMING] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} | Expected ${duration}ms | Paint ${paintLatency}ms | Drift ${drift >= 0 ? '+' : ''}${drift}ms`);
                                 advancePlaylist(state, views, updateUICallback);
                             }
                         }, duration);
 
-                        // 3. Pre-load next slide into inactive container AFTER paint frame finishes
+                        // Prefetch the next image into the hidden buffer.
                         setTimeout(() => {
                             if (currentToken !== rotationToken || state.playlist.length <= 1 || !inactiveImg) return;
                             const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
@@ -388,38 +503,23 @@ window.SignagePlayer = (function () {
                 });
             };
 
-            if (activeImg.src !== asset.url) {
-                activeImg.onload = () => {
-                    if (typeof activeImg.decode === 'function') {
-                        activeImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
-                    } else {
-                        performSwapAndStartTimer();
-                    }
-                };
-                activeImg.onerror = () => {
-                    console.warn("[Player] Failed to load image asset:", asset.filename);
-                    if (currentToken !== rotationToken) advancePlaylist(state, views, updateUICallback);
-                };
-                activeImg.src = asset.url;
-            } else {
-                if (activeImg.complete) {
-                    if (typeof activeImg.decode === 'function') {
-                        activeImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
-                    } else {
-                        performSwapAndStartTimer();
-                    }
+            const decodeThenSwap = () => {
+                if (typeof activeImg.decode === 'function') {
+                    activeImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
                 } else {
-                    activeImg.onload = () => {
-                        if (typeof activeImg.decode === 'function') {
-                            activeImg.decode().then(performSwapAndStartTimer).catch(performSwapAndStartTimer);
-                        } else {
-                            performSwapAndStartTimer();
-                        }
-                    };
-                    activeImg.onerror = () => {
-                        if (currentToken !== rotationToken) advancePlaylist(state, views, updateUICallback);
-                    };
+                    performSwapAndStartTimer();
                 }
+            };
+
+            if (activeImg.src !== asset.url) {
+                activeImg.onload = decodeThenSwap;
+                activeImg.onerror = onImgError;
+                activeImg.src = asset.url;
+            } else if (activeImg.complete && activeImg.naturalWidth > 0) {
+                decodeThenSwap();
+            } else {
+                activeImg.onload = decodeThenSwap;
+                activeImg.onerror = onImgError;
             }
         }
     }
@@ -453,11 +553,12 @@ window.SignagePlayer = (function () {
                         if (mediaRes.ok) {
                             const media = await mediaRes.json();
                             const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
+                            const mediaType = (media.type || 'image').toLowerCase();
                             return {
                                 id: `${media.id}_${slideIdx}`,
                                 mediaId: media.id,
-                                url: rawUrl,
-                                mediaType: (media.type || 'image').toLowerCase(),
+                                url: optimizeAssetUrl(rawUrl, mediaType),
+                                mediaType: mediaType,
                                 filename: media.title || media.file || 'Media Item',
                                 duration: parseInt(slide.duration || media.duration || 10, 10),
                                 objectFit: slide.objectFit || 'cover'
@@ -469,10 +570,12 @@ window.SignagePlayer = (function () {
                 fetchedAssets = results.filter(Boolean);
             } else if (data.assetsJson && data.assetsJson.length > 0) {
                 data.assetsJson.forEach((pbAsset, idx) => {
+                    const mediaType = (pbAsset.mediaType || 'image').toLowerCase();
                     fetchedAssets.push({
                         id: pbAsset.id ? `${pbAsset.id}_${idx}` : `asset_${idx}`,
-                        url: pbAsset.url,
-                        mediaType: (pbAsset.mediaType || 'image').toLowerCase(),
+                        mediaId: pbAsset.id || null,
+                        url: optimizeAssetUrl(pbAsset.url, mediaType),
+                        mediaType: mediaType,
                         filename: pbAsset.filename || 'Asset',
                         duration: parseInt(pbAsset.duration || 10, 10),
                         objectFit: pbAsset.objectFit || 'cover'
@@ -483,8 +586,9 @@ window.SignagePlayer = (function () {
                     const rawUrl = `${POCKETBASE_URL}/api/files/playlists/${playlistId}/${fileName}`;
                     fetchedAssets.push({
                         id: `${playlistId}_${index}`,
-                        url: rawUrl,
-                        mediaType: "image",
+                        mediaId: `${playlistId}_${fileName}`,
+                        url: optimizeAssetUrl(rawUrl, 'image'),
+                        mediaType: 'image',
                         filename: fileName,
                         duration: 10,
                         objectFit: 'cover'
@@ -497,11 +601,12 @@ window.SignagePlayer = (function () {
                         if (mediaRes.ok) {
                             const media = await mediaRes.json();
                             const rawUrl = media.file ? `${POCKETBASE_URL}/api/files/media_items/${media.id}/${media.file}` : media.thumbnail;
+                            const mediaType = (media.type || 'image').toLowerCase();
                             return {
                                 id: `${media.id}_${mediaIdx}`,
                                 mediaId: media.id,
-                                url: rawUrl,
-                                mediaType: (media.type || 'image').toLowerCase(),
+                                url: optimizeAssetUrl(rawUrl, mediaType),
+                                mediaType: mediaType,
                                 filename: media.title || media.file || 'Media Item',
                                 duration: parseInt(media.duration || 10, 10),
                                 objectFit: 'cover'
@@ -533,7 +638,7 @@ window.SignagePlayer = (function () {
                 startPlaylistRotation(state, views, updateUICallback);
             }
         } catch (err) {
-            console.error("[Player] Error fetching playlist assets:", err);
+            console.error('[Player] Error fetching playlist assets:', err);
             hideDownloadOverlay();
         }
     }

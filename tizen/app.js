@@ -41,7 +41,11 @@
         bindRemoteKeys(views, (force) => requestPairingCode(state, views, updateUI, force));
 
         if (state.screenId && state.status !== 'pairing') {
-            fetchScreenConfig().then(() => updateUI());
+            // Offline-first: paint the cached playlist immediately so the screen
+            // starts looping without waiting on (or needing) the network. The
+            // background sync below refreshes config and hot-swaps on changes.
+            updateUI();
+            fetchScreenConfig();
         } else {
             requestPairingCode(state, views, updateUI);
         }

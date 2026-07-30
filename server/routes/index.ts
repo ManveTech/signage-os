@@ -41,12 +41,19 @@ apiRouter.get('/public/tenant-branding', async (req, res) => {
   }
 });
 
-// Public dynamic media proxy to bypass Tizen SSSP CORS restrictions
+// Public dynamic media proxy to bypass Tizen SSSP CORS restrictions.
+// Optional `w` query param downscales images server-side (e.g. ?w=1920) so
+// low-power signage panels (2GB Tizen TVs) download and decode small files
+// instead of full-resolution R2/external source images. Non-images and any
+// resize failure fall back to piping the original bytes unchanged.
 apiRouter.get('/public/proxy-media', async (req, res) => {
   const mediaUrl = req.query.url;
   if (!mediaUrl || typeof mediaUrl !== 'string') {
     return res.status(400).send('Missing url parameter');
   }
+
+  const widthParam = parseInt(String(req.query.w || ''), 10);
+  const targetWidth = Number.isFinite(widthParam) && widthParam > 0 ? Math.min(widthParam, 3840) : 0;
 
   try {
     const cleanUrl = decodeURIComponent(mediaUrl);
@@ -56,16 +63,39 @@ apiRouter.get('/public/proxy-media', async (req, res) => {
       return res.status(mediaRes.status).send(`Failed to fetch remote media: ${mediaRes.statusText}`);
     }
 
-    // Copy Content-Type and headers
-    const contentType = mediaRes.headers.get('content-type');
-    if (contentType) {
-      res.setHeader('Content-Type', contentType);
-    }
-    res.setHeader('Access-Control-Allow-Origin', '*');
-
-    // Pipe the response body
+    const contentType = mediaRes.headers.get('content-type') || '';
     const arrayBuffer = await mediaRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    let buffer = Buffer.from(arrayBuffer);
+    let outContentType = contentType;
+
+    // Downscale only raster images that sharp can safely re-encode. Animated
+    // GIFs and SVGs are passed through to avoid breaking animation/vectors.
+    const isResizableImage = targetWidth > 0 && /^image\/(jpe?g|png|webp)$/i.test(contentType);
+    if (isResizableImage) {
+      try {
+        // Dynamic import so a missing/unbuilt `sharp` binary degrades to a
+        // plain proxy instead of crashing the route. Non-literal specifier keeps
+        // this compiling even before `npm install` pulls sharp in.
+        const sharpSpecifier = 'sharp';
+        const sharpModule: any = await import(sharpSpecifier).then((m: any) => m.default || m).catch(() => null);
+        if (sharpModule) {
+          buffer = await sharpModule(buffer)
+            .rotate() // honor EXIF orientation before stripping metadata
+            .resize({ width: targetWidth, height: targetWidth, fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 82, progressive: true, mozjpeg: true })
+            .toBuffer();
+          outContentType = 'image/jpeg';
+        }
+      } catch (resizeErr) {
+        console.error('proxy-media resize failed, serving original:', resizeErr);
+        buffer = Buffer.from(arrayBuffer);
+        outContentType = contentType;
+      }
+    }
+
+    if (outContentType) res.setHeader('Content-Type', outContentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
     return res.send(buffer);
   } catch (err) {
     console.error('Error proxying media request:', err);
