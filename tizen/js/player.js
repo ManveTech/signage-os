@@ -25,6 +25,37 @@ window.SignagePlayer = (function () {
     let activeImageNum = 1;
     let isDownloading = false;
 
+    function prefetchNextSlide(state, views, currentToken) {
+        setTimeout(() => {
+            if (currentToken !== rotationToken || !state.playlist || state.playlist.length <= 1) return;
+            const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
+            const nextAsset = state.playlist[nextIndex];
+            if (!nextAsset || !nextAsset.url) return;
+
+            if (nextAsset.mediaType === 'video') {
+                const video = views.videoPlayer;
+                if (video && video.src !== nextAsset.url) {
+                    video.style.display = 'none';
+                    video.style.opacity = '0';
+                    video.src = nextAsset.url;
+                    try { video.load(); } catch (_) {}
+                    console.log(`[Player] Prefetched next video slide: ${nextAsset.filename}`);
+                }
+            } else if (nextAsset.mediaType === 'image') {
+                const inactiveImg = activeImageNum === 1 ? views.imagePlayer2 : views.imagePlayer1;
+                if (inactiveImg && inactiveImg.src !== nextAsset.url) {
+                    inactiveImg.style.display = 'none';
+                    inactiveImg.style.opacity = '0';
+                    inactiveImg.src = nextAsset.url;
+                    if (typeof inactiveImg.decode === 'function') {
+                        inactiveImg.decode().catch(() => {});
+                    }
+                    console.log(`[Player] Prefetched next image slide: ${nextAsset.filename}`);
+                }
+            }
+        }, 100);
+    }
+
     /**
      * Rewrite a raw media URL into a display-sized variant so the TV downloads
      * and decodes a small image. Videos and already-local resources are left
@@ -361,45 +392,111 @@ window.SignagePlayer = (function () {
 
             video.style.objectFit = asset.objectFit || 'cover';
             video.style.display = 'block';
-            video.style.opacity = '1';
+            video.style.zIndex = '4';
 
             if (video.src !== asset.url) {
                 video.src = asset.url;
+            } else {
+                try { video.currentTime = 0; } catch (_) {}
             }
 
             let videoDone = false;
+            let videoSwapped = false;
+            let safetyWatchdog = null;
+
+            const cleanUpVideo = () => {
+                video.removeEventListener('ended', onVideoEnd);
+                video.removeEventListener('error', onVideoError);
+                video.removeEventListener('playing', onVideoFrameReady);
+                video.removeEventListener('timeupdate', onVideoFrameReady);
+                video.removeEventListener('loadedmetadata', onMetadata);
+                if (safetyWatchdog) { clearTimeout(safetyWatchdog); safetyWatchdog = null; }
+            };
+
             const onVideoEnd = () => {
                 if (currentToken !== rotationToken || videoDone) return;
                 videoDone = true;
-                video.removeEventListener('ended', onVideoEnd);
-                video.removeEventListener('error', onVideoError);
+                cleanUpVideo();
                 advancePlaylist(state, views, updateUICallback);
             };
 
             const onVideoError = (err) => {
-                console.warn('[Player] Video error:', err);
+                console.warn('[Player] Video playback error for:', asset.filename, err);
                 if (currentToken !== rotationToken || videoDone) return;
                 videoDone = true;
-                video.removeEventListener('ended', onVideoEnd);
-                video.removeEventListener('error', onVideoError);
+                cleanUpVideo();
                 advancePlaylist(state, views, updateUICallback);
+            };
+
+            const onVideoFrameReady = () => {
+                if (videoSwapped || currentToken !== rotationToken) return;
+                videoSwapped = true;
+
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (currentToken !== rotationToken) return;
+
+                        video.style.opacity = '1';
+                        video.classList.add('active');
+
+                        if (views.imagePlayer1) {
+                            views.imagePlayer1.style.opacity = '0';
+                            views.imagePlayer1.style.zIndex = '1';
+                            views.imagePlayer1.style.display = 'none';
+                            views.imagePlayer1.classList.remove('active');
+                        }
+                        if (views.imagePlayer2) {
+                            views.imagePlayer2.style.opacity = '0';
+                            views.imagePlayer2.style.zIndex = '1';
+                            views.imagePlayer2.style.display = 'none';
+                            views.imagePlayer2.classList.remove('active');
+                        }
+
+                        prefetchNextSlide(state, views, currentToken);
+                    });
+                });
+            };
+
+            const onMetadata = () => {
+                if (currentToken !== rotationToken) return;
+                if (video.duration && isFinite(video.duration) && video.duration > 0) {
+                    const realDurationMs = Math.ceil(video.duration * 1000);
+                    if (rotationTimeout) clearTimeout(rotationTimeout);
+                    rotationTimeout = setTimeout(() => {
+                        if (currentToken === rotationToken && !videoDone) {
+                            console.warn('[Player] Video ended by real-duration timer:', asset.filename);
+                            onVideoEnd();
+                        }
+                    }, realDurationMs + 3000);
+                }
             };
 
             video.addEventListener('ended', onVideoEnd);
             video.addEventListener('error', onVideoError);
+            video.addEventListener('playing', onVideoFrameReady);
+            video.addEventListener('timeupdate', onVideoFrameReady);
+            video.addEventListener('loadedmetadata', onMetadata);
 
-            video.play().catch((e) => {
-                console.warn('[Player] Muted video fallback...', e);
-                video.muted = true;
-                video.play().catch(() => onVideoError(e));
-            });
-
-            rotationTimeout = setTimeout(() => {
+            const fallbackTimeout = Math.max(duration, 12000) + 5000;
+            safetyWatchdog = setTimeout(() => {
                 if (currentToken === rotationToken && !videoDone) {
-                    console.warn('[Player] Video safety backup timer fired');
+                    console.warn('[Player] Video fallback watchdog fired for:', asset.filename);
                     onVideoEnd();
                 }
-            }, duration + 3000);
+            }, fallbackTimeout);
+
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    onVideoFrameReady();
+                }).catch((e) => {
+                    console.warn('[Player] Muted video play fallback for:', asset.filename, e);
+                    video.muted = true;
+                    video.play().then(() => {
+                        onVideoFrameReady();
+                    }).catch(onVideoError);
+                });
+            }
 
         } else {
             // Image playback - double-buffered swap, duration timed from paint.
@@ -435,8 +532,6 @@ window.SignagePlayer = (function () {
                 settled = true;
                 clearWatchdog();
                 console.warn('[Player] Failed to load image asset:', asset.filename);
-                // Small delay avoids a tight CPU spin if an entire uncached
-                // playlist is unreachable while offline.
                 setTimeout(() => {
                     if (currentToken === rotationToken) advancePlaylist(state, views, updateUICallback);
                 }, 800);
@@ -449,6 +544,8 @@ window.SignagePlayer = (function () {
 
                 if (views.videoPlayer) {
                     views.videoPlayer.style.display = 'none';
+                    views.videoPlayer.style.opacity = '0';
+                    views.videoPlayer.classList.remove('active');
                     try { views.videoPlayer.pause(); } catch (_) {}
                 }
 
@@ -483,22 +580,7 @@ window.SignagePlayer = (function () {
                             }
                         }, duration);
 
-                        // Prefetch the next image into the hidden buffer.
-                        setTimeout(() => {
-                            if (currentToken !== rotationToken || state.playlist.length <= 1 || !inactiveImg) return;
-                            const nextIndex = (state.currentAssetIndex + 1) % state.playlist.length;
-                            const nextAsset = state.playlist[nextIndex];
-                            if (nextAsset && nextAsset.mediaType === 'image' && nextAsset.url) {
-                                if (inactiveImg.src !== nextAsset.url) {
-                                    inactiveImg.style.display = 'none';
-                                    inactiveImg.style.opacity = '0';
-                                    inactiveImg.src = nextAsset.url;
-                                    if (typeof inactiveImg.decode === 'function') {
-                                        inactiveImg.decode().catch(() => {});
-                                    }
-                                }
-                            }
-                        }, 100);
+                        prefetchNextSlide(state, views, currentToken);
                     });
                 });
             };
