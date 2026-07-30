@@ -1,11 +1,58 @@
 /**
  * SignageOS Player - High-Performance Lightweight Overlay Widgets Module
- * Supports: Clock, Ticker (Hardware-Accelerated Marquee), and QR Code Overlay.
+ * Supports: Clock (Background-free typography), Ticker (JSON text parser + Marquee), and QR Code Overlay.
  * Designed for low-power Samsung Tizen hardware (near-zero CPU/RAM overhead).
  */
 
 window.SignageWidgets = (function () {
     let clockInterval = null;
+
+    // ---- Helper: Extract Plain Text from JSON / Objects for News/Ticker ---
+
+    function extractTickerText(input) {
+        if (!input) return '';
+
+        let parsed = input;
+
+        if (typeof input === 'string') {
+            const trimmed = input.trim();
+            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                try {
+                    parsed = JSON.parse(trimmed);
+                } catch (_) {
+                    return trimmed;
+                }
+            } else {
+                return trimmed;
+            }
+        }
+
+        function getItemString(item) {
+            if (!item) return '';
+            if (typeof item === 'string' || typeof item === 'number') return String(item).trim();
+            if (typeof item === 'object') {
+                return item.text || item.title || item.headline || item.message || item.content || item.value || item.name || '';
+            }
+            return '';
+        }
+
+        if (Array.isArray(parsed)) {
+            const texts = parsed.map(getItemString).filter(t => t && t.trim() !== '');
+            if (texts.length > 0) return texts.join('   •   ');
+        }
+
+        if (typeof parsed === 'object') {
+            const single = getItemString(parsed);
+            if (single) return single;
+            const arr = parsed.items || parsed.news || parsed.headlines || parsed.data || parsed.slides;
+            if (Array.isArray(arr)) {
+                const texts = arr.map(getItemString).filter(t => t && t.trim() !== '');
+                if (texts.length > 0) return texts.join('   •   ');
+            }
+        }
+
+        return String(parsed).replace(/[\{\}\[\]"]/g, '').trim();
+    }
 
     // ---- Clock Widget ----------------------------------------------------
 
@@ -47,19 +94,19 @@ window.SignageWidgets = (function () {
 
     // ---- Ticker Widget ---------------------------------------------------
 
-    function startTicker(text, label = 'NOTICE') {
+    function startTicker(rawText, label = 'NOTICE') {
         const tickerEl = document.getElementById('widget-ticker');
         const textEl = document.getElementById('ticker-text');
         const labelEl = document.getElementById('ticker-label');
 
         if (!tickerEl || !textEl) return;
 
-        if (!text || String(text).trim() === '') {
+        const cleanText = extractTickerText(rawText);
+        if (!cleanText || cleanText.trim() === '') {
             tickerEl.classList.add('hidden');
             return;
         }
 
-        const cleanText = String(text).trim();
         if (labelEl) labelEl.innerText = (label || 'NOTICE').toUpperCase();
         textEl.innerText = cleanText;
 
@@ -84,7 +131,6 @@ window.SignageWidgets = (function () {
     function generateQrSvg(text) {
         if (!text) return '';
         const encodedUrl = encodeURIComponent(text);
-        // Clean high-contrast vector QR display
         const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodedUrl}`;
         return `<img src="${qrApiUrl}" alt="QR Code" style="width: 90px; height: 90px; display: block; border-radius: 6px; background: #ffffff;" />`;
     }
@@ -131,7 +177,6 @@ window.SignageWidgets = (function () {
 
         const activePlaylist = state.activePlaylistObj || {};
 
-        // Merge widget attributes across slide and playlist objects
         const rawWidgetType = (currentAsset && currentAsset.widgetType) ||
                               state.widgetType ||
                               activePlaylist.widgetType ||
@@ -185,7 +230,6 @@ window.SignageWidgets = (function () {
                 widgetLink = `http://${domain}`;
             }
 
-            // Offset placement if Clock & QR are assigned to the same corner
             let qrPlacement = widgetPlacement;
             if (activeTypes.has('clock')) {
                 if (widgetPlacement === 'top-right') qrPlacement = 'bottom-right';

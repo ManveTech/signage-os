@@ -733,10 +733,11 @@ window.SignagePlayer = (function () {
             state.tickerLabel = data.tickerLabel || 'ANNOUNCEMENT';
             state.activePlaylistObj = data;
 
-            // Compare structure signature (IDs + durations) BEFORE local path rewriting
-            const currentSignature = (state.playlist || []).map(a => `${a.id}:${a.duration}`).join('|');
-            const newSignature = fetchedAssets.map(a => `${a.id}:${a.duration}`).join('|');
-            const isDifferent = currentSignature !== newSignature;
+            // Compare structure signature (ordered mediaIds + durations + updated timestamp) BEFORE local path rewriting
+            const currentSignature = (state.playlist || []).map(a => `${a.mediaId || a.id}:${a.duration}`).join('|');
+            const newSignature = fetchedAssets.map(a => `${a.mediaId || a.id}:${a.duration}`).join('|');
+            const lastUpdated = localStorage.getItem('signage_tizen_playlist_updated') || '';
+            const isDifferent = (currentSignature !== newSignature) || (data.updated && data.updated !== lastUpdated);
 
             const localAssets = await syncLocalFiles(fetchedAssets);
 
@@ -745,6 +746,7 @@ window.SignagePlayer = (function () {
             if (data.updated) localStorage.setItem('signage_tizen_playlist_updated', data.updated);
 
             if (isDifferent || !state.isRotating) {
+                if (rotationTimeout) clearTimeout(rotationTimeout);
                 state.currentAssetIndex = 0;
                 state.isRotating = true;
                 if (updateUICallback) updateUICallback();
