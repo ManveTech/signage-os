@@ -387,6 +387,10 @@ window.SignagePlayer = (function () {
         const duration = Math.max(parseInt(asset.duration, 10) || 10, 2) * 1000;
         console.log(`[Player] Slide ${state.currentAssetIndex + 1}/${state.playlist.length}: ${asset.filename} (${asset.mediaType}, ${asset.duration}s)`);
 
+        if (window.SignageWidgets) {
+            window.SignageWidgets.syncWidgets(state, asset);
+        }
+
         if (asset.mediaType === 'video') {
             const video = views.videoPlayer;
             if (!video) {
@@ -702,6 +706,12 @@ window.SignagePlayer = (function () {
             }
 
             state.orientation = data.orientation || 'horizontal';
+            state.widgetType = data.widgetType || '';
+            state.widgetPlacement = data.widgetPlacement || 'top-right';
+            state.widgetLink = data.widgetLink || '';
+            state.tickerText = data.tickerText || data.widgetLink || '';
+            state.tickerLabel = data.tickerLabel || 'ANNOUNCEMENT';
+            state.activePlaylistObj = data;
 
             // Compare structure signature (IDs + durations) BEFORE local path rewriting
             const currentSignature = (state.playlist || []).map(a => `${a.id}:${a.duration}`).join('|');

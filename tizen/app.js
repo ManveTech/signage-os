@@ -71,6 +71,7 @@
 
         switch (state.status) {
             case 'pairing':
+                if (window.SignageWidgets) window.SignageWidgets.hideAllWidgets();
                 if (views.pairingCodeText) views.pairingCodeText.innerText = state.pairingCode || '------';
                 if (views.pairing) views.pairing.classList.add('active');
                 state.isRotating = false;
@@ -79,6 +80,7 @@
             case 'online':
             case 'offline':
                 if (!state.playlist || state.playlist.length === 0) {
+                    if (window.SignageWidgets) window.SignageWidgets.hideAllWidgets();
                     state.isRotating = false;
                     if (views.standby) views.standby.classList.add('active');
                 } else {
@@ -91,6 +93,7 @@
                 }
                 break;
             default:
+                if (window.SignageWidgets) window.SignageWidgets.hideAllWidgets();
                 state.isRotating = false;
                 if (views.pairing) views.pairing.classList.add('active');
                 break;
