@@ -1,81 +1,85 @@
 /**
  * SignageOS Player - High-Performance Lightweight Overlay Widgets Module
- * Supports: Clock (Background-free typography), Ticker (JSON text parser + Marquee), and QR Code Overlay.
+ * Supports: Clock (Background-free typography), Ticker (Website RSS JSON parser + Marquee), and QR Code Overlay.
  * Designed for low-power Samsung Tizen hardware (near-zero CPU/RAM overhead).
  */
 
 window.SignageWidgets = (function () {
     let clockInterval = null;
 
-    // ---- Helper: Extract Plain Text from JSON / Objects for News/Ticker ---
+    // ---- Helper: Website RSS / Ticker Data Unpacker ----------------------
 
-    function extractTickerText(input) {
-        if (!input) return '';
+    function extractTickerData(input) {
+        let text = '';
+        let label = 'WORLD NEWS';
 
-        let obj = input;
+        if (!input) return { text: '', label };
+
+        let parsed = input;
 
         if (typeof input === 'string') {
             const trimmed = input.trim();
-            if (trimmed === '[object Object]' || trimmed === 'object Object') return '';
+            if (trimmed === '[object Object]' || trimmed === 'object Object') return { text: '', label };
 
-            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
-                (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
-                trimmed.includes('{') || trimmed.includes(':')) {
+            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
                 try {
-                    obj = JSON.parse(trimmed);
+                    parsed = JSON.parse(trimmed);
                 } catch (_) {
-                    return trimmed.replace(/\[object Object\]/gi, '').trim();
+                    return { text: trimmed.replace(/\[object Object\]/gi, '').trim(), label };
                 }
             } else {
-                return trimmed.replace(/\[object Object\]/gi, '').trim();
+                return { text: trimmed.replace(/\[object Object\]/gi, '').trim(), label };
             }
         }
 
-        function walk(target) {
-            if (!target) return [];
-            if (typeof target === 'string' || typeof target === 'number') {
-                const s = String(target).replace(/\[object Object\]/gi, '').trim();
-                return (s && s !== '[object Object]' && s !== 'object Object') ? [s] : [];
-            }
-            if (Array.isArray(target)) {
-                let res = [];
-                target.forEach(item => {
-                    res = res.concat(walk(item));
-                });
-                return res;
-            }
-            if (typeof target === 'object') {
-                const priorityKeys = ['text', 'title', 'headline', 'message', 'content', 'value', 'name', 'paragraph', 'label'];
-                for (const key of priorityKeys) {
-                    if (target[key]) {
-                        const found = walk(target[key]);
-                        if (found.length > 0) return found;
-                    }
+        if (typeof parsed === 'object' && parsed !== null) {
+            // Case 1: Combined website JSON with .rss field
+            if (parsed.rss && typeof parsed.rss === 'object') {
+                if (parsed.rss.label) label = String(parsed.rss.label);
+                if (Array.isArray(parsed.rss.items)) {
+                    text = parsed.rss.items.filter(i => i && String(i).trim()).map(i => String(i).trim()).join('   •   ');
+                } else if (parsed.rss.text) {
+                    text = String(parsed.rss.text);
                 }
-                const containerKeys = ['paragraphs', 'items', 'news', 'headlines', 'data', 'slides'];
-                for (const key of containerKeys) {
-                    if (target[key]) {
-                        const found = walk(target[key]);
-                        if (found.length > 0) return found;
-                    }
-                }
-                let res = [];
-                Object.keys(target).forEach(k => {
-                    if (target[k] && typeof target[k] !== 'function') {
-                        res = res.concat(walk(target[k]));
-                    }
-                });
-                return res;
             }
-            return [];
+            // Case 2: Website RSS JSON with .items array
+            else if (Array.isArray(parsed.items)) {
+                if (parsed.label) label = String(parsed.label);
+                text = parsed.items.filter(i => i && String(i).trim()).map(i => String(i).trim()).join('   •   ');
+            }
+            // Case 3: Flat object or single news item
+            else {
+                if (parsed.label) label = String(parsed.label);
+                const rawVal = parsed.text || parsed.title || parsed.headline || parsed.description || parsed.message || '';
+                text = typeof rawVal === 'object' ? extractTickerData(rawVal).text : String(rawVal);
+            }
         }
 
-        const extracted = walk(obj).filter(t => t && t !== '[object Object]' && t !== 'object Object');
-        if (extracted.length > 0) {
-            const unique = Array.from(new Set(extracted));
-            return unique.join('   •   ');
-        }
+        return {
+            text: String(text).replace(/\[object Object\]/gi, '').trim(),
+            label: String(label).trim().toUpperCase()
+        };
+    }
 
+    // ---- Helper: Website QR Link Unpacker --------------------------------
+
+    function extractQrUrl(input) {
+        if (!input) return '';
+        if (typeof input === 'string') {
+            const trimmed = input.trim();
+            if (trimmed.startsWith('{')) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    if (parsed.qrcode) return String(parsed.qrcode).trim();
+                    if (parsed.url) return String(parsed.url).trim();
+                    if (parsed.link) return String(parsed.link).trim();
+                } catch (_) {}
+            }
+            return trimmed;
+        }
+        if (typeof input === 'object' && input !== null) {
+            return String(input.qrcode || input.url || input.link || '').trim();
+        }
         return '';
     }
 
@@ -119,27 +123,27 @@ window.SignageWidgets = (function () {
 
     // ---- Ticker Widget ---------------------------------------------------
 
-    function startTicker(rawText, label = 'NOTICE') {
+    function startTicker(cleanText, label = 'NOTICE') {
         const tickerEl = document.getElementById('widget-ticker');
         const textEl = document.getElementById('ticker-text');
         const labelEl = document.getElementById('ticker-label');
 
         if (!tickerEl || !textEl) return;
 
-        const cleanText = extractTickerText(rawText);
-        if (!cleanText || cleanText.trim() === '') {
+        if (!cleanText || String(cleanText).trim() === '') {
             tickerEl.classList.add('hidden');
             return;
         }
 
+        const displayText = String(cleanText).trim();
         if (labelEl) labelEl.innerText = (label || 'NOTICE').toUpperCase();
-        textEl.innerText = cleanText;
+        textEl.innerText = displayText;
 
         // Force reflow to restart CSS marquee animation smoothly
         textEl.style.animation = 'none';
         void textEl.offsetHeight;
 
-        const textLen = cleanText.length;
+        const textLen = displayText.length;
         const durationSec = Math.max(12, Math.min(60, Math.round(textLen * 0.3)));
         textEl.style.animation = `marquee-scroll ${durationSec}s linear infinite`;
 
@@ -214,28 +218,34 @@ window.SignageWidgets = (function () {
                                 activePlaylist.widgetPlacement ||
                                 'top-right';
 
-        let widgetLink = (currentAsset && currentAsset.widgetLink) ||
-                         state.widgetLink ||
-                         activePlaylist.widgetLink ||
-                         '';
+        const rawWidgetLink = (currentAsset && currentAsset.widgetLink) ||
+                              state.widgetLink ||
+                              activePlaylist.widgetLink ||
+                              '';
 
-        let tickerText = (currentAsset && currentAsset.tickerText) ||
-                         state.tickerText ||
-                         activePlaylist.tickerText ||
-                         widgetLink ||
-                         '';
+        const rawTickerText = (currentAsset && currentAsset.tickerText) ||
+                              state.tickerText ||
+                              activePlaylist.tickerText ||
+                              rawWidgetLink ||
+                              '';
 
-        const tickerLabel = (currentAsset && currentAsset.tickerLabel) ||
-                            state.tickerLabel ||
-                            activePlaylist.tickerLabel ||
-                            'NOTICE';
+        const defaultLabel = (currentAsset && currentAsset.tickerLabel) ||
+                             state.tickerLabel ||
+                             activePlaylist.tickerLabel ||
+                             'NOTICE';
 
+        const tickerData = extractTickerData(rawTickerText);
+        if (!tickerData.label || tickerData.label === 'WORLD NEWS') {
+            tickerData.label = defaultLabel;
+        }
+
+        const cleanQrUrl = extractQrUrl(rawWidgetLink);
         const overlayEl = document.getElementById('widgets-overlay');
 
-        // 1. Ticker Widget
-        if (activeTypes.has('ticker') && tickerText.trim()) {
+        // 1. Ticker / RSS Widget
+        if (activeTypes.has('ticker') && tickerData.text) {
             if (overlayEl) overlayEl.classList.add('has-ticker');
-            startTicker(tickerText, tickerLabel);
+            startTicker(tickerData.text, tickerData.label);
         } else {
             if (overlayEl) overlayEl.classList.remove('has-ticker');
             stopTicker();
@@ -250,9 +260,10 @@ window.SignageWidgets = (function () {
 
         // 3. QR Code Widget
         if (activeTypes.has('qr')) {
-            if (!widgetLink || widgetLink.trim() === '') {
+            let qrUrl = cleanQrUrl;
+            if (!qrUrl) {
                 const domain = window.location.hostname || 'tizen.manve.co';
-                widgetLink = `http://${domain}`;
+                qrUrl = `http://${domain}`;
             }
 
             let qrPlacement = widgetPlacement;
@@ -262,7 +273,7 @@ window.SignageWidgets = (function () {
                 else if (widgetPlacement === 'bottom-right') qrPlacement = 'top-right';
                 else if (widgetPlacement === 'bottom-left') qrPlacement = 'top-left';
             }
-            startQR(widgetLink, qrPlacement);
+            startQR(qrUrl, qrPlacement);
         } else {
             stopQR();
         }
