@@ -14,15 +14,8 @@ html, body {
     color: #ffffff;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     overflow: hidden;
-    width: 100% !important;
-    height: 100% !important;
-    min-width: 100vw;
-    min-height: 100vh;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    width: 100%;
+    height: 100%;
 }
 
 /* Screen Navigation Views */
@@ -30,12 +23,8 @@ html, body {
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100% !important;
-    height: 100% !important;
-    min-width: 100vw;
-    min-height: 100vh;
+    width: 100%;
+    height: 100%;
     display: none;
     z-index: 1;
     overflow: hidden;
@@ -191,10 +180,8 @@ html, body {
 
 /* Playback Engine */
 .fullscreen-container {
-    width: 100% !important;
-    height: 100% !important;
-    min-width: 100vw;
-    min-height: 100vh;
+    width: 100%;
+    height: 100%;
     position: relative;
     background-color: #000000;
 }
