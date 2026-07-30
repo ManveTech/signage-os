@@ -14,5 +14,5 @@
     <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
     <tizen:privilege name="http://tizen.org/privilege/filesystem.write"/>
     <tizen:profile name="tv"/>
-    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" auto-start="enable"/>
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" auto-start="enable" viewport-resolution="1920x1080"/>
 </widget>
