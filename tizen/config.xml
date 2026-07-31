@@ -15,4 +15,6 @@
     <tizen:privilege name="http://tizen.org/privilege/filesystem.write"/>
     <tizen:profile name="tv"/>
     <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" auto-start="enable"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/screen/orientation" value="landscape"/>
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"/>
 </widget>
