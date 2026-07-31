@@ -1,4 +1,5 @@
 import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import AdminLogin from './components/AdminLogin';
 import { ToastContainer } from './components/Toast';
 
@@ -27,7 +28,13 @@ if (!localStorage.getItem('signageos_cleared_demo_v2')) {
 export default function App() {
   return (
     <div className="relative w-full min-h-screen bg-slate-950 font-sans text-slate-900 selection:bg-accent selection:text-primary">
-      <AdminLogin />
+      <Routes>
+        <Route path="/login" element={<AdminLogin initialView="login" />} />
+        <Route path="/forgot-password" element={<AdminLogin initialView="forgot" />} />
+        <Route path="/reset-password" element={<AdminLogin initialView="reset" />} />
+        <Route path="/admin/*" element={<AdminLogin initialView="dashboard" />} />
+        <Route path="/*" element={<AdminLogin initialView="dashboard" />} />
+      </Routes>
       <ToastContainer />
     </div>
   );

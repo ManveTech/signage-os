@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../config';
+import { ADMIN_ROUTES, getAdminViewFromPath } from '../../lib/routes';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './views/Dashboard';
@@ -84,8 +86,17 @@ function renderView(view: string, navigate: (v: string) => void) {
 }
 
 export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogout: () => void; onSwitchToClient?: () => void }) {
-  const [activeView, setActiveView] = useState('dashboard');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Active view is derived directly from the URL pathname
+  const activeView = getAdminViewFromPath(location.pathname);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const handleNavigate = (targetView: string) => {
+    const targetPath = ADMIN_ROUTES[targetView] || `/admin/${targetView}`;
+    navigate(targetPath);
+  };
 
   // First time login states
   const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
@@ -153,7 +164,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
       )}
       <Sidebar
         activeView={activeView}
-        onNavigate={setActiveView}
+        onNavigate={handleNavigate}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(p => !p)}
         onLogout={onLogout}
@@ -161,13 +172,13 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header 
           activeView={activeView} 
-          onNavigate={setActiveView} 
+          onNavigate={handleNavigate} 
           onLogout={onLogout} 
           onToggleSidebar={() => setSidebarCollapsed(p => !p)} 
           onSwitchToClient={onSwitchToClient}
         />
         <main className="flex-1 overflow-y-auto">
-          {renderView(activeView, setActiveView)}
+          {renderView(activeView, handleNavigate)}
         </main>
       </div>
 
@@ -179,65 +190,59 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
               <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center mx-auto text-blue-500">
                 <Lock size={20} />
               </div>
-              <h2 className="text-lg font-black text-slate-100 uppercase tracking-tight">Security Update</h2>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-                Welcome! As a first-time user, please change your password to secure your account.
+              <h2 className="text-xl font-bold">Set Your New Password</h2>
+              <p className="text-xs text-slate-400">
+                Welcome to SignageOS! Please create a secure new password for your account to continue.
               </p>
             </div>
 
             {passError && (
-              <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 font-semibold flex items-start gap-2">
-                <X className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{passError}</span>
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold text-center animate-shake">
+                {passError}
               </div>
             )}
 
-            {passSuccess && (
-              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 font-semibold flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span>Password changed successfully! Redirecting...</span>
+            {passSuccess ? (
+              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold text-center flex items-center justify-center gap-2">
+                <CheckCircle size={16} /> Password updated successfully! Redirecting...
               </div>
-            )}
-
-            <form onSubmit={handleFirstLoginSubmit} className="space-y-4">
-              <div className="group relative">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">New Password</label>
-                <div className="flex items-center relative rounded-lg bg-slate-950 border border-slate-850 transition-all duration-300 focus-within:border-blue-500 overflow-hidden">
-                  <div className="w-1.5 self-stretch bg-blue-500" />
-                  <input 
+            ) : (
+              <form onSubmit={handleFirstLoginSubmit} className="space-y-4">
+                <div>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                    New Password
+                  </label>
+                  <input
                     type="password"
                     value={newPassword}
-                    onChange={e => setNewPassword(e.target.value)}
-                    placeholder="Enter new secure password"
-                    className="w-full py-3 px-4 text-xs font-semibold text-white placeholder-slate-600 focus:outline-none bg-transparent"
-                    required
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    className="w-full py-3 px-4 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-              </div>
 
-              <div className="group relative">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">Confirm Password</label>
-                <div className="flex items-center relative rounded-lg bg-slate-950 border border-slate-855 transition-all duration-300 focus-within:border-blue-500 overflow-hidden">
-                  <div className="w-1.5 self-stretch bg-blue-500" />
-                  <input 
+                <div>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                    Confirm Password
+                  </label>
+                  <input
                     type="password"
                     value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm secure password"
-                    className="w-full py-3 px-4 text-xs font-semibold text-white placeholder-slate-600 focus:outline-none bg-transparent"
-                    required
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full py-3 px-4 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={passLoading || passSuccess}
-                className="w-full py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-500/10 cursor-pointer text-center disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {passLoading ? 'Updating...' : 'Update Password & Enter'}
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={passLoading}
+                  className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 cursor-pointer"
+                >
+                  {passLoading ? 'Updating Password...' : 'Save & Continue'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

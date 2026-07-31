@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE } from '../config';
 import AdminDashboard from '../pages/admin-dashboard';
 import UserDashboard from '../pages/user-dashboard';
@@ -23,9 +24,10 @@ import {
 
 import { syncAllFromDatabase } from '../lib/syncHelper';
 
-interface Props { }
+interface Props {
+  initialView?: 'login' | 'forgot' | 'reset' | 'dashboard';
+}
 
-// Struct for dummy quotation requests to show in admin dashboard
 interface LeadQuote {
   id: string;
   clientName: string;
@@ -41,7 +43,10 @@ interface LeadQuote {
 
 const initialLeads: LeadQuote[] = [];
 
-export default function AdminLogin() {
+export default function AdminLogin({ initialView = 'login' }: Props) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [keepSignedIn, setKeepSignedIn] = useState(true);
@@ -84,7 +89,9 @@ export default function AdminLogin() {
   }, []);
 
   // Recovery views state
-  const [view, setView] = useState<'login' | 'forgot' | 'reset'>('login');
+  const [view, setView] = useState<'login' | 'forgot' | 'reset'>(() => 
+    initialView === 'forgot' ? 'forgot' : initialView === 'reset' ? 'reset' : 'login'
+  );
   const [resetToken, setResetToken] = useState('');
   const [resetUserId, setResetUserId] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -252,6 +259,7 @@ export default function AdminLogin() {
     localStorage.removeItem('signageos_user_email');
     localStorage.removeItem('signageos_user_role');
     setLoggedInUser(null);
+    navigate('/login');
   };
 
   // If successfully logged in, render the premium admin dashboard panel
