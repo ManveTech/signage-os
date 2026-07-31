@@ -356,7 +356,7 @@ async function runWithConcurrencyLimit<T>(
   await Promise.all(executing);
 }
 
-const DB_WRITE_THROTTLE_MS = 30000; // 30 seconds
+const DB_WRITE_THROTTLE_MS = 15000; // 15 seconds
 const STATUS_CHECK_CONCURRENCY = 10;
 
 export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolean }) {
@@ -462,7 +462,13 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
       });
       
       const staleScreens = screensResult.items.filter(s => {
-        if (!s.lastHeartbeat) return true;
+        if (!s.lastHeartbeat) {
+          const recentGrace = s.onlineSince || s.updated || s.created;
+          if (recentGrace && (now - new Date(recentGrace).getTime()) < 180 * 1000) {
+            return false;
+          }
+          return true;
+        }
         const hbTime = new Date(s.lastHeartbeat).getTime();
         return isNaN(hbTime) || hbTime < thresholdMs;
       });
@@ -547,7 +553,7 @@ export async function touchScreenPresence(screenId: string) {
     if (isRedisReady()) {
       const presenceKey = `presence:screen:${screenId}`;
       const pipeline = redis.pipeline();
-      pipeline.set(presenceKey, 'online', 'EX', 90);
+      pipeline.set(presenceKey, 'online', 'EX', 180);
       pipeline.zadd('presence:active_screens', now, screenId);
       await pipeline.exec();
     }
@@ -628,11 +634,11 @@ export async function recordHeartbeat(req: any, res: any) {
       if (isRedisReady()) {
         // --- REDIS PATH ---
         const presenceKey = `presence:screen:${screenId}`;
-        const wasOffline = screenRecord.status === 'offline' || screenRecord.status === 'pairing' || !screenRecord.onlineSince;
+        const wasOffline = screenRecord.status === 'offline' || screenRecord.status === 'pairing';
 
         // Pipeline standard diagnostics update
         const pipeline = redis.pipeline();
-        pipeline.set(presenceKey, 'online', 'EX', 90);
+        pipeline.set(presenceKey, 'online', 'EX', 180);
         pipeline.zadd('presence:active_screens', now, screenId);
         pipeline.hmset(`heartbeat:screen:${screenId}`, {
           lastHeartbeat: now.toString(),
@@ -701,12 +707,6 @@ export async function recordHeartbeat(req: any, res: any) {
           const latestScreen = await retryWithBackoff(() => pb.collection('screens').getOne(screenRecord.id));
           const wasOffline = latestScreen.status === 'offline' || latestScreen.status === 'pairing';
           const lastHeartbeatTime = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : 0;
-
-          if (!wasOffline && latestScreen.onlineSince && (now - lastHeartbeatTime) < DB_WRITE_THROTTLE_MS && storageUsed === latestScreen.storageUsed) {
-            isThrottled = true;
-            transitionStatus = 'THROTTLED';
-            return res.status(204).end();
-          }
 
           const updateData: any = {
             lastHeartbeat: new Date().toISOString(),

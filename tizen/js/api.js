@@ -167,7 +167,7 @@ window.SignageApi = (function () {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
-            }, 4000).catch(() => {});
+            }, 10000).catch(() => {});
         } catch (err) {
             console.warn("[Heartbeat] Failed to send heartbeat:", err.message);
         }

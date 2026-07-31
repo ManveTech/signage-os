@@ -54,13 +54,6 @@
         window.viewsRef = views;
         bindRemoteKeys(views, (force) => requestPairingCode(state, views, updateUI, force));
 
-        window.addEventListener('beforeunload', () => {
-            if (state.screenId) {
-                logDeviceEvent(state, 'Screen went offline', 'offline', 'Tizen application unmounted or TV turned off');
-                reportOfflineOnServer(state.uuid, 'Tizen app unmounted');
-            }
-        });
-
         window.addEventListener('online', () => {
             console.log("[Tizen] Display network reconnected.");
             if (state.screenId) {
@@ -292,7 +285,7 @@
             if (state.screenId && state.status !== 'pairing') {
                 sendHeartbeatOnServer(state);
             }
-        }, 20000);
+        }, 15000);
     }
 
     function disconnectDevice() {
