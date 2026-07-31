@@ -5,7 +5,7 @@
 (function () {
     const { KEYS, getPocketBaseUrl } = window.SignageConfig;
     const { getOrGenerateUUID } = window.SignageStorage;
-    const { requestPairingCode, checkPairingStatusOnServer, clearScreenCommandOnServer, fetchWithTimeout, reportOfflineOnServer } = window.SignageApi;
+    const { requestPairingCode, checkPairingStatusOnServer, clearScreenCommandOnServer, clearGroupCommandOnServer, fetchWithTimeout, reportOfflineOnServer } = window.SignageApi;
     const { startPlaylistRotation, fetchPlaylist, stopAndUnloadVideo, stopPlaylistRotation } = window.SignagePlayer;
     const { bindRemoteKeys } = window.SignageKeys;
 
@@ -146,10 +146,29 @@
                 hasChanged = true;
             }
 
+            let groupData = null;
+            if (data.groupId) {
+                try {
+                    const groupUrl = `${POCKETBASE_URL}/api/collections/screen_groups/records/${data.groupId}`;
+                    const groupRes = await fetchWithTimeout(groupUrl, {}, 2000);
+                    if (groupRes.ok) {
+                        groupData = await groupRes.json();
+                    }
+                } catch (_) {}
+            }
+
             let activePlaylistId = data.playlistId || data.playlist;
-            if (data.schedulePlaylist && data.scheduleDate && data.scheduleTime) {
-                if (isScheduleDue(data.scheduleDate, data.scheduleTime)) {
-                    activePlaylistId = data.schedulePlaylist;
+            if ((!activePlaylistId || activePlaylistId === 'None') && groupData) {
+                activePlaylistId = groupData.playlistId || groupData.playlist;
+            }
+
+            const schedPlaylist = data.schedulePlaylist || (groupData ? groupData.schedulePlaylist : null);
+            const schedDate = data.scheduleDate || (groupData ? groupData.scheduleDate : null);
+            const schedTime = data.scheduleTime || (groupData ? groupData.scheduleTime : null);
+
+            if (schedPlaylist && schedDate && schedTime) {
+                if (isScheduleDue(schedDate, schedTime)) {
+                    activePlaylistId = schedPlaylist;
                 }
             }
 
@@ -171,46 +190,66 @@
                 if (data.clear_cache) await clearScreenCommandOnServer(state.screenId, 'clear_cache');
                 if (data.force_sync) await clearScreenCommandOnServer(state.screenId, 'force_sync');
                 if (data.restart_playlist) await clearScreenCommandOnServer(state.screenId, 'restart_playlist');
+                if (groupData) {
+                    if (groupData.clear_cache) await clearGroupCommandOnServer(data.groupId, 'clear_cache');
+                    if (groupData.force_sync) await clearGroupCommandOnServer(data.groupId, 'force_sync');
+                    if (groupData.restart_playlist) await clearGroupCommandOnServer(data.groupId, 'restart_playlist');
+                }
 
                 updateUI();
                 return;
             }
 
-            // 2. Process Bulk Commands (clear_cache, force_sync, restart_playlist)
+            // 2. Process Commands (clear_cache, force_sync, restart_playlist) from Screen or Group
             let needsPlaylistRefetch = false;
 
-            if (data.clear_cache) {
+            const isClearCache = !!(data.clear_cache || (groupData && groupData.clear_cache));
+            const isForceSync = !!(data.force_sync || (groupData && groupData.force_sync));
+            const isRestartPlaylist = !!(data.restart_playlist || (groupData && groupData.restart_playlist));
+
+            if (isClearCache) {
                 console.log("[Tizen] Clear cache command received.");
                 localStorage.removeItem(KEYS.PLAYLIST);
                 if (window.SignagePlayer && window.SignagePlayer.syncLocalFiles) {
                     await window.SignagePlayer.syncLocalFiles([]);
                 }
-                await clearScreenCommandOnServer(state.screenId, 'clear_cache');
+                if (data.clear_cache) await clearScreenCommandOnServer(state.screenId, 'clear_cache');
+                if (groupData && groupData.clear_cache) await clearGroupCommandOnServer(data.groupId, 'clear_cache');
                 needsPlaylistRefetch = true;
             }
 
-            if (data.force_sync) {
+            if (isForceSync) {
                 console.log("[Tizen] Force sync command received.");
                 localStorage.removeItem(KEYS.PLAYLIST);
                 if (window.SignagePlayer && window.SignagePlayer.syncLocalFiles) {
                     await window.SignagePlayer.syncLocalFiles([]);
                 }
-                await clearScreenCommandOnServer(state.screenId, 'force_sync');
+                if (data.force_sync) await clearScreenCommandOnServer(state.screenId, 'force_sync');
+                if (groupData && groupData.force_sync) await clearGroupCommandOnServer(data.groupId, 'force_sync');
                 needsPlaylistRefetch = true;
             }
 
-            if (data.restart_playlist) {
+            if (isRestartPlaylist) {
                 console.log("[Tizen] Restart playlist command received.");
                 state.currentAssetIndex = 0;
-                await clearScreenCommandOnServer(state.screenId, 'restart_playlist');
+                if (data.restart_playlist) await clearScreenCommandOnServer(state.screenId, 'restart_playlist');
+                if (groupData && groupData.restart_playlist) await clearGroupCommandOnServer(data.groupId, 'restart_playlist');
                 needsPlaylistRefetch = true;
             }
 
-            // 3. Fetch playlist if ID changed, command demanded refetch, or local playlist is empty
-            if ((state.status === "active" || state.status === "online") && (activePlaylistId !== state.playlistId || needsPlaylistRefetch || !state.playlist || state.playlist.length === 0)) {
-                state.playlistId = activePlaylistId;
-                localStorage.setItem('signage_tizen_playlist_id', activePlaylistId);
-                await fetchPlaylist(activePlaylistId, state, views, updateUI);
+            // 3. Fetch playlist if valid activePlaylistId exists
+            if (activePlaylistId && activePlaylistId !== 'None') {
+                if (state.status === 'pairing' || state.status === 'standby') {
+                    state.status = 'active';
+                    localStorage.setItem(KEYS.STATUS, 'active');
+                }
+                if (activePlaylistId !== state.playlistId || needsPlaylistRefetch || !state.playlist || state.playlist.length === 0) {
+                    state.playlistId = activePlaylistId;
+                    localStorage.setItem('signage_tizen_playlist_id', activePlaylistId);
+                    await fetchPlaylist(activePlaylistId, state, views, updateUI);
+                } else if (hasChanged) {
+                    updateUI();
+                }
             } else if (hasChanged) {
                 updateUI();
             }

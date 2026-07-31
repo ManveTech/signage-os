@@ -114,9 +114,27 @@ window.SignageApi = (function () {
         } catch (_) {}
     }
 
+    async function clearGroupCommandOnServer(groupId, command) {
+        if (!groupId || !command) return;
+        try {
+            const POCKETBASE_URL = getPocketBaseUrl();
+            const url = `${POCKETBASE_URL}/api/collections/screen_groups/records/${groupId}`;
+            const bodyData = {};
+            bodyData[command] = false;
+            await fetchWithTimeout(url, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bodyData)
+            }, 3000);
+        } catch (e) {
+            console.error(`Failed to clear group command ${command} on server:`, e);
+        }
+    }
+
     return {
         fetchWithTimeout,
         clearScreenCommandOnServer,
+        clearGroupCommandOnServer,
         requestPairingCode,
         checkPairingStatusOnServer,
         reportOfflineOnServer

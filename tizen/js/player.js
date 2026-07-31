@@ -622,10 +622,40 @@ window.SignagePlayer = (function () {
     async function fetchPlaylist(playlistId, state, views, updateUICallback) {
         try {
             const POCKETBASE_URL = getPocketBaseUrl();
-            const url = `${POCKETBASE_URL}/api/collections/playlists/records/${playlistId}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('Playlist retrieval failed');
-            const data = await res.json();
+            let data = null;
+
+            // Check if playlistId is a 15-character PocketBase record ID
+            const isPbId = typeof playlistId === 'string' && /^[a-zA-Z0-9]{15}$/.test(playlistId.trim());
+            if (isPbId) {
+                const url = `${POCKETBASE_URL}/api/collections/playlists/records/${playlistId.trim()}`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    data = await res.json();
+                }
+            }
+
+            // Fallback 1: If not a 15-char ID or direct lookup failed, filter by name
+            if (!data && playlistId) {
+                const nameFilterUrl = `${POCKETBASE_URL}/api/collections/playlists/records?filter=(name='${encodeURIComponent(playlistId)}')`;
+                const filterRes = await fetch(nameFilterUrl);
+                if (filterRes.ok) {
+                    const filterData = await filterRes.json();
+                    if (filterData.items && filterData.items.length > 0) {
+                        data = filterData.items[0];
+                    }
+                }
+            }
+
+            // Fallback 2: Direct lookup by encoded playlistId as last resort
+            if (!data && playlistId) {
+                const url = `${POCKETBASE_URL}/api/collections/playlists/records/${encodeURIComponent(playlistId)}`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    data = await res.json();
+                }
+            }
+
+            if (!data) throw new Error(`Playlist retrieval failed for "${playlistId}"`);
 
             let fetchedAssets = [];
             let slides = data.slides || [];
