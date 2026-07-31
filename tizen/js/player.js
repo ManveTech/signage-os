@@ -231,7 +231,7 @@ window.SignagePlayer = (function () {
      * keep their remote URL so a later online sync can retry them.
      */
     async function syncLocalFiles(assets) {
-        if (!assets || assets.length === 0) return assets;
+        assets = assets || [];
         if (isDownloading) return assets;
 
         isDownloading = true;
@@ -759,6 +759,7 @@ window.SignagePlayer = (function () {
     }
 
     return {
+        stopAndUnloadVideo,
         syncLocalFiles,
         startPlaylistRotation,
         advancePlaylist,

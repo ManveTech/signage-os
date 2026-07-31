@@ -260,14 +260,16 @@ export const mediaStore = {
     const screens = this.getScreens();
     const screenIndex = screens.findIndex(s => s.id === screenId);
     if (screenIndex !== -1) {
-      if (playlistId) {
+      if (playlistId && playlistId !== 'None') {
         const playlists = this.getPlaylists();
         const play = playlists.find(p => p.id === playlistId);
         screens[screenIndex].playlistId = playlistId;
-        screens[screenIndex].playlist = play ? play.name : 'Normal';
+        screens[screenIndex].playlist = play ? play.name : '';
+        screens[screenIndex].restart_playlist = true;
       } else {
         screens[screenIndex].playlistId = '';
-        screens[screenIndex].playlist = 'Normal';
+        screens[screenIndex].playlist = '';
+        screens[screenIndex].restart_playlist = true;
       }
       this.saveScreens(screens);
       pushToDatabase('screens', screenId, screens[screenIndex], 'PUT');

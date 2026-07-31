@@ -854,9 +854,12 @@ export async function assignPlaylistToScreen(req: any, res: any) {
       return res.status(400).json({ message: 'screenId is required.' });
     }
 
+    const isNone = !playlistId || playlistId === 'None' || !playlistName || playlistName === 'None';
+
     const updatedScreen = await pb.collection('screens').update(screenId, {
-      playlistId: playlistId || '',
-      playlist: playlistName || 'Normal',
+      playlistId: isNone ? '' : playlistId,
+      playlist: isNone ? '' : playlistName,
+      restart_playlist: true
     });
 
     // Sync scheduling on direct playlist assignment
@@ -867,7 +870,7 @@ export async function assignPlaylistToScreen(req: any, res: any) {
       await buildScreenLog(updatedScreen, {
         event: 'Playlist assigned',
         type: 'sync',
-        detail: `Playlist "${playlistName || 'Normal'}" (${playlistId || 'none'}) assigned to screen.`,
+        detail: isNone ? 'Playlist unassigned from screen.' : `Playlist "${playlistName}" (${playlistId}) assigned to screen.`,
         totalUptime: metrics.totalUptime,
         loopsPlayed: metrics.loopsPlayed
       })

@@ -98,10 +98,27 @@ window.SignageApi = (function () {
         }
     }
 
+    async function reportOfflineOnServer(uuid, reason = 'App closed') {
+        try {
+            const payload = JSON.stringify({ hardwareUuid: uuid, reason });
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(`${SERVER_URL}/api/v1/devices/offline`, payload);
+            } else {
+                fetch(`${SERVER_URL}/api/v1/devices/offline`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload,
+                    keepalive: true
+                }).catch(() => {});
+            }
+        } catch (_) {}
+    }
+
     return {
         fetchWithTimeout,
         clearScreenCommandOnServer,
         requestPairingCode,
-        checkPairingStatusOnServer
+        checkPairingStatusOnServer,
+        reportOfflineOnServer
     };
 })();

@@ -51,8 +51,6 @@ fun PlaybackLoopScreen(
     onVideoCompleted: () -> Unit = {},
     volumePercent: Int = 80
 ) {
-    val activeAsset = playlist.getOrNull(currentIndex) ?: return
-    val isVideo = activeAsset.mediaType.equals("video", ignoreCase = true)
     val context = LocalContext.current
 
     val sharedExoPlayer = remember {
@@ -63,9 +61,25 @@ fun PlaybackLoopScreen(
 
     DisposableEffect(sharedExoPlayer) {
         onDispose {
-            sharedExoPlayer.release()
+            try {
+                sharedExoPlayer.stop()
+                sharedExoPlayer.clearMediaItems()
+                sharedExoPlayer.release()
+            } catch (_: Exception) {}
         }
     }
+
+    LaunchedEffect(playlist) {
+        if (playlist.isEmpty()) {
+            try {
+                sharedExoPlayer.stop()
+                sharedExoPlayer.clearMediaItems()
+            } catch (_: Exception) {}
+        }
+    }
+
+    val activeAsset = playlist.getOrNull(currentIndex) ?: return
+    val isVideo = activeAsset.mediaType.equals("video", ignoreCase = true)
 
     val currentOnVideoCompleted by rememberUpdatedState(onVideoCompleted)
     val currentActiveAsset by rememberUpdatedState(activeAsset)

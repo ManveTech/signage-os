@@ -5,8 +5,8 @@
 (function () {
     const { KEYS, getPocketBaseUrl } = window.SignageConfig;
     const { getOrGenerateUUID } = window.SignageStorage;
-    const { requestPairingCode, checkPairingStatusOnServer, clearScreenCommandOnServer, fetchWithTimeout } = window.SignageApi;
-    const { startPlaylistRotation, fetchPlaylist } = window.SignagePlayer;
+    const { requestPairingCode, checkPairingStatusOnServer, clearScreenCommandOnServer, fetchWithTimeout, reportOfflineOnServer } = window.SignageApi;
+    const { startPlaylistRotation, fetchPlaylist, stopAndUnloadVideo } = window.SignagePlayer;
     const { bindRemoteKeys } = window.SignageKeys;
 
     let state = {
@@ -35,10 +35,25 @@
 
     let syncInterval = null;
 
+    function isScheduleDue(scheduleDate, scheduleTime) {
+        if (!scheduleDate || !scheduleTime) return false;
+        try {
+            const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
+            if (isNaN(scheduledDateTime.getTime())) return false;
+            return Date.now() >= scheduledDateTime.getTime();
+        } catch (_) {
+            return false;
+        }
+    }
+
     function init() {
         console.log("Initializing SignageOS Tizen App Engine...");
         window.viewsRef = views;
         bindRemoteKeys(views, (force) => requestPairingCode(state, views, updateUI, force));
+
+        window.addEventListener('beforeunload', () => {
+            if (state.uuid) reportOfflineOnServer(state.uuid, 'Tizen app unmounted');
+        });
 
         if (state.screenId && state.status !== 'pairing') {
             // Offline-first: paint the cached playlist immediately so the screen
@@ -72,6 +87,7 @@
         switch (state.status) {
             case 'pairing':
                 if (window.SignageWidgets) window.SignageWidgets.hideAllWidgets();
+                if (stopAndUnloadVideo && views.videoPlayer) stopAndUnloadVideo(views.videoPlayer);
                 if (views.pairingCodeText) views.pairingCodeText.innerText = state.pairingCode || '------';
                 if (views.pairing) views.pairing.classList.add('active');
                 state.isRotating = false;
@@ -81,6 +97,7 @@
             case 'offline':
                 if (!state.playlist || state.playlist.length === 0) {
                     if (window.SignageWidgets) window.SignageWidgets.hideAllWidgets();
+                    if (stopAndUnloadVideo && views.videoPlayer) stopAndUnloadVideo(views.videoPlayer);
                     state.isRotating = false;
                     if (views.standby) views.standby.classList.add('active');
                 } else {
@@ -94,6 +111,7 @@
                 break;
             default:
                 if (window.SignageWidgets) window.SignageWidgets.hideAllWidgets();
+                if (stopAndUnloadVideo && views.videoPlayer) stopAndUnloadVideo(views.videoPlayer);
                 state.isRotating = false;
                 if (views.pairing) views.pairing.classList.add('active');
                 break;
@@ -146,16 +164,25 @@
                 startPlaylistRotation(state, views, updateUI);
             }
 
-            const activePlaylistId = data.playlistId || data.playlist;
-            if ((state.status === "active" || state.status === "online") && activePlaylistId) {
+            let activePlaylistId = data.playlistId || data.playlist;
+            if (data.schedulePlaylist && data.scheduleDate && data.scheduleTime) {
+                if (isScheduleDue(data.scheduleDate, data.scheduleTime)) {
+                    activePlaylistId = data.schedulePlaylist;
+                }
+            }
+
+            const isNone = !activePlaylistId || activePlaylistId === 'None';
+            if ((state.status === "active" || state.status === "online") && !isNone) {
                 state.playlistId = activePlaylistId;
                 localStorage.setItem('signage_tizen_playlist_id', activePlaylistId);
                 await fetchPlaylist(activePlaylistId, state, views, updateUI);
-            } else if (!activePlaylistId && state.playlist && state.playlist.length > 0) {
+            } else if (isNone && state.playlist && state.playlist.length > 0) {
                 state.playlist = [];
                 state.playlistId = '';
                 localStorage.setItem(KEYS.PLAYLIST, '[]');
                 localStorage.removeItem('signage_tizen_playlist_id');
+                if (stopAndUnloadVideo && views.videoPlayer) stopAndUnloadVideo(views.videoPlayer);
+                if (window.SignagePlayer && window.SignagePlayer.syncLocalFiles) window.SignagePlayer.syncLocalFiles([]);
                 hasChanged = true;
             }
 

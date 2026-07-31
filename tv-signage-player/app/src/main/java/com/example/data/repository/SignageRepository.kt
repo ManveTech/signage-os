@@ -116,10 +116,10 @@ class SignageRepository(private val context: Context) {
         configDao.saveConfig(updated)
     }
 
-    suspend fun requestPairingCode(): Result<ScreenConfig> = withContext(Dispatchers.IO) {
+    suspend fun requestPairingCode(forceRefresh: Boolean = false): Result<ScreenConfig> = withContext(Dispatchers.IO) {
         try {
             val initialConfig = getOrCreateConfig()
-            val request = PairingRequest(hardwareUuid = initialConfig.hardwareUuid)
+            val request = PairingRequest(hardwareUuid = initialConfig.hardwareUuid, forceRefresh = forceRefresh)
             val url = "${initialConfig.serverUrl}/api/v1/devices/pairing-code"
 
             Log.d("SignageRepository", "Requesting pairing code from: $url")
@@ -173,17 +173,43 @@ class SignageRepository(private val context: Context) {
                     !File(currentConfig.whiteLabelLogoPath).exists()
             )
 
-            // If screen status on backend was reset to pairing, unpair device locally
+            // If screen status on backend is pairing
             if (response.status == "pairing") {
-                Log.d("SignageRepository", "Screen status reset to pairing on backend. Unpairing device.")
-                val unassignedConfig = currentConfig.copy(
-                    screenId = "",
-                    pairingCode = "",
-                    status = "pairing"
-                )
-                configDao.saveConfig(unassignedConfig)
-                clearDeviceAssets()
-                return@withContext Result.success(Unit)
+                if (currentConfig.status != "pairing") {
+                    Log.d("SignageRepository", "Screen status reset to pairing on backend. Unpairing device.")
+                    val unassignedConfig = currentConfig.copy(
+                        screenId = "",
+                        pairingCode = "",
+                        status = "pairing"
+                    )
+                    configDao.saveConfig(unassignedConfig)
+                    clearDeviceAssets()
+                    return@withContext Result.success(Unit)
+                } else {
+                    // Device is currently in pairing mode waiting for user to pair.
+                    // Only request a new code if expired or empty.
+                    var codeExpired = false
+                    if (!response.pairing_code_expires.isNullOrEmpty()) {
+                        try {
+                            val expiresMs = java.time.Instant.parse(response.pairing_code_expires).toEpochMilli()
+                            if (System.currentTimeMillis() >= expiresMs) {
+                                codeExpired = true
+                            }
+                        } catch (_: Exception) {}
+                    }
+
+                    if (codeExpired || response.pairing_code.isNullOrEmpty()) {
+                        Log.d("SignageRepository", "Pairing code expired or empty on backend. Requesting new code...")
+                        requestPairingCode(forceRefresh = true)
+                    } else if (response.pairing_code != currentConfig.pairingCode) {
+                        val updatedConfig = currentConfig.copy(
+                            pairingCode = response.pairing_code,
+                            status = "pairing"
+                        )
+                        configDao.saveConfig(updatedConfig)
+                    }
+                    return@withContext Result.success(Unit)
+                }
             }
 
             val updatedConfig = currentConfig.copy(
@@ -247,6 +273,7 @@ class SignageRepository(private val context: Context) {
             }
 
             var activePlaylistId = response.playlistId ?: response.playlist
+            if (activePlaylistId == "None") activePlaylistId = ""
 
             // Check if schedule is due
             if (!response.schedulePlaylist.isNullOrEmpty() && !response.scheduleDate.isNullOrEmpty() && !response.scheduleTime.isNullOrEmpty()) {
@@ -324,6 +351,41 @@ class SignageRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error purging local assets", e)
             logErrorToServer("Clear Assets Failure", e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun cleanupOrphanCacheFiles() = withContext(Dispatchers.IO) {
+        try {
+            val config = getOrCreateConfig()
+            val activeAssets = assetDao.getAllAssets()
+            val keepFiles = mutableSetOf<String>()
+
+            // Keep whitelabel logo file if present
+            if (!config.whiteLabelLogoPath.isNullOrEmpty()) {
+                val logoFile = File(config.whiteLabelLogoPath)
+                keepFiles.add(logoFile.name)
+            }
+
+            // Keep all active asset files
+            activeAssets.forEach { asset ->
+                if (!asset.localPath.isNullOrEmpty()) {
+                    keepFiles.add(File(asset.localPath).name)
+                }
+                val defaultCacheName = getCacheFileName(asset.url, asset.filename)
+                keepFiles.add(defaultCacheName)
+            }
+
+            val cacheDir = File(context.filesDir, "signage_cache")
+            if (cacheDir.exists()) {
+                cacheDir.listFiles()?.forEach { file ->
+                    if (file.isFile && !file.name.endsWith(".tmp") && !keepFiles.contains(file.name)) {
+                        Log.d("SignageRepository", "Deleting orphaned cache asset from previous playlist: ${file.name}")
+                        file.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Error running orphan cache cleanup", e)
         }
     }
 
@@ -752,10 +814,15 @@ class SignageRepository(private val context: Context) {
                     // Update database
                     assetDao.clearAllAssets()
                     assetDao.insertAssets(mergedAssets)
+                    cleanupOrphanCacheFiles()
                 } else if (wasWhiteLabelLogoMissing) {
                     startDownloadingPendingAssets()
                 }
             } else {
+                if (assetDao.getAllAssets().isNotEmpty()) {
+                    assetDao.clearAllAssets()
+                    cleanupOrphanCacheFiles()
+                }
                 if (wasWhiteLabelLogoMissing) {
                     startDownloadingPendingAssets()
                 }
@@ -1017,6 +1084,7 @@ class SignageRepository(private val context: Context) {
                 sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
             }
         }
+        cleanupOrphanCacheFiles()
         val currentError = downloadStateFlow.value.errorMessage
         downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = currentError)
     }

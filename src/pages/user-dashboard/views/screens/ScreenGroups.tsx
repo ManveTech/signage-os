@@ -106,9 +106,12 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
   const handleSavePlaylistDirect = () => {
     if (!assignPlaylistDirectTo) return;
     const playlistName = playlistToAssign;
+    const isNone = !playlistName || playlistName === 'None';
+    const targetPlaylistObj = isNone ? null : userPlaylists.find(p => p.name === playlistName);
+
     const updated = groups.map(g => g.id === assignPlaylistDirectTo.id ? {
       ...g,
-      playlist: playlistName || ''
+      playlist: isNone ? '' : playlistName
     } : g);
     setGroups(updated);
     localStorage.setItem('signageos_groups', JSON.stringify(updated));
@@ -120,8 +123,8 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
       if (s.groupId === assignPlaylistDirectTo.id) {
         const updatedScreen: Screen = {
           ...s,
-          playlist: playlistName || s.playlist,
-          playlistId: userPlaylists.find(p => p.name === playlistName)?.id || s.playlistId,
+          playlist: isNone ? '' : playlistName,
+          playlistId: isNone ? '' : (targetPlaylistObj?.id || ''),
           restart_playlist: true,
         };
         pushToDatabase('screens', s.id, updatedScreen, 'PUT');
@@ -133,7 +136,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
     mediaStore.saveScreens(updatedScreens);
 
     setAssignPlaylistDirectTo(null);
-    addToast(`Playlist assigned immediately for "${assignPlaylistDirectTo.name}"`);
+    addToast(isNone ? `Playlist unassigned for "${assignPlaylistDirectTo.name}"` : `Playlist assigned immediately for "${assignPlaylistDirectTo.name}"`);
   };
 
   const handleSavePlaylistSchedule = () => {
@@ -217,12 +220,14 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
 
     // ALSO bulk update screens in this group!
     const groupScreens = screensInGroup(editGroup.id);
+    const isGroupNone = !updatedGroup.playlist || updatedGroup.playlist === 'None';
     const updatedScreens = screens.map(s => {
       if (s.groupId === editGroup.id) {
         const updatedScreen: Screen = {
           ...s,
-          playlist: updatedGroup.playlist || s.playlist,
-          playlistId: userPlaylists.find(p => p.name === updatedGroup.playlist)?.id || s.playlistId,
+          playlist: isGroupNone ? '' : updatedGroup.playlist,
+          playlistId: isGroupNone ? '' : (userPlaylists.find(p => p.name === updatedGroup.playlist)?.id || ''),
+          restart_playlist: true,
           volume: updatedGroup.volume !== undefined ? updatedGroup.volume : s.volume,
           clear_cache: updatedGroup.clear_cache ? true : s.clear_cache,
           force_sync: updatedGroup.force_sync ? true : s.force_sync,

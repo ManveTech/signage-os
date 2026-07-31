@@ -9,7 +9,8 @@ import retrofit2.http.Url
 
 @JsonClass(generateAdapter = true)
 data class PairingRequest(
-    val hardwareUuid: String
+    val hardwareUuid: String,
+    val forceRefresh: Boolean? = false
 )
 
 @JsonClass(generateAdapter = true)
@@ -34,6 +35,8 @@ data class HeartbeatRequest(
 data class PocketBaseScreenResponse(
     val id: String,
     val status: String,
+    val pairing_code: String? = null,
+    val pairing_code_expires: String? = null,
     val playlist: String? = null,
     val playlistId: String? = null,
     val name: String? = null,
