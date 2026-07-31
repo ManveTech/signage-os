@@ -131,12 +131,79 @@ window.SignageApi = (function () {
         }
     }
 
+    async function sendHeartbeatOnServer(state) {
+        if (!state || (!state.screenId && !state.uuid)) return;
+        if (window.navigator && window.navigator.onLine === false) return;
+
+        try {
+            let storageUsedBytes = 0;
+            let storageAvailableBytes = 10737418240; // 10GB default
+            if (navigator.storage && navigator.storage.estimate) {
+                try {
+                    const estimate = await navigator.storage.estimate();
+                    if (estimate) {
+                        storageUsedBytes = estimate.usage || 0;
+                        if (estimate.quota) storageAvailableBytes = Math.max(0, estimate.quota - storageUsedBytes);
+                    }
+                } catch (_) {}
+            }
+
+            let currentAsset = 'None';
+            if (state.playlist && state.playlist.length > 0) {
+                const current = state.playlist[state.currentAssetIndex || 0];
+                if (current) currentAsset = current.filename || current.id || 'Media Asset';
+            }
+
+            const payload = {
+                hardwareUuid: state.uuid,
+                screenId: state.screenId || null,
+                cpuTemp: state.cpuTemp || 42,
+                currentPlayingAsset: currentAsset,
+                storageUsedBytes: storageUsedBytes,
+                storageAvailableBytes: storageAvailableBytes
+            };
+
+            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }, 4000).catch(() => {});
+        } catch (err) {
+            console.warn("[Heartbeat] Failed to send heartbeat:", err.message);
+        }
+    }
+
+    async function logDeviceEvent(state, event, type, detail) {
+        if (!state || !state.screenId) return;
+        try {
+            const POCKETBASE_URL = getPocketBaseUrl();
+            const payload = {
+                screenId: state.screenId,
+                screenName: state.screenName || state.name || 'Tizen TV Display',
+                assignedToUserEmail: state.assignedToUserEmail || '',
+                event: event,
+                type: type || 'info',
+                detail: detail || ''
+            };
+
+            await fetchWithTimeout(`${POCKETBASE_URL}/api/collections/screen_logs/records`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }, 3000).catch(() => {});
+        } catch (e) {
+            console.warn("[Log] Failed to send device log:", e.message);
+        }
+    }
+
     return {
         fetchWithTimeout,
         clearScreenCommandOnServer,
         clearGroupCommandOnServer,
         requestPairingCode,
         checkPairingStatusOnServer,
-        reportOfflineOnServer
+        reportOfflineOnServer,
+        sendHeartbeatOnServer,
+        logDeviceEvent
     };
 })();

@@ -431,6 +431,9 @@ window.SignagePlayer = (function () {
 
             const onVideoError = (err) => {
                 console.warn('[Player] Video playback error for:', asset.filename, err);
+                if (window.SignageApi && window.SignageApi.logDeviceEvent) {
+                    window.SignageApi.logDeviceEvent(state, 'Video playback error', 'error', `Failed to play video asset: ${asset.filename || asset.id}`);
+                }
                 if (currentToken !== rotationToken || videoDone) return;
                 videoDone = true;
                 cleanUpVideo();
@@ -784,6 +787,9 @@ window.SignagePlayer = (function () {
             }
         } catch (err) {
             console.error('[Player] Error fetching playlist assets:', err);
+            if (window.SignageApi && window.SignageApi.logDeviceEvent) {
+                window.SignageApi.logDeviceEvent(state, 'Playlist fetch error', 'error', err.message || 'Failed to fetch playlist assets');
+            }
             hideDownloadOverlay();
         }
     }

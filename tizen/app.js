@@ -5,7 +5,7 @@
 (function () {
     const { KEYS, getPocketBaseUrl } = window.SignageConfig;
     const { getOrGenerateUUID } = window.SignageStorage;
-    const { requestPairingCode, checkPairingStatusOnServer, clearScreenCommandOnServer, clearGroupCommandOnServer, fetchWithTimeout, reportOfflineOnServer } = window.SignageApi;
+    const { requestPairingCode, checkPairingStatusOnServer, clearScreenCommandOnServer, clearGroupCommandOnServer, fetchWithTimeout, reportOfflineOnServer, sendHeartbeatOnServer, logDeviceEvent } = window.SignageApi;
     const { startPlaylistRotation, fetchPlaylist, stopAndUnloadVideo, stopPlaylistRotation } = window.SignagePlayer;
     const { bindRemoteKeys } = window.SignageKeys;
 
@@ -18,7 +18,9 @@
         currentAssetIndex: 0,
         orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
         playlistId: localStorage.getItem('signage_tizen_playlist_id') || '',
-        isRotating: false
+        isRotating: false,
+        screenName: localStorage.getItem('signage_tizen_screen_name') || '',
+        assignedToUserEmail: localStorage.getItem('signage_tizen_user_email') || ''
     };
 
     const views = {
@@ -34,6 +36,7 @@
     };
 
     let syncInterval = null;
+    let heartbeatInterval = null;
 
     function isScheduleDue(scheduleDate, scheduleTime) {
         if (!scheduleDate || !scheduleTime) return false;
@@ -52,20 +55,39 @@
         bindRemoteKeys(views, (force) => requestPairingCode(state, views, updateUI, force));
 
         window.addEventListener('beforeunload', () => {
-            if (state.uuid) reportOfflineOnServer(state.uuid, 'Tizen app unmounted');
+            if (state.screenId) {
+                logDeviceEvent(state, 'Screen went offline', 'offline', 'Tizen application unmounted or TV turned off');
+                reportOfflineOnServer(state.uuid, 'Tizen app unmounted');
+            }
+        });
+
+        window.addEventListener('online', () => {
+            console.log("[Tizen] Display network reconnected.");
+            if (state.screenId) {
+                logDeviceEvent(state, 'Screen came online', 'online', 'Network connectivity restored.');
+                sendHeartbeatOnServer(state);
+            }
+        });
+
+        window.addEventListener('offline', () => {
+            console.warn("[Tizen] Display network disconnected.");
+            if (state.screenId) {
+                logDeviceEvent(state, 'Screen went offline', 'offline', 'Network connectivity lost.');
+            }
         });
 
         if (state.screenId && state.status !== 'pairing') {
-            // Offline-first: paint the cached playlist immediately so the screen
-            // starts looping without waiting on (or needing) the network. The
-            // background sync below refreshes config and hot-swaps on changes.
+            // Offline-first: paint cached playlist immediately so playback starts instantly
             updateUI();
             fetchScreenConfig();
+            sendHeartbeatOnServer(state);
+            logDeviceEvent(state, 'Screen came online', 'online', 'Tizen TV player engine initialized and active');
         } else {
             requestPairingCode(state, views, updateUI);
         }
 
         startSyncLoop();
+        startHeartbeatLoop();
     }
 
     function applyOrientation() {
@@ -264,8 +286,22 @@
         }, 10000);
     }
 
+    function startHeartbeatLoop() {
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        heartbeatInterval = setInterval(() => {
+            if (state.screenId && state.status !== 'pairing') {
+                sendHeartbeatOnServer(state);
+            }
+        }, 20000);
+    }
+
     function disconnectDevice() {
         console.log("Disconnecting device and resetting pairing.");
+        if (state.screenId) {
+            logDeviceEvent(state, 'Screen went offline', 'offline', 'Device unlinked or pairing reset');
+            reportOfflineOnServer(state.uuid, 'Device unlinked/reset');
+        }
+
         localStorage.removeItem(KEYS.SCREEN_ID);
         localStorage.removeItem(KEYS.PAIRING_CODE);
         localStorage.removeItem(KEYS.STATUS);
