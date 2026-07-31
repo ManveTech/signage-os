@@ -77,8 +77,26 @@ app.get('/health', async (req, res) => {
   });
 });
 
+import path from 'path';
+
 // Mount all API endpoints under /api/v1
 app.use('/api/v1', apiRouter);
+
+// Serve frontend static build files from dist/
+const distPath = path.join(process.cwd(), 'dist');
+app.use(express.static(distPath));
+
+// SPA Catch-all Fallback: Return index.html for non-API GET requests so client-side router handles URLs on refresh
+app.get('*', (req: any, res: any, next: any) => {
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  res.sendFile(path.join(distPath, 'index.html'), (err: any) => {
+    if (err) {
+      res.status(404).send('Application build not found. Please run npm run build.');
+    }
+  });
+});
 
 // Start server only after PocketBase admin auth is ready
 async function startServer() {
