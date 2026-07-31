@@ -75,7 +75,19 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
 
   // Active view is derived directly from the URL pathname
   const activeView = getUserViewFromPath(location.pathname);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return true;
+    return localStorage.getItem('signageos_sidebar_collapsed') === 'true';
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('signageos_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
   const [clientLicense, setClientLicense] = useState<License | null>(null);
 
@@ -219,7 +231,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     <div className="flex h-screen bg-gray-50 overflow-hidden text-left relative">
       {!sidebarCollapsed && (
         <div 
-          onClick={() => setSidebarCollapsed(true)} 
+          onClick={toggleSidebar} 
           className="fixed inset-0 bg-black/40 z-40 md:hidden animate-fadeIn" 
         />
       )}
@@ -227,7 +239,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
         activeView={activeView}
         onNavigate={handleNavigate}
         collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(p => !p)}
+        onToggle={toggleSidebar}
         onLogout={onLogout}
         userEmail={userEmail}
       />
@@ -236,7 +248,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
           activeView={activeView} 
           onNavigate={handleNavigate} 
           onLogout={onLogout} 
-          onToggleSidebar={() => setSidebarCollapsed(p => !p)}
+          onToggleSidebar={toggleSidebar}
           onSwitchToAdmin={onSwitchToAdmin}
           userEmail={userEmail}
         />

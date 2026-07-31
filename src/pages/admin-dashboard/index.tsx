@@ -91,7 +91,18 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
 
   // Active view is derived directly from the URL pathname
   const activeView = getAdminViewFromPath(location.pathname);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return true;
+    return localStorage.getItem('signageos_sidebar_collapsed') === 'true';
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('signageos_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
 
   const handleNavigate = (targetView: string) => {
     const targetPath = ADMIN_ROUTES[targetView] || `/admin/${targetView}`;
@@ -158,7 +169,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
     <div className="flex h-screen bg-gray-50 overflow-hidden text-left relative">
       {!sidebarCollapsed && (
         <div 
-          onClick={() => setSidebarCollapsed(true)} 
+          onClick={toggleSidebar} 
           className="fixed inset-0 bg-black/40 z-40 md:hidden animate-fadeIn" 
         />
       )}
@@ -166,7 +177,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
         activeView={activeView}
         onNavigate={handleNavigate}
         collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(p => !p)}
+        onToggle={toggleSidebar}
         onLogout={onLogout}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -174,7 +185,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
           activeView={activeView} 
           onNavigate={handleNavigate} 
           onLogout={onLogout} 
-          onToggleSidebar={() => setSidebarCollapsed(p => !p)} 
+          onToggleSidebar={toggleSidebar} 
           onSwitchToClient={onSwitchToClient}
         />
         <main className="flex-1 overflow-y-auto">
