@@ -758,8 +758,31 @@ window.SignagePlayer = (function () {
         }
     }
 
+    function stopPlaylistRotation(state, views) {
+        if (rotationTimeout) {
+            clearTimeout(rotationTimeout);
+            rotationTimeout = null;
+        }
+        if (state) state.isRotating = false;
+        if (views && views.videoPlayer) {
+            stopAndUnloadVideo(views.videoPlayer);
+        }
+        if (views && views.imagePlayer1) {
+            views.imagePlayer1.style.display = 'none';
+            views.imagePlayer1.classList.remove('active');
+        }
+        if (views && views.imagePlayer2) {
+            views.imagePlayer2.style.display = 'none';
+            views.imagePlayer2.classList.remove('active');
+        }
+        if (window.SignageWidgets) {
+            window.SignageWidgets.hideAllWidgets();
+        }
+    }
+
     return {
         stopAndUnloadVideo,
+        stopPlaylistRotation,
         syncLocalFiles,
         startPlaylistRotation,
         advancePlaylist,

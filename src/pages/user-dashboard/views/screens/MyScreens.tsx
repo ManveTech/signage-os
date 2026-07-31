@@ -3,7 +3,7 @@ import { API_BASE } from '../../../../config';
 import {
   Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit,
   Clock, Monitor, X, Check, CheckCircle, MapPin,
-  Grid3X3, List, Pause, Eraser, Lock, Trash,
+  Grid3X3, List, Pause, Eraser, Lock, Trash, Square,
   Calendar, Link, ListVideo, FolderMinus
 } from 'lucide-react';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
@@ -292,6 +292,43 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
     addToast(`Selected screen(s) removed successfully`, 'success');
   };
 
+  const handleSyncSelected = () => {
+    selectedIds.forEach(id => {
+      const scr = screens.find(s => s.id === id);
+      if (scr) {
+        pushToDatabase('screens', id, { ...scr, force_sync: true }, 'PUT');
+      }
+    });
+    addToast(`Sync command sent to ${selectedIds.length} selected screen(s)`, 'success');
+    setSelectedIds([]);
+    setIsSelectionMode(false);
+  };
+
+  const handleClearCacheSelected = () => {
+    selectedIds.forEach(id => {
+      const scr = screens.find(s => s.id === id);
+      if (scr) {
+        pushToDatabase('screens', id, { ...scr, clear_cache: true }, 'PUT');
+      }
+    });
+    addToast(`Cache clear command sent to ${selectedIds.length} selected screen(s)`, 'success');
+    setSelectedIds([]);
+    setIsSelectionMode(false);
+  };
+
+  const handleStopPlaybackSelected = () => {
+    const allScreens = mediaStore.getScreens();
+    const updatedAll = allScreens.map(s => selectedIds.includes(s.id) ? { ...s, playlist: 'None', playlistId: '', restart_playlist: true } : s);
+    mediaStore.saveScreens(updatedAll);
+    setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+    selectedIds.forEach(id => {
+      pushToDatabase('screens', id, { playlist: '', playlistId: '', restart_playlist: true }, 'PUT');
+    });
+    addToast(`Playback stopped for ${selectedIds.length} selected screen(s)`, 'success');
+    setSelectedIds([]);
+    setIsSelectionMode(false);
+  };
+
   const handleSync = (screen: Screen) => {
     setOpenMenu(null);
     setHoveredScreen(null);
@@ -436,13 +473,36 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                 {isSelectionMode ? 'Cancel Selection' : 'Select'}
               </button>
               {isSelectionMode && selectedIds.length > 0 && (
-                <button
-                  onClick={() => setDeleteConfirm(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
-                >
-                  <Trash size={15} />
-                  Delete Selected ({selectedIds.length})
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={handleSyncSelected}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition-all shadow-xs cursor-pointer"
+                  >
+                    <RefreshCw size={13} />
+                    Force Sync ({selectedIds.length})
+                  </button>
+                  <button
+                    onClick={handleClearCacheSelected}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 text-white rounded-xl text-xs font-semibold hover:bg-amber-700 transition-all shadow-xs cursor-pointer"
+                  >
+                    <Trash2 size={13} />
+                    Clear Cache ({selectedIds.length})
+                  </button>
+                  <button
+                    onClick={handleStopPlaybackSelected}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 text-white rounded-xl text-xs font-semibold hover:bg-slate-800 transition-all shadow-xs cursor-pointer"
+                  >
+                    <Square size={13} />
+                    Stop Playback ({selectedIds.length})
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold hover:bg-rose-100 hover:border-rose-300 transition-all shadow-xs cursor-pointer"
+                  >
+                    <Trash size={13} />
+                    Delete ({selectedIds.length})
+                  </button>
+                </div>
               )}
             </div>
           )}
