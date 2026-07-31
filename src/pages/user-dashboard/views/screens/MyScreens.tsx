@@ -294,10 +294,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
 
   const handleSyncSelected = () => {
     selectedIds.forEach(id => {
-      const scr = screens.find(s => s.id === id);
-      if (scr) {
-        pushToDatabase('screens', id, { ...scr, force_sync: true }, 'PUT');
-      }
+      pushToDatabase('screens', id, { force_sync: true }, 'PUT');
     });
     addToast(`Sync command sent to ${selectedIds.length} selected screen(s)`, 'success');
     setSelectedIds([]);
@@ -306,10 +303,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
 
   const handleClearCacheSelected = () => {
     selectedIds.forEach(id => {
-      const scr = screens.find(s => s.id === id);
-      if (scr) {
-        pushToDatabase('screens', id, { ...scr, clear_cache: true }, 'PUT');
-      }
+      pushToDatabase('screens', id, { clear_cache: true }, 'PUT');
     });
     addToast(`Cache clear command sent to ${selectedIds.length} selected screen(s)`, 'success');
     setSelectedIds([]);
@@ -332,8 +326,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
   const handleSync = (screen: Screen) => {
     setOpenMenu(null);
     setHoveredScreen(null);
-    const updatedScreen = { ...screen, force_sync: true };
-    pushToDatabase('screens', screen.id, updatedScreen, 'PUT').then(res => {
+    pushToDatabase('screens', screen.id, { force_sync: true }, 'PUT').then(res => {
       if (res.ok) {
         addToast(`Sync signal sent to "${screen.name}"`, 'success');
       } else {
@@ -344,19 +337,18 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
 
   const handleStopPlayback = (screen: Screen) => {
     setOpenMenu(null);
-    const updatedScreen = { ...screen, playlist: 'None', playlistId: '' };
+    const updatedScreen = { ...screen, playlist: '', playlistId: '', restart_playlist: true };
     const allScreens = mediaStore.getScreens();
     const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
     mediaStore.saveScreens(updatedAll);
     setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
-    pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
+    pushToDatabase('screens', screen.id, { playlist: '', playlistId: '', restart_playlist: true }, 'PUT');
     addToast(`Playback stopped for "${screen.name}"`);
   };
 
   const handleClearCache = (screen: Screen) => {
     setOpenMenu(null);
-    const updatedScreen = { ...screen, clear_cache: true };
-    pushToDatabase('screens', screen.id, updatedScreen, 'PUT').then(res => {
+    pushToDatabase('screens', screen.id, { clear_cache: true }, 'PUT').then(res => {
       if (res.ok) {
         addToast(`Cache purge command sent to "${screen.name}"`, 'success');
       } else {

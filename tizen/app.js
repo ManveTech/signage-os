@@ -147,9 +147,10 @@
             }
 
             let groupData = null;
-            if (data.groupId) {
+            const validGroupId = typeof data.groupId === 'string' && /^[a-zA-Z0-9]{15}$/.test(data.groupId.trim()) ? data.groupId.trim() : null;
+            if (validGroupId) {
                 try {
-                    const groupUrl = `${POCKETBASE_URL}/api/collections/screen_groups/records/${data.groupId}`;
+                    const groupUrl = `${POCKETBASE_URL}/api/collections/screen_groups/records/${validGroupId}`;
                     const groupRes = await fetchWithTimeout(groupUrl, {}, 2000);
                     if (groupRes.ok) {
                         groupData = await groupRes.json();
@@ -190,10 +191,10 @@
                 if (data.clear_cache) await clearScreenCommandOnServer(state.screenId, 'clear_cache');
                 if (data.force_sync) await clearScreenCommandOnServer(state.screenId, 'force_sync');
                 if (data.restart_playlist) await clearScreenCommandOnServer(state.screenId, 'restart_playlist');
-                if (groupData) {
-                    if (groupData.clear_cache) await clearGroupCommandOnServer(data.groupId, 'clear_cache');
-                    if (groupData.force_sync) await clearGroupCommandOnServer(data.groupId, 'force_sync');
-                    if (groupData.restart_playlist) await clearGroupCommandOnServer(data.groupId, 'restart_playlist');
+                if (validGroupId && groupData) {
+                    if (groupData.clear_cache) await clearGroupCommandOnServer(validGroupId, 'clear_cache');
+                    if (groupData.force_sync) await clearGroupCommandOnServer(validGroupId, 'force_sync');
+                    if (groupData.restart_playlist) await clearGroupCommandOnServer(validGroupId, 'restart_playlist');
                 }
 
                 updateUI();
@@ -210,22 +211,16 @@
             if (isClearCache) {
                 console.log("[Tizen] Clear cache command received.");
                 localStorage.removeItem(KEYS.PLAYLIST);
-                if (window.SignagePlayer && window.SignagePlayer.syncLocalFiles) {
-                    await window.SignagePlayer.syncLocalFiles([]);
-                }
                 if (data.clear_cache) await clearScreenCommandOnServer(state.screenId, 'clear_cache');
-                if (groupData && groupData.clear_cache) await clearGroupCommandOnServer(data.groupId, 'clear_cache');
+                if (validGroupId && groupData && groupData.clear_cache) await clearGroupCommandOnServer(validGroupId, 'clear_cache');
                 needsPlaylistRefetch = true;
             }
 
             if (isForceSync) {
                 console.log("[Tizen] Force sync command received.");
                 localStorage.removeItem(KEYS.PLAYLIST);
-                if (window.SignagePlayer && window.SignagePlayer.syncLocalFiles) {
-                    await window.SignagePlayer.syncLocalFiles([]);
-                }
                 if (data.force_sync) await clearScreenCommandOnServer(state.screenId, 'force_sync');
-                if (groupData && groupData.force_sync) await clearGroupCommandOnServer(data.groupId, 'force_sync');
+                if (validGroupId && groupData && groupData.force_sync) await clearGroupCommandOnServer(validGroupId, 'force_sync');
                 needsPlaylistRefetch = true;
             }
 
