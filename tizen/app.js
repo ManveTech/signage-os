@@ -219,14 +219,6 @@
         }
     }
 
-            if (hasChanged) {
-                updateUI();
-            }
-        } catch (err) {
-            console.error("Error syncing screen configuration:", err);
-        }
-    }
-
     function startSyncLoop() {
         if (syncInterval) clearInterval(syncInterval);
         syncInterval = setInterval(() => {
