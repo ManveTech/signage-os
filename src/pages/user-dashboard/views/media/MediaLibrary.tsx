@@ -422,10 +422,10 @@ export default function MediaLibrary({ userEmail }: Props) {
                   {!isSelectionMode && (
                     <button
                       onClick={() => handleDelete(media.id, media.title)}
-                      className="absolute top-2 right-2 p-1.5 bg-red-600/90 hover:bg-red-700 text-white rounded-lg transition-colors duration-150 cursor-pointer shadow-sm z-35"
+                      className="absolute top-1.5 right-1.5 p-1.5 bg-rose-50/95 hover:bg-rose-500 text-rose-600 hover:text-white rounded-full transition-all duration-150 cursor-pointer shadow-sm border border-rose-100 z-35"
                       title="Delete"
                     >
-                      <Trash2 size={12} />
+                      <Trash2 size={11} className="stroke-[2.5]" />
                     </button>
                   )}
                 </>

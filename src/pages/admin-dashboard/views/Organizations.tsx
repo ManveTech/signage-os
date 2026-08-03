@@ -160,6 +160,132 @@ export default function Organizations() {
     screensPercentage = Math.min(100, Math.round((totalScreensCount / currentScreensLimit) * 100));
   }
 
+  const renderOrgDetails = (org: OrganizationType) => {
+    const associatedLic = licenses.find(
+      l => 
+        l.assignedOrgName?.toLowerCase() === org.name.toLowerCase() || 
+        l.assignedUserEmail?.toLowerCase() === org.email.toLowerCase()
+    );
+
+    const orgScreens = screens.filter(s => s.assignedToUserEmail?.toLowerCase() === org.email.toLowerCase());
+    const totalScr = orgScreens.length;
+    const activeScr = orgScreens.filter(s => s.status === 'online').length;
+
+    const storageBytes = mediaStore.getClientStorageUsedBytes(org.email);
+    const storageGB = Number((storageBytes / (1024 * 1024 * 1024)).toFixed(2));
+
+    const currentStorLimit = associatedLic ? associatedLic.storageLimit : org.storageLimit;
+    const currentScrLimit = associatedLic ? associatedLic.deviceLimit : org.screensAllowed;
+
+    const storagePercent = Math.min(100, Math.round((storageGB / currentStorLimit) * 100));
+    const screensPercent = Math.min(100, Math.round((totalScr / currentScrLimit) * 100));
+
+    return (
+      <div className="p-4 sm:p-5 space-y-4 sm:space-y-5 text-xs text-slate-600 border-t border-gray-100 bg-slate-50/50">
+        <div className="space-y-2">
+          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Assigned License profile</h3>
+          {associatedLic ? (
+            <div className="border border-blue-100 bg-blue-50/30 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Key size={14} className="text-blue-600" />
+                  <span className="font-mono font-bold text-slate-900 text-sm">{associatedLic.id}</span>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${
+                  associatedLic.status === 'active' 
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-250' 
+                    : 'bg-rose-50 text-rose-700 border-rose-250'
+                }`}>
+                  {associatedLic.status}
+                </span>
+              </div>
+          
+              <div className="grid grid-cols-2 gap-y-2 text-xs">
+                <div>
+                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">License Name</p>
+                  <p className="font-bold text-slate-800 mt-0.5 truncate">{associatedLic.name}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Expiry Date</p>
+                  <p className="font-mono font-bold text-slate-800 mt-0.5">{associatedLic.expiryDate}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Billing structure</p>
+                  <p className="font-bold text-slate-800 mt-0.5 capitalize">₹{associatedLic.price.toLocaleString()} / {associatedLic.tenure}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="border border-dashed border-gray-300 rounded-xl p-4 text-center text-gray-400 flex flex-col items-center justify-center gap-1 bg-white">
+              <AlertTriangle size={18} className="text-amber-500" />
+              <p className="font-semibold text-xs text-slate-600">No Associated License Profile</p>
+              <p className="text-[10px] text-slate-400">Onboard client with a license key inside client management to link assets.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3.5 pt-1 border-t border-gray-150">
+          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Device & Storage Allocation</h3>
+          
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1"><Monitor size={13} className="text-slate-400" /> Screens Usage</span>
+              <span>{totalScr} / {associatedLic ? associatedLic.deviceLimit : org.screensAllowed} Allowed</span>
+            </div>
+            
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="bg-blue-600 h-full rounded-full transition-all duration-300" style={{ width: `${screensPercent}%` }} />
+            </div>
+
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mt-0.5">
+              <span>{activeScr} Screen(s) Online/Active</span>
+              <span>{screensPercent}% Allocated</span>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1"><HardDrive size={13} className="text-slate-400" /> Disk Space Quota</span>
+              <span>{storageGB} GB / {associatedLic ? associatedLic.storageLimit : org.storageLimit} GB</span>
+            </div>
+            
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="bg-emerald-500 h-full rounded-full transition-all duration-300" style={{ width: `${storagePercent}%` }} />
+            </div>
+
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mt-0.5">
+              <span>Actual Uploaded Asset Size</span>
+              <span>{storagePercent}% Consumed</span>
+            </div>
+          </div>
+
+        </div>
+
+        <div className="space-y-2 pt-3.5 border-t border-gray-150">
+          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">White Label & Custom Domain</h3>
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Custom Domain / Hostname</label>
+            <input 
+              type="text" 
+              placeholder="e.g. cms.clientcompany.com"
+              value={org.customDomain || ''}
+              onChange={e => {
+                const updatedDomain = e.target.value;
+                const updatedOrgs = orgs.map(o => o.id === org.id ? { ...o, customDomain: updatedDomain } : o);
+                setOrgs(updatedOrgs);
+                localStorage.setItem('signageos_organizations', JSON.stringify(updatedOrgs));
+                pushToDatabase('organizations', org.id, { customDomain: updatedDomain }, 'PUT');
+              }}
+              onClick={e => e.stopPropagation()}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500 bg-white text-slate-800 font-semibold"
+            />
+            <span className="text-[9px] text-gray-400 mt-1 block">Point client's custom CNAME to your server to activate branding.</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 text-left">
       {/* Toast Alert */}
@@ -195,29 +321,40 @@ export default function Organizations() {
               return (
                 <div
                   key={org.id}
-                  onClick={() => setSelectedId(org.id)}
-                  className={`bg-white rounded-2xl border p-3.5 sm:p-4 cursor-pointer hover:shadow-md transition-all flex items-center justify-between gap-3 sm:gap-4 ${
+                  className={`bg-white rounded-2xl border cursor-pointer hover:shadow-md transition-all overflow-hidden ${
                     isActive ? 'border-blue-600 ring-4 ring-blue-50' : 'border-gray-200'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
-                    }`}>
-                      <Building2 size={18} />
+                  <div
+                    onClick={() => setSelectedId(selectedId === org.id ? null : org.id)}
+                    className="p-3.5 sm:p-4 flex items-center justify-between gap-3 sm:gap-4"
+                  >
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        <Building2 size={18} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-slate-800 truncate">{org.name}</h3>
+                        <p className="text-xs text-slate-400 mt-0.5 truncate">{org.adminName} · <span className="font-mono">{org.email}</span></p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-bold text-slate-800 truncate">{org.name}</h3>
-                      <p className="text-xs text-slate-400 mt-0.5 truncate">{org.adminName} · <span className="font-mono">{org.email}</span></p>
+
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider border ${statusColors[org.subscriptionStatus]}`}>
+                        {org.subscriptionStatus}
+                      </span>
+                      <ChevronRight size={16} className={`text-slate-400 transition-transform ${isActive ? 'rotate-90 text-blue-600' : ''}`} />
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider border ${statusColors[org.subscriptionStatus]}`}>
-                      {org.subscriptionStatus}
-                    </span>
-                    <ChevronRight size={16} className={`text-slate-400 transition-transform ${isActive ? 'rotate-90 text-blue-600' : ''}`} />
-                  </div>
+                  {/* Inline detailed view for mobile */}
+                  {isActive && (
+                    <div className="lg:hidden">
+                      {renderOrgDetails(org)}
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -225,7 +362,7 @@ export default function Organizations() {
         </div>
 
         {/* Right Side: Detailed Organizations Sidebar Panel */}
-        <div className="lg:col-span-5">
+        <div className="hidden lg:block lg:col-span-5">
           {selectedOrg ? (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
 
@@ -241,118 +378,7 @@ export default function Organizations() {
               </div>
 
               {/* Sidebar Body */}
-              <div className="p-4 sm:p-5 space-y-4 sm:space-y-5 text-xs text-slate-600">
-                
-                {/* 1. SUBSCRIPTION PROFILE */}
-                
-                {/* 2. LICENSE METRICS (Active License Details) */}
-                <div className="space-y-2">
-                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Assigned License profile</h3>
-                  {associatedLicense ? (
-                    <div className="border border-blue-100 bg-blue-50/30 rounded-xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <Key size={14} className="text-blue-600" />
-                          <span className="font-mono font-bold text-slate-900 text-sm">{associatedLicense.id}</span>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${
-                          associatedLicense.status === 'active' 
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-250' 
-                            : 'bg-rose-50 text-rose-700 border-rose-250'
-                        }`}>
-                          {associatedLicense.status}
-                        </span>
-                      </div>
-                  
-                      <div className="grid grid-cols-2 gap-y-2 text-xs">
-                        <div>
-                          <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">License Name</p>
-                          <p className="font-bold text-slate-800 mt-0.5 truncate">{associatedLicense.name}</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Expiry Date</p>
-                          <p className="font-mono font-bold text-slate-800 mt-0.5">{associatedLicense.expiryDate}</p>
-                        </div>
-                        <div>
-                          <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Billing structure</p>
-                          <p className="font-bold text-slate-800 mt-0.5 capitalize">₹{associatedLicense.price.toLocaleString()} / {associatedLicense.tenure}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="border border-dashed border-gray-300 rounded-xl p-4 text-center text-gray-400 flex flex-col items-center justify-center gap-1">
-                      <AlertTriangle size={18} className="text-amber-500" />
-                      <p className="font-semibold text-xs text-slate-600">No Associated License Profile</p>
-                      <p className="text-[10px] text-slate-400">Onboard client with a license key inside client management to link assets.</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. HARDWARE & SCREENS QUOTAS */}
-                <div className="space-y-3.5 pt-1 border-t border-gray-150">
-                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Device & Storage Allocation</h3>
-                  
-                  {/* Screen Allocation */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                      <span className="flex items-center gap-1"><Monitor size={13} className="text-slate-400" /> Screens Usage</span>
-                      <span>{totalScreensCount} / {associatedLicense ? associatedLicense.deviceLimit : selectedOrg.screensAllowed} Allowed</span>
-                    </div>
-                    
-                    {/* Progress Bar */}
-                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="bg-blue-600 h-full rounded-full transition-all duration-300" style={{ width: `${screensPercentage}%` }} />
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mt-0.5">
-                      <span>{activeScreensCount} Screen(s) Online/Active</span>
-                      <span>{screensPercentage}% Allocated</span>
-                    </div>
-                  </div>
-
-                  {/* Storage Allocation */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                      <span className="flex items-center gap-1"><HardDrive size={13} className="text-slate-400" /> Disk Space Quota</span>
-                      <span>{storageUsedGB} GB / {associatedLicense ? associatedLicense.storageLimit : selectedOrg.storageLimit} GB</span>
-                    </div>
-                    
-                    {/* Progress Bar */}
-                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-300" style={{ width: `${storagePercentage}%` }} />
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mt-0.5">
-                      <span>Actual Uploaded Asset Size</span>
-                      <span>{storagePercentage}% Consumed</span>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* White Label Configuration */}
-                <div className="space-y-2 pt-3.5 border-t border-gray-150">
-                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">White Label & Custom Domain</h3>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Custom Domain / Hostname</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. cms.clientcompany.com"
-                      value={selectedOrg.customDomain || ''}
-                      onChange={e => {
-                        const updatedDomain = e.target.value;
-                        const updatedOrgs = orgs.map(o => o.id === selectedOrg.id ? { ...o, customDomain: updatedDomain } : o);
-                        setOrgs(updatedOrgs);
-                        localStorage.setItem('signageos_organizations', JSON.stringify(updatedOrgs));
-                        pushToDatabase('organizations', selectedOrg.id, { customDomain: updatedDomain }, 'PUT');
-                      }}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500 bg-slate-50 text-slate-800 font-semibold"
-                    />
-                    <span className="text-[9px] text-gray-400 mt-1 block">Point client's custom CNAME to your server to activate branding.</span>
-                  </div>
-                </div>
-
-              </div>
+              {renderOrgDetails(selectedOrg)}
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-center text-gray-400 flex flex-col items-center justify-center gap-2">

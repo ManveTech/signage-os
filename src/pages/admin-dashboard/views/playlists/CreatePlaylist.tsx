@@ -894,13 +894,17 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 key={asset.id}
                 draggable
                 onDragStart={(e) => handleAssetDragStart(e, asset.id)}
-                className="bg-slate-50 border border-slate-200 rounded-xl p-2 flex flex-col gap-1.5 cursor-grab active:cursor-grabbing hover:border-blue-300 hover:bg-blue-50/10 transition-all select-none group relative"
+                onClick={() => addAssetToTimeline(asset)}
+                className="bg-slate-50 border border-slate-200 rounded-xl p-2 flex flex-col gap-1.5 cursor-pointer md:cursor-grab active:cursor-grabbing hover:border-blue-300 hover:bg-blue-50/10 transition-all select-none group relative"
               >
                 {/* Instant add to sequence button */}
                 <button
                   type="button"
-                  onClick={() => addAssetToTimeline(asset)}
-                  className="absolute top-1.5 right-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-1 shadow hover:scale-105 transition-all opacity-0 group-hover:opacity-100 z-10 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent duplicate calls
+                    addAssetToTimeline(asset);
+                  }}
+                  className="absolute top-1.5 right-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-1 shadow hover:scale-105 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 cursor-pointer"
                   title="Add to sequence"
                 >
                   <Plus size={10} className="stroke-[3]" />

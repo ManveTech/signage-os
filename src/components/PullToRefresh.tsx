@@ -22,7 +22,17 @@ export default function PullToRefresh({ onRefresh, children, enabled = true }: P
     if (!enabled) return;
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (window.scrollY === 0 && !isRefreshing) {
+      let isScrollTopZero = true;
+      let el = e.target as HTMLElement | null;
+      while (el) {
+        if (el.scrollTop > 0) {
+          isScrollTopZero = false;
+          break;
+        }
+        el = el.parentElement;
+      }
+
+      if (window.scrollY === 0 && isScrollTopZero && !isRefreshing) {
         setStartY(e.touches[0].clientY);
         setIsPulling(true);
       }
@@ -34,8 +44,24 @@ export default function PullToRefresh({ onRefresh, children, enabled = true }: P
       const touchY = e.touches[0].clientY;
       setCurrentY(touchY);
 
-      if (touchY > startY && window.scrollY === 0) {
-        e.preventDefault();
+      let isScrollTopZero = true;
+      let el = e.target as HTMLElement | null;
+      while (el) {
+        if (el.scrollTop > 0) {
+          isScrollTopZero = false;
+          break;
+        }
+        el = el.parentElement;
+      }
+
+      if (touchY > startY && window.scrollY === 0 && isScrollTopZero) {
+        if (e.cancelable) {
+          e.preventDefault();
+        }
+      } else {
+        setIsPulling(false);
+        setStartY(0);
+        setCurrentY(0);
       }
     };
 
