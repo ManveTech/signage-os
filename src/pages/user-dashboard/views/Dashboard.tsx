@@ -138,7 +138,7 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
   };
 
   return (
-    <div className="p-6 space-y-6 text-left">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 text-left">
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
@@ -146,23 +146,23 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
       </div>
 
       {/* Main KPI Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Screen Network & Playbacks */}
         <div 
-          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+          className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
           style={hoveredCard === 'screens' ? { boxShadow: '0 10px 25px -5px rgba(34,197,94,0.25), 0 8px 10px -6px rgba(34,197,94,0.25)', borderColor: '#22C55E' } : {}}
           onMouseEnter={() => setHoveredCard('screens')}
           onMouseLeave={() => setHoveredCard(null)}
         >
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-xl bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
               <Monitor size={20} />
             </div>
             <span className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
               {onlineScreens} / {myScreens.length} Online
             </span>
           </div>
-          <div className="mt-4 space-y-2">
+          <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
             <h3 className="text-2xl font-black text-slate-800">
               {myScreens.length} <span className="text-xs text-slate-400 font-semibold">of {deviceLimit} slots</span>
             </h3>
@@ -180,20 +180,20 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
 
         {/* License Profile */}
         <div 
-          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+          className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
           style={hoveredCard === 'license' ? { boxShadow: '0 10px 25px -5px rgba(59,130,246,0.25), 0 8px 10px -6px rgba(59,130,246,0.25)', borderColor: '#3B82F6' } : {}}
           onMouseEnter={() => setHoveredCard('license')}
           onMouseLeave={() => setHoveredCard(null)}
         >
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
               <Key size={20} />
             </div>
             <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
               {userLicense?.name || 'PRO'}
             </span>
           </div>
-          <div className="mt-4 space-y-2">
+          <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
             <h3 className="text-lg font-black text-slate-850 truncate" title={userLicense?.id}>
               {userLicense?.id || 'NO LICENSE'}
             </h3>
@@ -211,20 +211,20 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
 
         {/* Storage Vault Stats */}
         <div 
-          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+          className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
           style={hoveredCard === 'storage' ? { boxShadow: '0 10px 25px -5px rgba(139,92,246,0.25), 0 8px 10px -6px rgba(139,92,246,0.25)', borderColor: '#8B5CF6' } : {}}
           onMouseEnter={() => setHoveredCard('storage')}
           onMouseLeave={() => setHoveredCard(null)}
         >
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
               <HardDrive size={20} />
             </div>
             <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
               {storageUsedPercent.toFixed(1)}% Capacity
             </span>
           </div>
-          <div className="mt-4 space-y-2">
+          <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
             <h3 className="text-2xl font-black text-slate-800">
               {storageUsedMb} <span className="text-xs text-slate-400 font-semibold">MB of {storageLimitGb} GB</span>
             </h3>
@@ -242,20 +242,20 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
 
         {/* Diagnostics & Warnings */}
         <div 
-          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+          className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
           style={hoveredCard === 'diagnostics' ? { boxShadow: '0 10px 25px -5px rgba(245,158,11,0.25), 0 8px 10px -6px rgba(245,158,11,0.25)', borderColor: '#F59E0B' } : {}}
           onMouseEnter={() => setHoveredCard('diagnostics')}
           onMouseLeave={() => setHoveredCard(null)}
         >
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
               <Cpu size={20} />
             </div>
             <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
               {myAlerts.length} Alerts
             </span>
           </div>
-          <div className="mt-4 space-y-2">
+          <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
             <h3 className="text-2xl font-black text-slate-800">
               {offlineScreens} <span className="text-xs text-slate-400 font-semibold">offline</span>
             </h3>
@@ -273,38 +273,38 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
       </div>
 
       {/* Media and Playlist Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-slate-50 rounded-2xl border border-slate-200/60 p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-              <Film size={18} />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        <div className="bg-slate-50 rounded-2xl border border-slate-200/60 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 sm:justify-between">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+              <Film size={16} />
             </div>
-            <div>
-              <p className="text-xs font-bold text-slate-800">Media Library items</p>
-              <p className="text-[10px] text-slate-400">Total uploaded image/video files</p>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-800">Media</p>
+              <p className="text-[10px] text-slate-400 truncate hidden sm:block">Total uploaded image/video files</p>
             </div>
           </div>
-          <span className="text-lg font-black text-slate-700">{myMedia.length}</span>
+          <span className="text-lg font-black text-slate-700 self-end sm:self-auto">{myMedia.length}</span>
         </div>
 
-        <div className="bg-slate-50 rounded-2xl border border-slate-200/60 p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center flex-shrink-0">
-              <List size={18} />
+        <div className="bg-slate-50 rounded-2xl border border-slate-200/60 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 sm:justify-between">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center flex-shrink-0">
+              <List size={16} />
             </div>
-            <div>
-              <p className="text-xs font-bold text-slate-800">Active Campaign Loops</p>
-              <p className="text-[10px] text-slate-400">Total play sequences built</p>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-800">Loops</p>
+              <p className="text-[10px] text-slate-400 truncate hidden sm:block">Total play sequences built</p>
             </div>
           </div>
-          <span className="text-lg font-black text-slate-700">{myPlaylists.length}</span>
+          <span className="text-lg font-black text-slate-700 self-end sm:self-auto">{myPlaylists.length}</span>
         </div>
       </div>
 
       {/* Warnings Alerts Panel and Activity Log */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Activity Log */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3.5 sm:space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h2 className="text-xs font-black uppercase tracking-wider text-slate-850">Recent System Activity</h2>
           </div>
@@ -324,7 +324,7 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
         </div>
 
         {/* Alerts & Critical Warnings */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3.5 sm:space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h2 className="text-xs font-black uppercase tracking-wider text-slate-850">Alerts & Notifications</h2>
             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${

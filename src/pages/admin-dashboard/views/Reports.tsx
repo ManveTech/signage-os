@@ -19,28 +19,28 @@ export default function Reports({ activeTab: initTab = 'Overview' }: { activeTab
   const [tab, setTab] = useState<Tab>(initTab);
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Reports</h1>
           <p className="text-sm text-gray-500 mt-0.5">Analytics and performance data</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+        <button className="flex items-center justify-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
           <Download size={15} /> Export CSV
         </button>
       </div>
 
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit overflow-x-auto max-w-full">
         {tabs.map(t => (
-          <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${
+          <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 text-xs font-medium rounded-lg transition-all whitespace-nowrap ${
             tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}>{t}</button>
         ))}
       </div>
 
       {tab === 'Overview' && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="space-y-4 sm:space-y-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             {[
               { label: 'Total Playbacks', value: '1.2M', icon: <TrendingUp size={18} />, color: 'text-blue-600', bg: 'bg-blue-50' },
               { label: 'Impressions', value: '4.8M', icon: <Eye size={18} />, color: 'text-teal-600', bg: 'bg-teal-50' },
@@ -91,43 +91,74 @@ export default function Reports({ activeTab: initTab = 'Overview' }: { activeTab
         </div>
       )}
 
-      {tab === 'Screen Reports' && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                {['Screen', 'Uptime %', 'Play Count', 'Errors', 'Last Active'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {[
-                { name: 'Mall Entrance A', uptime: 99.2, plays: 44200, errors: 2, last: '2 min ago' },
-                { name: 'Airport Gate 4', uptime: 98.8, plays: 62000, errors: 1, last: '1 min ago' },
-                { name: 'Hotel Lobby HD', uptime: 99.5, plays: 38000, errors: 0, last: '3 min ago' },
-                { name: 'Cafe Screen 1', uptime: 62.1, plays: 12400, errors: 18, last: '2 days ago' },
-                { name: 'Store Front C', uptime: 88.4, plays: 19000, errors: 7, last: '30 min ago' },
-              ].map(s => (
-                <tr key={s.name} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{s.name}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-sm font-semibold ${s.uptime >= 95 ? 'text-emerald-600' : s.uptime >= 80 ? 'text-yellow-600' : 'text-red-600'}`}>{s.uptime}%</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{s.plays.toLocaleString()}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-sm font-medium ${s.errors === 0 ? 'text-emerald-600' : s.errors > 10 ? 'text-red-600' : 'text-yellow-600'}`}>{s.errors}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{s.last}</td>
-                </tr>
+      {tab === 'Screen Reports' && (() => {
+        const screenRows = [
+          { name: 'Mall Entrance A', uptime: 99.2, plays: 44200, errors: 2, last: '2 min ago' },
+          { name: 'Airport Gate 4', uptime: 98.8, plays: 62000, errors: 1, last: '1 min ago' },
+          { name: 'Hotel Lobby HD', uptime: 99.5, plays: 38000, errors: 0, last: '3 min ago' },
+          { name: 'Cafe Screen 1', uptime: 62.1, plays: 12400, errors: 18, last: '2 days ago' },
+          { name: 'Store Front C', uptime: 88.4, plays: 19000, errors: 7, last: '30 min ago' },
+        ];
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {['Screen', 'Uptime %', 'Play Count', 'Errors', 'Last Active'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {screenRows.map(s => (
+                    <tr key={s.name} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{s.name}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-sm font-semibold ${s.uptime >= 95 ? 'text-emerald-600' : s.uptime >= 80 ? 'text-yellow-600' : 'text-red-600'}`}>{s.uptime}%</span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{s.plays.toLocaleString()}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-sm font-medium ${s.errors === 0 ? 'text-emerald-600' : s.errors > 10 ? 'text-red-600' : 'text-yellow-600'}`}>{s.errors}</span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">{s.last}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="md:hidden divide-y divide-gray-50">
+              {screenRows.map(s => (
+                <div key={s.name} className="p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-900">{s.name}</p>
+                    <span className="text-xs text-gray-400">{s.last}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-x-3 text-[11px]">
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Uptime</p>
+                      <p className={`font-semibold mt-0.5 ${s.uptime >= 95 ? 'text-emerald-600' : s.uptime >= 80 ? 'text-yellow-600' : 'text-red-600'}`}>{s.uptime}%</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Plays</p>
+                      <p className="text-gray-700 font-medium mt-0.5">{s.plays.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Errors</p>
+                      <p className={`font-medium mt-0.5 ${s.errors === 0 ? 'text-emerald-600' : s.errors > 10 ? 'text-red-600' : 'text-yellow-600'}`}>{s.errors}</p>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+          </div>
+        );
+      })()}
 
       {tab === 'Media Reports' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <h2 className="text-sm font-semibold text-gray-900 mb-4">Media Playback Stats</h2>
             <div className="space-y-4">
@@ -166,50 +197,87 @@ export default function Reports({ activeTab: initTab = 'Overview' }: { activeTab
         </div>
       )}
 
-      {tab === 'Device Logs' && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                {['Screen', 'CPU', 'RAM', 'Storage', 'Network', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {[
-                { name: 'Mall Entrance A', cpu: 34, ram: 42, storage: 68, network: 'Stable', ok: true },
-                { name: 'Airport Gate 4', cpu: 28, ram: 38, storage: 71, network: 'Stable', ok: true },
-                { name: 'Cafe Screen 1', cpu: 0, ram: 0, storage: 32, network: 'Offline', ok: false },
-                { name: 'Store Front C', cpu: 94, ram: 78, storage: 91, network: 'Unstable', ok: false },
-                { name: 'Hotel Lobby HD', cpu: 29, ram: 45, storage: 54, network: 'Stable', ok: true },
-              ].map(d => (
-                <tr key={d.name} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{d.name}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-sm font-medium ${d.cpu > 80 ? 'text-red-600' : 'text-gray-700'}`}>{d.cpu}%</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-sm font-medium ${d.ram > 70 ? 'text-yellow-600' : 'text-gray-700'}`}>{d.ram}%</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-sm font-medium ${d.storage > 85 ? 'text-red-600' : 'text-gray-700'}`}>{d.storage}%</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+      {tab === 'Device Logs' && (() => {
+        const deviceRows = [
+          { name: 'Mall Entrance A', cpu: 34, ram: 42, storage: 68, network: 'Stable', ok: true },
+          { name: 'Airport Gate 4', cpu: 28, ram: 38, storage: 71, network: 'Stable', ok: true },
+          { name: 'Cafe Screen 1', cpu: 0, ram: 0, storage: 32, network: 'Offline', ok: false },
+          { name: 'Store Front C', cpu: 94, ram: 78, storage: 91, network: 'Unstable', ok: false },
+          { name: 'Hotel Lobby HD', cpu: 29, ram: 45, storage: 54, network: 'Stable', ok: true },
+        ];
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {['Screen', 'CPU', 'RAM', 'Storage', 'Network', 'Status'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {deviceRows.map(d => (
+                    <tr key={d.name} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{d.name}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-sm font-medium ${d.cpu > 80 ? 'text-red-600' : 'text-gray-700'}`}>{d.cpu}%</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-sm font-medium ${d.ram > 70 ? 'text-yellow-600' : 'text-gray-700'}`}>{d.ram}%</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-sm font-medium ${d.storage > 85 ? 'text-red-600' : 'text-gray-700'}`}>{d.storage}%</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          d.network === 'Stable' ? 'bg-emerald-50 text-emerald-700' :
+                          d.network === 'Offline' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'
+                        }`}>{d.network}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`w-2 h-2 rounded-full inline-block ${d.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="md:hidden divide-y divide-gray-50">
+              {deviceRows.map(d => (
+                <div key={d.name} className="p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full inline-block ${d.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <p className="text-sm font-medium text-gray-900">{d.name}</p>
+                    </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                       d.network === 'Stable' ? 'bg-emerald-50 text-emerald-700' :
                       d.network === 'Offline' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'
                     }`}>{d.network}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`w-2 h-2 rounded-full inline-block ${d.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                  </td>
-                </tr>
+                  </div>
+                  <div className="grid grid-cols-3 gap-x-3 text-[11px]">
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">CPU</p>
+                      <p className={`font-medium mt-0.5 ${d.cpu > 80 ? 'text-red-600' : 'text-gray-700'}`}>{d.cpu}%</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">RAM</p>
+                      <p className={`font-medium mt-0.5 ${d.ram > 70 ? 'text-yellow-600' : 'text-gray-700'}`}>{d.ram}%</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Storage</p>
+                      <p className={`font-medium mt-0.5 ${d.storage > 85 ? 'text-red-600' : 'text-gray-700'}`}>{d.storage}%</p>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

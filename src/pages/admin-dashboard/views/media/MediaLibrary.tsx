@@ -344,7 +344,7 @@ export default function MediaLibrary({ userEmail }: Props) {
   const storageUsedPercent = Math.min(100, (storageUsedBytes / (storageLimitGb * 1024 * 1024 * 1024)) * 100);
 
   return (
-    <div className="p-6 space-y-5 text-left relative">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 text-left relative">
       {toastMessage && (
         <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl border border-slate-700 z-50 animate-slideIn">
           {toastMessage}
@@ -428,7 +428,7 @@ export default function MediaLibrary({ userEmail }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
         {filtered.map(media => (
           <div key={media.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-md transition-all group flex flex-col justify-between relative">
             {isSelectionMode && (

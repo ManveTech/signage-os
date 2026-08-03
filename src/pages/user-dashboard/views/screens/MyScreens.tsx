@@ -428,7 +428,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
   ];
 
   return (
-    <div className="p-6 space-y-5" onClick={() => openMenu && setOpenMenu(null)}>
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5" onClick={() => openMenu && setOpenMenu(null)}>
       {/* Toasts */}
       <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
         {toasts.map(toast => (

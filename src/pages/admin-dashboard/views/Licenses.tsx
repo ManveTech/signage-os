@@ -303,7 +303,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   };
 
   return (
-    <div className="p-6 space-y-6 text-left relative">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 text-left relative">
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-slideIn z-50">
@@ -313,18 +313,18 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Licensing Command Center</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Licensing Command Center</h1>
           <p className="text-xs text-slate-500 font-semibold mt-1">Manage billing schedules, Razorpay invoices, and client access limits</p>
         </div>
-        <button 
+        <button
           onClick={() => {
             const randomDigits = Math.floor(1000 + Math.random() * 9000);
             setNewLicId(`LN-BLST-${randomDigits}`);
             setIsCreateModalOpen(true);
           }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 shadow-md shadow-blue-600/10 cursor-pointer"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 shadow-md shadow-blue-600/10 cursor-pointer"
         >
           <Plus size={15} /> Create New License
         </button>
@@ -339,7 +339,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Active License Pool</span>
             <span className="text-xs font-bold text-slate-400">{licenses.length} Total Licenses</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -400,14 +400,14 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex justify-end gap-1.5">
-                        <button 
+                        <button
                           onClick={() => openEditModal(lic)}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                           title="Edit Pricing / Tenure"
                         >
                           <Edit2 size={14} />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleDeleteLicense(lic.id)}
                           className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title="Revoke / Delete"
@@ -421,6 +421,79 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </tbody>
             </table>
           </div>
+
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {licenses.length === 0 ? (
+              <div className="px-4 py-8 text-center text-gray-400 text-xs">No licenses in the pool yet.</div>
+            ) : (
+              licenses.map(lic => (
+                <div key={lic.id} className="p-4 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-bold text-slate-900 text-sm">{lic.id}</span>
+                        {lic.whiteLabel && (
+                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-150 rounded text-[9px] font-black uppercase tracking-wider">
+                            White Label
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-bold text-slate-800 text-sm mt-0.5 truncate">{lic.name}</p>
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border tracking-wider flex-shrink-0 ${statusColors[lic.status]}`}>
+                      {lic.status.replace('_', ' ')}
+                    </span>
+                  </div>
+
+                  {lic.assignedUserEmail ? (
+                    <p className="text-[11px] text-slate-500">
+                      <span className="font-semibold text-slate-700">{lic.assignedOrgName || 'Individual User'}</span>
+                      {' · '}<span className="font-mono">{lic.assignedUserEmail}</span>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic">Unassigned (Available)</p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-3 border-t border-gray-100">
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Pricing</p>
+                      <p className="text-slate-900 font-extrabold mt-0.5">₹{lic.price.toLocaleString()} <span className="font-semibold text-slate-500 capitalize">/ {lic.tenure}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Expiry</p>
+                      <p className="text-slate-600 font-semibold mt-0.5">{lic.expiryDate}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Storage</p>
+                      <p className="text-slate-900 font-bold mt-0.5">{lic.storageLimit || 5} GB</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Screens</p>
+                      <p className="text-slate-900 font-bold mt-0.5">{lic.deviceLimit || 5} Max</p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-1.5 pt-1">
+                    <button
+                      onClick={() => openEditModal(lic)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                      title="Edit Pricing / Tenure"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteLicense(lic.id)}
+                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                      title="Revoke / Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -431,7 +504,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Razorpay Payment Logs</span>
             <span className="text-xs font-bold text-slate-400">{payments.length} Payments Registered</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -478,6 +551,46 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </tbody>
             </table>
           </div>
+
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {payments.length === 0 ? (
+              <div className="px-4 py-8 text-center text-gray-400 text-xs">No payments recorded yet.</div>
+            ) : (
+              payments.map(pmt => (
+                <div key={pmt.id} className="p-4 flex flex-col gap-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono font-bold text-slate-800 text-sm">{pmt.id}</p>
+                      <p className="font-bold text-slate-800 text-xs mt-0.5 truncate">{pmt.licenseName}</p>
+                      <p className="text-[10px] font-mono text-slate-400">{pmt.licenseId}</p>
+                    </div>
+                    <span className="flex items-center gap-1 text-emerald-600 font-bold uppercase text-[9px] tracking-wider flex-shrink-0">
+                      <CheckCircle size={12} /> Success
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    <span className="font-semibold text-slate-700">{pmt.clientName}</span>
+                    {' · '}<span className="font-mono text-slate-400">{pmt.clientEmail}</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-2.5 border-t border-gray-100">
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Amount</p>
+                      <p className="text-slate-900 font-extrabold mt-0.5">₹{pmt.amount.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Date</p>
+                      <p className="text-slate-600 font-medium mt-0.5">{pmt.paymentDate}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Razorpay Ref</p>
+                      <p className="font-mono text-slate-500 mt-0.5 truncate">{pmt.razorpayPaymentId}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -487,7 +600,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
             <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Expiry Timeline (Next 30 Days)</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -562,18 +675,82 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </tbody>
             </table>
           </div>
+
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {(() => {
+              const rows = licenses
+                .filter(l => l.assignedUserEmail)
+                .map(lic => {
+                  const daysRemaining = Math.ceil(
+                    (new Date(lic.expiryDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24)
+                  );
+                  return { lic, daysRemaining };
+                })
+                .filter(item => item.daysRemaining < 10)
+                .sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+              if (rows.length === 0) {
+                return <div className="px-4 py-8 text-center text-gray-400 text-xs">No upcoming expirations.</div>;
+              }
+
+              return rows.map(({ lic, daysRemaining }) => {
+                const isExpiringSoon = daysRemaining <= 30;
+                const isOverdue = daysRemaining < 0;
+                return (
+                  <div key={lic.id} className="p-4 flex flex-col gap-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-800 text-sm truncate">{lic.name}</p>
+                        <p className="text-[10px] font-mono text-blue-600 font-semibold">{lic.id}</p>
+                      </div>
+                      {isOverdue ? (
+                        <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-600 font-bold border border-rose-100 text-[9px] flex-shrink-0">
+                          Overdue {Math.abs(daysRemaining)}d
+                        </span>
+                      ) : isExpiringSoon ? (
+                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 text-[9px] flex-shrink-0">
+                          {daysRemaining}d left
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 font-semibold border border-emerald-100 text-[9px] flex-shrink-0">
+                          {daysRemaining}d left
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      <span className="font-semibold text-slate-700">{lic.assignedOrgName || 'Direct Client'}</span>
+                      {' · '}<span className="font-mono text-slate-400">{lic.assignedUserEmail}</span>
+                    </p>
+                    <div className="flex items-center justify-between pt-2.5 border-t border-gray-100">
+                      <p className="text-[11px]">
+                        <span className="font-bold text-slate-800">₹{lic.price.toLocaleString()}</span>
+                        <span className="text-slate-400 ml-1">/ {lic.tenure}</span>
+                      </p>
+                      <button
+                        onClick={() => sendReminder(lic.assignedUserEmail!, lic.id, 'license')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold uppercase rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Send size={11} /> Send Alert
+                      </button>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
         </div>
       )}
 
       {/* 4. INVOICES & BUSINESS SETTINGS */}
       {tab === 'invoices' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
           {/* Invoices List */}
           <div className="lg:col-span-8 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
               <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Billing Invoice Registry</span>
             </div>
-            <div className="overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -606,8 +783,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                       <td className="px-5 py-4 font-mono font-medium text-slate-500">{inv.dueDate}</td>
                       <td className="px-5 py-4">
                         <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-wider text-[9px] border ${
-                          inv.status === 'paid' 
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                          inv.status === 'paid'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                             : 'bg-rose-50 text-rose-700 border-rose-100 animate-pulse'
                         }`}>
                           {inv.status}
@@ -631,10 +808,60 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile card list */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {invoices.length === 0 ? (
+                <div className="px-4 py-8 text-center text-gray-400 text-xs">No invoices issued yet.</div>
+              ) : (
+                invoices.map(inv => (
+                  <div key={inv.id} className="p-4 flex flex-col gap-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-mono font-bold text-slate-800 text-sm">{inv.id}</p>
+                        <p className="font-semibold text-slate-700 text-xs mt-0.5 truncate">{inv.clientName}</p>
+                        <p className="text-[10px] text-slate-400 font-mono truncate">{inv.clientEmail}</p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-wider text-[9px] border flex-shrink-0 ${
+                        inv.status === 'paid'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                          : 'bg-rose-50 text-rose-700 border-rose-100 animate-pulse'
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-2.5 border-t border-gray-100">
+                      <div>
+                        <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">License</p>
+                        <p className="text-slate-600 font-medium mt-0.5 truncate">{inv.licenseName}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Due Date</p>
+                        <p className="text-slate-500 font-mono font-medium mt-0.5">{inv.dueDate}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Total (incl. 18% GST)</p>
+                        <p className="text-slate-900 font-extrabold mt-0.5">₹{inv.amount.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    {inv.status === 'unpaid' ? (
+                      <button
+                        onClick={() => sendReminder(inv.clientEmail, inv.id, 'invoice')}
+                        className="flex items-center justify-center gap-1 px-2.5 py-2 text-[11px] font-black uppercase text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Send size={11} /> Remind
+                      </button>
+                    ) : (
+                      <p className="text-[11px] font-bold text-slate-400 italic text-center">Settled</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* Business Settings Form */}
-          <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
+          <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 space-y-4">
             <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
               <Building size={16} className="text-blue-600" />
               <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">Business & Invoice Details</h2>

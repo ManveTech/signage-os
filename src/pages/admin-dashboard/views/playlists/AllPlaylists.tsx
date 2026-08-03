@@ -90,7 +90,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
 
 
   return (
-    <div className="p-6 space-y-5 text-left relative">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 text-left relative">
       {/* Toast */}
       {toastMessage && (
         <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl border border-slate-700 z-50 animate-slideIn">
@@ -140,17 +140,17 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
       </div>
 
       {/* Grid view */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {playlists.map(playlist => {
           const assignedScreensCount = screens.filter(s => s.playlistId === playlist.id).length;
           const assignedGroups = groups.filter(g => g.playlist === playlist.name);
-          const assignedIndividualScreens = screens.filter(s => 
+          const assignedIndividualScreens = screens.filter(s =>
             !s.groupId && (s.playlist === playlist.name || s.playlistId === playlist.id)
           );
           return (
-            <div key={playlist.id} className="bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-all flex flex-col justify-between space-y-4 relative">
+            <div key={playlist.id} className="bg-white rounded-2xl border border-gray-200 p-3.5 sm:p-5 hover:shadow-md transition-all flex flex-col justify-between space-y-3 sm:space-y-4 relative">
               {isSelectionMode && (
-                <div 
+                <div
                   className="absolute inset-0 bg-slate-900/[0.02] hover:bg-slate-900/[0.05] z-40 rounded-2xl cursor-pointer flex items-start p-3"
                   onClick={() => toggleSelect(playlist.id)}
                 >
@@ -162,24 +162,24 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
                   />
                 </div>
               )}
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <button 
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  <button
                     onClick={() => handleToggleActive(playlist)}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                    className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer flex-shrink-0 ${
                       playlist.active ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'
                     }`}
                     title={playlist.active ? 'Pause Playlist' : 'Activate Playlist'}
                   >
-                    {playlist.active ? <Play size={18} className="ml-0.5" /> : <Pause size={18} />}
+                    {playlist.active ? <Play size={16} className="ml-0.5" /> : <Pause size={16} />}
                   </button>
                   <div className="min-w-0">
-                    <h3 className="text-xs font-bold text-slate-800 truncate max-w-[155px]" title={playlist.name}>{playlist.name}</h3>
-                    <p className="text-[10px] text-gray-450 mt-0.5">Created: {playlist.createdDate}</p>
+                    <h3 className="text-xs font-bold text-slate-800 truncate" title={playlist.name}>{playlist.name}</h3>
+                    <p className="text-[10px] text-gray-450 mt-0.5 truncate">Created: {playlist.createdDate}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button 
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
                     onClick={() => {
                       localStorage.setItem('signageos_editing_playlist_id', playlist.id);
                       onNavigate('my-create-playlist');
@@ -189,7 +189,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
                   >
                     <Edit size={13} />
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleDelete(playlist.id, playlist.name)}
                     className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
                     title="Delete Playlist"
@@ -200,7 +200,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
               </div>
 
               {/* Stats Box */}
-              <div className="grid grid-cols-2 gap-2 bg-slate-50/55 p-2.5 rounded-xl border border-slate-100 text-center">
+              <div className="grid grid-cols-2 gap-2 bg-slate-50/55 p-2 sm:p-2.5 rounded-xl border border-slate-100 text-center">
                 <div>
                   <p className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Media Slides</p>
                   <p className="text-sm font-black text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Film size={11} className="text-gray-455" /> {playlist.mediaCount}</p>

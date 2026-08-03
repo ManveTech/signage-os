@@ -292,9 +292,9 @@ export default function Users() {
         />
       </div>
 
-      {/* Clients Table (Formatted exact to licensing page layout) */}
+      {/* Clients Table (desktop) */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -362,14 +362,14 @@ export default function Users() {
                       </td>
                       <td className="px-5 py-4 text-right">
                         <div className="flex justify-end gap-1.5">
-                          <button 
+                          <button
                             onClick={() => handleOpenEdit(user)}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                             title="Edit Client"
                           >
                             <Edit size={14} />
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleDeleteClient(user.id, user.email, user.name)}
                             className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             title="Remove Client"
@@ -384,6 +384,79 @@ export default function Users() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Clients list (mobile) */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {filteredClients.length === 0 ? (
+            <div className="px-4 py-8 text-center text-gray-400 text-xs">
+              No clients found matching the filter criteria.
+            </div>
+          ) : (
+            filteredClients.map(user => {
+              const userLicense = licenses.find(l => l.assignedUserEmail === user.email);
+              return (
+                <div key={user.id} className="p-4 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-teal-500 flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
+                        {user.name.split(' ').map(n => n[0]).join('')}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-800 text-sm truncate">{user.name}</p>
+                        <p className="text-[11px] text-gray-400 font-mono truncate">{user.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => handleOpenEdit(user)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        title="Edit Client"
+                      >
+                        <Edit size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteClient(user.id, user.email, user.name)}
+                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title="Remove Client"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-3 border-t border-gray-100">
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Phone</p>
+                      <p className="text-slate-600 font-semibold mt-0.5">{user.mobile}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Organization</p>
+                      <p className="text-slate-800 font-bold mt-0.5 truncate">{user.company}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">License</p>
+                      {userLicense ? (
+                        <p className="mt-0.5 flex items-center gap-1">
+                          <span className="font-mono font-bold text-slate-900">{userLicense.id}</span>
+                        </p>
+                      ) : (
+                        <p className="text-slate-400 italic mt-0.5">Unassigned</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Expiry</p>
+                      <p className="text-slate-600 font-semibold mt-0.5">{userLicense ? userLicense.expiryDate : '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Screens</p>
+                      <p className="text-slate-900 font-bold mt-0.5">{user.screensAssigned} Max</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

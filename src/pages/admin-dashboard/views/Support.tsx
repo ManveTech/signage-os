@@ -160,7 +160,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
   });
 
   return (
-    <div className="p-6 space-y-6 text-left relative">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 text-left relative">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-slideIn z-50">
@@ -170,23 +170,23 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Client Helpdesk & Support</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Client Helpdesk & Support</h1>
           <p className="text-xs text-slate-500 font-semibold mt-1">Manage raised issues, edit FAQs, and draft helper documentation guides</p>
         </div>
         {tab === 'faq' && (
-          <button 
+          <button
             onClick={() => setIsFaqFormOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-md shadow-blue-600/10 cursor-pointer"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-md shadow-blue-600/10 cursor-pointer"
           >
             <Plus size={15} /> Add New FAQ
           </button>
         )}
         {tab === 'docs' && !isDocFormOpen && (
-          <button 
+          <button
             onClick={() => setIsDocFormOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-md shadow-indigo-600/10 cursor-pointer"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-md shadow-indigo-600/10 cursor-pointer"
           >
             <Plus size={15} /> Draft Document
           </button>
@@ -223,7 +223,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
 
           {/* Issues Table */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-150 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -264,7 +264,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                           </span>
                         </td>
                         <td className="px-5 py-4 text-right">
-                          <button 
+                          <button
                             onClick={() => setSelectedTicket(ticket)}
                             className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors"
                           >
@@ -276,6 +276,43 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile card list */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {filteredTickets.length === 0 ? (
+                <div className="px-4 py-10 text-center text-slate-400 text-xs italic">No tickets found matching your search filter</div>
+              ) : (
+                filteredTickets.map(ticket => (
+                  <div key={ticket.id} className="p-4 flex flex-col gap-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-mono font-bold text-slate-900 text-xs">{ticket.id}</p>
+                        <p className="font-bold text-slate-800 text-sm mt-0.5 truncate">{ticket.subject}</p>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border tracking-wider flex-shrink-0 ${statusColors[ticket.status]}`}>
+                        {ticket.status.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      <span className="font-semibold text-slate-700">{ticket.clientName}</span>
+                      {' · '}<span className="font-mono">{ticket.clientEmail}</span>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-wider ${priorityColors[ticket.priority]}`}>
+                        {ticket.priority}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">{ticket.createdDate}</span>
+                    </div>
+                    <button
+                      onClick={() => setSelectedTicket(ticket)}
+                      className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                    >
+                      View & Manage
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -407,7 +444,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
             </div>
           ) : (
             /* Support Documents List grid */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {docs.length === 0 ? (
                 <div className="md:col-span-2 bg-white border border-dashed border-gray-300 rounded-2xl p-10 text-center text-slate-455 italic">
                   No support documents created yet. Click "Draft Document" to publish one.

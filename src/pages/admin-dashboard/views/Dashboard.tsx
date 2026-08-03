@@ -127,7 +127,7 @@ export default function Dashboard() {
   const paginatedAlerts = alerts.slice((activeAlertPage - 1) * alertsPerPage, activeAlertPage * alertsPerPage);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Page title */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
@@ -135,7 +135,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4">
         {kpiCards.map(card => {
           const c = colorMap[card.color] || colorMap.blue;
           const glow = colorGlowMap[card.color] || colorGlowMap.blue;
@@ -147,28 +147,28 @@ export default function Dashboard() {
           } : {};
 
           return (
-            <div 
-              key={card.label} 
-              className="bg-white rounded-xl border border-gray-100 p-4 transition-all duration-300 cursor-pointer"
+            <div
+              key={card.label}
+              className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 transition-all duration-300 cursor-pointer"
               style={shadowStyle}
               onMouseEnter={() => setHoveredCard(card.label)}
               onMouseLeave={() => setHoveredCard(null)}
             >
-              <div className="mb-3">
-                <div className={`w-9 h-9 rounded-lg ${c.light} ${c.text} flex items-center justify-center`}>
+              <div className="mb-2 sm:mb-3">
+                <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg ${c.light} ${c.text} flex items-center justify-center`}>
                   {card.icon}
                 </div>
               </div>
-              <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{card.label}</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{card.value}</p>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{card.label}</p>
             </div>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         {/* Activity Feed */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-gray-900">Activity Feed</h2>
             <button className="text-xs text-blue-600 hover:underline font-medium">View all</button>
@@ -195,7 +195,7 @@ export default function Dashboard() {
         </div>
 
         {/* Alerts Panel */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-gray-900">Alerts</h2>
             <span className="text-xs bg-red-50 text-red-600 font-semibold px-2 py-0.5 rounded-full">{alerts.length}</span>

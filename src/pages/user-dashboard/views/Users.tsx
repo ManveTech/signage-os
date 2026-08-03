@@ -54,57 +54,113 @@ export default function Users() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
-              {['User', 'Role', 'Company', 'Licenses', 'Screens', 'Last Login', '2FA', 'Status', ''].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filtered.map(user => (
-              <tr key={user.id} className="hover:bg-gray-50 transition-colors group">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-xs font-semibold">{user.name.split(' ').map(n => n[0]).join('')}</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                      <p className="text-xs text-gray-400">{user.email}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${roleColors[user.role]}`}>
-                    <Shield size={10} /> {roleLabels[user.role]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{user.company}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">{user.licenseCount}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">{user.screensAssigned}</td>
-                <td className="px-4 py-3 text-xs text-gray-500">{user.lastLogin}</td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs font-medium ${user.twoFAEnabled ? 'text-emerald-600' : 'text-gray-400'}`}>
-                    {user.twoFAEnabled ? '✓ On' : '✗ Off'}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
-                    user.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-100 text-gray-500 border-gray-200'
-                  }`}>{user.status}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1 transition-opacity">
-                    <button className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={13} /></button>
-                    <button className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={13} /></button>
-                  </div>
-                </td>
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                {['User', 'Role', 'Company', 'Licenses', 'Screens', 'Last Login', '2FA', 'Status', ''].map(h => (
+                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.map(user => (
+                <tr key={user.id} className="hover:bg-gray-50 transition-colors group">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-xs font-semibold">{user.name.split(' ').map(n => n[0]).join('')}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                        <p className="text-xs text-gray-400">{user.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${roleColors[user.role]}`}>
+                      <Shield size={10} /> {roleLabels[user.role]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{user.company}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{user.licenseCount}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{user.screensAssigned}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{user.lastLogin}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-medium ${user.twoFAEnabled ? 'text-emerald-600' : 'text-gray-400'}`}>
+                      {user.twoFAEnabled ? '✓ On' : '✗ Off'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                      user.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-100 text-gray-500 border-gray-200'
+                    }`}>{user.status}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1 transition-opacity">
+                      <button className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={13} /></button>
+                      <button className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={13} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile card list */}
+        <div className="md:hidden divide-y divide-gray-50">
+          {filtered.map(user => (
+            <div key={user.id} className="p-4 flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xs font-semibold">{user.name.split(' ').map(n => n[0]).join('')}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+                    <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit size={13} /></button>
+                  <button className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={13} /></button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${roleColors[user.role]}`}>
+                  <Shield size={10} /> {roleLabels[user.role]}
+                </span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                  user.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-100 text-gray-500 border-gray-200'
+                }`}>{user.status}</span>
+                <span className={`text-xs font-medium ${user.twoFAEnabled ? 'text-emerald-600' : 'text-gray-400'}`}>
+                  2FA {user.twoFAEnabled ? '✓ On' : '✗ Off'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-3 border-t border-gray-100">
+                <div>
+                  <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Company</p>
+                  <p className="text-gray-700 font-medium mt-0.5 truncate">{user.company}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Last Login</p>
+                  <p className="text-gray-700 font-medium mt-0.5">{user.lastLogin}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Licenses</p>
+                  <p className="text-gray-700 font-medium mt-0.5">{user.licenseCount}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Screens</p>
+                  <p className="text-gray-700 font-medium mt-0.5">{user.screensAssigned}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

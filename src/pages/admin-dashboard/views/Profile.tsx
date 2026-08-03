@@ -124,7 +124,7 @@ export default function Profile() {
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6 text-left relative">
+    <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-4 sm:space-y-6 text-left relative">
       {/* Toast Feed */}
       {toastMessage && (
         <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 z-50 animate-slideIn">

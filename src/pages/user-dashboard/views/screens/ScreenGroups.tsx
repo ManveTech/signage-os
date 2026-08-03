@@ -364,7 +364,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com' }: { userEma
   };
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       {/* Toasts */}
       <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
         {toasts.map(t => (

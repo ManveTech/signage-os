@@ -234,7 +234,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
   };
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       {/* Toasts */}
       <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
         {toasts.map(toast => (
@@ -350,7 +350,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
@@ -468,30 +468,129 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
               })}
             </tbody>
           </table>
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-4 border-t border-gray-150 bg-white">
-              <span className="text-xs text-gray-500 font-medium">
-                Showing {((activePage - 1) * recordsPerPage) + 1} to {Math.min(activePage * recordsPerPage, filtered.length)} of {filtered.length} screens
-              </span>
-              <div className="flex gap-2">
-                <button
-                  disabled={activePage === 1}
-                  onClick={() => setCurrentPage(activePage - 1)}
-                  className="px-3 py-1.5 border border-gray-205 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
-                >
-                  Previous
-                </button>
-                <button
-                  disabled={activePage === totalPages}
-                  onClick={() => setCurrentPage(activePage + 1)}
-                  className="px-3 py-1.5 border border-gray-205 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Mobile card list */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {paginatedRecords.map(screen => {
+            const isSelected = selectedIds.includes(screen.id);
+            const group = screen.groupId ? groups.find(g => g.id === screen.groupId) : null;
+            const groupColor = group ? (groupColorMap[group.color] ?? groupColorMap.blue) : null;
+            return (
+              <div
+                key={screen.id}
+                className={`p-4 flex flex-col gap-3 ${isSelected ? 'bg-blue-50/70' : ''}`}
+                onClick={() => isSelectionMode && toggleSelect(screen.id)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {isSelectionMode && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(screen.id)}
+                        onClick={e => e.stopPropagation()}
+                        className="w-4 h-4 rounded accent-blue-600 cursor-pointer flex-shrink-0"
+                      />
+                    )}
+                    <div className="w-12 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
+                      {screen.thumbnail ? (
+                        <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                          <Monitor size={16} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{screen.name}</p>
+                      {screen.playerVersion && (
+                        <p className="text-xs text-gray-400">v{screen.playerVersion}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">{renderStatusBadge(screen)}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-3 border-t border-gray-100">
+                  <div>
+                    <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Group</p>
+                    {group ? (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 mt-0.5 rounded-full text-[10px] font-medium border ${groupColor!.bg} ${groupColor!.text} ${groupColor!.border}`}>
+                        {group.name}
+                      </span>
+                    ) : (
+                      <p className="text-gray-400 italic mt-0.5">None</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Playlist</p>
+                    <p className={`mt-0.5 truncate ${screen.playlist === 'Normal' ? 'text-gray-400 italic' : 'text-gray-700 font-medium'}`}>
+                      {group ? `${group.playlist} (Inherited)` : screen.playlist}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Location</p>
+                    <p className="text-gray-600 font-medium mt-0.5 truncate">{screen.location}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Organization</p>
+                    <p className="text-gray-600 font-medium mt-0.5 truncate">{getScreenOrgName(screen)}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-1 flex-wrap pt-1" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => setEditScreen({ ...screen })} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit size={14} /></button>
+                  <button onClick={() => handleRestart(screen)} className="p-2 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors" title="Restart"><RefreshCw size={14} /></button>
+                  <button onClick={() => handleStopPlayback(screen)} className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors" title="Stop Playback"><Pause size={14} /></button>
+                  <button onClick={() => handleClearCache(screen)} className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Clear Device Cache"><Eraser size={14} /></button>
+                  {screen.groupId && (
+                    <button
+                      onClick={() => {
+                        const updatedScreen = { ...screen, groupId: '' };
+                        const allScreens = mediaStore.getScreens();
+                        const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+                        mediaStore.saveScreens(updatedAll);
+                        setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+                        pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
+                        addToast(`"${screen.name}" removed from group`);
+                      }}
+                      className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                      title="Remove from group"
+                    >
+                      <FolderMinus size={14} />
+                    </button>
+                  )}
+                  <button onClick={() => setDeleteScreen(screen)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-4 border-t border-gray-150 bg-white">
+            <span className="text-xs text-gray-500 font-medium">
+              Showing {((activePage - 1) * recordsPerPage) + 1} to {Math.min(activePage * recordsPerPage, filtered.length)} of {filtered.length} screens
+            </span>
+            <div className="flex gap-2">
+              <button
+                disabled={activePage === 1}
+                onClick={() => setCurrentPage(activePage - 1)}
+                className="px-3 py-1.5 border border-gray-205 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+              >
+                Previous
+              </button>
+              <button
+                disabled={activePage === totalPages}
+                onClick={() => setCurrentPage(activePage + 1)}
+                className="px-3 py-1.5 border border-gray-205 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
         {filtered.length === 0 && (
           <div className="py-16 text-center">
             <Monitor size={32} className="mx-auto text-gray-300 mb-2" />

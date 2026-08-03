@@ -28,7 +28,7 @@ import Support from './views/Support';
 import Profile from './views/Profile';
 import ClientMedia from './views/ClientMedia';
 import ClientPlaylists from './views/ClientPlaylists';
-import MobileBottomNav from '../../components/MobileBottomNav';
+import MobileDock from '../../components/MobileDock';
 import OfflineIndicator from '../../components/OfflineIndicator';
 import PullToRefresh from '../../components/PullToRefresh';
 import { useMobileDetect } from '../../hooks/useMobileDetect';
@@ -238,7 +238,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
       </div>
 
       {/* Mobile Fixed Bottom Navigation Bar */}
-      <MobileBottomNav activeView={activeView} onNavigate={handleNavigate} role="admin" />
+      <MobileDock activeView={activeView} onNavigate={handleNavigate} onLogout={onLogout} role="admin" />
 
 
       {/* First Time Login Password Reset Modal */}

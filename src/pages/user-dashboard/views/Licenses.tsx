@@ -25,13 +25,13 @@ export default function Licenses({ activeTab: initTab = 'License Pool' }: { acti
   }, [initTab]);
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Licenses</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage software licenses across your network</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+        <button className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
           <Plus size={16} /> Add License
         </button>
       </div>
@@ -39,56 +39,91 @@ export default function Licenses({ activeTab: initTab = 'License Pool' }: { acti
 
       {tab === 'License Pool' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                {['License ID', 'Type', 'Assigned To', 'Expiry', 'Features', 'Status', ''].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {mockLicenses.map(lic => (
-                <tr key={lic.id} className="hover:bg-gray-50 transition-colors group">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Key size={14} className="text-gray-400" />
-                      <span className="text-sm font-mono font-medium text-gray-900">{lic.id}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2.5 py-1 rounded font-semibold uppercase ${typeColors[lic.type]}`}>{lic.type}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-sm ${lic.assignedTo ? 'text-gray-700' : 'text-gray-400 italic'}`}>{lic.assignedTo || 'Unassigned'}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Clock size={11} />
-                      {lic.expiryDate}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {lic.featuresEnabled.slice(0, 2).map(f => (
-                        <span key={f} className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">{f}</span>
-                      ))}
-                      {lic.featuresEnabled.length > 2 && <span className="text-xs text-gray-400">+{lic.featuresEnabled.length - 2}</span>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${statusColors[lic.status]}`}>{lic.status}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1 transition-opacity">
-                      <button className="px-2.5 py-1 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg">Reassign</button>
-                      <button className="px-2.5 py-1 text-xs text-red-500 bg-red-50 hover:bg-red-100 rounded-lg">Revoke</button>
-                    </div>
-                  </td>
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {['License ID', 'Type', 'Assigned To', 'Expiry', 'Features', 'Status', ''].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {mockLicenses.map(lic => (
+                  <tr key={lic.id} className="hover:bg-gray-50 transition-colors group">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Key size={14} className="text-gray-400" />
+                        <span className="text-sm font-mono font-medium text-gray-900">{lic.id}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2.5 py-1 rounded font-semibold uppercase ${typeColors[lic.type]}`}>{lic.type}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-sm ${lic.assignedTo ? 'text-gray-700' : 'text-gray-400 italic'}`}>{lic.assignedTo || 'Unassigned'}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <Clock size={11} />
+                        {lic.expiryDate}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {lic.featuresEnabled.slice(0, 2).map(f => (
+                          <span key={f} className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">{f}</span>
+                        ))}
+                        {lic.featuresEnabled.length > 2 && <span className="text-xs text-gray-400">+{lic.featuresEnabled.length - 2}</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${statusColors[lic.status]}`}>{lic.status}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1 transition-opacity">
+                        <button className="px-2.5 py-1 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg">Reassign</button>
+                        <button className="px-2.5 py-1 text-xs text-red-500 bg-red-50 hover:bg-red-100 rounded-lg">Revoke</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-gray-50">
+            {mockLicenses.map(lic => (
+              <div key={lic.id} className="p-4 flex flex-col gap-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Key size={14} className="text-gray-400 flex-shrink-0" />
+                    <span className="text-sm font-mono font-medium text-gray-900 truncate">{lic.id}</span>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium border flex-shrink-0 ${statusColors[lic.status]}`}>{lic.status}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs px-2.5 py-1 rounded font-semibold uppercase ${typeColors[lic.type]}`}>{lic.type}</span>
+                  <span className={`text-xs ${lic.assignedTo ? 'text-gray-700' : 'text-gray-400 italic'}`}>{lic.assignedTo || 'Unassigned'}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Clock size={11} />
+                  {lic.expiryDate}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {lic.featuresEnabled.slice(0, 3).map(f => (
+                    <span key={f} className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">{f}</span>
+                  ))}
+                  {lic.featuresEnabled.length > 3 && <span className="text-xs text-gray-400">+{lic.featuresEnabled.length - 3}</span>}
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button className="flex-1 px-2.5 py-2 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg">Reassign</button>
+                  <button className="flex-1 px-2.5 py-2 text-xs text-red-500 bg-red-50 hover:bg-red-100 rounded-lg">Revoke</button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -136,30 +171,50 @@ export default function Licenses({ activeTab: initTab = 'License Pool' }: { acti
 
       {tab === 'History' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                {['Action', 'License', 'User', 'Date'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {[
-                { action: 'Issued', lic: 'LIC-001', user: 'Arjun Kapoor', date: '2026-01-15', color: 'text-emerald-600' },
-                { action: 'Assigned', lic: 'LIC-002', user: 'Priya Sharma', date: '2026-02-20', color: 'text-blue-600' },
-                { action: 'Expired', lic: 'LIC-004', user: 'Anjali Patel', date: '2026-04-30', color: 'text-red-600' },
-                { action: 'Transferred', lic: 'LIC-003', user: 'Rahul Singh', date: '2026-05-01', color: 'text-yellow-600' },
-              ].map((h, i) => (
-                <tr key={i} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3"><span className={`text-sm font-medium ${h.color}`}>{h.action}</span></td>
-                  <td className="px-4 py-3 text-sm font-mono text-gray-700">{h.lic}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{h.user}</td>
-                  <td className="px-4 py-3 text-sm text-gray-400">{h.date}</td>
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {['Action', 'License', 'User', 'Date'].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {[
+                  { action: 'Issued', lic: 'LIC-001', user: 'Arjun Kapoor', date: '2026-01-15', color: 'text-emerald-600' },
+                  { action: 'Assigned', lic: 'LIC-002', user: 'Priya Sharma', date: '2026-02-20', color: 'text-blue-600' },
+                  { action: 'Expired', lic: 'LIC-004', user: 'Anjali Patel', date: '2026-04-30', color: 'text-red-600' },
+                  { action: 'Transferred', lic: 'LIC-003', user: 'Rahul Singh', date: '2026-05-01', color: 'text-yellow-600' },
+                ].map((h, i) => (
+                  <tr key={i} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3"><span className={`text-sm font-medium ${h.color}`}>{h.action}</span></td>
+                    <td className="px-4 py-3 text-sm font-mono text-gray-700">{h.lic}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{h.user}</td>
+                    <td className="px-4 py-3 text-sm text-gray-400">{h.date}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-gray-50">
+            {[
+              { action: 'Issued', lic: 'LIC-001', user: 'Arjun Kapoor', date: '2026-01-15', color: 'text-emerald-600' },
+              { action: 'Assigned', lic: 'LIC-002', user: 'Priya Sharma', date: '2026-02-20', color: 'text-blue-600' },
+              { action: 'Expired', lic: 'LIC-004', user: 'Anjali Patel', date: '2026-04-30', color: 'text-red-600' },
+              { action: 'Transferred', lic: 'LIC-003', user: 'Rahul Singh', date: '2026-05-01', color: 'text-yellow-600' },
+            ].map((h, i) => (
+              <div key={i} className="p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <span className={`text-sm font-semibold ${h.color}`}>{h.action}</span>
+                  <p className="text-xs text-gray-600 mt-0.5">{h.user} · <span className="font-mono text-gray-500">{h.lic}</span></p>
+                </div>
+                <span className="text-xs text-gray-400 flex-shrink-0">{h.date}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

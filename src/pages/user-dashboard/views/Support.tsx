@@ -119,7 +119,7 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
   };
 
   return (
-    <div className="p-6 space-y-6 text-left relative">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 text-left relative">
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-slideIn z-50">
@@ -129,15 +129,15 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Help & Support</h1>
           <p className="text-sm text-gray-500 mt-0.5">Browse support guides or open a ticket with our executive team</p>
         </div>
         {tab === 'tickets' && !showNewTicket && (
-          <button 
+          <button
             onClick={() => setShowNewTicket(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
           >
             <Plus size={15} /> Raise Support Ticket
           </button>

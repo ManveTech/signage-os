@@ -161,7 +161,7 @@ export default function Organizations() {
   }
 
   return (
-    <div className="p-6 space-y-5 text-left">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 text-left">
       {/* Toast Alert */}
       <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
         {toasts.map(t => (
@@ -181,10 +181,10 @@ export default function Organizations() {
       </div>
 
       {/* Main Layout Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+
         {/* Left Side: Organization List */}
-        <div className="lg:col-span-7 space-y-3">
+        <div className="lg:col-span-7 space-y-2.5 sm:space-y-3">
           {orgs.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center text-gray-400">
               No organizations created. Click "Add Organization" to get started.
@@ -193,15 +193,15 @@ export default function Organizations() {
             orgs.map(org => {
               const isActive = selectedId === org.id;
               return (
-                <div 
-                  key={org.id} 
+                <div
+                  key={org.id}
                   onClick={() => setSelectedId(org.id)}
-                  className={`bg-white rounded-2xl border p-4 cursor-pointer hover:shadow-md transition-all flex items-center justify-between gap-4 ${
+                  className={`bg-white rounded-2xl border p-3.5 sm:p-4 cursor-pointer hover:shadow-md transition-all flex items-center justify-between gap-3 sm:gap-4 ${
                     isActive ? 'border-blue-600 ring-4 ring-blue-50' : 'border-gray-200'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
                       isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
                     }`}>
                       <Building2 size={18} />
@@ -211,8 +211,8 @@ export default function Organizations() {
                       <p className="text-xs text-slate-400 mt-0.5 truncate">{org.adminName} · <span className="font-mono">{org.email}</span></p>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-2 flex-shrink-0">
+
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                     <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider border ${statusColors[org.subscriptionStatus]}`}>
                       {org.subscriptionStatus}
                     </span>
@@ -228,20 +228,20 @@ export default function Organizations() {
         <div className="lg:col-span-5">
           {selectedOrg ? (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
-              
+
               {/* Sidebar Header */}
-              <div className="p-5 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+              <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50 flex items-center gap-3">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
                   <Building2 size={20} />
                 </div>
-                <div>
-                  <h2 className="text-sm font-bold text-slate-800">{selectedOrg.name}</h2>
-                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Admin: {selectedOrg.adminName}</p>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-slate-800 truncate">{selectedOrg.name}</h2>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5 truncate">Admin: {selectedOrg.adminName}</p>
                 </div>
               </div>
 
               {/* Sidebar Body */}
-              <div className="p-5 space-y-5 text-xs text-slate-600">
+              <div className="p-4 sm:p-5 space-y-4 sm:space-y-5 text-xs text-slate-600">
                 
                 {/* 1. SUBSCRIPTION PROFILE */}
                 

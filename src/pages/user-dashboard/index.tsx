@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../config';
 import { USER_ROUTES, getUserViewFromPath } from '../../lib/routes';
-import MobileBottomNav from '../../components/MobileBottomNav';
+import MobileDock from '../../components/MobileDock';
 import OfflineIndicator from '../../components/OfflineIndicator';
 import PullToRefresh from '../../components/PullToRefresh';
 import { useMobileDetect } from '../../hooks/useMobileDetect';
@@ -305,7 +305,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
       </div>
 
       {/* Mobile Fixed Bottom Navigation Bar */}
-      <MobileBottomNav activeView={activeView} onNavigate={handleNavigate} role="user" />
+      <MobileDock activeView={activeView} onNavigate={handleNavigate} onLogout={onLogout} role="user" />
 
       {/* Expiration Paywall Modal Overlay */}
       {isPaywallOpen && (
