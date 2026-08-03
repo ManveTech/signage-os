@@ -306,7 +306,7 @@ export default function ClientMedia() {
               <div className="relative aspect-video overflow-hidden bg-gray-100 border-b border-gray-100">
                 {playingVideoId === media.id ? (
                   <div className="absolute inset-0 z-30 bg-black">
-                    {media.type === 'youtube' ? (
+                    {(media.type as string) === 'youtube' ? (
                       (() => {
                         const ytId = getYoutubeId(media.fileUrl || media.thumbnail);
                         return ytId ? (
@@ -354,7 +354,7 @@ export default function ClientMedia() {
                     )}
                     
                     {/* Play button overlay for video or youtube */}
-                    {(media.type === 'video' || media.type === 'youtube') && (
+                    {(media.type === 'video' || (media.type as string) === 'youtube') && (
                       <div 
                         className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/40 transition-colors cursor-pointer group/play"
                         onClick={(e) => {

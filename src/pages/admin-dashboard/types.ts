@@ -51,11 +51,11 @@ export type ScreenGroup = {
 export type MediaItem = {
   id: string;
   title: string;
-  type: 'image' | 'layout' | 'ticker';
+  type: 'image' | 'video' | 'layout' | 'ticker' | 'youtube';
   duration: number;
   resolution: string;
   fileSize: string;
-  fileSizeBytes: number;
+  fileSizeBytes?: number;
   uploadedBy: string;
   createdDate: string;
   expiryDate: string;

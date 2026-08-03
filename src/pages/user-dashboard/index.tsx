@@ -331,7 +331,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                 </div>
                 <div className="flex justify-between items-center text-slate-400">
                   <span>License Tier:</span>
-                  <span className="font-semibold text-blue-400">{clientLicense.planType || 'Standard'}</span>
+                  <span className="font-semibold text-blue-400">{(clientLicense as any).planType || (clientLicense as any).type || 'Standard'}</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-400">
                   <span>Expiration Date:</span>

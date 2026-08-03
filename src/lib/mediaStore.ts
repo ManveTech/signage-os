@@ -42,7 +42,7 @@ export interface Playlist {
   assignedScreenIds: string[];
   allowCustomOrientation?: boolean;
   orientation?: 'horizontal' | 'vertical';
-  widgetType?: 'weather' | 'clock' | 'rss' | 'qrcode';
+  widgetType?: 'weather' | 'clock' | 'rss' | 'qrcode' | string;
   widgetPlacement?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   widgetLink?: string;
   transition?: 'fade' | 'slide' | 'zoom' | 'slide-up' | 'slide-down' | 'flip' | 'spin' | 'blur' | 'bounce' | 'wipe';

@@ -63,7 +63,7 @@ export default function Industries({ onOpenQuote }: IndustriesProps) {
         </div>
 
         <div className="absolute top-[38%] right-[22%] w-5 h-5 rounded-full border-2 border-cyan-300/25 flex items-center justify-center">
-          <div className="w-2 h-2 rounded-full bg-cyan-300/25" strokeDasharray="1 1" />
+          <div className="w-2 h-2 rounded-full bg-cyan-300/25" />
         </div>
 
         <div className="absolute top-[46%] right-[12%] text-cyan-400/30 rotate-12">

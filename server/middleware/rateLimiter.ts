@@ -149,7 +149,7 @@ export const deviceLimiter = rateLimit({
   },
   keyGenerator: (req) => {
     // Use device ID or screen ID if available, otherwise IP
-    return req.headers['x-screen-id'] || req.ip;
+    return (req.headers['x-screen-id'] as string) || req.ip || '127.0.0.1';
   },
   ...(isRedisReady() ? { store: new RedisStore('device:') as any } : {})
 });

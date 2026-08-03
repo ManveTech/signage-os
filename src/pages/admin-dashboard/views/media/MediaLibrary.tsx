@@ -447,7 +447,7 @@ export default function MediaLibrary({ userEmail }: Props) {
             <div className="relative aspect-video overflow-hidden bg-gray-100 border-b border-gray-100">
               {playingVideoId === media.id ? (
                 <div className="absolute inset-0 z-30 bg-black">
-                  {media.type === 'youtube' ? (
+                  {(media.type as string) === 'youtube' ? (
                     (() => {
                       const ytId = getYoutubeId(media.fileUrl || media.thumbnail);
                       return ytId ? (
@@ -495,7 +495,7 @@ export default function MediaLibrary({ userEmail }: Props) {
                   )}
                   
                   {/* Play button overlay for video or youtube */}
-                  {(media.type === 'video' || media.type === 'youtube') && (
+                  {(media.type === 'video' || (media.type as string) === 'youtube') && (
                     <div 
                       className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/40 transition-colors cursor-pointer group/play"
                       onClick={(e) => {
@@ -531,7 +531,7 @@ export default function MediaLibrary({ userEmail }: Props) {
               <h3 className="text-xs font-bold text-slate-800 line-clamp-1">{media.title}</h3>
               <div className="flex items-center justify-between text-[10px] text-gray-400 font-semibold pt-1">
                 <div className="flex items-center gap-1"><Clock size={11} /> {media.duration}s</div>
-                <div className="flex items-center gap-1"><HardDrive size={11} /> {media.type === 'youtube' ? 'YouTube' : media.fileSize}</div>
+                <div className="flex items-center gap-1"><HardDrive size={11} /> {(media.type as string) === 'youtube' ? 'YouTube' : media.fileSize}</div>
               </div>
             </div>
           </div>
