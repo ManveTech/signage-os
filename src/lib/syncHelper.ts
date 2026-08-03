@@ -8,6 +8,37 @@ function getHeaders() {
   };
 }
 
+/**
+ * Retry a function with exponential backoff
+ * @param fn Function to retry
+ * @param maxRetries Maximum number of retry attempts
+ * @param baseDelay Initial delay in milliseconds
+ * @returns Result of the function or throws after all retries exhausted
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms:`, error.message);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 // Generate valid 15-character alphanumeric PocketBase ID
 export function generatePocketBaseId(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -54,43 +85,69 @@ export async function syncAllFromDatabase() {
     { path: 'leads', key: 'signageos_leads' }
   ];
 
-  for (const col of collections) {
-    try {
-      const res = await fetch(`${API_BASE}/${col.path}`, {
-        headers: getHeaders()
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (col.key === 'signageos_media') {
-          setMemoryMedia(data);
-        } else {
-          localStorage.setItem(col.key, JSON.stringify(data));
-        }
+  const errors: { collection: string; error: string }[] = [];
+
+  // Sync collections in parallel with retry logic
+  await Promise.all(
+    collections.map(async (col) => {
+      try {
+        await retryWithBackoff(async () => {
+          const res = await fetch(`${API_BASE}/${col.path}`, {
+            headers: getHeaders()
+          });
+
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+
+          const data = await res.json();
+          if (col.key === 'signageos_media') {
+            setMemoryMedia(data);
+          } else {
+            localStorage.setItem(col.key, JSON.stringify(data));
+          }
+        });
+      } catch (err: any) {
+        const errorMsg = err?.message || 'Unknown error';
+        console.error(`Failed to sync collection ${col.path} after retries:`, errorMsg);
+        errors.push({ collection: col.path, error: errorMsg });
       }
-    } catch (err) {
-      console.error(`Failed to sync collection ${col.path}:`, err);
-    }
+    })
+  );
+
+  // Return errors for caller to handle
+  if (errors.length > 0) {
+    console.warn(`Sync completed with ${errors.length} error(s):`, errors);
   }
+
+  return { success: errors.length === 0, errors };
 }
 
 // Sync a single collection from server and update localStorage / in-memory cache
 export async function syncCollection(collectionPath: string, localStorageKey: string): Promise<any[]> {
   try {
-    const res = await fetch(`${API_BASE}/${collectionPath}`, {
-      headers: getHeaders()
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (localStorageKey === 'signageos_media') {
-        setMemoryMedia(data);
-      } else {
-        localStorage.setItem(localStorageKey, JSON.stringify(data));
+    const data = await retryWithBackoff(async () => {
+      const res = await fetch(`${API_BASE}/${collectionPath}`, {
+        headers: getHeaders()
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
-      return data;
+
+      return await res.json();
+    });
+
+    if (localStorageKey === 'signageos_media') {
+      setMemoryMedia(data);
+    } else {
+      localStorage.setItem(localStorageKey, JSON.stringify(data));
     }
-  } catch (err) {
-    console.error(`Failed to sync collection ${collectionPath}:`, err);
+    return data;
+  } catch (err: any) {
+    console.error(`Failed to sync collection ${collectionPath} after retries:`, err.message);
   }
+
   // Fallback: return from memory or localStorage
   if (localStorageKey === 'signageos_media') {
     return memoryMedia;
@@ -102,14 +159,21 @@ export async function syncCollection(collectionPath: string, localStorageKey: st
 // Fetch a specific user record by ID from server
 export async function fetchUserById(userId: string): Promise<any | null> {
   try {
-    const res = await fetch(`${API_BASE}/users/${userId}`, {
-      headers: getHeaders()
+    return await retryWithBackoff(async () => {
+      const res = await fetch(`${API_BASE}/users/${userId}`, {
+        headers: getHeaders()
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      return await res.json();
     });
-    if (res.ok) return await res.json();
-  } catch (err) {
-    console.error(`Failed to fetch user ${userId}:`, err);
+  } catch (err: any) {
+    console.error(`Failed to fetch user ${userId} after retries:`, err.message);
+    return null;
   }
-  return null;
 }
 
 export async function pushToDatabase(collectionPath: string, id: string, data: any, method: 'POST' | 'PUT' | 'DELETE'): Promise<PushResult> {

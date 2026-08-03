@@ -7,7 +7,7 @@ import paymentsRouter from './payments';
 import mediaItemsRouter from './media_items';
 import organizationsRouter from './organizations';
 import { createCrudRouter } from '../controllers/crud';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, enforceLicense } from '../middleware/auth';
 import { clearAllScreenLogs } from '../controllers/screens';
 
 const apiRouter = express.Router();
@@ -109,14 +109,18 @@ apiRouter.use('/devices', devicesRouter);
 // 3. Token protection middleware for all following API routes
 apiRouter.use(authenticateToken);
 
-// 4. Mount Custom Routers (Priority matching)
+// 4. License enforcement middleware (after authentication, before protected resources)
+// Checks if client users have valid, non-expired licenses
+apiRouter.use(enforceLicense);
+
+// 5. Mount Custom Routers (Priority matching)
 apiRouter.use('/screens', screensRouter);
 apiRouter.use('/payments', paymentsRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/media_items', mediaItemsRouter);
 apiRouter.use('/organizations', organizationsRouter);
 
-// 4. Mount Generic PocketBase CRUD Collection Routers
+// 6. Mount Generic PocketBase CRUD Collection Routers
 apiRouter.use('/screens', createCrudRouter('screens'));
 apiRouter.use('/screen_groups', createCrudRouter('screen_groups'));
 apiRouter.delete('/screen_logs', clearAllScreenLogs);

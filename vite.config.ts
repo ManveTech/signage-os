@@ -33,6 +33,13 @@ export default defineConfig(({mode}) => {
             vendor: ['react', 'react-dom'],
           },
         },
+        external: [
+          // Capacitor plugins are optional and loaded dynamically
+          '@capacitor/app',
+          '@capacitor/keyboard',
+          '@capacitor/splash-screen',
+          '@capacitor/status-bar',
+        ],
       },
     },
   };

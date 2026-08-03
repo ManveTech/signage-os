@@ -124,7 +124,7 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
   };
 
   return (
-    <aside className={`flex flex-col bg-white border-r border-gray-100 transition-all duration-300 fixed md:relative inset-y-0 left-0 z-50 md:z-auto h-full ${collapsed ? 'w-0 md:w-16 overflow-hidden md:overflow-visible border-r-0 md:border-r' : 'w-60'} min-h-screen shadow-2xl md:shadow-none`}>
+    <aside className={`hidden md:flex flex-col bg-white border-r border-gray-100 transition-all duration-300 relative inset-y-0 left-0 z-auto h-full ${collapsed ? 'w-16 overflow-visible border-r' : 'w-60'} min-h-screen shadow-none`}>
       {/* Logo */}
       <div className="flex items-center justify-between px-4 h-16 border-b border-gray-100 flex-shrink-0">
         {!collapsed && (

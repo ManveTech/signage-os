@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../config';
 import { USER_ROUTES, getUserViewFromPath } from '../../lib/routes';
+import MobileBottomNav from '../../components/MobileBottomNav';
+import OfflineIndicator from '../../components/OfflineIndicator';
+import PullToRefresh from '../../components/PullToRefresh';
+import { useMobileDetect } from '../../hooks/useMobileDetect';
+import { useCapacitor } from '../../hooks/useCapacitor';
+import { syncAllFromDatabase } from '../../lib/syncHelper';
 import Sidebar from './components/Sidebar';
 import { toast } from '../../components/Toast';
 import Header from './components/Header';
@@ -72,6 +78,8 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
 export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', onSwitchToAdmin }: { onLogout: () => void; userEmail?: string; onSwitchToAdmin?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isMobile } = useMobileDetect();
+  const { isNative } = useCapacitor();
 
   // Active view is derived directly from the URL pathname
   const activeView = getUserViewFromPath(location.pathname);
@@ -94,7 +102,36 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   const handleNavigate = (targetView: string) => {
     const targetPath = USER_ROUTES[targetView] || `/${targetView}`;
     navigate(targetPath);
+    // Auto-close sidebar on mobile after navigation
+    if (isMobile) {
+      setSidebarCollapsed(true);
+    }
   };
+
+  // Pull to refresh handler
+  const handleRefresh = async () => {
+    try {
+      await syncAllFromDatabase();
+      checkLicense();
+      console.log('Data synced successfully');
+    } catch (error) {
+      console.error('Sync failed:', error);
+    }
+  };
+
+  // Sync data when app resumes (for native apps)
+  useEffect(() => {
+    if (!isNative) return;
+
+    const handleAppResumed = () => {
+      syncAllFromDatabase().then(() => {
+        checkLicense();
+      }).catch(console.error);
+    };
+
+    window.addEventListener('app-resumed', handleAppResumed);
+    return () => window.removeEventListener('app-resumed', handleAppResumed);
+  }, [isNative]);
 
   // First time login states
   const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
@@ -229,12 +266,17 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden text-left relative">
+      {/* Offline Indicator */}
+      <OfflineIndicator onRetry={handleRefresh} />
+
+      {/* Sidebar Overlay for Mobile */}
       {!sidebarCollapsed && (
-        <div 
-          onClick={toggleSidebar} 
-          className="fixed inset-0 bg-black/40 z-40 md:hidden animate-fadeIn" 
+        <div
+          onClick={toggleSidebar}
+          className="fixed inset-0 bg-black/40 z-40 md:hidden animate-fadeIn"
         />
       )}
+
       <Sidebar
         activeView={activeView}
         onNavigate={handleNavigate}
@@ -243,19 +285,27 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
         onLogout={onLogout}
         userEmail={userEmail}
       />
+
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Header 
-          activeView={activeView} 
-          onNavigate={handleNavigate} 
-          onLogout={onLogout} 
+        <Header
+          activeView={activeView}
+          onNavigate={handleNavigate}
+          onLogout={onLogout}
           onToggleSidebar={toggleSidebar}
           onSwitchToAdmin={onSwitchToAdmin}
           userEmail={userEmail}
         />
-        <main className="flex-1 overflow-y-auto">
-          {renderView(activeView, handleNavigate, userEmail)}
-        </main>
+
+        {/* Pull to Refresh wrapper for mobile */}
+        <PullToRefresh onRefresh={handleRefresh} enabled={isMobile}>
+          <main className="flex-1 overflow-y-auto pb-20 md:pb-4">
+            {renderView(activeView, handleNavigate, userEmail)}
+          </main>
+        </PullToRefresh>
       </div>
+
+      {/* Mobile Fixed Bottom Navigation Bar */}
+      <MobileBottomNav activeView={activeView} onNavigate={handleNavigate} role="user" />
 
       {/* Expiration Paywall Modal Overlay */}
       {isPaywallOpen && (

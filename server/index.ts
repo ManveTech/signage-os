@@ -1,4 +1,5 @@
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import dns from 'dns';
 import { EventSource } from 'eventsource';
 
@@ -8,27 +9,43 @@ import { EventSource } from 'eventsource';
 // Force Node.js to prioritize IPv4 DNS resolution to prevent ENETUNREACH errors on IPv6 networks
 dns.setDefaultResultOrder('ipv4first');
 
-import { PORT } from './config';
+import { PORT, CORS_ALLOWED_ORIGINS } from './config';
 import { authenticatePBAdmin, startAuthKeepAlive } from './db';
 import apiRouter from './routes';
 import { startScheduler } from './scheduler';
 import { listenToCollectionChanges } from './cache_invalidator';
 import { ensureRedisRunning, isRedisReady, redis } from './redis';
+import { apiLimiter } from './middleware/rateLimiter';
 
 const app = express();
 
-// CORS — Allow dynamic origins for multi-tenant subdomains & TV player requests
+// Cookie parser middleware - must be before routes that need req.cookies
+app.use(cookieParser());
+
+// Apply global rate limiting to all API requests (except health checks)
+app.use('/api', apiLimiter);
+
+// CORS — Secure origin handling with whitelist support
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin) {
+
+  // Check if origin is in whitelist or if wildcard is allowed (dev only)
+  if (origin && (CORS_ALLOWED_ORIGINS.includes('*') || CORS_ALLOWED_ORIGINS.includes(origin))) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Vary', 'Origin');
-  } else {
+    res.header('Access-Control-Allow-Credentials', 'true');
+  } else if (!origin && CORS_ALLOWED_ORIGINS.includes('*')) {
+    // Allow requests without origin header only in development (e.g., Postman, curl)
     res.header('Access-Control-Allow-Origin', '*');
+  } else if (origin && CORS_ALLOWED_ORIGINS.length === 0) {
+    // Production mode with no origins configured - reject
+    console.warn(`[CORS] Rejected request from origin: ${origin} (no whitelist configured)`);
+    return res.status(403).json({ error: 'Origin not allowed' });
   }
+
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Assigned-To-User-Email, X-Screen-Id');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Credentials', 'true');
+
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -52,8 +69,14 @@ app.use((err: any, req: any, res: any, next: any) => {
 // Favicon handler to silence browser 404 console errors
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-// Health check endpoint
-app.get('/health', async (req, res) => {
+// Health check endpoints
+import { healthCheck, readinessCheck, livenessCheck } from './controllers/health';
+app.get('/health', healthCheck);           // Comprehensive health check
+app.get('/health/ready', readinessCheck);  // Kubernetes readiness probe
+app.get('/health/live', livenessCheck);    // Kubernetes liveness probe
+
+// Legacy health check for backward compatibility
+app.get('/api/v1/health', async (req, res) => {
   let redisStatus = 'disconnected';
   let redisPing = 'error';
 

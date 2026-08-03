@@ -17,20 +17,20 @@ function requireEnv(key: string, devFallback: string): string {
 
 export const PORT = process.env.PORT || 5000;
 export const JWT_SECRET = requireEnv('JWT_SECRET', 'signageos_dev_jwt_secret_CHANGE_IN_PRODUCTION');
-export const PB_ADMIN_EMAIL = requireEnv('PB_ADMIN_EMAIL', 'anand@gmail.com');
-export const PB_ADMIN_PASSWORD = requireEnv('PB_ADMIN_PASSWORD', 'demo@123');
-export const PB_URL = process.env.POCKETBASE_URL || 'https://demo.manve.co';
+export const PB_ADMIN_EMAIL = requireEnv('PB_ADMIN_EMAIL', isDev ? 'admin@example.com' : '');
+export const PB_ADMIN_PASSWORD = requireEnv('PB_ADMIN_PASSWORD', isDev ? 'changeme123' : '');
+export const PB_URL = process.env.POCKETBASE_URL || (isDev ? 'http://127.0.0.1:8090' : '');
 
 // SMTP Configuration
-export const SMTP_HOST = process.env.SMTP_HOST || 'smtp.mailtrap.io';
-export const SMTP_PORT = parseInt(process.env.SMTP_PORT || '2525', 10);
+export const SMTP_HOST = process.env.SMTP_HOST || '';
+export const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
 export const SMTP_USERNAME = process.env.SMTP_USERNAME || '';
 export const SMTP_PASSWORD = process.env.SMTP_PASSWORD || '';
-export const SMTP_SENDER_EMAIL = process.env.SMTP_SENDER_EMAIL || 'noreply@signageos.com';
-export const SMTP_SENDER_NAME = process.env.SMTP_SENDER_NAME || 'SignageOS Admin';
+export const SMTP_SENDER_EMAIL = process.env.SMTP_SENDER_EMAIL || '';
+export const SMTP_SENDER_NAME = process.env.SMTP_SENDER_NAME || 'SignageOS';
 
 // Razorpay Configuration
-export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_live_demo83920194';
+export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 export const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 
 // Cloudflare R2 / S3 Storage Configuration
@@ -41,4 +41,9 @@ export const S3_ENDPOINT = (process.env.S3_ENDPOINT || '').trim();
 export const S3_ACCESS_KEY = (process.env.S3_ACCESS_KEY || '').trim();
 export const S3_SECRET = (process.env.S3_SECRET || '').trim();
 
+// CORS Configuration
+// In development, allow all origins. In production, use a whitelist.
+export const CORS_ALLOWED_ORIGINS = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : (isDev ? ['*'] : []);
 

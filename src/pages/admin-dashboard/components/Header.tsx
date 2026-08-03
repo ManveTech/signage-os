@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Search, ChevronDown, User, LogOut, Home, Settings, Play, Film, HelpCircle, Users, Activity, Menu 
 } from 'lucide-react';
+import logoImg from '../../../assets/BS-main-Logo.png';
 
 const breadcrumbMap: Record<string, string[]> = {
   dashboard: ['Dashboard'],
@@ -147,20 +148,23 @@ export default function Header({ activeView, onNavigate, onLogout, onToggleSideb
   return (
     <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0 z-40 relative">
       <div className="flex items-center gap-2 text-sm">
-        <button
-          onClick={onToggleSidebar}
-          className="p-1.5 hover:bg-slate-50 text-gray-500 rounded-lg md:hidden cursor-pointer mr-1"
-        >
-          <Menu size={18} />
-        </button>
-        {crumbs.map((crumb, i) => (
-          <span key={crumb} className="flex items-center gap-2">
-            {i > 0 && <ChevronDown size={12} className="text-gray-400 rotate-[-90deg]" />}
-            <span className={i === crumbs.length - 1 ? 'text-gray-900 font-semibold' : 'text-gray-400'}>
-              {crumb}
-            </span>
+        <div className="flex items-center gap-2 md:hidden">
+          <img src={logoImg} className="w-7 h-7 object-contain shrink-0" alt="Logo" />
+          <span className="font-extrabold text-slate-900 text-sm truncate max-w-[150px]">
+            {crumbs[crumbs.length - 1]}
           </span>
-        ))}
+        </div>
+        {/* Desktop Breadcrumbs */}
+        <div className="hidden sm:flex items-center gap-2">
+          {crumbs.map((crumb, i) => (
+            <span key={crumb} className="flex items-center gap-2">
+              {i > 0 && <ChevronDown size={12} className="text-gray-400 rotate-[-90deg]" />}
+              <span className={i === crumbs.length - 1 ? 'text-gray-900 font-semibold' : 'text-gray-400'}>
+                {crumb}
+              </span>
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

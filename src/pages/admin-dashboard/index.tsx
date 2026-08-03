@@ -28,6 +28,12 @@ import Support from './views/Support';
 import Profile from './views/Profile';
 import ClientMedia from './views/ClientMedia';
 import ClientPlaylists from './views/ClientPlaylists';
+import MobileBottomNav from '../../components/MobileBottomNav';
+import OfflineIndicator from '../../components/OfflineIndicator';
+import PullToRefresh from '../../components/PullToRefresh';
+import { useMobileDetect } from '../../hooks/useMobileDetect';
+import { useCapacitor } from '../../hooks/useCapacitor';
+import { syncAllFromDatabase } from '../../lib/syncHelper';
 import { Lock, X, CheckCircle } from 'lucide-react';
 
 function renderView(view: string, navigate: (v: string) => void) {
@@ -88,6 +94,8 @@ function renderView(view: string, navigate: (v: string) => void) {
 export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogout: () => void; onSwitchToClient?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isMobile } = useMobileDetect();
+  const { isNative, isAndroid } = useCapacitor();
 
   // Active view is derived directly from the URL pathname
   const activeView = getAdminViewFromPath(location.pathname);
@@ -107,7 +115,33 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
   const handleNavigate = (targetView: string) => {
     const targetPath = ADMIN_ROUTES[targetView] || `/admin/${targetView}`;
     navigate(targetPath);
+    // Auto-close sidebar on mobile after navigation
+    if (isMobile) {
+      setSidebarCollapsed(true);
+    }
   };
+
+  // Pull to refresh handler
+  const handleRefresh = async () => {
+    try {
+      await syncAllFromDatabase();
+      console.log('Data synced successfully');
+    } catch (error) {
+      console.error('Sync failed:', error);
+    }
+  };
+
+  // Sync data when app resumes (for native apps)
+  useEffect(() => {
+    if (!isNative) return;
+
+    const handleAppResumed = () => {
+      syncAllFromDatabase().catch(console.error);
+    };
+
+    window.addEventListener('app-resumed', handleAppResumed);
+    return () => window.removeEventListener('app-resumed', handleAppResumed);
+  }, [isNative]);
 
   // First time login states
   const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
@@ -167,12 +201,17 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden text-left relative">
+      {/* Offline Indicator */}
+      <OfflineIndicator onRetry={handleRefresh} />
+
+      {/* Sidebar Overlay for Mobile */}
       {!sidebarCollapsed && (
-        <div 
-          onClick={toggleSidebar} 
-          className="fixed inset-0 bg-black/40 z-40 md:hidden animate-fadeIn" 
+        <div
+          onClick={toggleSidebar}
+          className="fixed inset-0 bg-black/40 z-40 md:hidden animate-fadeIn"
         />
       )}
+
       <Sidebar
         activeView={activeView}
         onNavigate={handleNavigate}
@@ -180,18 +219,27 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
         onToggle={toggleSidebar}
         onLogout={onLogout}
       />
+
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Header 
-          activeView={activeView} 
-          onNavigate={handleNavigate} 
-          onLogout={onLogout} 
-          onToggleSidebar={toggleSidebar} 
+        <Header
+          activeView={activeView}
+          onNavigate={handleNavigate}
+          onLogout={onLogout}
+          onToggleSidebar={toggleSidebar}
           onSwitchToClient={onSwitchToClient}
         />
-        <main className="flex-1 overflow-y-auto">
-          {renderView(activeView, handleNavigate)}
-        </main>
+
+        {/* Pull to Refresh wrapper for mobile */}
+        <PullToRefresh onRefresh={handleRefresh} enabled={isMobile}>
+          <main className="flex-1 overflow-y-auto pb-20 md:pb-4">
+            {renderView(activeView, handleNavigate)}
+          </main>
+        </PullToRefresh>
       </div>
+
+      {/* Mobile Fixed Bottom Navigation Bar */}
+      <MobileBottomNav activeView={activeView} onNavigate={handleNavigate} role="admin" />
+
 
       {/* First Time Login Password Reset Modal */}
       {isFirstLogin && (

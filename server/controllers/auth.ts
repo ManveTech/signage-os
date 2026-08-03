@@ -25,8 +25,19 @@ export async function login(req: any, res: any) {
         email: user.email,
         role: user.role || 'client'
       });
+
+      // Set httpOnly cookie for token (secure in production)
+      const isProduction = process.env.NODE_ENV === 'production';
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: isProduction, // HTTPS only in production
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: '/'
+      });
+
       return res.status(200).json({
-        token,
+        token, // Still return token for backward compatibility with mobile app
         user: {
           id: user.id,
           email: user.email,
@@ -38,7 +49,7 @@ export async function login(req: any, res: any) {
       });
     } catch (pbErr: any) {
       console.log('PocketBase auth failed, checking fallback:', pbErr.message);
-      
+
 
       return res.status(401).json({ message: 'Invalid access credentials.' });
     }
@@ -137,5 +148,22 @@ export async function resetPassword(req: any, res: any) {
   } catch (error: any) {
     console.error('Reset password error:', error);
     res.status(500).json({ message: error.message || 'Failed to reset password.' });
+  }
+}
+
+export async function logout(req: any, res: any) {
+  try {
+    // Clear the httpOnly auth cookie
+    res.clearCookie('auth_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/'
+    });
+
+    return res.status(200).json({ message: 'Logged out successfully.' });
+  } catch (error: any) {
+    console.error('Logout error:', error);
+    res.status(500).json({ message: error.message || 'Failed to logout.' });
   }
 }
