@@ -827,10 +827,10 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                     e.stopPropagation(); // Prevent duplicate calls
                     addAssetToTimeline(asset);
                   }}
-                  className="absolute top-1.5 right-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-1 shadow hover:scale-105 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 cursor-pointer"
+                  className="absolute top-1.5 right-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-1.5 shadow-md ring-2 ring-white hover:scale-105 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 cursor-pointer"
                   title="Add to sequence"
                 >
-                  <Plus size={10} className="stroke-[3]" />
+                  <Plus size={12} className="stroke-[3]" />
                 </button>
 
                 <div className="w-full aspect-video rounded-lg overflow-hidden bg-gray-200 border border-slate-100 relative">
@@ -918,32 +918,32 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       }`}
                     >
                       {/* Left Block: Reorder & Media Details */}
-                      <div className="flex gap-4 items-center lg:col-span-6 min-w-0">
-                        {/* Reorder Navigator */}
-                        <div className="flex flex-row lg:flex-col gap-1 items-center justify-center flex-shrink-0">
-                          <div className="text-gray-400 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-100">
-                            <GripVertical size={16} />
+                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center lg:col-span-6 min-w-0 w-full">
+                        <div className="flex gap-3 items-center min-w-0 w-full sm:w-auto sm:flex-1">
+                          {/* Reorder Navigator */}
+                          <div className="flex flex-col gap-1 items-center justify-center flex-shrink-0">
+                            <div className="text-gray-400 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-100">
+                              <GripVertical size={16} />
+                            </div>
+                            <button
+                              onClick={() => moveItem(index, 'up')}
+                              disabled={index === 0}
+                              className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 rounded-lg hover:bg-gray-50 cursor-pointer"
+                            >
+                              <ArrowUp size={16} />
+                            </button>
+                            <span className="text-xs font-bold text-gray-500 w-6 text-center">{index + 1}</span>
+                            <button
+                              onClick={() => moveItem(index, 'down')}
+                              disabled={index === playlistItems.length - 1}
+                              className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 rounded-lg hover:bg-gray-50 cursor-pointer"
+                            >
+                              <ArrowDown size={16} />
+                            </button>
                           </div>
-                          <button 
-                            onClick={() => moveItem(index, 'up')}
-                            disabled={index === 0}
-                            className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 rounded-lg hover:bg-gray-50 cursor-pointer"
-                          >
-                            <ArrowUp size={16} />
-                          </button>
-                          <span className="text-xs font-bold text-gray-500 w-6 text-center">{index + 1}</span>
-                          <button 
-                            onClick={() => moveItem(index, 'down')}
-                            disabled={index === playlistItems.length - 1}
-                            className="p-1 text-gray-400 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-400 rounded-lg hover:bg-gray-50 cursor-pointer"
-                          >
-                            <ArrowDown size={16} />
-                          </button>
-                        </div>
 
-                        {/* Thumbnail & Title Details */}
-                        <div className="flex gap-3 items-center min-w-0 flex-1">
-                          <div className="w-20 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-slate-200 relative">
+                          {/* Thumbnail & Title Details */}
+                          <div className="w-16 h-12 sm:w-20 sm:h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-slate-200 relative">
                             <img src={media.thumbnail} alt={media.title} className="w-full h-full object-cover" />
                           </div>
                           <div className="min-w-0 flex-1">
@@ -955,21 +955,21 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                               </span>
                               <span className="text-[9.5px] text-gray-400 font-semibold">{media.fileSize}</span>
                             </div>
-                            
-                            {/* Duration input */}
-                            <div className="flex items-center gap-2 mt-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 w-fit">
-                              <Clock size={12} className="text-blue-500" />
-                              <span className="text-[10px] text-gray-600 font-bold">Play time:</span>
-                              <input 
-                                type="number"
-                                min={1}
-                                value={item.duration}
-                                onChange={e => updateItem(item.id, { duration: Math.max(1, parseInt(e.target.value) || 5) })}
-                                className="w-10 border border-slate-200 rounded bg-white px-1 py-0.5 text-xs text-center font-bold outline-none focus:border-blue-550 text-gray-800"
-                              />
-                              <span className="text-[9.5px] text-slate-455 font-bold uppercase">sec</span>
-                            </div>
                           </div>
+                        </div>
+
+                        {/* Duration input */}
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 sm:py-0.5 w-full sm:w-fit flex-shrink-0">
+                          <Clock size={12} className="text-blue-500 flex-shrink-0" />
+                          <span className="text-[10px] text-gray-600 font-bold whitespace-nowrap">Play time:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={item.duration}
+                            onChange={e => updateItem(item.id, { duration: Math.max(1, parseInt(e.target.value) || 5) })}
+                            className="w-10 border border-slate-200 rounded bg-white px-1 py-0.5 text-xs text-center font-bold outline-none focus:border-blue-550 text-gray-800"
+                          />
+                          <span className="text-[9.5px] text-slate-455 font-bold uppercase">sec</span>
                         </div>
                       </div>
 
@@ -1068,13 +1068,14 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       </div>
 
                       {/* Right Block: Remove Slide Button */}
-                      <div className="flex justify-end lg:col-span-1">
-                        <button 
+                      <div className="flex justify-end lg:col-span-1 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+                        <button
                           onClick={() => removeItem(item.id)}
-                          className="p-1.5 text-gray-300 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 lg:p-1.5 text-gray-400 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
                           title="Remove item"
                         >
                           <X size={15} />
+                          <span className="text-[10px] font-bold uppercase lg:hidden">Remove</span>
                         </button>
                       </div>
                     </div>
@@ -1140,20 +1141,20 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                   </button>
                 </div>
                 
-                <div className={`flex border rounded-xl overflow-hidden font-bold h-[42px] transition-all shadow-xs ${allowCustomOrientation ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
-                  <button 
+                <div className={`flex border rounded-xl overflow-hidden font-bold min-h-[42px] transition-all shadow-xs ${allowCustomOrientation ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+                  <button
                     type="button"
                     disabled={!allowCustomOrientation}
                     onClick={() => setPlaylistOrientation('horizontal')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 transition-colors ${playlistOrientation === 'horizontal' ? 'bg-blue-600 text-white font-black' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-xs whitespace-nowrap transition-colors ${playlistOrientation === 'horizontal' ? 'bg-blue-600 text-white font-black' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
-                    <span>Landscape (Default)</span>
+                    <span>Landscape</span>
                   </button>
-                  <button 
+                  <button
                     type="button"
                     disabled={!allowCustomOrientation}
                     onClick={() => setPlaylistOrientation('vertical')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 transition-colors ${playlistOrientation === 'vertical' ? 'bg-blue-600 text-white font-black' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-xs whitespace-nowrap transition-colors ${playlistOrientation === 'vertical' ? 'bg-blue-600 text-white font-black' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <span>Portrait</span>
                   </button>
@@ -1244,7 +1245,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       key={opt.id}
                       type="button"
                       onClick={() => toggleWidgetType(opt.id)}
-                      className={`flex items-center justify-center px-3 py-2 border rounded-xl font-bold text-xs transition-all cursor-pointer h-10 ${
+                      className={`flex items-center justify-center text-center px-3 py-2.5 border rounded-xl font-bold text-[11px] sm:text-xs leading-tight min-h-10 transition-all cursor-pointer ${
                         isWidgetActive(opt.id)
                           ? 'border-blue-600 bg-blue-50 text-blue-600 shadow-xs font-black'
                           : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
@@ -1413,21 +1414,21 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
       {/* ================= FULLSCREEN SIMULATION PREVIEW MODAL ================= */}
       {showPreviewModal && simulatedItems.length > 0 && (
-        <div className="fixed inset-0 bg-slate-50/98 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-slate-800 font-sans animate-fadeIn">
+        <div className="fixed inset-0 bg-slate-50/98 backdrop-blur-md z-[60] flex flex-col items-center justify-center p-6 text-slate-800 font-sans animate-fadeIn overflow-y-auto">
           
-          <div className="w-full max-w-5xl flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-sm font-extrabold tracking-tight text-slate-900 flex items-center gap-2">
-                <Tv size={16} className="text-blue-600" />
-                Live Standee Playback Simulator
+          <div className="w-full max-w-5xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="min-w-0">
+              <h2 className="text-sm font-extrabold tracking-tight text-slate-900 flex items-center gap-2 min-w-0">
+                <Tv size={16} className="text-blue-600 flex-shrink-0" />
+                <span className="truncate">Live Standee Playback Simulator</span>
               </h2>
-              <p className="text-[10px] text-slate-500 mt-0.5 font-semibold">
+              <p className="text-[10px] text-slate-500 mt-0.5 font-semibold truncate">
                 Simulating screen output: Slide {previewIndex + 1} of {simulatedItems.length} · {getMediaItem(simulatedItems[previewIndex]?.mediaId)?.title}
               </p>
             </div>
-            <button 
+            <button
               onClick={() => { setShowPreviewModal(false); setIsPlaying(false); }}
-              className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold uppercase border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              className="self-end sm:self-auto flex-shrink-0 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold uppercase border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap"
             >
               <X size={14} /> Close Preview
             </button>
