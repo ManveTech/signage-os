@@ -154,9 +154,16 @@ export default function Header({ activeView, onNavigate, onLogout, userEmail = '
   return (
     <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0 z-40 relative">
       <div className="flex items-center gap-2 text-sm">
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex items-center gap-1 sm:gap-2 md:hidden">
+          <button
+            onClick={onToggleSidebar}
+            className="p-1.5 text-slate-700 hover:bg-slate-100 active:bg-slate-200 rounded-lg transition-colors cursor-pointer mr-0.5"
+            title="Toggle Menu"
+          >
+            <Menu size={20} />
+          </button>
           <img src={logoImg} className="w-7 h-7 object-contain shrink-0" alt="Logo" />
-          <span className="font-extrabold text-slate-900 text-sm truncate max-w-[150px]">
+          <span className="font-extrabold text-slate-900 text-sm truncate max-w-[130px] sm:max-w-[180px]">
             {crumbs[crumbs.length - 1]}
           </span>
         </div>

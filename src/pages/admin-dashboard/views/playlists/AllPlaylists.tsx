@@ -140,7 +140,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
       </div>
 
       {/* Grid view */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {playlists.map(playlist => {
           const assignedScreensCount = screens.filter(s => s.playlistId === playlist.id).length;
           const assignedGroups = groups.filter(g => g.playlist === playlist.name);

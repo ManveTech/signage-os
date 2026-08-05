@@ -52,9 +52,18 @@ app.use((req, res, next) => {
   next();
 });
 
+import path from 'path';
+import fs from 'fs';
+
 // Global Middleware
 // 100 MB limit covers all normal API payloads including large base64 media uploads.
-app.use(express.json({ limit: '100mb' }));
+// Save rawBody buffer for cryptographic webhook signature verification (Razorpay, etc.)
+app.use(express.json({ 
+  limit: '100mb',
+  verify: (req: any, _res: any, buf: Buffer) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // Handle JSON body-parser syntax errors gracefully
@@ -100,8 +109,6 @@ app.get('/api/v1/health', async (req, res) => {
   });
 });
 
-import path from 'path';
-
 // Mount all API endpoints under /api/v1
 app.use('/api/v1', apiRouter);
 
@@ -111,14 +118,14 @@ app.use(express.static(distPath));
 
 // SPA Catch-all Fallback: Return index.html for non-API GET requests so client-side router handles URLs on refresh
 app.get('*', (req: any, res: any, next: any) => {
-  if (req.path.startsWith('/api')) {
+  if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
     return next();
   }
-  res.sendFile(path.join(distPath, 'index.html'), (err: any) => {
-    if (err) {
-      res.status(404).send('Application build not found. Please run npm run build.');
-    }
-  });
+  const indexPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  res.status(404).send('Application build not found or route does not exist. Please run npm run build.');
 });
 
 // Start server only after PocketBase admin auth is ready

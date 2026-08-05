@@ -91,7 +91,11 @@ export async function forgotPassword(req: any, res: any) {
       exp: Math.floor(Date.now() / 1000) + 15 * 60
     });
 
-    const resetLink = `http://localhost:3000/?token=${token}&userId=${user.id}`;
+    const protocol = req.protocol || 'http';
+    const host = req.get('host') || 'localhost:3000';
+    const reqOrigin = req.headers.origin || `${protocol}://${host}`;
+    const baseUrl = process.env.APP_URL || reqOrigin;
+    const resetLink = `${baseUrl}/reset-password?token=${token}&userId=${user.id}`;
 
     // Send the email
     const emailSent = await sendPasswordResetEmail({
@@ -119,6 +123,10 @@ export async function resetPassword(req: any, res: any) {
       return res.status(400).json({ message: 'Token, userId, and password are required.' });
     }
 
+    if (password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+    }
+
     // Verify reset token
     const payload = verifyJwt(token);
     if (!payload) {
@@ -133,15 +141,18 @@ export async function resetPassword(req: any, res: any) {
       return res.status(400).json({ message: 'Invalid token parameters.' });
     }
 
-
-
     // PocketBase user reset
     await ensurePBAuth();
-    await pb.collection('users').update(userId, {
-      password: password,
-      passwordConfirm: password,
-      firstTimeLogin: false
-    });
+    try {
+      await pb.collection('users').update(userId, {
+        password: password,
+        passwordConfirm: password,
+        firstTimeLogin: false
+      });
+    } catch (pbUpdateErr: any) {
+      console.error('PocketBase update user password error:', pbUpdateErr);
+      return res.status(400).json({ message: pbUpdateErr.message || 'Failed to update user password in database.' });
+    }
 
     return res.status(200).json({ message: 'Password has been reset successfully.' });
 

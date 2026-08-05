@@ -105,7 +105,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tokenParam = params.get('token');
-    const userIdParam = params.get('userId');
+    const userIdParam = params.get('userId') || params.get('user_id') || params.get('id');
     if (tokenParam && userIdParam) {
       setResetToken(tokenParam);
       setResetUserId(userIdParam);
@@ -137,6 +137,8 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     }
 
     const lowerEmail = email.toLowerCase().trim();
+    setErrorMessage('');
+    setSuccessMessage('');
 
     fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
@@ -146,34 +148,25 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       .then(async (res) => {
         if (res.ok) {
           const data = await res.json();
-          if (data.token) {
-            localStorage.setItem('signageos_token', data.token);
-            localStorage.setItem('signageos_user_id', data.user.id);
-            localStorage.setItem('signageos_user_email', data.user.email);
-            localStorage.setItem('signageos_user_role', data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client');
-            localStorage.setItem('signageos_first_time_login', data.user.firstTimeLogin ? 'true' : 'false');
-          }
-
-          // Sync database cache to localStorage
-          try {
-            await syncAllFromDatabase();
-          } catch (syncErr) {
-            console.error('Initial sync error:', syncErr);
-          }
+          localStorage.setItem('signageos_token', data.token || 'demo-session-token');
+          localStorage.setItem('signageos_user_id', data.user.id);
+          localStorage.setItem('signageos_user_email', data.user.email);
+          localStorage.setItem('signageos_user_role', data.user.role || 'client');
 
           setLoggedInUser({
             email: data.user.email,
-            role: data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client'
+            role: data.user.role || 'client'
           });
           setErrorMessage('');
         } else {
           const errData = await res.json().catch(() => ({}));
-          setErrorMessage(errData.message || 'Invalid access credentials.');
+          const msg = errData.message || errData.error || (errData.details && errData.details[0]?.message);
+          setErrorMessage(msg || 'Invalid email or password.');
         }
       })
       .catch((err) => {
-        console.error('Server connection error:', err);
-        setErrorMessage('Server connection error. Please verify the server is running and accessible.');
+        console.error('Login error:', err);
+        setErrorMessage('Server connection error. Unable to verify credentials.');
       });
   };
 
@@ -187,21 +180,19 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     setErrorMessage('');
     setSuccessMessage('');
 
-    const lowerEmail = email.toLowerCase().trim();
-
     fetch(`${API_BASE}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: lowerEmail })
+      body: JSON.stringify({ email: email.toLowerCase().trim() })
     })
       .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          const data = await res.json();
           setSuccessMessage(data.message || 'Password reset link sent to your email.');
           setEmail('');
         } else {
-          const errData = await res.json().catch(() => ({}));
-          setErrorMessage(errData.message || 'Email address not found.');
+          const msg = data.message || data.error || (data.details && data.details[0]?.message);
+          setErrorMessage(msg || 'Email address not found.');
         }
       })
       .catch((err) => {
@@ -219,6 +210,10 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     }
     if (newPassword !== confirmPassword) {
       setErrorMessage('Passwords do not match.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setErrorMessage('Password must be at least 8 characters.');
       return;
     }
     setErrorMessage('');
@@ -244,7 +239,8 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
           }, 2500);
         } else {
           const errData = await res.json().catch(() => ({}));
-          setErrorMessage(errData.message || 'Reset expired or invalid.');
+          const msg = errData.message || errData.error || (errData.details && errData.details[0]?.message);
+          setErrorMessage(msg || 'Reset expired or invalid.');
         }
       })
       .catch((err) => {
