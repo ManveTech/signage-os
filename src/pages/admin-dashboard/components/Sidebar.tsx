@@ -120,8 +120,12 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
   };
 
   return (
+<<<<<<< HEAD
     <>
       <aside className={`hidden md:flex flex-col bg-white border-r border-gray-100 transition-all duration-300 h-full ${collapsed ? 'w-16 overflow-visible' : 'w-60'} min-h-screen`}>
+=======
+    <aside className={`hidden md:flex flex-col bg-white border-r border-gray-100 transition-all duration-300 relative inset-y-0 left-0 z-auto h-full ${collapsed ? 'w-16 overflow-visible border-r' : 'w-60'} min-h-screen shadow-none`}>
+>>>>>>> parent of 4462b74 (razorpay hooks, ui improve)
       {/* Logo */}
       <div className="flex items-center justify-between px-4 h-16 border-b border-gray-100 flex-shrink-0">
         {!collapsed && (
@@ -237,6 +241,5 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
         )}
       </div>
     </aside>
-  </>
   );
 }

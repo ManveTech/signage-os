@@ -10,9 +10,7 @@ export function validateBody<T extends z.ZodTypeAny>(schema: T) {
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        const firstMessage = error.errors[0]?.message || 'Validation failed';
         return res.status(400).json({
-          message: firstMessage,
           error: 'Validation failed',
           details: error.errors.map(err => ({
             field: err.path.join('.'),

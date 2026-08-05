@@ -84,7 +84,7 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
             <div className="p-5 sm:p-6 overflow-y-auto flex-1">
               {!isSubmitted ? (
                 <form onSubmit={handleSubmit} className="space-y-4" id="quote-form">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="modal-name" className="block text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">
                         Contact Name *
@@ -96,7 +96,7 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="John Doe"
-                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-accent text-slate-800 bg-slate-50 focus:bg-white transition-all"
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-accent text-primary bg-slate-50 focus:bg-white transition-all"
                       />
                     </div>
                     <div>
@@ -110,12 +110,12 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                         value={company}
                         onChange={(e) => setCompany(e.target.value)}
                         placeholder="Enterprise Inc."
-                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-accent text-slate-800 bg-slate-50 focus:bg-white transition-all"
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-accent text-primary bg-slate-50 focus:bg-white transition-all"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="modal-email" className="block text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">
                         Work Email *
@@ -127,7 +127,7 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="email@company.com"
-                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-accent text-slate-800 bg-slate-50 focus:bg-white transition-all"
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-accent text-primary bg-slate-50 focus:bg-white transition-all"
                       />
                     </div>
                     <div>
@@ -141,7 +141,7 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         placeholder="+91 XXXXX XXXXX"
-                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-accent text-slate-800 bg-slate-50 focus:bg-white transition-all"
+                        className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-accent text-primary bg-slate-50 focus:bg-white transition-all"
                       />
                     </div>
                   </div>
@@ -152,6 +152,7 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                     </label>
                     <CustomSelect
                       value={service}
+<<<<<<< HEAD
                       onChange={val => setService(val)}
                       placeholder="Select a solution..."
                       options={[
@@ -168,6 +169,22 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                       ]}
                       buttonClassName="px-3.5 py-2.5 text-sm bg-slate-50 border-slate-200 min-h-[42px]"
                     />
+=======
+                      onChange={(e) => setService(e.target.value)}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-accent text-primary bg-slate-50 focus:bg-white transition-all appearance-none"
+                    >
+                      <option value="">Select a solution...</option>
+                      <option value="kiosk-info">Interactive Information Kiosks</option>
+                      <option value="kiosk-self">Self-Service Kiosks</option>
+                      <option value="digital-standee">Digital Standee Displays</option>
+                      <option value="multitouch-table">Multi-Touch Interactive Tables</option>
+                      <option value="led-walls">Active LED Video Walls</option>
+                      <option value="podiums">Digital Podiums</option>
+                      <option value="coffee-tables">Digital Coffee Tables</option>
+                      <option value="tablet-kiosks">Tablet & Tab Kiosks</option>
+                      <option value="metal-fab">Custom Metal Fabrication</option>
+                    </select>
+>>>>>>> parent of 4462b74 (razorpay hooks, ui improve)
                   </div>
 
                   <div>

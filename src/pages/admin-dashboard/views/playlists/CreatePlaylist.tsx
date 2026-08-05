@@ -10,7 +10,6 @@ import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
 import { toast } from '../../../../components/Toast';
-import CustomSelect from '../../../../components/CustomSelect';
 
 type PlaylistItem = {
   id: string;
@@ -728,7 +727,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   const getMediaItem = (id: string) => mediaList.find(m => m.id === id);
 
   return (
-    <div className="p-3.5 sm:p-6 max-w-6xl mx-auto space-y-4 sm:space-y-5 text-left relative overflow-x-hidden">
+    <div className="p-6 max-w-6xl mx-auto space-y-5 text-left relative">
       {/* Hidden file input */}
       <input 
         type="file" 
@@ -788,10 +787,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
       {/* Target Client Organization Selector (Only for Admin) */}
       {userEmail === 'admin@demo.com' && !isMyChannel && (
-        <div className="bg-blue-50/50 rounded-2xl border border-blue-100 p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
+        <div className="bg-blue-50/50 rounded-2xl border border-blue-100 p-4 shadow-xs flex flex-col sm:flex-row gap-4 items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
-              <Building2 size={18} />
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+              <Building2 size={20} />
             </div>
             <div>
               <p className="text-xs font-bold text-slate-800">
@@ -803,27 +802,31 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
             </div>
           </div>
           <div className="w-full sm:max-w-[320px] sm:min-w-[240px]">
-            <CustomSelect
+            <select
               value={targetUserEmail}
-              onChange={val => {
-                setTargetUserEmail(val);
+              onChange={e => {
+                setTargetUserEmail(e.target.value);
+                // Clear active states
                 setEditingPlaylistId(null);
                 setSelectedPlaylistId('');
                 setPlaylistName('');
                 setPlaylistItems([]);
               }}
-              options={uniqueTargets.map(t => ({ value: t.email, label: t.label }))}
-              buttonClassName="min-h-[40px] px-3.5 py-2.5 text-xs font-semibold text-slate-800 border-blue-200"
-            />
+              className="text-xs border border-blue-200 bg-white rounded-xl px-3 py-2.5 outline-none focus:border-blue-400 font-bold text-slate-700 cursor-pointer w-full shadow-xs"
+            >
+              {uniqueTargets.map(t => (
+                <option key={t.email} value={t.email}>{t.label}</option>
+              ))}
+            </select>
           </div>
         </div>
       )}
 
       {/* Playlist Selector for Editing */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row gap-4 items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-            <FolderOpen size={18} />
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+            <FolderOpen size={20} />
           </div>
           <div>
             <p className="text-xs font-bold text-slate-800">
@@ -835,21 +838,21 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
           </div>
         </div>
         <div className="flex gap-2 min-w-[240px] w-full sm:w-auto">
-          <CustomSelect
+          <select
             value={selectedPlaylistId}
-            onChange={val => handleLoadPlaylistForEditing(val)}
-            placeholder="-- Create New Playlist --"
-            options={[
-              { value: '', label: '-- Create New Playlist --' },
-              ...existingPlaylists.map(p => ({ value: p.id, label: p.name }))
-            ]}
-            buttonClassName="min-h-[40px] px-3.5 py-2.5 text-xs font-semibold text-slate-800 border-slate-200"
-          />
+            onChange={e => handleLoadPlaylistForEditing(e.target.value)}
+            className="text-xs border border-slate-200 bg-white rounded-xl px-3 py-2.5 outline-none focus:border-blue-400 font-bold text-slate-700 cursor-pointer w-full shadow-xs"
+          >
+            <option value="">-- Create New Playlist --</option>
+            {existingPlaylists.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
           {editingPlaylistId && (
             <button
               type="button"
               onClick={handleStartNewPlaylist}
-              className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-750 text-xs font-extrabold uppercase rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap min-h-[40px]"
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-750 text-xs font-extrabold uppercase rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap"
             >
               Cancel Edit
             </button>
@@ -901,7 +904,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                     e.stopPropagation(); // Prevent duplicate calls
                     addAssetToTimeline(asset);
                   }}
-                  className="absolute top-1.5 right-1.5 w-6 h-6 sm:w-7 sm:h-7 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-full flex items-center justify-center shadow-md ring-2 ring-white hover:scale-105 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 cursor-pointer"
+                  className="absolute top-1.5 right-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-1.5 shadow-md ring-2 ring-white hover:scale-105 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 cursor-pointer"
                   title="Add to sequence"
                 >
                   <Plus size={12} className="stroke-[3]" />
@@ -1048,55 +1051,52 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                       </div>
 
                       {/* Middle Block: Layout & Split Controls */}
-                      <div className="grid grid-cols-2 gap-2 items-start lg:col-span-5 w-full">
-                        <div className="min-w-0">
-                          <label className="block text-[9px] sm:text-[9.5px] font-bold text-gray-500 uppercase mb-1 truncate">Layout ratio</label>
-                          <CustomSelect 
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start lg:col-span-5 w-full">
+                        <div>
+                          <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Layout ratio</label>
+                          <select 
                             value={item.layoutType}
-                            onChange={val => updateItem(item.id, { layoutType: val as any })}
-                            options={[
-                              { value: 'single', label: 'Single Fullscreen' },
-                              { value: '50-50', label: '50/50 Split Screen' },
-                              { value: '70-30', label: '70/30 Split Screen' },
-                              { value: '30-70', label: '30/70 Split Screen' }
-                            ]}
-                            buttonClassName="py-1.5 px-2 text-[11px] font-bold text-slate-700 min-h-[34px]"
-                          />
+                            onChange={e => updateItem(item.id, { layoutType: e.target.value as any })}
+                            className="w-full text-xs border border-slate-200 bg-white rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400 cursor-pointer font-bold text-slate-700 shadow-xs"
+                          >
+                            <option value="single">Single Fullscreen</option>
+                            <option value="50-50">50/50 Split Screen</option>
+                            <option value="70-30">70/30 Split Screen</option>
+                            <option value="30-70">30/70 Split Screen</option>
+                          </select>
                         </div>
 
-                        <div className="min-w-0">
-                          <label className="block text-[9px] sm:text-[9.5px] font-bold text-gray-500 uppercase mb-1 truncate">Scale mode & zoom</label>
-                          <div className="space-y-1.5">
-                            <CustomSelect 
+                        <div>
+                          <label className="block text-[9.5px] font-bold text-gray-500 uppercase mb-1">Scale mode & zoom</label>
+                          <div className="space-y-2">
+                            <select 
                               value={getDropdownValue(item)}
-                              onChange={val => handleDropdownChange(item.id, val)}
-                              options={[
-                                { value: 'cover', label: 'Auto Scale (Cover)' },
-                                { value: 'contain', label: 'Fit to Screen (Contain)' },
-                                { value: 'fill', label: 'Stretch to Fill (Fill)' },
-                                { value: 'none', label: 'Original Size (None)' },
-                                { value: 'zoom-in', label: 'Zoom In %' },
-                                { value: 'zoom-out', label: 'Zoom Out %' }
-                              ]}
-                              buttonClassName="py-1.5 px-2 text-[11px] font-bold text-slate-700 min-h-[34px]"
-                            />
+                              onChange={e => handleDropdownChange(item.id, e.target.value)}
+                              className="w-full text-xs border border-slate-200 bg-white rounded-xl px-2.5 py-2.5 outline-none focus:border-blue-400 cursor-pointer font-bold text-slate-700 shadow-xs"
+                            >
+                              <option value="cover">Auto Scale (Cover)</option>
+                              <option value="contain">Fit to Screen (Contain)</option>
+                              <option value="fill">Stretch to Fill (Fill)</option>
+                              <option value="none">Original Size (None)</option>
+                              <option value="zoom-in">Zoom In %</option>
+                              <option value="zoom-out">Zoom Out %</option>
+                            </select>
                             {(getDropdownValue(item) === 'zoom-in' || getDropdownValue(item) === 'zoom-out') && (
-                              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 w-full">
-                                <span className="text-[9px] text-gray-500 font-bold uppercase">Zoom:</span>
+                              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 w-full">
+                                <span className="text-[10px] text-gray-500 font-bold uppercase">Zoom factor:</span>
                                 <input 
                                   type="number"
                                   min={10}
                                   max={300}
                                   value={item.scalePercent ?? 100}
                                   onChange={e => updateItem(item.id, { scalePercent: Math.max(10, parseInt(e.target.value) || 100) })}
-                                  className="w-14 border border-slate-200 rounded bg-white px-1.5 py-0.5 text-center text-xs font-bold outline-none focus:border-blue-550 text-gray-800"
+                                  className="w-16 border border-slate-200 rounded bg-white px-2 py-0.5 text-center text-xs font-bold outline-none focus:border-blue-550 text-gray-800"
                                 />
                                 <span className="text-[10px] text-gray-600 font-bold">%</span>
                               </div>
                             )}
                           </div>
                         </div>
-                      </div>
 
                         {item.layoutType !== 'single' && (
                           <div className="sm:col-span-2 space-y-1">
@@ -1128,21 +1128,22 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                                 ) : (
                                   <div className="space-y-1">
                                     {/* Direct click dropdown selector for Zone 2 */}
-                                     <CustomSelect
-                                       value={item.secondMediaId ?? ''}
-                                       onChange={val => updateItem(item.id, { secondMediaId: val || undefined })}
-                                       placeholder="-- Drop or Select Zone 2 --"
-                                       options={[
-                                         { value: '', label: '-- Drop or Select Zone 2 --' },
-                                         ...mediaList.filter(m => m.id !== item.mediaId).map(m => ({ value: m.id, label: m.title }))
-                                       ]}
-                                       buttonClassName="py-1 px-2 text-[10px] font-bold text-slate-700 min-h-[30px]"
-                                     />
+                                    <select
+                                      value={item.secondMediaId ?? ''}
+                                      onChange={e => updateItem(item.id, { secondMediaId: e.target.value || undefined })}
+                                      className="w-full text-[10px] border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:border-blue-400 font-bold text-slate-700 cursor-pointer"
+                                    >
+                                      <option value="">-- Drop or Select Zone 2 --</option>
+                                      {mediaList.filter(m => m.id !== item.mediaId).map(m => (
+                                        <option key={m.id} value={m.id}>{m.title}</option>
+                                      ))}
+                                    </select>
                                   </div>
                                 )}
                               </div>
                             </div>
                           )}
+                      </div>
 
                       {/* Right Block: Remove Slide Button */}
                       <div className="flex justify-end lg:col-span-1 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
@@ -1179,12 +1180,13 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
               
               <div>
                 <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Content Category</label>
-                <CustomSelect 
+                <select 
                   value={category} 
-                  onChange={val => setCategory(val)} 
-                  options={['Advertising', 'Information', 'Entertainment', 'Brand', 'Menu', 'Emergency'].map(c => ({ value: c, label: c }))}
-                  buttonClassName="min-h-[40px] px-3.5 py-2.5 text-xs font-semibold text-slate-800 border-slate-200"
-                />
+                  onChange={e => setCategory(e.target.value)} 
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-bold text-slate-700"
+                >
+                  {['Advertising', 'Information', 'Entertainment', 'Brand', 'Menu', 'Emergency'].map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
 
               <div className="sm:col-span-2">
@@ -1211,9 +1213,9 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                         return next;
                       });
                     }}
-                    className={`w-11 h-6 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${allowCustomOrientation ? 'bg-blue-600' : 'bg-slate-300'}`}
+                    className={`w-9 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${allowCustomOrientation ? 'bg-blue-600' : 'bg-gray-200'}`}
                   >
-                    <div className={`bg-white w-5 h-5 rounded-full shadow-sm transition-transform ${allowCustomOrientation ? 'translate-x-5' : 'translate-x-0'}`} />
+                    <div className={`bg-white w-4 h-4 rounded-full shadow transition-transform ${allowCustomOrientation ? 'translate-x-4' : 'translate-x-0'}`} />
                   </button>
                 </div>
                 
@@ -1240,51 +1242,50 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
               {/* Transition Settings */}
               <div>
                 <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Slide Transition Effect</label>
-                <CustomSelect
+                <select
                   value={playlistTransition}
-                  onChange={val => setPlaylistTransition(val as any)}
-                  options={[
-                    { value: 'fade', label: 'Fade In' },
-                    { value: 'slide', label: 'Slide Left' },
-                    { value: 'zoom', label: 'Zoom In' },
-                    { value: 'slide-up', label: 'Slide Up ⬆️' },
-                    { value: 'slide-down', label: 'Slide Down ⬇️' },
-                    { value: 'flip', label: '3D Flip 🔄' },
-                    { value: 'spin', label: 'Spin Rotate 🌀' },
-                    { value: 'blur', label: 'Focus Blur 🌫️' },
-                    { value: 'bounce', label: 'Bounce Elastic 🎈' },
-                    { value: 'wipe', label: 'Linear Wipe ↔️' }
-                  ]}
-                  buttonClassName="min-h-[40px] px-3.5 py-2.5 text-xs font-semibold text-slate-800 border-slate-200"
-                />
+                  onChange={e => setPlaylistTransition(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-bold text-slate-700 shadow-xs h-[42px] cursor-pointer"
+                >
+                  <option value="fade">Fade In</option>
+                  <option value="slide">Slide Left</option>
+                  <option value="zoom">Zoom In</option>
+                  <option value="slide-up">Slide Up ⬆️</option>
+                  <option value="slide-down">Slide Down ⬇️</option>
+                  <option value="flip">3D Flip 🔄</option>
+                  <option value="spin">Spin Rotate 🌀</option>
+                  <option value="blur">Focus Blur 🌫️</option>
+                  <option value="bounce">Bounce Elastic 🎈</option>
+                  <option value="wipe">Linear Wipe ↔️</option>
+                </select>
               </div>
 
               {/* Loop and Shuffle Switches */}
               <div className="flex items-center justify-between border border-slate-200 rounded-xl px-4 h-[42px] bg-white shadow-xs">
                 <div className="flex items-center gap-2">
                   <Shuffle size={14} className="text-gray-450" />
-                  <span className="font-bold text-gray-600 text-xs">Shuffle Sequence</span>
+                  <span className="font-bold text-gray-600">Shuffle Sequence</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPlaylistShuffle(prev => !prev)}
-                  className={`w-11 h-6 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${playlistShuffle ? 'bg-blue-600' : 'bg-slate-300'}`}
+                  className={`w-9 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${playlistShuffle ? 'bg-blue-600' : 'bg-gray-200'}`}
                 >
-                  <div className={`bg-white w-5 h-5 rounded-full shadow-sm transition-transform ${playlistShuffle ? 'translate-x-5' : 'translate-x-0'}`} />
+                  <div className={`bg-white w-4 h-4 rounded-full shadow transition-transform ${playlistShuffle ? 'translate-x-4' : 'translate-x-0'}`} />
                 </button>
               </div>
 
               <div className="flex items-center justify-between border border-slate-200 rounded-xl px-4 h-[42px] bg-white shadow-xs">
                 <div className="flex items-center gap-2">
                   <RotateCcw size={14} className="text-gray-450" />
-                  <span className="font-bold text-gray-600 text-xs">Loop Playback</span>
+                  <span className="font-bold text-gray-600">Loop Playback</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPlaylistLoop(prev => !prev)}
-                  className={`w-11 h-6 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${playlistLoop ? 'bg-blue-600' : 'bg-slate-300'}`}
+                  className={`w-9 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${playlistLoop ? 'bg-blue-600' : 'bg-gray-200'}`}
                 >
-                  <div className={`bg-white w-5 h-5 rounded-full shadow-sm transition-transform ${playlistLoop ? 'translate-x-5' : 'translate-x-0'}`} />
+                  <div className={`bg-white w-4 h-4 rounded-full shadow transition-transform ${playlistLoop ? 'translate-x-4' : 'translate-x-0'}`} />
                 </button>
               </div>
 
@@ -1293,9 +1294,9 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <Volume2 size={14} className="text-gray-450" />
-                    <span className="font-bold text-gray-600 text-xs">Default Playlist Volume</span>
+                    <span className="font-bold text-gray-600">Default Playlist Volume</span>
                   </div>
-                  <span className="font-bold text-blue-600 text-xs">{playlistVolume}%</span>
+                  <span className="font-bold text-blue-605 text-blue-600">{playlistVolume}%</span>
                 </div>
                 <input 
                   type="range" 
@@ -1303,7 +1304,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                   max="100" 
                   value={playlistVolume} 
                   onChange={e => setPlaylistVolume(parseInt(e.target.value))} 
-                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                 />
               </div>
 
@@ -1336,17 +1337,16 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
               {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (
                 <div>
                   <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Secondary Widget Placement</label>
-                  <CustomSelect
+                  <select
                     value={playlistWidgetPlacement}
-                    onChange={val => setPlaylistWidgetPlacement(val as any)}
-                    options={[
-                      { value: 'top-left', label: 'Top Left Corner' },
-                      { value: 'top-right', label: 'Top Right Corner' },
-                      { value: 'bottom-left', label: 'Bottom Left Corner' },
-                      { value: 'bottom-right', label: 'Bottom Right Corner' }
-                    ]}
-                    buttonClassName="min-h-[40px] px-3.5 py-2.5 text-xs font-semibold text-slate-800 border-slate-200"
-                  />
+                    onChange={e => setPlaylistWidgetPlacement(e.target.value as any)}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-bold text-slate-700 shadow-xs h-[42px] cursor-pointer"
+                  >
+                    <option value="top-left">Top Left Corner</option>
+                    <option value="top-right">Top Right Corner</option>
+                    <option value="bottom-left">Bottom Left Corner</option>
+                    <option value="bottom-right">Bottom Right Corner</option>
+                  </select>
                 </div>
               )}
 
@@ -1416,7 +1416,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                               setTickerParagraphs(newParas);
                             }}
                             placeholder={`Item ${idx + 1}`}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-855 text-xs bg-white"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-850 text-sm bg-white"
                           />
                           {tickerParagraphs.length > 1 && (
                             <button
@@ -1437,7 +1437,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                     <button
                       type="button"
                       onClick={() => setTickerParagraphs([...tickerParagraphs, ''])}
-                      className="mt-2 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-dashed border-blue-300 rounded-xl transition-all cursor-pointer"
+                      className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-dashed border-blue-200 rounded-xl transition-all cursor-pointer"
                     >
                       <Plus size={13} /> Add Item
                     </button>
@@ -1461,29 +1461,29 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                         activeSecondary === 'qrcode' ? 'https://example.com/menu.pdf' :
                         activeSecondary === 'weather' ? 'e.g. Bengaluru' : 'e.g. Lobby Clock'
                       }
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-semibold text-slate-850 text-xs"
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-semibold text-slate-850"
                     />
                   </div>
                 );
               })()}
             </div>
 
-            <div className="flex flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100 w-full">
+            <div className="flex flex-wrap gap-2 justify-between items-center pt-3 border-t border-slate-100">
               <button 
                 type="button"
                 onClick={openPreview}
                 disabled={playlistItems.length === 0}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px] shrink-0"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <Eye size={14} /> Preview Simulator
+                <Eye size={13} /> Preview Simulator
               </button>
 
               <button 
                 onClick={handleSavePlaylist}
                 disabled={!playlistName.trim() || playlistItems.length === 0}
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px] shrink-0"
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <Save size={15} /> Save Playlist Profile
+                <Save size={14} /> Save Playlist Profile
               </button>
             </div>
           </div>
