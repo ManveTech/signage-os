@@ -121,15 +121,7 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
 
   return (
     <>
-      {/* Mobile Overlay Backdrop */}
-      {!collapsed && (
-        <div
-          onClick={onToggle}
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 md:hidden animate-fadeIn"
-          aria-hidden="true"
-        />
-      )}
-      <aside className={`fixed md:static inset-y-0 left-0 z-50 md:z-auto flex flex-col bg-white border-r border-gray-100 transition-transform md:transition-all duration-300 h-full ${collapsed ? '-translate-x-full md:translate-x-0 md:w-16 overflow-visible' : 'translate-x-0 w-64 md:w-60'} min-h-screen shadow-2xl md:shadow-none`}>
+      <aside className={`hidden md:flex flex-col bg-white border-r border-gray-100 transition-all duration-300 h-full ${collapsed ? 'w-16 overflow-visible' : 'w-60'} min-h-screen`}>
       {/* Logo */}
       <div className="flex items-center justify-between px-4 h-16 border-b border-gray-100 flex-shrink-0">
         {!collapsed && (

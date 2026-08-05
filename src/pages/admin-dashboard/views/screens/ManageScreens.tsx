@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
+import CustomSelect from '../../../../components/CustomSelect';
 import type { Screen } from '../../types';
 
 const renderStatusBadge = (status: string) => {
@@ -354,16 +355,18 @@ export default function ManageScreens() {
         <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-center gap-4 flex-wrap">
           <span className="text-sm font-semibold text-blue-700">{selectedScreens.size} selected</span>
           <div className="flex items-center gap-2 flex-1 flex-wrap">
-            <select
+            <CustomSelect
               value={bulkAction}
-              onChange={e => setBulkAction(e.target.value as BulkAction)}
-              className="px-3 py-1.5 text-xs border border-blue-200 rounded-lg bg-white outline-none focus:border-blue-400 text-gray-700"
-            >
-              <option value="">Choose bulk action...</option>
-              <option value="restart">Restart selected</option>
-              <option value="disable">Disable selected</option>
-              <option value="delete">Delete selected</option>
-            </select>
+              onChange={val => setBulkAction(val as BulkAction)}
+              placeholder="Choose bulk action..."
+              options={[
+                { value: '', label: 'Choose bulk action...' },
+                { value: 'restart', label: 'Restart selected' },
+                { value: 'disable', label: 'Disable selected' },
+                { value: 'delete', label: 'Delete selected' }
+              ]}
+              buttonClassName="text-xs py-1.5 px-3 min-w-[170px]"
+            />
             <button
               onClick={handleBulkAction}
               disabled={!bulkAction}
@@ -562,45 +565,48 @@ export default function ManageScreens() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-                <select value={editScreen.status} onChange={e => setEditScreen(p => p && ({ ...p, status: e.target.value as Screen['status'] }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                  <option value="online">Online</option>
-                  <option value="offline">Offline</option>
-                  <option value="warning">Warning</option>
-                </select>
+                <CustomSelect 
+                  value={editScreen.status} 
+                  onChange={val => setEditScreen(p => p && ({ ...p, status: val as Screen['status'] }))} 
+                  options={[
+                    { value: 'online', label: 'Online' },
+                    { value: 'offline', label: 'Offline' },
+                    { value: 'warning', label: 'Warning' }
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Group</label>
-                <select
+                <CustomSelect
                   value={editScreen.groupId ?? ''}
-                  onChange={e => setEditScreen(p => p && ({ ...p, groupId: e.target.value || null }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
-                >
-                  <option value="">None (Ungrouped)</option>
-                   {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
+                  onChange={val => setEditScreen(p => p && ({ ...p, groupId: val || null }))}
+                  placeholder="None (Ungrouped)"
+                  options={[
+                    { value: '', label: 'None (Ungrouped)' },
+                    ...groups.map(g => ({ value: g.id, label: g.name }))
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
               {!editScreen.groupId && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
-                  <select
+                  <CustomSelect
                     value={editScreen.playlist}
-                    onChange={(e) => {
-                      const val = e.target.value;
+                    onChange={val => {
                       const play = userPlaylists.find(p => p.name === val);
                       setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : '' }));
                     }}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="None">None (Stop Playback)</option>
-                    {userPlaylists
-                      .filter(p => p.createdBy === editScreen.assignedToUserEmail || p.createdBy === 'admin@demo.com')
-                      .map(pl => (
-                        <option key={pl.id} value={pl.name}>{pl.name}</option>
-                      ))}
-                  </select>
+                    options={[
+                      { value: 'Normal', label: 'Normal' },
+                      { value: 'None', label: 'None (Stop Playback)' },
+                      ...userPlaylists
+                        .filter(p => p.createdBy === editScreen.assignedToUserEmail || p.createdBy === 'admin@demo.com')
+                        .map(pl => ({ value: pl.name, label: pl.name }))
+                    ]}
+                    buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                  />
                 </div>
               )}
               {editScreen.groupId && (() => {
@@ -621,10 +627,15 @@ export default function ManageScreens() {
               })()}
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">License Type</label>
-                <select value={editScreen.licenseType} onChange={e => setEditScreen(p => p && ({ ...p, licenseType: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                  <option value="Lite">Lite</option>
-                  <option value="Pro">Pro</option>
-                </select>
+                <CustomSelect 
+                  value={editScreen.licenseType} 
+                  onChange={val => setEditScreen(p => p && ({ ...p, licenseType: val }))} 
+                  options={[
+                    { value: 'Lite', label: 'Lite' },
+                    { value: 'Pro', label: 'Pro' }
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
             </div>
             <div className="flex gap-3 px-5 pb-5">

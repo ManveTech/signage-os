@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { X, Send, CheckCircle2, ShieldCheck, Sparkles, Building2, User, Mail, Phone } from 'lucide-react';
+import CustomSelect from './CustomSelect';
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -149,24 +150,24 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                     <label htmlFor="modal-service" className="block text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">
                       Required Solution *
                     </label>
-                    <select
-                      id="modal-service"
-                      required
+                    <CustomSelect
                       value={service}
-                      onChange={(e) => setService(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-accent text-slate-800 bg-slate-50 focus:bg-white transition-all cursor-pointer appearance-none pr-8 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748B%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[right_12px_center] bg-no-repeat"
-                    >
-                      <option value="" className="bg-white text-slate-800">Select a solution...</option>
-                      <option value="kiosk-info" className="bg-white text-slate-800">Interactive Information Kiosks</option>
-                      <option value="kiosk-self" className="bg-white text-slate-800">Self-Service Kiosks</option>
-                      <option value="digital-standee" className="bg-white text-slate-800">Digital Standee Displays</option>
-                      <option value="multitouch-table" className="bg-white text-slate-800">Multi-Touch Interactive Tables</option>
-                      <option value="led-walls" className="bg-white text-slate-800">Active LED Video Walls</option>
-                      <option value="podiums" className="bg-white text-slate-800">Digital Podiums</option>
-                      <option value="coffee-tables" className="bg-white text-slate-800">Digital Coffee Tables</option>
-                      <option value="tablet-kiosks" className="bg-white text-slate-800">Tablet & Tab Kiosks</option>
-                      <option value="metal-fab" className="bg-white text-slate-800">Custom Metal Fabrication</option>
-                    </select>
+                      onChange={val => setService(val)}
+                      placeholder="Select a solution..."
+                      options={[
+                        { value: '', label: 'Select a solution...' },
+                        { value: 'kiosk-info', label: 'Interactive Information Kiosks' },
+                        { value: 'kiosk-self', label: 'Self-Service Kiosks' },
+                        { value: 'digital-standee', label: 'Digital Standee Displays' },
+                        { value: 'multitouch-table', label: 'Multi-Touch Interactive Tables' },
+                        { value: 'led-walls', label: 'Active LED Video Walls' },
+                        { value: 'podiums', label: 'Digital Podiums' },
+                        { value: 'coffee-tables', label: 'Digital Coffee Tables' },
+                        { value: 'tablet-kiosks', label: 'Tablet & Tab Kiosks' },
+                        { value: 'metal-fab', label: 'Custom Metal Fabrication' },
+                      ]}
+                      buttonClassName="px-3.5 py-2.5 text-sm bg-slate-50 border-slate-200 min-h-[42px]"
+                    />
                   </div>
 
                   <div>

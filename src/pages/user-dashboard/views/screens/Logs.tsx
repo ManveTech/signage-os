@@ -4,6 +4,8 @@ import { Wifi, WifiOff, RefreshCw, AlertTriangle, Cpu, Terminal, Clock, FileText
 import { toast } from '../../../../components/Toast';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { syncCollection } from '../../../../lib/syncHelper';
+import CustomSelect from '../../../../components/CustomSelect';
+import ScreenSubNav from '../../../../components/ScreenSubNav';
 
 interface ScreenLog {
   id: string;
@@ -30,6 +32,7 @@ const typeConfig: Record<string, { icon: React.ReactNode; cls: string }> = {
 interface Props {
   userEmail?: string;
   mode?: 'my' | 'all';
+  onNavigate?: (view: string) => void;
 }
 
 // API_BASE is imported from config
@@ -42,7 +45,7 @@ function getHeaders() {
   };
 }
 
-export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Props) {
+export default function Logs({ userEmail = 'priya@demo.com', mode = 'my', onNavigate }: Props) {
   const [logs, setLogs] = useState<ScreenLog[]>([]);
   const [screens, setScreens] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -303,6 +306,7 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+      <ScreenSubNav activeTab="logs" onNavigate={onNavigate} role="user" />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-950">System Logs</h1>
@@ -350,16 +354,15 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my' }: Prop
           {showAssignedTo && (
             <div className="flex gap-2 items-center w-full md:w-auto shrink-0">
               <Filter size={13} className="text-gray-400" />
-              <select 
+              <CustomSelect 
                 value={selectedUserFilter} 
-                onChange={e => setSelectedUserFilter(e.target.value)}
-                className="px-3 py-2 text-xs border border-gray-200 rounded-xl outline-none bg-white font-bold text-slate-700 min-w-[200px]"
-              >
-                <option value="all">All Users</option>
-                {uniqueEmails.map(email => (
-                  <option key={email} value={email}>{email}</option>
-                ))}
-              </select>
+                onChange={val => setSelectedUserFilter(val)}
+                options={[
+                  { value: 'all', label: 'All Users' },
+                  ...uniqueEmails.map(email => ({ value: email, label: email }))
+                ]}
+                buttonClassName="py-2 px-3 text-xs font-bold text-slate-700 min-w-[200px]"
+              />
             </div>
           )}
         </div>

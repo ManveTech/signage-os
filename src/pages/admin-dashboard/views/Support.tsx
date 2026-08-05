@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { supportStore, Ticket, FAQ, SupportDoc } from '../../../lib/supportStore';
 import { syncCollection } from '../../../lib/syncHelper';
+import CustomSelect from '../../../components/CustomSelect';
 
 type Tab = 'issues' | 'faq' | 'docs';
 
@@ -208,17 +209,18 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white transition-colors"
               />
             </div>
-            <select 
+            <CustomSelect 
               value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-blue-400 bg-white"
-            >
-              <option value="all">All Statuses</option>
-              <option value="open">Open</option>
-              <option value="in_progress">In Progress</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
-            </select>
+              onChange={val => setStatusFilter(val)}
+              options={[
+                { value: 'all', label: 'All Statuses' },
+                { value: 'open', label: 'Open' },
+                { value: 'in_progress', label: 'In Progress' },
+                { value: 'resolved', label: 'Resolved' },
+                { value: 'closed', label: 'Closed' }
+              ]}
+              buttonClassName="px-4 py-2 text-xs font-bold min-h-[38px] min-w-[130px]"
+            />
           </div>
 
           {/* Issues Table */}
@@ -384,16 +386,17 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                   </div>
                   <div>
                     <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Category</label>
-                    <select 
+                    <CustomSelect 
                       value={docCategory}
-                      onChange={e => setDocCategory(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:border-indigo-500 bg-white"
-                    >
-                      <option value="General">General</option>
-                      <option value="Screens">Screens</option>
-                      <option value="Playlists">Playlists</option>
-                      <option value="Troubleshooting">Troubleshooting</option>
-                    </select>
+                      onChange={val => setDocCategory(val)}
+                      options={[
+                        { value: 'General', label: 'General' },
+                        { value: 'Screens', label: 'Screens' },
+                        { value: 'Playlists', label: 'Playlists' },
+                        { value: 'Troubleshooting', label: 'Troubleshooting' }
+                      ]}
+                      buttonClassName="px-3.5 py-2.5 text-xs font-bold min-h-[42px]"
+                    />
                   </div>
                 </div>
 

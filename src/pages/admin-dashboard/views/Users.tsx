@@ -7,6 +7,7 @@ import { mockUsers, mockOrganizations } from '../data/mockData';
 import type { User as UserType } from '../types';
 import { licensingStore } from '../../../lib/licensingStore';
 import { pushToDatabase, generatePocketBaseId, generateClientPassword, syncCollection } from '../../../lib/syncHelper';
+import CustomSelect from '../../../components/CustomSelect';
 
 export default function Users() {
   const [search, setSearch] = useState('');
@@ -567,19 +568,19 @@ export default function Users() {
                         No unassigned licenses found in the pool. Assigning a license is mandatory. Please go to the "Licensing" section to create an active license first before onboarding this client.
                       </div>
                     ) : (
-                      <select 
-                        required
+                      <CustomSelect 
                         value={selectedLicenseId} 
-                        onChange={e => setSelectedLicenseId(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-white font-semibold"
-                      >
-                        <option value="">Select a license...</option>
-                        {unassignedLicenses.map(lic => (
-                          <option key={lic.id} value={lic.id}>
-                            {lic.id} - {lic.name} ({lic.deviceLimit} Screens, {lic.tenure})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => setSelectedLicenseId(val)}
+                        placeholder="Select a license..."
+                        options={[
+                          { value: '', label: 'Select a license...' },
+                          ...unassignedLicenses.map(lic => ({
+                            value: lic.id,
+                            label: `${lic.id} - ${lic.name} (${lic.deviceLimit} Screens, ${lic.tenure})`
+                          }))
+                        ]}
+                        buttonClassName="px-3.5 py-2.5 text-sm min-h-[42px]"
+                      />
                     )}
                     <p className="text-[11px] text-gray-400 mt-1">Assigning a license is mandatory. Only unassigned licenses are listed. Each license can only be allocated to a single client.</p>
                   </div>

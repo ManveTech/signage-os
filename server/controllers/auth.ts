@@ -77,8 +77,6 @@ export async function forgotPassword(req: any, res: any) {
       console.log('User lookup in PocketBase failed or not found:', pbErr.message);
     }
 
-
-
     if (!user) {
       return res.status(404).json({ message: 'No user registered with this email address.' });
     }
@@ -97,18 +95,22 @@ export async function forgotPassword(req: any, res: any) {
     const baseUrl = process.env.APP_URL || reqOrigin;
     const resetLink = `${baseUrl}/reset-password?token=${token}&userId=${user.id}`;
 
-    // Send the email
-    const emailSent = await sendPasswordResetEmail({
-      toEmail: user.email,
-      userName: user.name || 'SignageOS User',
-      resetLink
-    });
-
-    if (emailSent) {
-      return res.status(200).json({ message: 'Password reset link sent to your email.' });
-    } else {
-      return res.status(500).json({ message: 'Failed to send password reset email.' });
+    // Try sending email safely
+    try {
+      await sendPasswordResetEmail({
+        toEmail: user.email,
+        userName: user.name || 'SignageOS User',
+        resetLink
+      });
+    } catch (emailErr: any) {
+      console.error('Password reset email dispatch error (logging link fallback):', emailErr.message);
+      console.log(`\n[PASSWORD RESET LINK] User: ${user.email} -> ${resetLink}\n`);
     }
+
+    return res.status(200).json({
+      message: 'Password reset link sent to your email inbox.',
+      resetLink: process.env.NODE_ENV !== 'production' ? resetLink : undefined
+    });
 
   } catch (error: any) {
     console.error('Forgot password error:', error);

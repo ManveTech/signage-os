@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
+import CustomSelect from '../../../../components/CustomSelect';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
 
@@ -992,16 +993,16 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Group</label>
-                <select
+                <CustomSelect
                   value={editScreen.groupId ?? ''}
-                  onChange={e => setEditScreen(p => p && ({ ...p, groupId: e.target.value || null }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
-                >
-                  <option value="">None (Ungrouped)</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
+                  onChange={val => setEditScreen(p => p && ({ ...p, groupId: val || null }))}
+                  placeholder="None (Ungrouped)"
+                  options={[
+                    { value: '', label: 'None (Ungrouped)' },
+                    ...groups.map(g => ({ value: g.id, label: g.name }))
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
 
               {editScreen.groupId && (() => {
@@ -1069,13 +1070,12 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                       <div className="space-y-3 p-3 bg-gray-50 border border-gray-100 rounded-xl animate-fade-in">
                         <div>
                           <label className="block text-[10px] font-medium text-gray-500 mb-1">Target Playlist</label>
-                          <select
-                            value={editScreen.schedulePlaylist}
-                            onChange={e => setEditScreen(p => p && ({ ...p, schedulePlaylist: e.target.value }))}
-                            className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-xs outline-none focus:border-blue-400 bg-white"
-                          >
-                            {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                          </select>
+                          <CustomSelect
+                            value={editScreen.schedulePlaylist || ''}
+                            onChange={val => setEditScreen(p => p && ({ ...p, schedulePlaylist: val }))}
+                            options={userPlaylists.map(pl => ({ value: pl.name, label: pl.name }))}
+                            buttonClassName="px-2.5 py-2 text-xs min-h-[36px]"
+                          />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
@@ -1192,14 +1192,13 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                     <div className="space-y-3 p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-xl">
                       <div>
                         <label className="block text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1.5">Target Playlist</label>
-                        <select
+                        <CustomSelect
                           value={scheduleScreen.schedulePlaylist || ''}
-                          onChange={e => setScheduleScreen(p => p && ({ ...p, schedulePlaylist: e.target.value }))}
-                          className="w-full px-3 py-2 border border-indigo-200 rounded-xl text-sm outline-none focus:border-indigo-400 bg-white font-medium"
-                        >
-                          {userPlaylists.length === 0 && <option value="">No playlists available</option>}
-                          {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                        </select>
+                          onChange={val => setScheduleScreen(p => p && ({ ...p, schedulePlaylist: val }))}
+                          placeholder={userPlaylists.length === 0 ? "No playlists available" : "Select Playlist"}
+                          options={userPlaylists.map(pl => ({ value: pl.name, label: pl.name }))}
+                          buttonClassName="px-3 py-2 text-sm min-h-[42px]"
+                        />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>

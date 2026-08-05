@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus, Lock } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
+import CustomSelect from '../../../../components/CustomSelect';
+import ScreenSubNav from '../../../../components/ScreenSubNav';
 import type { Screen } from '../../types';
 import { getEffectiveStatus } from './MyScreens';
 
@@ -235,6 +237,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+      <ScreenSubNav activeTab="screens" onNavigate={onNavigate} role="user" />
       {/* Toasts */}
       <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
         {toasts.map(toast => (
@@ -297,35 +300,32 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
           />
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          <select
+          <CustomSelect
             value={groupFilter}
-            onChange={e => setGroupFilter(e.target.value)}
-            className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
-          >
-            <option value="all">All Groups</option>
-            <option value="none">No Group</option>
-            {(() => {
-              const myLicense = licenses.find(l => l.assignedUserEmail === userEmail);
-              const myOrgId = myLicense?.assignedOrgId;
-              const filteredGroups = myOrgId ? groups.filter(g => g.orgId === myOrgId) : groups;
-              return filteredGroups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ));
-            })()}
-          </select>
-          <select
+            onChange={val => setGroupFilter(val)}
+            options={[
+              { value: 'all', label: 'All Groups' },
+              { value: 'none', label: 'No Group' },
+              ...(() => {
+                const myLicense = licenses.find(l => l.assignedUserEmail === userEmail);
+                const myOrgId = myLicense?.assignedOrgId;
+                const filteredGroups = myOrgId ? groups.filter(g => g.orgId === myOrgId) : groups;
+                return filteredGroups.map(g => ({ value: g.id, label: g.name }));
+              })()
+            ]}
+            buttonClassName="text-xs py-2 px-3 min-w-[130px]"
+          />
+          <CustomSelect
             value={orgFilter}
-            onChange={e => setOrgFilter(e.target.value)}
-            className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
-          >
-            <option value="all">All Organizations</option>
-            {Array.from(new Set<string>(organizations.map((o: any) => o.name as string)))
-              .filter((name: string) => Boolean(name && name !== 'x'))
-              .map((orgName: string) => (
-                <option key={orgName} value={orgName}>{orgName}</option>
-              ))
-            }
-          </select>
+            onChange={val => setOrgFilter(val)}
+            options={[
+              { value: 'all', label: 'All Organizations' },
+              ...Array.from(new Set<string>(organizations.map((o: any) => o.name as string)))
+                .filter((name: string) => Boolean(name && name !== 'x'))
+                .map((orgName: string) => ({ value: orgName, label: orgName }))
+            ]}
+            buttonClassName="text-xs py-2 px-3 min-w-[150px]"
+          />
           {(['all', 'online', 'offline', 'warning'] as const).map(f => (
             <button key={f} onClick={() => setStatusFilter(f)} className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors capitalize ${
               statusFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
@@ -634,41 +634,46 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-                <select value={editScreen.status} onChange={e => setEditScreen(p => p && ({ ...p, status: e.target.value as Screen['status'] }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                  <option value="online">Online</option>
-                  <option value="offline">Offline</option>
-                  <option value="warning">Warning</option>
-                </select>
+                <CustomSelect 
+                  value={editScreen.status} 
+                  onChange={val => setEditScreen(p => p && ({ ...p, status: val as Screen['status'] }))} 
+                  options={[
+                    { value: 'online', label: 'Online' },
+                    { value: 'offline', label: 'Offline' },
+                    { value: 'warning', label: 'Warning' }
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Group</label>
-                <select
+                <CustomSelect
                   value={editScreen.groupId ?? ''}
-                  onChange={e => setEditScreen(p => p && ({ ...p, groupId: e.target.value || undefined }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
-                >
-                  <option value="">None (Ungrouped)</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
+                  onChange={val => setEditScreen(p => p && ({ ...p, groupId: val || undefined }))}
+                  placeholder="None (Ungrouped)"
+                  options={[
+                    { value: '', label: 'None (Ungrouped)' },
+                    ...groups.map(g => ({ value: g.id, label: g.name }))
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
               {!editScreen.groupId && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
-                  <select
+                  <CustomSelect
                     value={editScreen.playlist}
-                    onChange={e => {
-                      const val = e.target.value;
+                    onChange={val => {
                       const play = userPlaylists.find(p => p.name === val);
                       setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : '' }));
                     }}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white"
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="None">None (Stop Playback)</option>
-                    {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                  </select>
+                    options={[
+                      { value: 'Normal', label: 'Normal' },
+                      { value: 'None', label: 'None (Stop Playback)' },
+                      ...userPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                    ]}
+                    buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                  />
                 </div>
               )}
               {editScreen.groupId && (() => {
