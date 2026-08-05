@@ -148,11 +148,7 @@ export default function Header({ activeView, onNavigate, onLogout, onToggleSideb
   return (
     <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0 z-40 relative">
       <div className="flex items-center gap-2 text-sm">
-<<<<<<< HEAD
         <div className="flex items-center gap-1.5 md:hidden">
-=======
-        <div className="flex items-center gap-2 md:hidden">
->>>>>>> parent of 4462b74 (razorpay hooks, ui improve)
           <img src={logoImg} className="w-7 h-7 object-contain shrink-0" alt="Logo" />
           <span className="font-extrabold text-slate-900 text-sm truncate max-w-[150px]">
             {crumbs[crumbs.length - 1]}

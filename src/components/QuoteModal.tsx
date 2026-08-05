@@ -152,7 +152,6 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                     </label>
                     <CustomSelect
                       value={service}
-<<<<<<< HEAD
                       onChange={val => setService(val)}
                       placeholder="Select a solution..."
                       options={[
@@ -169,22 +168,6 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                       ]}
                       buttonClassName="px-3.5 py-2.5 text-sm bg-slate-50 border-slate-200 min-h-[42px]"
                     />
-=======
-                      onChange={(e) => setService(e.target.value)}
-                      className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-accent text-primary bg-slate-50 focus:bg-white transition-all appearance-none"
-                    >
-                      <option value="">Select a solution...</option>
-                      <option value="kiosk-info">Interactive Information Kiosks</option>
-                      <option value="kiosk-self">Self-Service Kiosks</option>
-                      <option value="digital-standee">Digital Standee Displays</option>
-                      <option value="multitouch-table">Multi-Touch Interactive Tables</option>
-                      <option value="led-walls">Active LED Video Walls</option>
-                      <option value="podiums">Digital Podiums</option>
-                      <option value="coffee-tables">Digital Coffee Tables</option>
-                      <option value="tablet-kiosks">Tablet & Tab Kiosks</option>
-                      <option value="metal-fab">Custom Metal Fabrication</option>
-                    </select>
->>>>>>> parent of 4462b74 (razorpay hooks, ui improve)
                   </div>
 
                   <div>
