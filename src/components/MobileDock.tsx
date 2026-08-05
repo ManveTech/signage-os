@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard, MonitorPlay, Tv, Key, Menu, X, LogOut,
   Film, Users, Building2, BarChart3, Settings as SettingsIcon,
-  MessageSquare, User, ScanLine, List, Plus, Clock, FileText,
+  User, ScanLine, Plus, Clock, FileText,
   CreditCard, ShieldAlert, ChevronRight, HelpCircle, Layers,
-  Monitor, CalendarDays, Upload, Sparkles
+  Monitor, CalendarDays, Upload, Sparkles, ArrowLeft
 } from 'lucide-react';
 
 interface SubSectionItem {
@@ -66,7 +66,10 @@ const USER_MORE_ITEMS: SheetItem[] = [
 
 export default function MobileDock({ activeView, onNavigate, onLogout, role = 'admin' }: MobileDockProps) {
   const [activePopover, setActivePopover] = useState<string | null>(null);
+  const [popoverStep, setPopoverStep] = useState<'choose_scope' | 'show_subsections'>('choose_scope');
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [screensScope, setScreensScope] = useState<'my' | 'client' | null>(null);
+  const [playlistsScope, setPlaylistsScope] = useState<'my' | 'client' | null>(null);
 
   const moreItems = role === 'admin' ? ADMIN_MORE_ITEMS : USER_MORE_ITEMS;
 
@@ -84,15 +87,21 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
   const getSubSections = (tabId: string): SubSectionItem[] => {
     if (tabId === 'screens') {
       if (role === 'admin') {
-        return [
-          { id: 'my-screens-list', label: 'My Screens', icon: MonitorPlay, desc: 'Your registered displays' },
-          { id: 'screens-all', label: 'All Client Screens', icon: Monitor, desc: 'Overview of all organization TVs' },
-          { id: 'screens-add-my', label: 'Add New Screen', icon: Plus, desc: 'Pair new TV screen' },
-          { id: 'screens-groups-all', label: 'Client Groups', icon: Layers, desc: 'Batch control client TV clusters' },
-          { id: 'screens-groups-my', label: 'My Screen Groups', icon: Users, desc: 'Manage your screen groups' },
-          { id: 'screens-manage', label: 'Manage & Troubleshoot', icon: SettingsIcon, desc: 'Screen health and commands' },
-          { id: 'screens-logs-all', label: 'Activity & System Logs', icon: FileText, desc: 'Heartbeats and sync records' },
-        ];
+        if (screensScope === 'my') {
+          return [
+            { id: 'my-screens-list', label: 'My Screens List', icon: MonitorPlay, desc: 'Your registered displays' },
+            { id: 'screens-groups-my', label: 'My Groups', icon: Layers, desc: 'Manage your screen groups' },
+            { id: 'screens-logs', label: 'My Screen Logs', icon: FileText, desc: 'Your TV heartbeat records' },
+            { id: 'screens-add-my', label: 'Add Screen', icon: Plus, desc: 'Pair new personal display' },
+          ];
+        } else {
+          return [
+            { id: 'screens-all', label: 'All Client Screens', icon: Monitor, desc: 'Overview of all client TVs' },
+            { id: 'screens-groups-all', label: 'Client Groups', icon: Layers, desc: 'Batch control client TV clusters' },
+            { id: 'screens-manage', label: 'Manage & Troubleshoot', icon: SettingsIcon, desc: 'Screen health and commands' },
+            { id: 'screens-logs-all', label: 'All System Logs', icon: FileText, desc: 'System-wide pairing logs' },
+          ];
+        }
       }
       return [
         { id: 'my-screens-list', label: 'My Screens', icon: MonitorPlay, desc: 'Your display hardware' },
@@ -106,15 +115,20 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
 
     if (tabId === 'playlists') {
       if (role === 'admin') {
-        return [
-          { id: 'my-playlists', label: 'All Playlists', icon: Tv, desc: 'Your digital signage playlists' },
-          { id: 'my-create-playlist', label: 'Create New Playlist', icon: Plus, desc: 'Build multi-zone layouts' },
-          { id: 'playlists-scheduler', label: 'Schedule Playlists', icon: CalendarDays, desc: 'Automatic timed switches' },
-          { id: 'client-playlists', label: 'Client Playlists', icon: Building2, desc: 'Monitor organization playlists' },
-          { id: 'media-layout', label: 'Layout Studio', icon: Sparkles, desc: 'Custom canvas designer' },
-          { id: 'my-media', label: 'My Media Library', icon: Film, desc: 'Uploaded images and videos' },
-          { id: 'client-media', label: 'Client Assets Oversight', icon: Building2, desc: 'All client media files' },
-        ];
+        if (playlistsScope === 'my') {
+          return [
+            { id: 'my-playlists', label: 'My Playlists', icon: Tv, desc: 'Your digital signage playlists' },
+            { id: 'my-create-playlist', label: 'Create Playlist', icon: Plus, desc: 'Build multi-zone layouts' },
+            { id: 'playlists-scheduler', label: 'Schedule Shift', icon: CalendarDays, desc: 'Automatic timed switches' },
+            { id: 'media-layout', label: 'Layout Studio', icon: Sparkles, desc: 'Custom canvas designer' },
+            { id: 'my-media', label: 'My Media Library', icon: Film, desc: 'Uploaded images and videos' },
+          ];
+        } else {
+          return [
+            { id: 'client-playlists', label: 'Client Playlists', icon: Building2, desc: 'Monitor organization playlists' },
+            { id: 'client-media', label: 'Client Media Assets', icon: Film, desc: 'All client uploaded media files' },
+          ];
+        }
       }
       return [
         { id: 'playlists-all', label: 'All Playlists', icon: Tv, desc: 'Playlists catalog' },
@@ -160,9 +174,29 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
       return;
     }
 
-    // Screens, Playlists, Licenses -> Open Floating Popover Card
+    // Screens or Playlists: Trigger 2-step selection flow for admin
     setSheetOpen(false);
-    setActivePopover(prev => (prev === tabId ? null : tabId));
+
+    if (activePopover === tabId) {
+      // Toggle off if already open
+      setActivePopover(null);
+    } else {
+      setActivePopover(tabId);
+      if ((tabId === 'screens' || tabId === 'playlists') && role === 'admin') {
+        setPopoverStep('choose_scope');
+      } else {
+        setPopoverStep('show_subsections');
+      }
+    }
+  };
+
+  const handleScopeSelect = (scope: 'my' | 'client') => {
+    if (activePopover === 'screens') {
+      setScreensScope(scope);
+    } else if (activePopover === 'playlists') {
+      setPlaylistsScope(scope);
+    }
+    setPopoverStep('show_subsections');
   };
 
   const handleSubItemClick = (viewId: string) => {
@@ -194,10 +228,10 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
 
   return (
     <>
-      {/* Click Outside Overlay Backdrop for Popover or Sheet */}
+      {/* Dimmed Overlay Backdrop (NO BLUR, z-[190] so nav bar at z-[210] stays unblurred) */}
       {(activePopover || sheetOpen) && (
         <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[190] md:hidden animate-fadeIn"
+          className="fixed inset-0 bg-slate-950/30 z-[190] md:hidden animate-fadeIn"
           onClick={() => {
             setActivePopover(null);
             setSheetOpen(false);
@@ -206,70 +240,176 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
         />
       )}
 
-      {/* Popover Sub-Sections Menu Card (for Screens, Playlists, Licenses) */}
+      {/* Floating Popover Card for Screens, Playlists, Licenses (z-[220]) */}
       {activePopover && (
         <div
-          className={`fixed bottom-[72px] z-[200] md:hidden w-[calc(100vw-24px)] max-w-sm bg-white rounded-[26px] border border-slate-200/90 shadow-[0_16px_40px_rgba(0,0,0,0.18)] p-3 animate-scaleUp text-left ${
+          className={`fixed bottom-[74px] z-[220] md:hidden w-[calc(100vw-24px)] max-w-sm bg-white rounded-[26px] border border-slate-200/90 shadow-[0_16px_40px_rgba(0,0,0,0.18)] p-3.5 animate-scaleUp text-left ${
             activePopover === 'screens' ? 'left-3' :
             activePopover === 'playlists' ? 'left-1/2 -translate-x-1/2' :
             activePopover === 'licenses' ? 'right-3' : 'left-3'
           }`}
           style={{ maxHeight: 'calc(80vh - 80px)' }}
         >
-          <div className="flex items-center justify-between px-3 py-2 mb-1 border-b border-slate-100">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-400">
-              {activePopover} Sub-Sections
-            </span>
-            <button
-              onClick={() => setActivePopover(null)}
-              className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          <div className="overflow-y-auto max-h-[55vh] space-y-1 p-1 no-scrollbar">
-            {currentSubSections.map(subItem => {
-              const Icon = subItem.icon;
-              const isSelected = activeView === subItem.id;
-              return (
+          {/* STEP 1: Ask "My Screens" vs "Client Screens" (or "My Channel" vs "Client Assets") */}
+          {popoverStep === 'choose_scope' && (activePopover === 'screens' || activePopover === 'playlists') && role === 'admin' ? (
+            <div>
+              <div className="flex items-center justify-between px-1 pb-2.5 mb-2 border-b border-slate-100">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                  Select {activePopover === 'screens' ? 'Screens Scope' : 'Playlists Scope'}
+                </span>
                 <button
-                  key={subItem.id}
-                  onClick={() => handleSubItemClick(subItem.id)}
-                  className={`w-full flex items-center justify-between p-3 rounded-2xl transition-all cursor-pointer text-left ${
-                    isSelected
-                      ? 'bg-blue-50 border border-blue-200/80 text-blue-700 shadow-xs'
-                      : 'hover:bg-slate-50 text-slate-700 border border-transparent'
-                  }`}
+                  onClick={() => setActivePopover(null)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                      isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                    }`}>
-                      <Icon size={18} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className={`text-xs font-bold truncate ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
-                        {subItem.label}
-                      </p>
-                      {subItem.desc && (
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                          {subItem.desc}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <ChevronRight size={14} className={`shrink-0 ${isSelected ? 'text-blue-600' : 'text-slate-300'}`} />
+                  <X size={16} />
                 </button>
-              );
-            })}
-          </div>
+              </div>
+
+              <div className="space-y-2.5 py-1">
+                {activePopover === 'screens' ? (
+                  <>
+                    <button
+                      onClick={() => handleScopeSelect('my')}
+                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-blue-50/70 hover:bg-blue-100/70 border border-blue-200/80 text-blue-900 transition-all cursor-pointer text-left shadow-2xs"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <MonitorPlay size={20} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-blue-950">My Screens</p>
+                          <p className="text-[11px] text-blue-600/90 mt-0.5 font-medium">Personal displays, groups & logs</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-blue-500 shrink-0" />
+                    </button>
+
+                    <button
+                      onClick={() => handleScopeSelect('client')}
+                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-900 transition-all cursor-pointer text-left shadow-2xs"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-slate-800 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <Monitor size={20} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-slate-950">Client Screens</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Organization TV network & oversight</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-400 shrink-0" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleScopeSelect('my')}
+                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-blue-50/70 hover:bg-blue-100/70 border border-blue-200/80 text-blue-900 transition-all cursor-pointer text-left shadow-2xs"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <Tv size={20} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-blue-950">My Channel</p>
+                          <p className="text-[11px] text-blue-600/90 mt-0.5 font-medium">Playlists, studio, scheduler & media</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-blue-500 shrink-0" />
+                    </button>
+
+                    <button
+                      onClick={() => handleScopeSelect('client')}
+                      className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-900 transition-all cursor-pointer text-left shadow-2xs"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-slate-800 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <Building2 size={20} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-slate-950">Client Assets</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Organization playlists & client media</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-400 shrink-0" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* STEP 2: Show filtered sub-sections */
+            <div>
+              <div className="flex items-center justify-between px-1 pb-2 mb-1 border-b border-slate-100">
+                <div className="flex items-center gap-1.5">
+                  {(activePopover === 'screens' || activePopover === 'playlists') && role === 'admin' && (
+                    <button
+                      onClick={() => setPopoverStep('choose_scope')}
+                      className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1"
+                      title="Back to category selection"
+                    >
+                      <ArrowLeft size={15} />
+                    </button>
+                  )}
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                    {activePopover === 'screens' ? (screensScope === 'my' ? 'My Screens' : 'Client Screens') :
+                     activePopover === 'playlists' ? (playlistsScope === 'my' ? 'My Channel' : 'Client Assets') :
+                     `${activePopover} Subsections`}
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => setActivePopover(null)}
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto max-h-[50vh] space-y-1 p-0.5 no-scrollbar">
+                {currentSubSections.map(subItem => {
+                  const Icon = subItem.icon;
+                  const isSelected = activeView === subItem.id;
+                  return (
+                    <button
+                      key={subItem.id}
+                      onClick={() => handleSubItemClick(subItem.id)}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-2xl transition-all cursor-pointer text-left ${
+                        isSelected
+                          ? 'bg-blue-50 border border-blue-200/80 text-blue-700 shadow-xs'
+                          : 'hover:bg-slate-50 text-slate-700 border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8.5 h-8.5 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          <Icon size={17} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`text-xs font-bold truncate ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
+                            {subItem.label}
+                          </p>
+                          {subItem.desc && (
+                            <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                              {subItem.desc}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <ChevronRight size={14} className={`shrink-0 ${isSelected ? 'text-blue-600' : 'text-slate-300'}`} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Classic More Bottom Sheet Modal (Full Grid Layout as before) */}
+      {/* Classic More Bottom Sheet Modal (z-[220]) */}
       {sheetOpen && (
-        <div className="fixed bottom-0 left-0 right-0 z-[200] md:hidden bg-white rounded-t-[28px] border-t border-slate-200 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] animate-slideUp shadow-[0_-8px_30px_rgba(0,0,0,0.16)] select-none">
+        <div className="fixed bottom-0 left-0 right-0 z-[220] md:hidden bg-white rounded-t-[28px] border-t border-slate-200 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] animate-slideUp shadow-[0_-8px_30px_rgba(0,0,0,0.16)] select-none">
           <div className="flex items-center justify-between mb-3 px-1">
             <h3 className="text-sm font-bold text-slate-900">More Tools & Management</h3>
             <button
@@ -307,9 +447,9 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
         </div>
       )}
 
-      {/* Fixed Bottom Navigation Bar */}
+      {/* Fixed Bottom Navigation Bar (z-[210] - stays crisp, unblurred, above backdrop overlay) */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-[180] bg-white/98 backdrop-blur-xl border-t border-slate-200/80 flex items-stretch justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.06)] select-none"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-[210] bg-white border-t border-slate-200/90 flex items-stretch justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.06)] select-none"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {PRIMARY_TABS.map(tab => {
