@@ -93,23 +93,38 @@ export default function Header({ activeView, onNavigate, onLogout, onToggleSideb
   // Dynamic admin details
   const [adminName, setAdminName] = useState(() => localStorage.getItem('signageos_admin_name') || 'Super Admin');
   const [adminAvatar, setAdminAvatar] = useState(() => localStorage.getItem('signageos_admin_avatar') || '');
+  const [profileName, setProfileName] = useState(adminName);
+  const [profileAvatar, setProfileAvatar] = useState(adminAvatar);
 
   // Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchItem[]>([]);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>('SignageOS');
 
-  const updateAdminDetails = () => {
-    setAdminName(localStorage.getItem('signageos_admin_name') || 'Super Admin');
-    setAdminAvatar(localStorage.getItem('signageos_admin_avatar') || '');
+  const updateBranding = () => {
+    const customLogo = localStorage.getItem('signageos_custom_logo') || localStorage.getItem('signageos_client_logo');
+    const customCompany = localStorage.getItem('signageos_custom_company') || localStorage.getItem('signageos_client_name');
+    setLogoUrl(customLogo || null);
+    setCompanyName(customCompany || 'SignageOS');
   };
 
   useEffect(() => {
-    updateAdminDetails();
+    updateBranding();
+    window.addEventListener('signageos_branding_updated', updateBranding);
+    return () => window.removeEventListener('signageos_branding_updated', updateBranding);
   }, []);
 
+  const updateProfileDetails = () => {
+    const stored = localStorage.getItem('signageos_admin_name');
+    if (stored) setProfileName(stored);
+    setProfileAvatar(localStorage.getItem('signageos_admin_avatar') || '');
+  };
+
   useEffect(() => {
-    window.addEventListener('signageos_admin_profile_updated', updateAdminDetails);
-    return () => window.removeEventListener('signageos_admin_profile_updated', updateAdminDetails);
+    updateProfileDetails();
+    window.addEventListener('signageos_admin_profile_updated', updateProfileDetails);
+    return () => window.removeEventListener('signageos_admin_profile_updated', updateProfileDetails);
   }, []);
 
   // Handle outside click to close dropdowns
@@ -146,12 +161,12 @@ export default function Header({ activeView, onNavigate, onLogout, onToggleSideb
   };
 
   return (
-    <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0 z-40 relative">
+    <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 flex-shrink-0 z-40 relative">
       <div className="flex items-center gap-2 text-sm">
-        <div className="flex items-center gap-1.5 md:hidden">
-          <img src={logoImg} className="w-7 h-7 object-contain shrink-0" alt="Logo" />
-          <span className="font-extrabold text-slate-900 text-sm truncate max-w-[150px]">
-            {crumbs[crumbs.length - 1]}
+        <div className="flex items-center gap-2 md:hidden">
+          <img src={logoUrl || logoImg} className="w-7 h-7 object-contain shrink-0 rounded-md" alt={companyName} />
+          <span className="font-extrabold text-slate-900 text-sm truncate max-w-[160px]">
+            {companyName !== 'SignageOS' ? companyName : crumbs[crumbs.length - 1]}
           </span>
         </div>
         {/* Desktop Breadcrumbs */}

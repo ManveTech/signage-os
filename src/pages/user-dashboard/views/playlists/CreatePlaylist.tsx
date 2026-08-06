@@ -828,10 +828,11 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                     e.stopPropagation(); // Prevent duplicate calls
                     addAssetToTimeline(asset);
                   }}
-                  className="absolute top-1.5 right-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-1.5 shadow-md ring-2 ring-white hover:scale-105 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 cursor-pointer"
+                  style={{ width: '20px', height: '20px', minWidth: '20px', minHeight: '20px', padding: 0 }}
+                  className="absolute top-1.5 right-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center shadow-xs ring-1 ring-white hover:scale-105 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 cursor-pointer shrink-0"
                   title="Add to sequence"
                 >
-                  <Plus size={12} className="stroke-[3]" />
+                  <Plus style={{ width: '12px', height: '12px' }} className="stroke-[2.5]" />
                 </button>
 
                 <div className="w-full aspect-video rounded-lg overflow-hidden bg-gray-200 border border-slate-100 relative">
@@ -1137,9 +1138,13 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                         return next;
                       });
                     }}
-                    className={`w-11 h-6 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-200 ${allowCustomOrientation ? 'bg-blue-600' : 'bg-slate-300'}`}
+                    style={{ width: '36px', height: '20px', minWidth: '36px', minHeight: '20px', padding: '2px' }}
+                    className={`flex items-center rounded-full cursor-pointer transition-colors duration-200 shrink-0 ${allowCustomOrientation ? 'bg-blue-600' : 'bg-slate-300'}`}
                   >
-                    <div className={`bg-white w-5 h-5 rounded-full shadow-sm transform transition-transform duration-200 ${allowCustomOrientation ? 'translate-x-5' : 'translate-x-0'}`} />
+                    <div 
+                      style={{ width: '16px', height: '16px' }}
+                      className={`bg-white rounded-full shadow-xs transform transition-transform duration-200 ${allowCustomOrientation ? 'translate-x-4' : 'translate-x-0'}`} 
+                    />
                   </button>
                 </div>
                 
@@ -1194,9 +1199,13 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 <button
                   type="button"
                   onClick={() => setPlaylistShuffle(prev => !prev)}
-                  className={`w-11 h-6 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-200 ${playlistShuffle ? 'bg-blue-600' : 'bg-slate-300'}`}
+                  style={{ width: '36px', height: '20px', minWidth: '36px', minHeight: '20px', padding: '2px' }}
+                  className={`flex items-center rounded-full cursor-pointer transition-colors duration-200 shrink-0 ${playlistShuffle ? 'bg-blue-600' : 'bg-slate-300'}`}
                 >
-                  <div className={`bg-white w-5 h-5 rounded-full shadow-sm transform transition-transform duration-200 ${playlistShuffle ? 'translate-x-5' : 'translate-x-0'}`} />
+                  <div 
+                    style={{ width: '16px', height: '16px' }}
+                    className={`bg-white rounded-full shadow-xs transform transition-transform duration-200 ${playlistShuffle ? 'translate-x-4' : 'translate-x-0'}`} 
+                  />
                 </button>
               </div>
 
@@ -1208,9 +1217,13 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 <button
                   type="button"
                   onClick={() => setPlaylistLoop(prev => !prev)}
-                  className={`w-11 h-6 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-200 ${playlistLoop ? 'bg-blue-600' : 'bg-slate-300'}`}
+                  style={{ width: '36px', height: '20px', minWidth: '36px', minHeight: '20px', padding: '2px' }}
+                  className={`flex items-center rounded-full cursor-pointer transition-colors duration-200 shrink-0 ${playlistLoop ? 'bg-blue-600' : 'bg-slate-300'}`}
                 >
-                  <div className={`bg-white w-5 h-5 rounded-full shadow-sm transform transition-transform duration-200 ${playlistLoop ? 'translate-x-5' : 'translate-x-0'}`} />
+                  <div 
+                    style={{ width: '16px', height: '16px' }}
+                    className={`bg-white rounded-full shadow-xs transform transition-transform duration-200 ${playlistLoop ? 'translate-x-4' : 'translate-x-0'}`} 
+                  />
                 </button>
               </div>
 
@@ -1397,17 +1410,17 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 type="button"
                 onClick={openPreview}
                 disabled={playlistItems.length === 0}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px] shrink-0"
+                className="flex-1 px-2 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px] whitespace-nowrap"
               >
-                <Eye size={13} /> Preview Simulator
+                <Eye size={12} /> Preview
               </button>
 
               <button 
                 onClick={handleSavePlaylist}
                 disabled={!playlistName.trim() || playlistItems.length === 0}
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[38px] shrink-0"
+                className="flex-1 px-2 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px] whitespace-nowrap"
               >
-                <Save size={14} /> Save Playlist Profile
+                <Save size={13} /> Save Playlist
               </button>
             </div>
           </div>

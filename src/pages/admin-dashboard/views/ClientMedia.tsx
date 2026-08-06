@@ -371,10 +371,10 @@ export default function ClientMedia() {
                     {!isSelectionMode && (
                       <button 
                         onClick={() => handleDelete(media.id, media.title)}
-                        className="absolute top-1.5 right-1.5 p-1.5 bg-rose-50/95 hover:bg-rose-500 text-rose-600 hover:text-white rounded-full transition-all duration-150 cursor-pointer shadow-sm border border-rose-100 z-35"
+                        className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 p-0.5 sm:p-1 bg-rose-50/95 hover:bg-rose-500 text-rose-600 hover:text-white rounded-full transition-all duration-150 cursor-pointer shadow-sm border border-rose-100 z-35"
                         title="Delete"
                       >
-                        <Trash2 size={11} className="stroke-[2.5]" />
+                        <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[2]" />
                       </button>
                     )}
                   </>

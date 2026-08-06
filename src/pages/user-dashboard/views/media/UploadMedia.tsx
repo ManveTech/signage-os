@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, QrCode, Sun, Eye, Image as ImageIcon, Sparkles, CloudRain, CloudSnow, CloudSun, Wind } from 'lucide-react';
+import { Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, QrCode, Sun, Eye, Image as ImageIcon, Sparkles, CloudRain, CloudSnow, CloudSun, Wind, Trash2 } from 'lucide-react';
 import { mockMedia } from '../../data/mockData';
 import CustomSelect from '../../../../components/CustomSelect';
 
@@ -290,6 +290,18 @@ export default function UploadMedia() {
                 onDragStart={(e) => handleAssetDragStart(e, asset.id)}
                 className="bg-gray-50 border border-slate-200 rounded-lg p-2 flex flex-col gap-1.5 cursor-grab active:cursor-grabbing hover:border-blue-300 hover:bg-blue-50/20 transition-all select-none group relative"
               >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMediaPool(prev => prev.filter(m => m.id !== asset.id));
+                  }}
+                  style={{ width: '20px', height: '20px', minWidth: '20px', minHeight: '20px', padding: 0 }}
+                  className="absolute top-1.5 right-1.5 bg-rose-500/90 hover:bg-rose-600 text-white rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer shadow-xs border border-white/60 z-20 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                  title="Delete asset"
+                >
+                  <Trash2 style={{ width: '12px', height: '12px' }} className="stroke-[2]" />
+                </button>
                 <div className="w-full aspect-video rounded overflow-hidden bg-gray-200 border border-slate-100 relative">
                   <img src={asset.thumbnail} alt={asset.title} className="w-full h-full object-cover" />
                   <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[7.5px] px-1 rounded font-bold uppercase">{asset.type}</span>

@@ -518,10 +518,11 @@ export default function MediaLibrary({ userEmail }: Props) {
                   {!isSelectionMode && (
                     <button
                       onClick={() => handleDelete(media.id, media.title)}
-                      className="absolute top-1.5 right-1.5 p-1.5 bg-rose-50/95 hover:bg-rose-500 text-rose-600 hover:text-white rounded-full transition-all duration-150 cursor-pointer shadow-sm border border-rose-100 z-35"
+                      style={{ width: '20px', height: '20px', minWidth: '20px', minHeight: '20px', padding: 0 }}
+                      className="absolute top-1.5 right-1.5 bg-rose-500/90 hover:bg-rose-600 text-white rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer shadow-xs border border-white/60 z-35 shrink-0"
                       title="Delete"
                     >
-                      <Trash2 size={11} className="stroke-[2.5]" />
+                      <Trash2 style={{ width: '12px', height: '12px' }} className="stroke-[2]" />
                     </button>
                   )}
                 </>
