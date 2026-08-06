@@ -248,17 +248,17 @@ export default function LicenseBillingView({ userEmail }: Props) {
   };
 
   return (
-    <div className="p-6 space-y-6 text-left relative">
+    <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 text-left relative overflow-x-hidden w-full max-w-full">
       {/* Page Title */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">License & Billing</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Manage your software plan, review invoices, and settle outstanding payments</p>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Manage your software plan, review invoices, and settle outstanding payments</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* LICENSE PROFILE CARD */}
-        <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
+        <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
             <span className="text-xs font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
               <Key size={14} className="text-blue-500" /> Plan Details
@@ -278,7 +278,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
             <div className="space-y-4">
               <div>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">License ID</p>
-                <p className="font-mono font-bold text-slate-900 text-sm mt-0.5">{clientLicense.id}</p>
+                <p className="font-mono font-bold text-slate-900 text-sm mt-0.5 break-all">{clientLicense.id}</p>
               </div>
 
               <div>
@@ -377,10 +377,12 @@ export default function LicenseBillingView({ userEmail }: Props) {
         {/* INVOICE REGISTRY */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col justify-between">
           <div>
-            <div className="p-4 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
+            <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
               <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Your Invoice Logs</span>
             </div>
-            <div className="overflow-y-auto overflow-x-auto max-h-[300px]">
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-y-auto max-h-[300px]">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -428,6 +430,40 @@ export default function LicenseBillingView({ userEmail }: Props) {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Card List (No Horizontal Scrollbar) */}
+            <div className="block md:hidden divide-y divide-gray-100 max-h-[350px] overflow-y-auto">
+              {clientInvoices.length > 0 ? (
+                clientInvoices.map(inv => (
+                  <div key={inv.id} className="p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-bold text-slate-800 text-xs">{inv.id}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                        inv.status === 'paid' 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                          : 'bg-rose-50 text-rose-700 border-rose-100'
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-500">{inv.issuedDate}</span>
+                      <span className="font-extrabold text-slate-900">₹{inv.amount.toLocaleString()}</span>
+                    </div>
+                    <div className="pt-1 flex justify-end">
+                      <button
+                        onClick={() => setSelectedInvoice(inv)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <FileText size={12} /> View/Print Receipt
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-400 italic font-semibold text-xs">No invoices issued.</div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -435,10 +471,12 @@ export default function LicenseBillingView({ userEmail }: Props) {
 
       {/* RECENT TRANSACTION LOGS */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-100 bg-gray-50/60">
+        <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/60">
           <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Payment Transaction History</span>
         </div>
-        <div className="overflow-x-auto">
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -473,6 +511,32 @@ export default function LicenseBillingView({ userEmail }: Props) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card List (No Horizontal Scrollbar) */}
+        <div className="block md:hidden divide-y divide-gray-100">
+          {clientPayments.length > 0 ? (
+            clientPayments.map(p => (
+              <div key={p.id} className="p-3.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-slate-800">{p.id}</span>
+                  <span className="text-emerald-600 font-bold text-[10px] uppercase flex items-center gap-1 tracking-wider">
+                    <CheckCircle size={11} /> Success
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">{p.paymentDate}</span>
+                  <span className="font-extrabold text-slate-900">₹{p.amount.toLocaleString()}</span>
+                </div>
+                <div className="bg-slate-50 p-2 rounded-lg font-mono text-[10px] text-slate-600 space-y-0.5 break-all">
+                  <p><span className="text-slate-400">Pay ID:</span> {p.razorpayPaymentId}</p>
+                  <p><span className="text-slate-400">Order:</span> {p.razorpayOrderId}</p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="py-8 text-center text-slate-400 italic font-semibold text-xs">No transactions recorded.</div>
+          )}
         </div>
       </div>
 

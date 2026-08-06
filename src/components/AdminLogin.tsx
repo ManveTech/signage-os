@@ -195,13 +195,32 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       body: JSON.stringify({ email: lowerEmail })
     })
       .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          const data = await res.json();
-          setSuccessMessage(data.message || 'Password reset link sent to your email.');
+          if (data.emailSent) {
+            setSuccessMessage(data.message || 'Password reset link sent to your email.');
+          } else if (data.resetLink) {
+            try {
+              const url = new URL(data.resetLink);
+              const tokenParam = url.searchParams.get('token');
+              const userIdParam = url.searchParams.get('userId');
+              if (tokenParam && userIdParam) {
+                setResetToken(tokenParam);
+                setResetUserId(userIdParam);
+                setView('reset');
+                setSuccessMessage('Please configure your new password below.');
+              } else {
+                setSuccessMessage(data.message || 'Password reset link generated.');
+              }
+            } catch (_) {
+              setSuccessMessage(data.message || 'Password reset link generated.');
+            }
+          } else {
+            setSuccessMessage(data.message || 'Password reset link generated.');
+          }
           setEmail('');
         } else {
-          const errData = await res.json().catch(() => ({}));
-          setErrorMessage(errData.message || 'Email address not found.');
+          setErrorMessage(data.message || 'Email address not found.');
         }
       })
       .catch((err) => {
