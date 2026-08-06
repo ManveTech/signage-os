@@ -15,6 +15,8 @@ export default function LicenseBillingView({ userEmail }: Props) {
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [bizDetails, setBizDetails] = useState<BusinessDetails | null>(null);
+  const [screensCount, setScreensCount] = useState(0);
+  const [storageUsedBytes, setStorageUsedBytes] = useState(0);
 
   // Razorpay Checkout states
   const [isRzpOpen, setIsRzpOpen] = useState(false);
@@ -34,11 +36,38 @@ export default function LicenseBillingView({ userEmail }: Props) {
       syncCollection('licenses', 'signageos_licenses'),
       syncCollection('payments', 'signageos_payments'),
       syncCollection('invoices', 'signageos_invoices'),
+      syncCollection('screens', 'signageos_screens'),
+      syncCollection('media_items', 'signageos_media_items'),
     ]);
     setLicenses(licensingStore.getLicenses());
     setPayments(licensingStore.getPayments());
     setInvoices(licensingStore.getInvoices());
     setBizDetails(licensingStore.getBusinessDetails());
+
+    // Calculate user screen count
+    const storedScreens = localStorage.getItem('signageos_screens');
+    if (storedScreens) {
+      const screensList = JSON.parse(storedScreens);
+      const userEmailLower = userEmail.toLowerCase().trim();
+      const myScreens = screensList.filter((s: any) => 
+        (s.assignedToUserEmail && s.assignedToUserEmail.toLowerCase().trim() === userEmailLower) ||
+        (s.createdBy && s.createdBy.toLowerCase().trim() === userEmailLower)
+      );
+      setScreensCount(myScreens.length);
+    }
+
+    // Calculate user media storage
+    const storedMedia = localStorage.getItem('signageos_media_items');
+    if (storedMedia) {
+      const mediaList = JSON.parse(storedMedia);
+      const userEmailLower = userEmail.toLowerCase().trim();
+      const myMedia = mediaList.filter((m: any) => 
+        (m.userEmail && m.userEmail.toLowerCase().trim() === userEmailLower) ||
+        (m.createdBy && m.createdBy.toLowerCase().trim() === userEmailLower)
+      );
+      const totalBytes = myMedia.reduce((acc: number, item: any) => acc + (Number(item.size) || 0), 0);
+      setStorageUsedBytes(totalBytes);
+    }
   };
 
   // Lookup user name from synced users list (localStorage)
@@ -266,11 +295,58 @@ export default function LicenseBillingView({ userEmail }: Props) {
               </div>
 
               <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Renews / Expiry Date</p>
-                <p className="font-bold text-slate-700 mt-0.5 flex items-center gap-1.5">
+                <div className="flex justify-between items-center">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Renews / Expiry Date</p>
+                  {clientLicense.expiryDate && (
+                    <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                      {Math.max(0, Math.ceil((new Date(clientLicense.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} Days Left
+                    </span>
+                  )}
+                </div>
+                <p className="font-bold text-slate-700 mt-0.5 flex items-center gap-1.5 text-xs">
                   <Calendar size={13} className="text-slate-400" />
                   {clientLicense.expiryDate}
                 </p>
+              </div>
+
+              {/* Connected Displays Quota */}
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-150 space-y-1.5">
+                <div className="flex justify-between text-[11px] font-bold">
+                  <span className="text-slate-600">Screen Quota</span>
+                  <span className="text-slate-900">{screensCount} / {clientLicense.deviceLimit || 5} Connected</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-600 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, Math.round((screensCount / (clientLicense.deviceLimit || 5)) * 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Storage Quota */}
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-150 space-y-1.5">
+                <div className="flex justify-between text-[11px] font-bold">
+                  <span className="text-slate-600">Storage Usage</span>
+                  <span className="text-slate-900">
+                    {(storageUsedBytes / (1024 * 1024 * 1024)).toFixed(2)} GB / {clientLicense.storageLimit || 5} GB
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-indigo-600 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, Math.round(((storageUsedBytes / (1024 * 1024 * 1024)) / (clientLicense.storageLimit || 5)) * 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* White Label Branding Status */}
+              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-150 text-xs font-bold">
+                <span className="text-slate-600">White-Label Branding</span>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-extrabold ${
+                  clientLicense.whiteLabel ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {clientLicense.whiteLabel ? 'Included' : 'Not Included'}
+                </span>
               </div>
 
               {clientLicense.status !== 'active' ? (

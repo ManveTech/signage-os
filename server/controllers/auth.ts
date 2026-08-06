@@ -89,11 +89,17 @@ export async function forgotPassword(req: any, res: any) {
       exp: Math.floor(Date.now() / 1000) + 15 * 60
     });
 
-    const resetLink = `http://localhost:3000/?token=${token}&userId=${user.id}`;
+    const origin = req.get('origin') || req.get('referer');
+    const protocol = req.protocol || 'http';
+    const host = req.get('host') || 'localhost:3000';
+    const baseUrl = origin ? origin.replace(/\/+$/, '') : `${protocol}://${host}`;
+
+    const resetLink = `${baseUrl}/?token=${token}&userId=${user.id}`;
 
     // Try sending email safely
+    let emailSent = false;
     try {
-      await sendPasswordResetEmail({
+      emailSent = await sendPasswordResetEmail({
         toEmail: user.email,
         userName: user.name || 'SignageOS User',
         resetLink
@@ -101,6 +107,14 @@ export async function forgotPassword(req: any, res: any) {
     } catch (emailErr: any) {
       console.error('Password reset email dispatch error (logging link fallback):', emailErr.message);
       console.log(`\n[PASSWORD RESET LINK] User: ${user.email} -> ${resetLink}\n`);
+    }
+
+    if (!emailSent) {
+      console.error(`Password reset email failed to send to ${user.email}`);
+      return res.status(500).json({
+        message: 'Failed to send password reset email. Please check server SMTP configuration.',
+        resetLink: process.env.NODE_ENV !== 'production' ? resetLink : undefined
+      });
     }
 
     return res.status(200).json({

@@ -168,5 +168,37 @@ export const licensingStore = {
 
   saveBusinessDetails(details: BusinessDetails) {
     localStorage.setItem('signageos_business_details', JSON.stringify(details));
+  },
+
+  getUserLicense(userEmail: string): License | null {
+    if (!userEmail) return null;
+    const licenses = this.getLicenses();
+    const cleanEmail = userEmail.toLowerCase().trim();
+    return licenses.find(l => l.assignedUserEmail && l.assignedUserEmail.toLowerCase().trim() === cleanEmail) || null;
+  },
+
+  getUserPayments(userEmail: string): PaymentRecord[] {
+    if (!userEmail) return [];
+    const payments = this.getPayments();
+    const cleanEmail = userEmail.toLowerCase().trim();
+    return payments.filter(p => p.clientEmail && p.clientEmail.toLowerCase().trim() === cleanEmail);
+  },
+
+  getUserInvoices(userEmail: string): Invoice[] {
+    if (!userEmail) return [];
+    const invoices = this.getInvoices();
+    const cleanEmail = userEmail.toLowerCase().trim();
+    return invoices.filter(i => i.clientEmail && i.clientEmail.toLowerCase().trim() === cleanEmail);
+  },
+
+  async updateInvoiceStatus(invoiceId: string, status: 'paid' | 'unpaid'): Promise<PushResult> {
+    const invoices = this.getInvoices();
+    const index = invoices.findIndex(i => i.id === invoiceId);
+    if (index !== -1) {
+      invoices[index].status = status;
+      this.saveInvoices(invoices);
+      return await pushToDatabase('invoices', invoiceId, invoices[index], 'PUT');
+    }
+    return { ok: false, status: 404, error: 'Invoice not found' };
   }
 };

@@ -55,12 +55,8 @@ const ADMIN_MORE_ITEMS: SheetItem[] = [
 ];
 
 const USER_MORE_ITEMS: SheetItem[] = [
-  { id: 'organizations', label: 'Organization', icon: Building2 },
-  { id: 'users', label: 'Team Users', icon: Users },
-  { id: 'reports-overview', label: 'Reports', icon: BarChart3 },
-  { id: 'settings-general', label: 'Settings', icon: SettingsIcon },
-  { id: 'support-tickets', label: 'Ongoing Issues', icon: ShieldAlert },
-  { id: 'support-help', label: 'FAQ & Help', icon: HelpCircle },
+  { id: 'support-tickets', label: 'My Tickets', icon: ShieldAlert },
+  { id: 'support-help', label: 'Help Center', icon: HelpCircle },
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
@@ -105,11 +101,8 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
       }
       return [
         { id: 'my-screens-list', label: 'My Screens', icon: MonitorPlay, desc: 'Your display hardware' },
-        { id: 'screens-all', label: 'All Registered Screens', icon: Monitor, desc: 'Network overview' },
-        { id: 'screens-add', label: 'Add Screen', icon: Plus, desc: 'Pair screen using 6-digit PIN' },
-        { id: 'screens-groups', label: 'Screen Groups', icon: Users, desc: 'Group displays together' },
-        { id: 'screens-manage', label: 'Manage Screens', icon: SettingsIcon, desc: 'Remote actions' },
-        { id: 'screens-logs', label: 'Activity Logs', icon: FileText, desc: 'Pairing and status history' },
+        { id: 'screens-groups', label: 'Create Groups', icon: Layers, desc: 'Group displays together' },
+        { id: 'screens-logs', label: 'Logs', icon: FileText, desc: 'Pairing and status history' },
       ];
     }
 
@@ -131,11 +124,9 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
         }
       }
       return [
+        { id: 'media-library', label: 'All Media', icon: Film, desc: 'Manage your assets' },
         { id: 'playlists-all', label: 'All Playlists', icon: Tv, desc: 'Playlists catalog' },
         { id: 'playlists-create', label: 'Create Playlist', icon: Plus, desc: 'Design signage schedule' },
-        { id: 'playlists-scheduler', label: 'Schedule Shift', icon: CalendarDays, desc: 'Set date & time switches' },
-        { id: 'media-library', label: 'Media Library', icon: Film, desc: 'Manage your assets' },
-        { id: 'media-upload', label: 'Upload Media', icon: Upload, desc: 'Add images, videos & widgets' },
         { id: 'media-layout', label: 'Layout Studio', icon: Sparkles, desc: 'Multi-zone designer' },
       ];
     }
@@ -151,9 +142,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
         ];
       }
       return [
-        { id: 'licenses-pool', label: 'License Pool', icon: Key, desc: 'Active subscriptions' },
-        { id: 'licenses-assign', label: 'Assign License', icon: Plus, desc: 'Attach to user account' },
-        { id: 'licenses-history', label: 'Billing History', icon: CreditCard, desc: 'Past receipts & invoices' },
+        { id: 'license-billing', label: 'License & Billing', icon: Key, desc: 'Active subscriptions and billing' },
       ];
     }
 
@@ -165,6 +154,13 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
       setActivePopover(null);
       setSheetOpen(false);
       onNavigate('dashboard');
+      return;
+    }
+
+    if (tabId === 'licenses' && role === 'user') {
+      setActivePopover(null);
+      setSheetOpen(false);
+      onNavigate('license-billing');
       return;
     }
 

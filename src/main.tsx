@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { HashRouter } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import App from './App.tsx';
 import './index.css';
@@ -31,9 +31,9 @@ document.addEventListener('gesturestart', (e) => {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <BrowserRouter>
+      <HashRouter>
         <App />
-      </BrowserRouter>
+      </HashRouter>
     </ErrorBoundary>
   </StrictMode>,
 );
