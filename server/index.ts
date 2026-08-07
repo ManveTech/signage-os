@@ -19,22 +19,14 @@ import { apiLimiter } from './middleware/rateLimiter';
 
 const app = express();
 
-// Cookie parser middleware - must be before routes that need req.cookies
-app.use(cookieParser());
-
-// Apply global rate limiting to all API requests (except health checks)
-app.use('/api', apiLimiter);
-
-// CORS — Secure origin handling with whitelist support
+// CORS — Must be the VERY FIRST middleware so preflight OPTIONS requests return Access-Control-Allow-* headers immediately
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
   if (origin) {
-    if (CORS_ALLOWED_ORIGINS.includes('*') || CORS_ALLOWED_ORIGINS.includes(origin) || CORS_ALLOWED_ORIGINS.length === 0) {
-      res.header('Access-Control-Allow-Origin', origin);
-      res.header('Vary', 'Origin');
-      res.header('Access-Control-Allow-Credentials', 'true');
-    }
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+    res.header('Access-Control-Allow-Credentials', 'true');
   } else {
     res.header('Access-Control-Allow-Origin', '*');
   }
@@ -47,6 +39,12 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Cookie parser middleware - must be before routes that need req.cookies
+app.use(cookieParser());
+
+// Apply global rate limiting to all API requests (except health checks)
+app.use('/api', apiLimiter);
 
 // Global Middleware
 // 100 MB limit covers all normal API payloads including large base64 media uploads.
