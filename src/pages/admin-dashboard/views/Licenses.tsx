@@ -4,6 +4,7 @@ import {
   XCircle, Receipt, FileText, Send, Building, ShieldCheck, Mail, MapPin, 
   Phone, Globe, Image as ImageIcon, CreditCard
 } from 'lucide-react';
+import { API_BASE } from '../../../config';
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import { toast } from '../../../components/Toast';
@@ -98,7 +99,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     // Fetch payments history directly from backend webhook payments API
     try {
       const token = localStorage.getItem('signageos_token');
-      const res = await fetch('/api/payments/history', {
+      const res = await fetch(`${API_BASE}/payments/history`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       if (res.ok) {
