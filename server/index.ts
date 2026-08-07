@@ -29,25 +29,21 @@ app.use('/api', apiLimiter);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // Check if origin is in whitelist or if wildcard is allowed (dev only)
-  if (origin && (CORS_ALLOWED_ORIGINS.includes('*') || CORS_ALLOWED_ORIGINS.includes(origin))) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Vary', 'Origin');
-    res.header('Access-Control-Allow-Credentials', 'true');
-  } else if (!origin && CORS_ALLOWED_ORIGINS.includes('*')) {
-    // Allow requests without origin header only in development (e.g., Postman, curl)
+  if (origin) {
+    if (CORS_ALLOWED_ORIGINS.includes('*') || CORS_ALLOWED_ORIGINS.includes(origin) || CORS_ALLOWED_ORIGINS.length === 0) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Vary', 'Origin');
+      res.header('Access-Control-Allow-Credentials', 'true');
+    }
+  } else {
     res.header('Access-Control-Allow-Origin', '*');
-  } else if (origin && CORS_ALLOWED_ORIGINS.length === 0) {
-    // Production mode with no origins configured - reject
-    console.warn(`[CORS] Rejected request from origin: ${origin} (no whitelist configured)`);
-    return res.status(403).json({ error: 'Origin not allowed' });
   }
 
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Assigned-To-User-Email, X-Screen-Id');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
 
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.sendStatus(204);
   }
   next();
 });
