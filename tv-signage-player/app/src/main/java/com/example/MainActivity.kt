@@ -189,6 +189,8 @@ fun SignagePlayerApp(
                                                     modifier = Modifier.size(120.dp),
                                                     contentScale = ContentScale.Fit
                                                 )
+                                            } else if (floatWidgetType == "clock") {
+                                                ClockWidget(header = clockText.ifEmpty { "Lobby Clock" })
                                             } else if (floatWidgetType != null) {
                                                 Card(
                                                     colors = CardDefaults.cardColors(
@@ -202,9 +204,6 @@ fun SignagePlayerApp(
                                                     when (floatWidgetType) {
                                                         "weather" -> {
                                                             WeatherWidget(location = weatherLoc.ifEmpty { "Bengaluru" })
-                                                        }
-                                                        "clock" -> {
-                                                            ClockWidget(header = clockText.ifEmpty { "Lobby Clock" })
                                                         }
                                                     }
                                                 }

@@ -8,8 +8,10 @@ import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import CustomSelect from '../../../../components/CustomSelect';
 import type { Screen } from '../../types';
+import { getEffectiveStatus } from './MyScreens';
 
-const renderStatusBadge = (status: string) => {
+const renderStatusBadge = (screenOrStatus: any) => {
+  const status = typeof screenOrStatus === 'string' ? screenOrStatus : getEffectiveStatus(screenOrStatus);
   let label = status;
   let bg = 'bg-slate-500/10 text-slate-700 border-slate-500/20';
   let dot = <span className="h-2 w-2 rounded-full bg-slate-500"></span>;
@@ -87,12 +89,26 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
   const [userPlaylists, setUserPlaylists] = useState<any[]>(() => mediaStore.getPlaylists().filter(p => p.createdBy === userEmail));
 
   useEffect(() => {
-    syncCollection('screens', 'signageos_screens').then(serverScreens => {
-      if (serverScreens.length > 0) {
-        setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
-        mediaStore.saveScreens(serverScreens);
-      }
-    });
+    const refreshData = () => {
+      syncCollection('screens', 'signageos_screens').then(serverScreens => {
+        if (serverScreens && serverScreens.length > 0) {
+          setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
+          mediaStore.saveScreens(serverScreens);
+        }
+      });
+    };
+
+    refreshData();
+    const interval = setInterval(refreshData, 5000);
+
+    const handleScreensUpdate = () => {
+      const local = mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail);
+      setScreens(local);
+    };
+
+    window.addEventListener('storage', handleScreensUpdate);
+    window.addEventListener('signageos_screens_updated', handleScreensUpdate);
+
     syncCollection('screen_groups', 'signageos_groups').then(serverGroups => {
       if (serverGroups.length > 0) {
         setGroups(serverGroups);
@@ -103,6 +119,12 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
         setUserPlaylists(serverPlaylists.filter(p => p.createdBy === userEmail));
       }
     });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleScreensUpdate);
+      window.removeEventListener('signageos_screens_updated', handleScreensUpdate);
+    };
   }, [userEmail]);
 
   const filtered = screens.filter(s => {
@@ -434,7 +456,7 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {renderStatusBadge(screen.status)}
+                      {renderStatusBadge(screen)}
                     </td>
                     <td className="px-4 py-3">
                       {screen.groupId ? (() => {

@@ -84,12 +84,25 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   useEffect(() => {
-    syncCollection('screens', 'signageos_screens').then(serverScreens => {
-      if (serverScreens.length > 0) {
-        setScreens(serverScreens);
-        mediaStore.saveScreens(serverScreens);
-      }
-    });
+    const refreshData = () => {
+      syncCollection('screens', 'signageos_screens').then(serverScreens => {
+        if (serverScreens && serverScreens.length > 0) {
+          setScreens(serverScreens);
+          mediaStore.saveScreens(serverScreens);
+        }
+      });
+    };
+
+    refreshData();
+    const interval = setInterval(refreshData, 5000);
+
+    const handleScreensUpdate = () => {
+      setScreens(mediaStore.getScreens());
+    };
+
+    window.addEventListener('storage', handleScreensUpdate);
+    window.addEventListener('signageos_screens_updated', handleScreensUpdate);
+
     syncCollection('screen_groups', 'signageos_groups').then(serverGroups => {
       if (serverGroups.length > 0) {
         setGroups(serverGroups);
@@ -101,6 +114,12 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
     syncCollection('licenses', 'signageos_licenses').then(serverLicenses => {
       if (serverLicenses.length > 0) setLicenses(serverLicenses);
     });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleScreensUpdate);
+      window.removeEventListener('signageos_screens_updated', handleScreensUpdate);
+    };
   }, []);
 
   const getScreenOrgName = (screen: Screen) => {

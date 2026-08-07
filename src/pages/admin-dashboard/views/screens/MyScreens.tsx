@@ -83,11 +83,28 @@ const getStatusColors = (status: string) => {
 };
 
 export const getEffectiveStatus = (screen: any): string => {
+  if (!screen) return 'offline';
   const status = screen?.status || 'offline';
   if (status === 'online' || status === 'active') {
     const hb = screen?.lastHeartbeat || screen?.lastSeen;
     if (!hb) return 'offline';
-    const hbTime = new Date(hb).getTime();
+
+    let hbTime = NaN;
+    if (typeof hb === 'number') {
+      hbTime = hb;
+    } else if (typeof hb === 'string') {
+      const trimmed = hb.trim();
+      if (/^\d+$/.test(trimmed)) {
+        hbTime = parseInt(trimmed, 10);
+      } else if (/^just now$/i.test(trimmed) || /^recently$/i.test(trimmed) || /^online$/i.test(trimmed)) {
+        hbTime = Date.now();
+      } else if (/^never$/i.test(trimmed)) {
+        return 'offline';
+      } else {
+        hbTime = new Date(trimmed).getTime();
+      }
+    }
+
     if (isNaN(hbTime) || (Date.now() - hbTime > 90000)) {
       return 'offline';
     }
@@ -170,12 +187,26 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
   };
 
   useEffect(() => {
-    syncCollection('screens', 'signageos_screens').then(serverScreens => {
-      if (serverScreens.length > 0) {
-        setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
-        mediaStore.saveScreens(serverScreens);
-      }
-    });
+    const refreshData = () => {
+      syncCollection('screens', 'signageos_screens').then(serverScreens => {
+        if (serverScreens && serverScreens.length > 0) {
+          setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
+          mediaStore.saveScreens(serverScreens);
+        }
+      });
+    };
+
+    refreshData();
+    const interval = setInterval(refreshData, 5000);
+
+    const handleScreensUpdate = () => {
+      const local = mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail);
+      setScreens(local);
+    };
+
+    window.addEventListener('storage', handleScreensUpdate);
+    window.addEventListener('signageos_screens_updated', handleScreensUpdate);
+
     syncCollection('screen_groups', 'signageos_groups').then(serverGroups => {
       if (serverGroups.length > 0) {
         setGroups(serverGroups);
@@ -195,6 +226,12 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     syncCollection('organizations', 'signageos_organizations').then(serverOrgs => {
       if (serverOrgs.length > 0) setOrganizations(serverOrgs);
     });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleScreensUpdate);
+      window.removeEventListener('signageos_screens_updated', handleScreensUpdate);
+    };
   }, [userEmail]);
 
   const getScreenOrgName = (screen: Screen) => {

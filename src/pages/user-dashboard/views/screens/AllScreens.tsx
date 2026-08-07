@@ -85,12 +85,26 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   useEffect(() => {
-    syncCollection('screens', 'signageos_screens').then(serverScreens => {
-      if (serverScreens.length > 0) {
-        setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
-        mediaStore.saveScreens(serverScreens);
-      }
-    });
+    const refreshData = () => {
+      syncCollection('screens', 'signageos_screens').then(serverScreens => {
+        if (serverScreens && serverScreens.length > 0) {
+          setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
+          mediaStore.saveScreens(serverScreens);
+        }
+      });
+    };
+
+    refreshData();
+    const interval = setInterval(refreshData, 5000);
+
+    const handleScreensUpdate = () => {
+      const local = mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail);
+      setScreens(local);
+    };
+
+    window.addEventListener('storage', handleScreensUpdate);
+    window.addEventListener('signageos_screens_updated', handleScreensUpdate);
+
     syncCollection('screen_groups', 'signageos_groups').then(serverGroups => {
       if (serverGroups.length > 0) {
         setGroups(serverGroups);
@@ -107,6 +121,12 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
     syncCollection('licenses', 'signageos_licenses').then(serverLicenses => {
       if (serverLicenses.length > 0) setLicenses(serverLicenses);
     });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleScreensUpdate);
+      window.removeEventListener('signageos_screens_updated', handleScreensUpdate);
+    };
   }, [userEmail]);
 
   const getScreenOrgName = (screen: Screen) => {
