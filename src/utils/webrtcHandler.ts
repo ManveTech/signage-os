@@ -89,7 +89,13 @@ export class WebRTCHandler {
     }
 
     if (!this.localStream) {
-      await this.getLocalStream();
+      try {
+        await this.getLocalStream();
+      } catch (error) {
+        // No camera/mic available — the call still proceeds, just without
+        // this side's local tracks.
+        return;
+      }
     }
 
     if (this.localStream && this.peerConnection) {

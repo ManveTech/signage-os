@@ -1,5 +1,24 @@
 import { pb, ensurePBAuth } from '../db';
 
+// targetScreenIds is stored as a JSON-encoded string (PocketBase text field),
+// not a native array — every read/write must go through these helpers.
+function parseTargetScreenIds(value: any): string[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function withParsedTargetScreenIds(record: any) {
+  return { ...record, targetScreenIds: parseTargetScreenIds(record.targetScreenIds) };
+}
+
 export async function initiateConference(req: any, res: any) {
   try {
     const { mode, targetScreenIds, adminUserId, organizationId } = req.body;
@@ -33,22 +52,19 @@ export async function initiateConference(req: any, res: any) {
       }
     }
 
-    const conferenceId = Math.random().toString(36).substring(2, 15);
     const conferenceData = {
-      conferenceId,
       mode,
       adminUserId,
       organizationId,
-      targetScreenIds: targetScreenIds || [],
+      targetScreenIds: JSON.stringify(targetScreenIds || []),
       status: 'active',
-      startTime: new Date().toISOString(),
-      endTime: null,
       defaultVolume: req.body.defaultVolume ?? 50,
       muteOnStart: req.body.muteOnStart ?? true
     };
 
     const conference = await pb.collection('video_conferences').create(conferenceData);
-    res.status(201).json(conference);
+    // The frontend/display and socket signaling identify a call by its PocketBase record id.
+    res.status(201).json({ ...withParsedTargetScreenIds(conference), conferenceId: conference.id });
   } catch (error: any) {
     console.error('Error initiating conference:', error);
     res.status(500).json({ error: error.message || 'Error initiating conference' });
@@ -59,16 +75,11 @@ export async function endConference(req: any, res: any) {
   try {
     const { conferenceId } = req.params;
 
-    const conference = await pb.collection('video_conferences').getFirstListItem(
-      pb.filter('conferenceId = {:id}', { id: conferenceId })
-    );
-
-    const updated = await pb.collection('video_conferences').update(conference.id, {
-      status: 'ended',
-      endTime: new Date().toISOString()
+    const updated = await pb.collection('video_conferences').update(conferenceId, {
+      status: 'ended'
     });
 
-    res.json(updated);
+    res.json(withParsedTargetScreenIds(updated));
   } catch (error: any) {
     console.error('Error ending conference:', error);
     res.status(500).json({ error: error.message || 'Error ending conference' });
@@ -88,7 +99,7 @@ export async function getActiveConferences(req: any, res: any) {
       sort: '-startTime'
     });
 
-    res.json(conferences);
+    res.json(conferences.map(withParsedTargetScreenIds));
   } catch (error: any) {
     console.error('Error fetching active conferences:', error);
     res.status(500).json({ error: error.message || 'Error fetching conferences' });
@@ -99,11 +110,9 @@ export async function getConferenceDetails(req: any, res: any) {
   try {
     const { conferenceId } = req.params;
 
-    const conference = await pb.collection('video_conferences').getFirstListItem(
-      pb.filter('conferenceId = {:id}', { id: conferenceId })
-    );
+    const conference = await pb.collection('video_conferences').getOne(conferenceId);
 
-    res.json(conference);
+    res.json(withParsedTargetScreenIds(conference));
   } catch (error: any) {
     console.error('Error fetching conference details:', error);
     res.status(404).json({ error: 'Conference not found' });
@@ -119,25 +128,23 @@ export async function addScreenToConference(req: any, res: any) {
       return res.status(400).json({ error: 'Screen ID is required' });
     }
 
-    const conference = await pb.collection('video_conferences').getFirstListItem(
-      pb.filter('conferenceId = {:id}', { id: conferenceId })
-    );
+    const conference = await pb.collection('video_conferences').getOne(conferenceId);
 
     const screen = await pb.collection('screens').getOne(screenId);
     if (!screen.cameraMountEnabled) {
       return res.status(400).json({ error: 'Screen does not have camera mount enabled' });
     }
 
-    const targetScreenIds = conference.targetScreenIds || [];
+    const targetScreenIds = parseTargetScreenIds(conference.targetScreenIds);
     if (!targetScreenIds.includes(screenId)) {
       targetScreenIds.push(screenId);
     }
 
     const updated = await pb.collection('video_conferences').update(conference.id, {
-      targetScreenIds
+      targetScreenIds: JSON.stringify(targetScreenIds)
     });
 
-    res.json(updated);
+    res.json(withParsedTargetScreenIds(updated));
   } catch (error: any) {
     console.error('Error adding screen to conference:', error);
     res.status(500).json({ error: error.message || 'Error adding screen' });
@@ -148,17 +155,15 @@ export async function removeScreenFromConference(req: any, res: any) {
   try {
     const { conferenceId, screenId } = req.params;
 
-    const conference = await pb.collection('video_conferences').getFirstListItem(
-      pb.filter('conferenceId = {:id}', { id: conferenceId })
-    );
+    const conference = await pb.collection('video_conferences').getOne(conferenceId);
 
-    const targetScreenIds = (conference.targetScreenIds || []).filter((id: string) => id !== screenId);
+    const targetScreenIds = parseTargetScreenIds(conference.targetScreenIds).filter((id: string) => id !== screenId);
 
     const updated = await pb.collection('video_conferences').update(conference.id, {
-      targetScreenIds
+      targetScreenIds: JSON.stringify(targetScreenIds)
     });
 
-    res.json(updated);
+    res.json(withParsedTargetScreenIds(updated));
   } catch (error: any) {
     console.error('Error removing screen from conference:', error);
     res.status(500).json({ error: error.message || 'Error removing screen' });
@@ -170,17 +175,13 @@ export async function updateConferenceSettings(req: any, res: any) {
     const { conferenceId } = req.params;
     const { defaultVolume, muteOnStart } = req.body;
 
-    const conference = await pb.collection('video_conferences').getFirstListItem(
-      pb.filter('conferenceId = {:id}', { id: conferenceId })
-    );
-
     const updateData: Record<string, any> = {};
     if (defaultVolume !== undefined) updateData.defaultVolume = defaultVolume;
     if (muteOnStart !== undefined) updateData.muteOnStart = muteOnStart;
 
-    const updated = await pb.collection('video_conferences').update(conference.id, updateData);
+    const updated = await pb.collection('video_conferences').update(conferenceId, updateData);
 
-    res.json(updated);
+    res.json(withParsedTargetScreenIds(updated));
   } catch (error: any) {
     console.error('Error updating conference settings:', error);
     res.status(500).json({ error: error.message || 'Error updating settings' });

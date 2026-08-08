@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Phone, PhoneOff, Volume2, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { WebRTCHandler } from '../../utils/webrtcHandler';
 import { useVideoConferencing } from '../../hooks/useVideoConferencing';
@@ -21,6 +22,8 @@ interface ConferenceState {
 export default function DisplayClient() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const { socket, onConferenceInitiated, onWebRTCSignal, onConferenceEnded } = useVideoConferencing();
+  const [searchParams] = useSearchParams();
+  const screenId = searchParams.get('screenId') || '';
 
   const [isInCall, setIsInCall] = useState(false);
   const [conferenceState, setConferenceState] = useState<ConferenceState | null>(null);
@@ -38,6 +41,12 @@ export default function DisplayClient() {
       webrtcRef.current = new WebRTCHandler();
     }
   }, []);
+
+  // Join this screen's room so the server can route calls to it
+  useEffect(() => {
+    if (!socket || !screenId) return;
+    socket.emit('register-display', screenId);
+  }, [socket, screenId]);
 
   // Listen for incoming conference calls
   useEffect(() => {
@@ -113,11 +122,14 @@ export default function DisplayClient() {
       // Initialize peer connection
       await webrtcRef.current.initializePeerConnection();
 
-      // Get local media stream
-      await webrtcRef.current.getLocalStream();
-
-      // Add local stream to peer connection
-      await webrtcRef.current.addLocalStreamToPeerConnection();
+      // Get local media stream and attach it — a missing camera/mic shouldn't
+      // block the call, it just means this display sends no video/audio back.
+      try {
+        await webrtcRef.current.getLocalStream();
+        await webrtcRef.current.addLocalStreamToPeerConnection();
+      } catch (mediaErr) {
+        console.warn('[DisplayClient] Could not access camera/microphone, continuing without local media', mediaErr);
+      }
 
       // Handle remote stream
       webrtcRef.current.onRemoteStreamReceived((stream: MediaStream) => {
@@ -153,13 +165,8 @@ export default function DisplayClient() {
         setVolume(conference.defaultVolume);
       }
 
-      // Send answer to admin
-      const answer = await webrtcRef.current.createOffer();
-      socket.emit('webrtc:signal', {
-        conferenceId: conference.conferenceId,
-        signal: answer
-      });
-
+      // Peer connection is now ready to receive the caller's SDP offer via
+      // the webrtc:signal listener above, which will create and send our answer.
       setConnectionStatus('waiting-for-admin');
     } catch (err) {
       console.error('[DisplayClient] Error accepting conference:', err);
@@ -284,9 +291,11 @@ export default function DisplayClient() {
                 {/* Display ID and status */}
                 <div className="pt-4 border-t border-gray-700">
                   <p className="text-sm text-gray-400">
-                    Display ID: <span className="font-mono text-gray-300">{Math.random().toString(36).substring(7).toUpperCase()}</span>
+                    Display ID: <span className="font-mono text-gray-300">{screenId || 'Not set — append ?screenId=...'}</span>
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">Status: 🟢 Online • Waiting for conference call</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Status: {screenId ? '🟢 Online • Waiting for conference call' : '⚠️ No screen ID — this display will not receive calls'}
+                  </p>
                 </div>
               </div>
             </div>

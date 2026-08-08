@@ -51,6 +51,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   const [newLicStorage, setNewLicStorage] = useState(5);
   const [newLicDevice, setNewLicDevice] = useState(5);
   const [newLicWhiteLabel, setNewLicWhiteLabel] = useState(false);
+  const [newLicVideoConferencing, setNewLicVideoConferencing] = useState(false);
 
   // Form states (Edit)
   const [editLicName, setEditLicName] = useState('');
@@ -63,6 +64,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   const [editLicStorage, setEditLicStorage] = useState(5);
   const [editLicDevice, setEditLicDevice] = useState(5);
   const [editLicWhiteLabel, setEditLicWhiteLabel] = useState(false);
+  const [editLicVideoConferencing, setEditLicVideoConferencing] = useState(false);
 
   // Business settings state
   const [bizName, setBizName] = useState('');
@@ -161,10 +163,11 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       assignedOrgName: org?.name,
       assignedUserEmail: newLicUserEmail || user?.email,
       expiryDate: generatedExpiry,
-      status: newLicUserEmail ? 'pending_payment' : 'active', // If assigned, make it pending payment so they checkout
+      status: newLicUserEmail ? 'pending_payment' : 'active',
       storageLimit: Number(newLicStorage),
       deviceLimit: Number(newLicDevice),
-      whiteLabel: newLicWhiteLabel
+      whiteLabel: newLicWhiteLabel,
+      enableVideoConferencing: newLicVideoConferencing
     });
 
     // Auto-generate unpaid invoice if assigned to a user
@@ -197,6 +200,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     setNewLicStorage(5);
     setNewLicDevice(5);
     setNewLicWhiteLabel(false);
+    setNewLicVideoConferencing(false);
     loadData();
   };
 
@@ -212,6 +216,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     setEditLicStorage(lic.storageLimit || 5);
     setEditLicDevice(lic.deviceLimit || 5);
     setEditLicWhiteLabel(lic.whiteLabel || false);
+    setEditLicVideoConferencing((lic as any).enableVideoConferencing || false);
     setIsEditModalOpen(true);
   };
 
@@ -258,7 +263,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       status: statusUpdate,
       storageLimit: Number(editLicStorage),
       deviceLimit: Number(editLicDevice),
-      whiteLabel: editLicWhiteLabel
+      whiteLabel: editLicWhiteLabel,
+      enableVideoConferencing: editLicVideoConferencing
     });
 
     setIsEditModalOpen(false);
@@ -1091,17 +1097,32 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                 />
               </div>
 
-              <div className="flex items-center gap-2 py-1">
-                <input 
-                  type="checkbox" 
-                  id="newLicWhiteLabel"
-                  checked={newLicWhiteLabel}
-                  onChange={e => setNewLicWhiteLabel(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                />
-                <label htmlFor="newLicWhiteLabel" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                  Enable White Labeling (Custom Branding)
-                </label>
+              <div className="space-y-2 py-2 border-t border-gray-100">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="newLicVideoConferencing"
+                    checked={newLicVideoConferencing}
+                    onChange={e => setNewLicVideoConferencing(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                  />
+                  <label htmlFor="newLicVideoConferencing" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                    Enable Video Conferencing
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="newLicWhiteLabel"
+                    checked={newLicWhiteLabel}
+                    onChange={e => setNewLicWhiteLabel(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                  />
+                  <label htmlFor="newLicWhiteLabel" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                    Enable White Labeling (Custom Branding)
+                  </label>
+                </div>
               </div>
 
               <div className="pt-2 flex justify-end gap-2.5">
@@ -1248,17 +1269,32 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 py-1">
-                <input 
-                  type="checkbox" 
-                  id="editLicWhiteLabel"
-                  checked={editLicWhiteLabel}
-                  onChange={e => setEditLicWhiteLabel(e.target.checked)}
-                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
-                />
-                <label htmlFor="editLicWhiteLabel" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                  Enable White Labeling (Custom Branding)
-                </label>
+              <div className="space-y-2 py-2 border-t border-gray-100">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="editLicVideoConferencing"
+                    checked={editLicVideoConferencing}
+                    onChange={e => setEditLicVideoConferencing(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <label htmlFor="editLicVideoConferencing" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                    Enable Video Conferencing
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="editLicWhiteLabel"
+                    checked={editLicWhiteLabel}
+                    onChange={e => setEditLicWhiteLabel(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <label htmlFor="editLicWhiteLabel" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                    Enable White Labeling (Custom Branding)
+                  </label>
+                </div>
               </div>
 
               <div className="pt-2 flex justify-end gap-2.5">

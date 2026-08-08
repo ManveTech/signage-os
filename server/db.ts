@@ -639,6 +639,37 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update playlists collection schema:', playlistsErr.message);
     }
 
+    // Ensure licenses collection has enableVideoConferencing field
+    try {
+      console.log('Ensuring licenses collection schema is up to date...');
+      const licensesCollection = await pb.collections.getOne('licenses');
+      const licFields = licensesCollection.fields || [];
+      let licensesUpdated = false;
+
+      if (!licFields.some((f: any) => f.name === 'enableVideoConferencing')) {
+        licFields.push({
+          id: 'boolenablevideoconflic',
+          name: 'enableVideoConferencing',
+          type: 'bool',
+          required: false,
+          system: false,
+          help: 'Enable video conferencing for the user assigned to this license',
+          hidden: false,
+          presentable: false
+        });
+        licensesUpdated = true;
+        console.log('Programmatically added enableVideoConferencing field to licenses collection');
+      }
+
+      if (licensesUpdated) {
+        licensesCollection.fields = licFields;
+        await pb.collections.update('licenses', licensesCollection);
+        console.log('Successfully updated licenses collection schema');
+      }
+    } catch (licensesErr: any) {
+      console.warn('Failed to update licenses collection schema:', licensesErr.message);
+    }
+
     // Ensure screen_logs collection exists
     try {
       console.log('Ensuring screen_logs collection exists...');

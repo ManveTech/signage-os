@@ -22,6 +22,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import androidx.compose.runtime.collectAsState
+import com.example.call.CallState
 import com.example.ui.SignageViewModel
 import com.example.ui.components.*
 import com.example.ui.theme.MyApplicationTheme
@@ -29,6 +31,10 @@ import com.example.util.CrashReportingHandler
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+    private val requestCallPermissions = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* Denied permissions simply mean this side sends no local media — call still connects. */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler(CrashReportingHandler(applicationContext, defaultHandler))
@@ -43,7 +49,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = Color(0xFF1C1B1F)
                 ) {
-                    SignagePlayerApp()
+                    SignagePlayerApp(onRequestCallPermissions = { requestCallPermissions.launch(it) })
                 }
             }
         }
@@ -52,10 +58,20 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun SignagePlayerApp(
-    viewModel: SignageViewModel = viewModel()
+    viewModel: SignageViewModel = viewModel(),
+    onRequestCallPermissions: (Array<String>) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val callState by viewModel.videoCallManager.callState.collectAsState()
     val activity = LocalContext.current as? ComponentActivity
+
+    // Only ask for camera/mic once this screen is actually licensed for video
+    // conferencing — never prompts on ordinary signage-only screens.
+    LaunchedEffect(uiState.cameraMountEnabled) {
+        if (uiState.cameraMountEnabled) {
+            onRequestCallPermissions(arrayOf(android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO))
+        }
+    }
 
     val allAssetsDownloaded = remember(uiState.playlist) {
         uiState.playlist.all { asset ->
@@ -83,7 +99,13 @@ fun SignagePlayerApp(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (uiState.showSplash) {
+        if (callState !is CallState.Idle) {
+            // A licensed screen was called — swap fully into the meeting view.
+            // The signage state machine underneath keeps ticking untouched and
+            // resumes automatically the instant the call ends and callState
+            // returns to Idle.
+            VideoCallScreen(callManager = viewModel.videoCallManager)
+        } else if (uiState.showSplash) {
             AppSplashScreen(uiState = uiState)
         } else {
             when (uiState.status) {

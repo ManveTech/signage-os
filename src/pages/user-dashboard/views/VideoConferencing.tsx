@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Phone, PhoneOff, Users, Monitor, Plus, Trash2, Settings, Loader } from 'lucide-react';
+import { Phone, PhoneOff, Users, Monitor, Settings, Lock } from 'lucide-react';
 import { WebRTCHandler } from '../../../utils/webrtcHandler';
 import { useVideoConferencing } from '../../../hooks/useVideoConferencing';
 import { API_BASE } from '../../../config';
@@ -23,7 +23,7 @@ interface Conference {
   muteOnStart: boolean;
 }
 
-export default function VideoConferencing() {
+export default function VideoConferencing({ enabled, organizationId }: { enabled: boolean; organizationId: string }) {
   const { socket, initiateConference: emitInitiateConference, joinConference, onWebRTCSignal } = useVideoConferencing();
   const webrtcRef = useRef<WebRTCHandler | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -35,16 +35,14 @@ export default function VideoConferencing() {
   const [loading, setLoading] = useState(false);
   const [defaultVolume, setDefaultVolume] = useState(50);
   const [muteOnStart, setMuteOnStart] = useState(true);
-  const [organizationId, setOrganizationId] = useState<string>('');
   const [inCall, setInCall] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
-    const orgId = localStorage.getItem('signageos_org_id');
-    if (orgId) setOrganizationId(orgId);
+    if (!enabled) return;
     fetchScreens();
-    fetchActiveConferences();
-  }, []);
+    if (organizationId) fetchActiveConferences();
+  }, [enabled, organizationId]);
 
   const authHeaders = () => {
     const token = localStorage.getItem('signageos_token');
@@ -77,7 +75,7 @@ export default function VideoConferencing() {
 
   const startConference = async () => {
     if (!organizationId || !socket) {
-      alert('Organization ID or Socket not found');
+      alert('Your organization is not fully set up for calling yet. Contact your administrator.');
       return;
     }
 
@@ -89,16 +87,15 @@ export default function VideoConferencing() {
 
     setLoading(true);
     try {
-      const adminUserId = localStorage.getItem('signageos_user_id') || '';
+      const callerUserId = localStorage.getItem('signageos_user_id') || '';
 
-      // 1. Create conference on backend
       const response = await fetch(`${API_BASE}/video-conference/initiate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           mode: selectedMode,
           targetScreenIds: targetIds,
-          adminUserId,
+          adminUserId: callerUserId,
           organizationId,
           defaultVolume,
           muteOnStart
@@ -122,19 +119,17 @@ export default function VideoConferencing() {
       // before we start sending WebRTC offers.
       emitInitiateConference({
         conferenceId: conference.conferenceId,
-        adminUserId,
+        adminUserId: callerUserId,
         mode: selectedMode,
         targetScreenIds: targetIds,
         defaultVolume,
         muteOnStart
       } as any);
 
-      // 2. Initialize WebRTC handler
       if (!webrtcRef.current) {
         webrtcRef.current = new WebRTCHandler();
       }
 
-      // 3. Get local media stream (admin's camera) and attach to peer connection
       try {
         await webrtcRef.current.getLocalStream();
         if (localVideoRef.current && webrtcRef.current.getLocalStream()) {
@@ -165,7 +160,6 @@ export default function VideoConferencing() {
         }
       });
 
-      // Handle ICE candidates from admin side
       webrtcRef.current.onICECandidate((candidate: RTCIceCandidate | null) => {
         if (candidate) {
           targetIds.forEach(screenId => {
@@ -183,14 +177,12 @@ export default function VideoConferencing() {
         }
       });
 
-      // 5. Create offers and send to each display via Socket.io
       targetIds.forEach(async (screenId) => {
         try {
           setConnectionStatus(prev => ({ ...prev, [screenId]: 'initiating' }));
 
           const offer = await webrtcRef.current!.createOffer();
 
-          // Send offer through Socket.io to display
           socket.emit('webrtc:signal', {
             conferenceId: conference.conferenceId,
             toScreenId: screenId,
@@ -222,7 +214,6 @@ export default function VideoConferencing() {
       });
 
       if (response.ok) {
-        // Close WebRTC connection
         if (webrtcRef.current) {
           webrtcRef.current.close();
           webrtcRef.current = null;
@@ -231,7 +222,6 @@ export default function VideoConferencing() {
         setActiveConferences(activeConferences.filter(c => c.conferenceId !== conferenceId));
         setInCall(false);
         setConnectionStatus({});
-        alert('Conference ended');
       }
     } catch (error) {
       console.error('Error ending conference:', error);
@@ -253,6 +243,22 @@ export default function VideoConferencing() {
     }
   };
 
+  if (!enabled) {
+    return (
+      <div className="p-8">
+        <div className="max-w-lg mx-auto bg-white rounded-lg border border-gray-200 p-10 text-center space-y-3">
+          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto text-gray-400">
+            <Lock size={20} />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900">Video Conferencing Not Enabled</h1>
+          <p className="text-sm text-gray-500">
+            This feature isn't included in your current license. Contact your administrator to enable it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -260,7 +266,7 @@ export default function VideoConferencing() {
         <div className="lg:col-span-2 space-y-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Video Conferencing</h1>
-            <p className="text-gray-600">Manage live video calls with TVs and handle camera streams</p>
+            <p className="text-gray-600">Call your TVs directly and manage live camera streams</p>
           </div>
 
           {/* Mode Selection */}
@@ -418,7 +424,6 @@ export default function VideoConferencing() {
                     {conference.targetScreenIds.length} TV{conference.targetScreenIds.length !== 1 ? 's' : ''}
                   </div>
 
-                  {/* Per-screen connection status */}
                   {inCall && (
                     <div className="space-y-1">
                       {conference.targetScreenIds.map(screenId => (

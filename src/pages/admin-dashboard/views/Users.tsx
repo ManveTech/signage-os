@@ -61,10 +61,12 @@ export default function Users() {
 
   // Edit Modal states
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
+  const [editStep, setEditStep] = useState(1);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editOrg, setEditOrg] = useState('');
+  const [editSelectedLicenseId, setEditSelectedLicenseId] = useState('');
 
   const addToast = (message: string) => {
     const id = Date.now();
@@ -202,10 +204,35 @@ export default function Users() {
 
   const handleOpenEdit = (user: UserType) => {
     setEditingUser(user);
+    setEditStep(1);
     setEditName(user.name);
     setEditPhone(user.mobile);
     setEditAddress(user.address || '');
     setEditOrg(user.company);
+
+    // Find assigned license
+    const userLicense = licenses.find(l => l.assignedUserEmail === user.email);
+    setEditSelectedLicenseId(userLicense?.id || '');
+  };
+
+  const handleEditNextStep = () => {
+    if (editStep === 1) {
+      if (!editName.trim() || !editPhone.trim()) {
+        addToast("Please fill in Name and Phone number.");
+        return;
+      }
+      setEditStep(2);
+    } else if (editStep === 2) {
+      if (!editOrg.trim()) {
+        addToast("Please enter an Organization name.");
+        return;
+      }
+      setEditStep(3);
+    }
+  };
+
+  const handleEditPrevStep = () => {
+    setEditStep(p => Math.max(1, p - 1));
   };
 
   const handleSaveEdit = () => {
@@ -224,10 +251,35 @@ export default function Users() {
       company: editOrg
     } : u);
 
-    // Sync license assignment org name if client email matches
-    const associatedLic = licenses.find(l => l.assignedUserEmail === editingUser.email);
-    if (associatedLic) {
-      licensingStore.updateLicense(associatedLic.id, {
+    // Handle license reassignment if changed
+    const oldAssignedLic = licenses.find(l => l.assignedUserEmail === editingUser.email);
+    if (editSelectedLicenseId && editSelectedLicenseId !== oldAssignedLic?.id) {
+      // Unassign old license
+      if (oldAssignedLic) {
+        licensingStore.updateLicense(oldAssignedLic.id, {
+          assignedUserEmail: undefined,
+          assignedOrgName: undefined,
+          assignedOrgId: undefined
+        });
+      }
+      // Assign new license
+      licensingStore.updateLicense(editSelectedLicenseId, {
+        assignedUserEmail: editingUser.email,
+        assignedOrgName: editOrg,
+        assignedOrgId: ''
+      });
+      setLicenses(licensingStore.getLicenses());
+    } else if (!editSelectedLicenseId && oldAssignedLic) {
+      // Unassign if license was cleared
+      licensingStore.updateLicense(oldAssignedLic.id, {
+        assignedUserEmail: undefined,
+        assignedOrgName: undefined,
+        assignedOrgId: undefined
+      });
+      setLicenses(licensingStore.getLicenses());
+    } else if (oldAssignedLic) {
+      // Update org name in license if org changed
+      licensingStore.updateLicense(oldAssignedLic.id, {
         assignedOrgName: editOrg
       });
       setLicenses(licensingStore.getLicenses());
@@ -778,78 +830,196 @@ export default function Users() {
         </div>
       )}
 
-      {/* EDIT CLIENT DETAILS MODAL */}
+      {/* EDIT CLIENT DETAILS MODAL - 3 STEP FORM */}
       {editingUser && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-gray-100 overflow-hidden text-left">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]">
+
+            {/* Modal Header */}
             <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-gray-900">Edit Client Details</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Modify profile information for <strong>{editingUser.name}</strong></p>
               </div>
-              <button 
+              <button
                 onClick={() => setEditingUser(null)}
                 className="text-gray-400 hover:text-gray-650 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
-            
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client Full Name *</label>
-                <input 
-                  type="text" 
-                  value={editName} 
-                  onChange={e => setEditName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                />
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Phone Number *</label>
-                <input 
-                  type="text" 
-                  value={editPhone} 
-                  onChange={e => setEditPhone(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                />
+            {/* Stepper Wizard Progress */}
+            <div className="bg-gray-50 px-6 py-3 border-b border-gray-100 flex items-center justify-between text-xs font-semibold text-gray-500">
+              <div className="flex items-center gap-2">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${editStep >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>1</span>
+                <span className={editStep >= 1 ? 'text-blue-600' : ''}>Contact Info</span>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Organization / Company Name *</label>
-                <input 
-                  type="text" 
-                  value={editOrg} 
-                  onChange={e => setEditOrg(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                />
+              <div className="w-10 h-px bg-gray-200" />
+              <div className="flex items-center gap-2">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${editStep >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>2</span>
+                <span className={editStep >= 2 ? 'text-blue-600' : ''}>Org & License</span>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Address</label>
-                <textarea 
-                  rows={2}
-                  value={editAddress} 
-                  onChange={e => setEditAddress(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 resize-none font-semibold"
-                />
+              <div className="w-10 h-px bg-gray-200" />
+              <div className="flex items-center gap-2">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${editStep === 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>3</span>
+                <span className={editStep === 3 ? 'text-blue-600' : ''}>Features</span>
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-2.5">
-              <button 
-                onClick={() => setEditingUser(null)}
-                className="px-4 py-2.5 text-sm font-semibold text-gray-650 hover:bg-gray-150 rounded-lg transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleSaveEdit}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-              >
-                Save Changes
-              </button>
+            {/* Modal Content */}
+            <div className="p-6 flex-1 overflow-y-auto space-y-4">
+
+              {/* STEP 1: CONTACT INFO */}
+              {editStep === 1 && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client Full Name *</label>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address</label>
+                    <input
+                      type="email"
+                      value={editingUser.email}
+                      readOnly
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-100 font-mono font-semibold text-gray-500 cursor-not-allowed"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Email cannot be changed</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Phone Number *</label>
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={e => setEditPhone(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Address</label>
+                    <textarea
+                      rows={2}
+                      value={editAddress}
+                      onChange={e => setEditAddress(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 resize-none font-semibold"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: ORGANIZATION & LICENSE */}
+              {editStep === 2 && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Organization / Company Name *</label>
+                    <input
+                      type="text"
+                      value={editOrg}
+                      onChange={e => setEditOrg(e.target.value)}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assign Licensing Profile</label>
+                    <CustomSelect
+                      value={editSelectedLicenseId}
+                      onChange={val => setEditSelectedLicenseId(val)}
+                      placeholder="Select a license..."
+                      options={[
+                        { value: '', label: 'No License (Unassign)' },
+                        ...licenses.map(lic => ({
+                          value: lic.id,
+                          label: `${lic.id} - ${lic.name} (${lic.deviceLimit} Screens, ${lic.tenure})`
+                        }))
+                      ]}
+                      buttonClassName="px-3.5 py-2.5 text-sm min-h-[42px]"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">You can reassign or unassign the license for this client.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: SUMMARY */}
+              {editStep === 3 && (
+                <div className="space-y-4">
+                  {/* Summary card */}
+                  <div className="border border-gray-150 rounded-xl p-4 bg-slate-50/50 space-y-2 text-xs">
+                    <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-1.5 mb-2 uppercase text-[10px] tracking-wider">Update Summary</h3>
+                    <div className="grid grid-cols-3 gap-y-1.5 text-gray-600">
+                      <span className="font-medium text-gray-400">Name:</span>
+                      <span className="col-span-2 text-gray-900 font-semibold">{editName}</span>
+
+                      <span className="font-medium text-gray-400">Email:</span>
+                      <span className="col-span-2 text-gray-900 font-mono font-semibold text-[11px]">{editingUser.email}</span>
+
+                      <span className="font-medium text-gray-400">Phone:</span>
+                      <span className="col-span-2 text-gray-900 font-semibold">{editPhone}</span>
+
+                      <span className="font-medium text-gray-400">Organization:</span>
+                      <span className="col-span-2 text-gray-900 font-semibold">{editOrg}</span>
+
+                      <span className="font-medium text-gray-400">License:</span>
+                      <span className="col-span-2 text-blue-700 font-bold">
+                        {editSelectedLicenseId ? `${editSelectedLicenseId}` : 'Unassigned'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Info message */}
+                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-900">
+                    <strong>Features enabled by License Profile</strong>
+                    <p className="text-[11px] mt-1">Video Conferencing and other features are controlled at the License Profile level. Assign or update the license to enable features.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+              <div>
+                {editStep > 1 && (
+                  <button
+                    onClick={handleEditPrevStep}
+                    className="flex items-center gap-1 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft size={15} /> Back
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2.5 text-sm font-semibold text-gray-650 hover:bg-gray-150 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                {editStep < 3 ? (
+                  <button
+                    onClick={handleEditNextStep}
+                    className="flex items-center gap-1 px-4.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    Next <ArrowRight size={15} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    Save Changes
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

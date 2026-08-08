@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { BACKEND_URL } from '../config';
 
 interface ConferenceEventData {
   conferenceId: string;
@@ -19,7 +20,7 @@ export function useVideoConferencing() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const socket = io(undefined, {
+    const socket = io(BACKEND_URL, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,

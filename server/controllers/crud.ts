@@ -61,8 +61,15 @@ export function createCrudRouter(collectionName: string) {
           // Skip raw query parameter to enforce security
           return;
         } else if (SAFE_KEY.test(key)) {
-          filters.push(`${key} = {:${key}}`);
-          filterParams[key] = String(raw);
+          // Boolean fields must be compared against unquoted true/false literals in
+          // PocketBase filter syntax — the {:param} placeholder always quotes as a string,
+          // which never matches a bool column.
+          if (raw === 'true' || raw === 'false') {
+            filters.push(`${key} = ${raw}`);
+          } else {
+            filters.push(`${key} = {:${key}}`);
+            filterParams[key] = String(raw);
+          }
         }
       });
 
@@ -224,6 +231,10 @@ export function createCrudRouter(collectionName: string) {
         syncPlaylistBrandingFromUser(record).catch(err => {
           console.error('[CrudController] Error syncing playlist branding:', err.message);
         });
+      } else if (collectionName === 'licenses') {
+        syncVideoConferencingFromLicense(record).catch(err => {
+          console.error('[CrudController] Error syncing video conferencing:', err.message);
+        });
       }
 
       res.status(201).json(record);
@@ -264,6 +275,10 @@ export function createCrudRouter(collectionName: string) {
       } else if (collectionName === 'playlists') {
         syncPlaylistBrandingFromUser(record).catch(err => {
           console.error('[CrudController] Error syncing playlist branding:', err.message);
+        });
+      } else if (collectionName === 'licenses') {
+        syncVideoConferencingFromLicense(record).catch(err => {
+          console.error('[CrudController] Error syncing video conferencing:', err.message);
         });
       }
 
@@ -320,6 +335,28 @@ export function createCrudRouter(collectionName: string) {
   });
 
   return router;
+}
+
+// Propagate a license's enableVideoConferencing flag onto the user it is assigned to,
+// so toggling the flag on the license immediately controls that user's access.
+async function syncVideoConferencingFromLicense(licenseRecord: any) {
+  try {
+    const email = licenseRecord.assignedUserEmail;
+    if (!email) return;
+
+    const user = await pb.collection('users').getFirstListItem(
+      pb.filter('email = {:email}', { email: String(email).toLowerCase().trim() })
+    ).catch(() => null);
+    if (!user) return;
+
+    const shouldEnable = !!licenseRecord.enableVideoConferencing;
+    if (user.enableVideoConferencing !== shouldEnable) {
+      await pb.collection('users').update(user.id, { enableVideoConferencing: shouldEnable });
+      console.log(`Synced enableVideoConferencing=${shouldEnable} to user ${email} from license ${licenseRecord.id}`);
+    }
+  } catch (err: any) {
+    console.warn('[CrudController] Error syncing video conferencing from license:', err.message);
+  }
 }
 
 async function syncPlaylistBrandingFromUser(playlistRecord: any) {

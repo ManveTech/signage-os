@@ -49,7 +49,8 @@ data class PocketBaseScreenResponse(
     val restart_playlist: Boolean? = null,
     val whiteLabel: Boolean? = null,
     val websiteLogo: String? = null,
-    val websiteName: String? = null
+    val websiteName: String? = null,
+    val cameraMountEnabled: Boolean? = null
 )
 
 @JsonClass(generateAdapter = true)

@@ -26,5 +26,8 @@ data class ScreenConfig(
     val isWhiteLabel: Boolean = false,
     val whiteLabelLogoUrl: String? = null,
     val whiteLabelLogoPath: String? = null,
-    val whiteLabelName: String? = null
+    val whiteLabelName: String? = null,
+    // Only screens with a camera mounted (and thus licensed for video conferencing
+    // on the assigned user's plan) connect the realtime call signaling channel.
+    val cameraMountEnabled: Boolean = false
 )

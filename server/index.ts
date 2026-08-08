@@ -138,13 +138,32 @@ io.on('connection', (socket) => {
     console.log(`[Socket.io] Display ${displayId} registered (socket: ${socket.id})`);
   });
 
-  // Handle WebRTC signals between admin and displays
+  // The caller joins a per-conference room right after creating the conference,
+  // so displays have a place to send their answer/ICE candidates back to
+  // without needing to know the caller's socket id.
+  socket.on('video:join-conference', (data: any) => {
+    const conferenceId = typeof data === 'string' ? data : data?.conferenceId;
+    if (!conferenceId) return;
+    socket.join(`conference-${conferenceId}`);
+    console.log(`[Socket.io] Socket ${socket.id} joined conference-${conferenceId}`);
+  });
+
+  // Handle WebRTC signals between caller and displays.
+  // toScreenId set -> caller sending to a specific display (offer/ICE).
+  // toScreenId absent -> display sending back to the caller (answer/ICE),
+  // routed via the per-conference room the caller joined above.
   socket.on('webrtc:signal', (data: any) => {
     const { conferenceId, toScreenId, signal } = data;
-    console.log(`[Socket.io] WebRTC signal from admin for screen ${toScreenId}`);
 
     if (toScreenId) {
+      console.log(`[Socket.io] WebRTC signal from caller for screen ${toScreenId}`);
       io.to(`screen-${toScreenId}`).emit('webrtc:signal', {
+        conferenceId,
+        signal
+      });
+    } else if (conferenceId) {
+      console.log(`[Socket.io] WebRTC signal from display for conference ${conferenceId}`);
+      socket.to(`conference-${conferenceId}`).emit('webrtc:signal', {
         conferenceId,
         signal
       });

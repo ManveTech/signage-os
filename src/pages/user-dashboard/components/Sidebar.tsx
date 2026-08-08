@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Monitor, Film, List, BarChart2, Users, Key, Building2,
   Settings, HelpCircle, User, ChevronDown, ChevronRight, Search, LogOut,
   Tv, MonitorPlay, Layers, Tag, CalendarDays, FileBarChart, Shield,
-  MessageSquare, Plus
+  MessageSquare, Plus, Video
 } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
 
@@ -35,6 +35,7 @@ const navSections: NavSection[] = [
     ]
   },
   { id: 'license-billing', label: 'License & Billing', icon: <Key size={18} /> },
+  { id: 'video-conferencing', label: 'Video Conferencing', icon: <Video size={18} /> },
   {
     id: 'support', label: 'Support', icon: <MessageSquare size={18} />,
     children: [
@@ -60,11 +61,13 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
   // Branding states
   const [logo, setLogo] = useState('');
   const [name, setName] = useState('SignageOS');
+  const [videoConferencingEnabled, setVideoConferencingEnabled] = useState(false);
 
   const updateBranding = () => {
     const licenses = licensingStore.getLicenses();
     const lic = licenses.find(l => l.assignedUserEmail === userEmail);
     const isWhiteLabelEnabled = lic ? !!lic.whiteLabel : false;
+    setVideoConferencingEnabled(lic ? !!lic.enableVideoConferencing : false);
 
     if (isWhiteLabelEnabled) {
       setLogo(localStorage.getItem('signageos_client_logo') || '');
@@ -145,7 +148,9 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-        {navSections.map(section => (
+        {navSections
+          .filter(section => section.id !== 'video-conferencing' || videoConferencingEnabled)
+          .map(section => (
           <div key={section.id}>
             <button
               onClick={() => {

@@ -220,6 +220,7 @@ class SignageRepository(private val context: Context) {
                 whiteLabelLogoUrl = if (logoUrlNow.isNotEmpty()) logoUrlNow else currentConfig.whiteLabelLogoUrl,
                 whiteLabelName = if (nameNow.isNotEmpty()) nameNow else currentConfig.whiteLabelName,
                 whiteLabelLogoPath = if (isLogoChanged) null else currentConfig.whiteLabelLogoPath,
+                cameraMountEnabled = response.cameraMountEnabled ?: false,
                 lastSyncedAt = System.currentTimeMillis()
             )
             configDao.saveConfig(updatedConfig)

@@ -29,6 +29,7 @@ import Reports from './views/Reports';
 import Users from './views/Users';
 import Licenses from './views/Licenses';
 import Organizations from './views/Organizations';
+import VideoConferencing from './views/VideoConferencing';
 import Settings from './views/Settings';
 import Support from './views/Support';
 import Profile from './views/Profile';
@@ -37,7 +38,7 @@ import { syncCollection, pushToDatabase } from '../../lib/syncHelper';
 import { X, CheckCircle, Lock, Image } from 'lucide-react';
 
 
-function renderView(view: string, navigate: (v: string) => void, userEmail: string) {
+function renderView(view: string, navigate: (v: string) => void, userEmail: string, videoConferencingEnabled: boolean, organizationId: string) {
   switch (view) {
     case 'dashboard': return <Dashboard userEmail={userEmail} />;
     case 'my-screens-list': return <MyScreens onNavigate={navigate} userEmail={userEmail} />;
@@ -63,6 +64,7 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'licenses-assign': return <Licenses activeTab="Assign License" />;
     case 'licenses-history': return <Licenses activeTab="History" />;
     case 'organizations': return <Organizations />;
+    case 'video-conferencing': return <VideoConferencing enabled={videoConferencingEnabled} organizationId={organizationId} />;
     case 'settings-general': return <Settings activeTab="General" userEmail={userEmail} />;
     case 'settings-storage': return <Settings activeTab="Storage" userEmail={userEmail} />;
     case 'settings-player': return <Settings activeTab="Player Settings" userEmail={userEmail} />;
@@ -299,7 +301,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
         {/* Pull to Refresh wrapper for mobile */}
         <PullToRefresh onRefresh={handleRefresh} enabled={isMobile}>
           <main className="flex-1 overflow-y-auto pb-20 md:pb-4">
-            {renderView(activeView, handleNavigate, userEmail)}
+            {renderView(activeView, handleNavigate, userEmail, !!clientLicense?.enableVideoConferencing, clientLicense?.assignedOrgId || '')}
           </main>
         </PullToRefresh>
       </div>

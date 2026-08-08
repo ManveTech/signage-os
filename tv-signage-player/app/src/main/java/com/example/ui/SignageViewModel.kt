@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.call.VideoCallManager
 import com.example.data.database.PlaylistAsset
 import com.example.data.database.ScreenConfig
 import com.example.data.repository.SignageRepository
@@ -50,12 +51,15 @@ data class SignageUiState(
     val whiteLabelLogoUrl: String? = null,
     val whiteLabelLogoPath: String? = null,
     val whiteLabelName: String? = null,
-    val isConfigLoaded: Boolean = false
+    val isConfigLoaded: Boolean = false,
+    val cameraMountEnabled: Boolean = false
 )
 
 class SignageViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = SignageRepository(application)
+
+    val videoCallManager = VideoCallManager(application)
 
     private val _uiState = MutableStateFlow(SignageUiState())
     val uiState: StateFlow<SignageUiState> = _uiState.asStateFlow()
@@ -106,8 +110,17 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                             whiteLabelLogoUrl = config.whiteLabelLogoUrl,
                             whiteLabelLogoPath = config.whiteLabelLogoPath,
                             whiteLabelName = config.whiteLabelName,
-                            isConfigLoaded = true
+                            isConfigLoaded = true,
+                            cameraMountEnabled = config.cameraMountEnabled
                         )
+                    }
+                    // Only screens licensed for video conferencing (camera mount enabled)
+                    // connect the realtime call-signaling channel; everything else is
+                    // untouched normal signage playback.
+                    if (config.screenId.isNotEmpty() && config.cameraMountEnabled) {
+                        videoCallManager.start(config.serverUrl, config.screenId)
+                    } else {
+                        videoCallManager.stop()
                     }
                     // Start or update asset rotational loop based on playlist changes
                     if (statusChanged) {
@@ -471,6 +484,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         syncJob?.cancel()
         heartbeatJob?.cancel()
         assetRotationJob?.cancel()
+        videoCallManager.stop()
 
         kotlinx.coroutines.runBlocking {
             try {

@@ -14,6 +14,7 @@ export interface License {
   storageLimit: number; // in GB
   deviceLimit: number; // number of screens
   whiteLabel?: boolean;
+  enableVideoConferencing?: boolean;
 }
 
 export interface PaymentRecord {

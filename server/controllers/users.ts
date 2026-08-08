@@ -116,7 +116,7 @@ export async function createUser(req: any, res: any) {
       licenseCount: license ? 1 : 0,
       screensAssigned: license ? (license.deviceLimit || 0) : 0,
       status: body.status || 'active',
-      enableVideoConferencing: body.enableVideoConferencing ?? false,
+      enableVideoConferencing: license ? !!license.enableVideoConferencing : (body.enableVideoConferencing ?? false),
       enableBroadcasting: body.enableBroadcasting ?? true,
       enableLiveChat: body.enableLiveChat ?? true,
       enableCameraMonitoring: body.enableCameraMonitoring ?? false
