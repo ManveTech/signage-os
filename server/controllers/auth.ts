@@ -77,8 +77,6 @@ export async function forgotPassword(req: any, res: any) {
       console.log('User lookup in PocketBase failed or not found:', pbErr.message);
     }
 
-
-
     if (!user) {
       return res.status(404).json({ message: 'No user registered with this email address.' });
     }
@@ -91,20 +89,40 @@ export async function forgotPassword(req: any, res: any) {
       exp: Math.floor(Date.now() / 1000) + 15 * 60
     });
 
-    const resetLink = `http://localhost:3000/?token=${token}&userId=${user.id}`;
+    const origin = req.get('origin') || req.get('referer');
+    const protocol = req.protocol || 'http';
+    const host = req.get('host') || 'localhost:3000';
+    const baseUrl = origin ? origin.replace(/\/+$/, '') : `${protocol}://${host}`;
 
-    // Send the email
-    const emailSent = await sendPasswordResetEmail({
-      toEmail: user.email,
-      userName: user.name || 'SignageOS User',
-      resetLink
-    });
+    const resetLink = `${baseUrl}/?token=${token}&userId=${user.id}`;
 
-    if (emailSent) {
-      return res.status(200).json({ message: 'Password reset link sent to your email.' });
-    } else {
-      return res.status(500).json({ message: 'Failed to send password reset email.' });
+    // Try sending email safely
+    let emailSent = false;
+    try {
+      emailSent = await sendPasswordResetEmail({
+        toEmail: user.email,
+        userName: user.name || 'SignageOS User',
+        resetLink
+      });
+    } catch (emailErr: any) {
+      console.error('Password reset email dispatch error (logging link fallback):', emailErr.message);
+      console.log(`\n[PASSWORD RESET LINK] User: ${user.email} -> ${resetLink}\n`);
     }
+
+    if (!emailSent) {
+      console.warn(`Password reset email could not be delivered to ${user.email} via SMTP. Providing reset link fallback.`);
+      return res.status(200).json({
+        message: 'Mail server could not deliver the email. Use the reset link below to configure your new password:',
+        resetLink,
+        emailSent: false
+      });
+    }
+
+    return res.status(200).json({
+      message: 'Password reset link sent to your email inbox.',
+      resetLink,
+      emailSent: true
+    });
 
   } catch (error: any) {
     console.error('Forgot password error:', error);

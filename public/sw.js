@@ -8,12 +8,19 @@ const urlsToCache = [
   '/manifest.json',
 ];
 
-// Install event - cache core assets
+// Install event - cache core assets safely
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
+    caches.open(CACHE_NAME).then(async (cache) => {
       console.log('Opened cache');
-      return cache.addAll(urlsToCache);
+      for (const url of urlsToCache) {
+        try {
+          await cache.add(url);
+        } catch (err) {
+          console.warn('Service worker failed to cache URL:', url, err);
+        }
+      }
     })
   );
 });

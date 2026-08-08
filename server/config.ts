@@ -42,8 +42,7 @@ export const S3_ACCESS_KEY = (process.env.S3_ACCESS_KEY || '').trim();
 export const S3_SECRET = (process.env.S3_SECRET || '').trim();
 
 // CORS Configuration
-// In development, allow all origins. In production, use a whitelist.
 export const CORS_ALLOWED_ORIGINS = process.env.CORS_ALLOWED_ORIGINS
   ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : (isDev ? ['*'] : []);
+  : ['*'];
 

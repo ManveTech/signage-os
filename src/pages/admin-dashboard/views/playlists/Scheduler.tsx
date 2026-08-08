@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Calendar, Clock, AlertTriangle, Monitor, Play, Trash, Check, X, CheckCircle } from 'lucide-react';
 import { mediaStore, Playlist, Screen } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
+import CustomSelect from '../../../../components/CustomSelect';
 
 type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' };
 
@@ -169,29 +170,29 @@ export default function Scheduler({ userEmail = 'admin@demo.com' }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-semibold">
             <div>
               <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Target TV Screen</label>
-              <select 
+              <CustomSelect 
                 value={selectedScreenId} 
-                onChange={e => setSelectedScreenId(e.target.value)} 
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white cursor-pointer text-slate-750"
-              >
-                <option value="">-- Choose Screen --</option>
-                {screens.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.location})</option>
-                ))}
-              </select>
+                onChange={val => setSelectedScreenId(val)} 
+                placeholder="-- Choose Screen --"
+                options={[
+                  { value: '', label: '-- Choose Screen --' },
+                  ...screens.map(s => ({ value: s.id, label: `${s.name} (${s.location})` }))
+                ]}
+                buttonClassName="px-3 py-2.5 text-xs min-h-[40px]"
+              />
             </div>
             <div>
               <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Playlist to Run</label>
-              <select 
+              <CustomSelect 
                 value={selectedPlaylistName} 
-                onChange={e => setSelectedPlaylistName(e.target.value)} 
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white cursor-pointer text-slate-750"
-              >
-                <option value="">-- Choose Playlist --</option>
-                {playlists.map(p => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
-                ))}
-              </select>
+                onChange={val => setSelectedPlaylistName(val)} 
+                placeholder="-- Choose Playlist --"
+                options={[
+                  { value: '', label: '-- Choose Playlist --' },
+                  ...playlists.map(p => ({ value: p.name, label: p.name }))
+                ]}
+                buttonClassName="px-3 py-2.5 text-xs min-h-[40px]"
+              />
             </div>
             <div>
               <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Start Date</label>

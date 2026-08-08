@@ -22,8 +22,8 @@ function getTransporter() {
       user: SMTP_USERNAME,
       pass: SMTP_PASSWORD
     },
-    lookup: (hostname: string, options: any, callback: any) => {
-      dns.lookup(hostname, { family: 4 }, callback);
+    tls: {
+      rejectUnauthorized: false
     }
   } as any);
 }

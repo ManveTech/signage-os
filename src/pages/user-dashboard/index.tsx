@@ -45,8 +45,8 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'screens-add': return <AddScreen userEmail={userEmail} onNavigate={navigate} />;
     case 'screens-assign': return <AssignScreens />;
     case 'screens-manage': return <ManageScreens userEmail={userEmail} />;
-    case 'screens-groups': return <ScreenGroups userEmail={userEmail} />;
-    case 'screens-logs': return <Logs userEmail={userEmail} mode="my" />;
+    case 'screens-groups': return <ScreenGroups userEmail={userEmail} onNavigate={navigate} />;
+    case 'screens-logs': return <Logs userEmail={userEmail} mode="my" onNavigate={navigate} />;
     case 'media-library': return <MediaLibrary onNavigate={navigate} userEmail={userEmail} />;
     case 'media-upload': return <UploadMedia />;
     case 'media-layout': return <LayoutStudio />;

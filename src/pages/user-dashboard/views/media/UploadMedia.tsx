@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, QrCode, Sun, Eye, Image as ImageIcon, Sparkles, CloudRain, CloudSnow, CloudSun, Wind } from 'lucide-react';
+import { Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, QrCode, Sun, Eye, Image as ImageIcon, Sparkles, CloudRain, CloudSnow, CloudSun, Wind, Trash2 } from 'lucide-react';
 import { mockMedia } from '../../data/mockData';
+import CustomSelect from '../../../../components/CustomSelect';
 
 type PlaylistItem = {
   id: string;
@@ -289,6 +290,18 @@ export default function UploadMedia() {
                 onDragStart={(e) => handleAssetDragStart(e, asset.id)}
                 className="bg-gray-50 border border-slate-200 rounded-lg p-2 flex flex-col gap-1.5 cursor-grab active:cursor-grabbing hover:border-blue-300 hover:bg-blue-50/20 transition-all select-none group relative"
               >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMediaPool(prev => prev.filter(m => m.id !== asset.id));
+                  }}
+                  style={{ width: '20px', height: '20px', minWidth: '20px', minHeight: '20px', padding: 0 }}
+                  className="absolute top-1.5 right-1.5 bg-rose-500/90 hover:bg-rose-600 text-white rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer shadow-xs border border-white/60 z-20 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                  title="Delete asset"
+                >
+                  <Trash2 style={{ width: '12px', height: '12px' }} className="stroke-[2]" />
+                </button>
                 <div className="w-full aspect-video rounded overflow-hidden bg-gray-200 border border-slate-100 relative">
                   <img src={asset.thumbnail} alt={asset.title} className="w-full h-full object-cover" />
                   <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[7.5px] px-1 rounded font-bold uppercase">{asset.type}</span>
@@ -395,16 +408,17 @@ export default function UploadMedia() {
                       <div className="flex-1 min-w-[120px] space-y-2">
                         <div>
                           <label className="block text-[10px] font-semibold text-gray-500 uppercase mb-1">Layout Configuration</label>
-                          <select 
+                          <CustomSelect 
                             value={item.layoutType}
-                            onChange={e => updateItem(item.id, { layoutType: e.target.value as any })}
-                            className="w-full text-xs border border-slate-200 bg-white rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-400 cursor-pointer font-semibold shadow-sm"
-                          >
-                            <option value="single">Single Fullscreen</option>
-                            <option value="50-50">50/50 Split Screen</option>
-                            <option value="70-30">70/30 Split Screen</option>
-                            <option value="30-70">30/70 Split Screen</option>
-                          </select>
+                            onChange={val => updateItem(item.id, { layoutType: val as any })}
+                            options={[
+                              { value: 'single', label: 'Single Fullscreen' },
+                              { value: '50-50', label: '50/50 Split Screen' },
+                              { value: '70-30', label: '70/30 Split Screen' },
+                              { value: '30-70', label: '30/70 Split Screen' },
+                            ]}
+                            buttonClassName="text-xs py-1.5 px-2.5 min-h-[34px]"
+                          />
                         </div>
 
                         {item.layoutType !== 'single' && (
@@ -517,14 +531,16 @@ export default function UploadMedia() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-755 mb-1.5">Content Category</label>
-                <select 
+                <CustomSelect 
                   value={category} 
-                  onChange={e => setCategory(e.target.value)} 
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white font-normal"
-                >
-                  <option value="">Select category</option>
-                  {['Advertising', 'Information', 'Entertainment', 'Brand', 'Menu', 'Emergency'].map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                  onChange={val => setCategory(val)} 
+                  placeholder="Select category"
+                  options={[
+                    { value: '', label: 'Select category' },
+                    ...['Advertising', 'Information', 'Entertainment', 'Brand', 'Menu', 'Emergency'].map(c => ({ value: c, label: c }))
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-750 mb-1.5">Description</label>
@@ -561,33 +577,35 @@ export default function UploadMedia() {
               {/* Global Widget Overlay type selection */}
               <div>
                 <label className="block text-xs font-medium text-gray-750 mb-1.5 font-semibold">Global Widget Overlay</label>
-                <select
+                <CustomSelect
                   value={playlistWidgetType ?? ''}
-                  onChange={e => setPlaylistWidgetType((e.target.value || undefined) as any)}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white font-medium shadow-sm h-[42px]"
-                >
-                  <option value="">No Widget Overlay</option>
-                  <option value="weather">Weather Forecast</option>
-                  <option value="clock">Live Digital Clock</option>
-                  <option value="rss">News RSS Ticker</option>
-                  <option value="qrcode">Scan QR Code</option>
-                </select>
+                  onChange={val => setPlaylistWidgetType((val || undefined) as any)}
+                  options={[
+                    { value: '', label: 'No Widget Overlay' },
+                    { value: 'weather', label: 'Weather Forecast' },
+                    { value: 'clock', label: 'Live Digital Clock' },
+                    { value: 'rss', label: 'News RSS Ticker' },
+                    { value: 'qrcode', label: 'Scan QR Code' },
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
 
               {/* Global Widget Placement (visible if widget overlay is active) */}
               {playlistWidgetType && (
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-gray-750 mb-1.5 font-semibold">Widget Placement</label>
-                  <select
+                  <CustomSelect
                     value={playlistWidgetPlacement}
-                    onChange={e => setPlaylistWidgetPlacement(e.target.value as any)}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white font-medium shadow-sm h-[42px] mb-3"
-                  >
-                    <option value="top-left">Top Left Corner</option>
-                    <option value="top-right">Top Right Corner</option>
-                    <option value="bottom-left">Bottom Left Corner</option>
-                    <option value="bottom-right">Bottom Right Corner</option>
-                  </select>
+                    onChange={val => setPlaylistWidgetPlacement(val as any)}
+                    options={[
+                      { value: 'top-left', label: 'Top Left Corner' },
+                      { value: 'top-right', label: 'Top Right Corner' },
+                      { value: 'bottom-left', label: 'Bottom Left Corner' },
+                      { value: 'bottom-right', label: 'Bottom Right Corner' },
+                    ]}
+                    buttonClassName="px-3 py-2.5 text-sm min-h-[42px] mb-3"
+                  />
                 </div>
               )}
 

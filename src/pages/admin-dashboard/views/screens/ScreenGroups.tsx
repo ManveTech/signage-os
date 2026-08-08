@@ -3,6 +3,8 @@ import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check
 import { mediaStore } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
+import CustomSelect from '../../../../components/CustomSelect';
+import ScreenSubNav from '../../../../components/ScreenSubNav';
 import type { Screen, ScreenGroup } from '../../types';
 
 const COLOR_OPTIONS = [
@@ -29,7 +31,7 @@ type Toast = { id: number; message: string };
 
 const emptyGroup = (): Omit<ScreenGroup, 'id'> => ({ name: '', desc: '', color: 'blue', playlist: '', library: '', orgId: '', schedulePlaylist: '', scheduleDate: '', scheduleTime: '', volume: 80, clear_cache: false, force_sync: false });
 
-export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) {
+export default function ScreenGroups({ mode = 'all', onNavigate }: { mode?: 'my' | 'all'; onNavigate?: (v: string) => void }) {
   const [groups, setGroups] = useState<ScreenGroup[]>(() => {
     const data = localStorage.getItem('signageos_groups');
     return data ? JSON.parse(data) : [];
@@ -395,6 +397,7 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+      <ScreenSubNav activeTab="groups" onNavigate={onNavigate} role="admin" />
       {/* Toasts */}
       <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
         {toasts.map(t => (
@@ -415,16 +418,16 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           {mode !== 'my' && (
-            <select
+            <CustomSelect
               value={selectedOrgFilter}
-              onChange={(e) => setSelectedOrgFilter(e.target.value)}
-              className="flex-1 sm:flex-none text-sm border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer min-w-[180px]"
-            >
-              <option value="">All Organizations</option>
-              {organizations.map(org => (
-                <option key={org.id} value={org.id}>{org.name}</option>
-              ))}
-            </select>
+              onChange={val => setSelectedOrgFilter(val)}
+              placeholder="All Organizations"
+              options={[
+                { value: '', label: 'All Organizations' },
+                ...organizations.map(org => ({ value: org.id, label: org.name }))
+              ]}
+              buttonClassName="text-sm py-2 px-3 min-w-[180px]"
+            />
           )}
           <button onClick={() => setShowNewGroup(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex-shrink-0">
             <Plus size={16} /> New Group
@@ -666,10 +669,16 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
               {mode !== 'my' && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Organization</label>
-                  <select value={editGroup.orgId ?? ''} onChange={e => setEditGroup(p => p && ({ ...p, orgId: e.target.value || undefined }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                    <option value="">None</option>
-                    {organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
-                  </select>
+                  <CustomSelect
+                    value={editGroup.orgId ?? ''}
+                    onChange={val => setEditGroup(p => p && ({ ...p, orgId: val || undefined }))}
+                    placeholder="None"
+                    options={[
+                      { value: '', label: 'None' },
+                      ...organizations.map(org => ({ value: org.id, label: org.name }))
+                    ]}
+                    buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                  />
                 </div>
               )}
               <div className="space-y-3">
@@ -699,19 +708,31 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
               {!isScheduledEdit ? (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
-                  <select value={editGroup.playlist} onChange={e => setEditGroup(p => p && ({ ...p, playlist: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                    <option value="">None</option>
-                    {filteredPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                  </select>
+                  <CustomSelect
+                    value={editGroup.playlist}
+                    onChange={val => setEditGroup(p => p && ({ ...p, playlist: val }))}
+                    placeholder="None"
+                    options={[
+                      { value: '', label: 'None' },
+                      ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                    ]}
+                    buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                  />
                 </div>
               ) : (
                 <div className="space-y-3 p-3 bg-gray-50 rounded-xl border border-gray-200/60">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">Scheduled Playlist</label>
-                    <select value={editGroup.schedulePlaylist || ''} onChange={e => setEditGroup(p => p && ({ ...p, schedulePlaylist: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                      <option value="">Select Playlist...</option>
-                      {filteredPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                    </select>
+                    <CustomSelect
+                      value={editGroup.schedulePlaylist || ''}
+                      onChange={val => setEditGroup(p => p && ({ ...p, schedulePlaylist: val }))}
+                      placeholder="Select Playlist..."
+                      options={[
+                        { value: '', label: 'Select Playlist...' },
+                        ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                      ]}
+                      buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -775,10 +796,16 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
               {mode !== 'my' && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Organization</label>
-                  <select value={newGroup.orgId ?? ''} onChange={e => setNewGroup(p => ({ ...p, orgId: e.target.value || undefined }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                    <option value="">None</option>
-                    {organizations.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
-                  </select>
+                  <CustomSelect
+                    value={newGroup.orgId ?? ''}
+                    onChange={val => setNewGroup(p => ({ ...p, orgId: val || undefined }))}
+                    placeholder="None"
+                    options={[
+                      { value: '', label: 'None' },
+                      ...organizations.map(org => ({ value: org.id, label: org.name }))
+                    ]}
+                    buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                  />
                 </div>
               )}
               <div className="space-y-3">
@@ -808,19 +835,31 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
               {!isScheduledNew ? (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Playlist</label>
-                  <select value={newGroup.playlist} onChange={e => setNewGroup(p => ({ ...p, playlist: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                    <option value="">None</option>
-                    {filteredPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                  </select>
+                  <CustomSelect
+                    value={newGroup.playlist}
+                    onChange={val => setNewGroup(p => ({ ...p, playlist: val }))}
+                    placeholder="None"
+                    options={[
+                      { value: '', label: 'None' },
+                      ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                    ]}
+                    buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                  />
                 </div>
               ) : (
                 <div className="space-y-3 p-3 bg-gray-50 rounded-xl border border-gray-200/60">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">Scheduled Playlist</label>
-                    <select value={newGroup.schedulePlaylist || ''} onChange={e => setNewGroup(p => ({ ...p, schedulePlaylist: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                      <option value="">Select Playlist...</option>
-                      {filteredPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                    </select>
+                    <CustomSelect
+                      value={newGroup.schedulePlaylist || ''}
+                      onChange={val => setNewGroup(p => ({ ...p, schedulePlaylist: val }))}
+                      placeholder="Select Playlist..."
+                      options={[
+                        { value: '', label: 'Select Playlist...' },
+                        ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                      ]}
+                      buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -885,22 +924,22 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
                   </div>
                 </div>
                 
-                <select 
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      handleAddScreen(screen.id, e.target.value);
-                      const targetGroup = groups.find(g => g.id === e.target.value);
+                <CustomSelect 
+                  value=""
+                  onChange={val => {
+                    if (val) {
+                      handleAddScreen(screen.id, val);
+                      const targetGroup = groups.find(g => g.id === val);
                       addToast(`"${screen.name}" assigned to "${targetGroup?.name}"`);
                     }
                   }}
-                  value=""
-                  className="text-xs border border-gray-200 bg-white rounded px-2 py-1 outline-none text-gray-600 focus:border-blue-400 max-w-[120px] sm:max-w-none cursor-pointer"
-                >
-                  <option value="" disabled>Assign to group...</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
+                  placeholder="Assign to group..."
+                  options={[
+                    { value: '', label: 'Assign to group...' },
+                    ...groups.map(g => ({ value: g.id, label: g.name }))
+                  ]}
+                  buttonClassName="text-xs py-1 px-2 border-gray-200 min-h-[32px] max-w-[150px]"
+                />
               </div>
             ))}
           </div>
@@ -920,10 +959,16 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Select Playlist</label>
-                <select value={playlistToAssign} onChange={e => setPlaylistToAssign(e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                  <option value="">None</option>
-                  {filteredPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                </select>
+                <CustomSelect 
+                  value={playlistToAssign} 
+                  onChange={val => setPlaylistToAssign(val)} 
+                  placeholder="None"
+                  options={[
+                    { value: '', label: 'None' },
+                    ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
             </div>
             <div className="flex gap-3 px-5 pb-5">
@@ -948,10 +993,16 @@ export default function ScreenGroups({ mode = 'all' }: { mode?: 'my' | 'all' }) 
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Select Playlist</label>
-                <select value={playlistToAssign} onChange={e => setPlaylistToAssign(e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                  <option value="">None</option>
-                  {filteredPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                </select>
+                <CustomSelect 
+                  value={playlistToAssign} 
+                  onChange={val => setPlaylistToAssign(val)} 
+                  placeholder="None"
+                  options={[
+                    { value: '', label: 'None' },
+                    ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

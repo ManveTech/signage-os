@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { X, Send, CheckCircle2, ShieldCheck, Sparkles, Building2, User, Mail, Phone } from 'lucide-react';
+import CustomSelect from './CustomSelect';
 
 interface QuoteModalProps {
   isOpen: boolean;
@@ -149,24 +150,24 @@ export default function QuoteModal({ isOpen, onClose, initialService = '' }: Quo
                     <label htmlFor="modal-service" className="block text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">
                       Required Solution *
                     </label>
-                    <select
-                      id="modal-service"
-                      required
+                    <CustomSelect
                       value={service}
-                      onChange={(e) => setService(e.target.value)}
-                      className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-accent text-primary bg-slate-50 focus:bg-white transition-all appearance-none"
-                    >
-                      <option value="">Select a solution...</option>
-                      <option value="kiosk-info">Interactive Information Kiosks</option>
-                      <option value="kiosk-self">Self-Service Kiosks</option>
-                      <option value="digital-standee">Digital Standee Displays</option>
-                      <option value="multitouch-table">Multi-Touch Interactive Tables</option>
-                      <option value="led-walls">Active LED Video Walls</option>
-                      <option value="podiums">Digital Podiums</option>
-                      <option value="coffee-tables">Digital Coffee Tables</option>
-                      <option value="tablet-kiosks">Tablet & Tab Kiosks</option>
-                      <option value="metal-fab">Custom Metal Fabrication</option>
-                    </select>
+                      onChange={val => setService(val)}
+                      placeholder="Select a solution..."
+                      options={[
+                        { value: '', label: 'Select a solution...' },
+                        { value: 'kiosk-info', label: 'Interactive Information Kiosks' },
+                        { value: 'kiosk-self', label: 'Self-Service Kiosks' },
+                        { value: 'digital-standee', label: 'Digital Standee Displays' },
+                        { value: 'multitouch-table', label: 'Multi-Touch Interactive Tables' },
+                        { value: 'led-walls', label: 'Active LED Video Walls' },
+                        { value: 'podiums', label: 'Digital Podiums' },
+                        { value: 'coffee-tables', label: 'Digital Coffee Tables' },
+                        { value: 'tablet-kiosks', label: 'Tablet & Tab Kiosks' },
+                        { value: 'metal-fab', label: 'Custom Metal Fabrication' },
+                      ]}
+                      buttonClassName="px-3.5 py-2.5 text-sm bg-slate-50 border-slate-200 min-h-[42px]"
+                    />
                   </div>
 
                   <div>

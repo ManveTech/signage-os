@@ -98,6 +98,22 @@ export default function Header({ activeView, onNavigate, onLogout, userEmail = '
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchItem[]>([]);
 
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>('SignageOS');
+
+  const updateBranding = () => {
+    const customLogo = localStorage.getItem('signageos_client_logo') || localStorage.getItem('signageos_custom_logo');
+    const customCompany = localStorage.getItem('signageos_client_name') || localStorage.getItem('signageos_custom_company');
+    setLogoUrl(customLogo || null);
+    setCompanyName(customCompany || 'SignageOS');
+  };
+
+  useEffect(() => {
+    updateBranding();
+    window.addEventListener('signageos_branding_updated', updateBranding);
+    return () => window.removeEventListener('signageos_branding_updated', updateBranding);
+  }, []);
+
   const updateProfileDetails = () => {
     const stored = localStorage.getItem(`signageos_user_name_${userEmail}`);
     if (stored) {
@@ -152,12 +168,12 @@ export default function Header({ activeView, onNavigate, onLogout, userEmail = '
   };
 
   return (
-    <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0 z-40 relative">
+    <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 flex-shrink-0 z-40 relative">
       <div className="flex items-center gap-2 text-sm">
         <div className="flex items-center gap-2 md:hidden">
-          <img src={logoImg} className="w-7 h-7 object-contain shrink-0" alt="Logo" />
-          <span className="font-extrabold text-slate-900 text-sm truncate max-w-[150px]">
-            {crumbs[crumbs.length - 1]}
+          <img src={logoUrl || logoImg} className="w-7 h-7 object-contain shrink-0 rounded-md" alt={companyName} />
+          <span className="font-extrabold text-slate-900 text-sm truncate max-w-[160px]">
+            {companyName !== 'SignageOS' ? companyName : crumbs[crumbs.length - 1]}
           </span>
         </div>
         {/* Desktop Breadcrumbs */}

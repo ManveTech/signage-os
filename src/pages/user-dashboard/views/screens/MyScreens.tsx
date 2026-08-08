@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
+import CustomSelect from '../../../../components/CustomSelect';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import type { Screen } from '../../types';
 
@@ -82,11 +83,28 @@ const getStatusColors = (status: string) => {
 };
 
 export const getEffectiveStatus = (screen: any): string => {
+  if (!screen) return 'offline';
   const status = screen?.status || 'offline';
   if (status === 'online' || status === 'active') {
     const hb = screen?.lastHeartbeat || screen?.lastSeen;
     if (!hb) return 'offline';
-    const hbTime = new Date(hb).getTime();
+
+    let hbTime = NaN;
+    if (typeof hb === 'number') {
+      hbTime = hb;
+    } else if (typeof hb === 'string') {
+      const trimmed = hb.trim();
+      if (/^\d+$/.test(trimmed)) {
+        hbTime = parseInt(trimmed, 10);
+      } else if (/^just now$/i.test(trimmed) || /^recently$/i.test(trimmed) || /^online$/i.test(trimmed)) {
+        hbTime = Date.now();
+      } else if (/^never$/i.test(trimmed)) {
+        return 'offline';
+      } else {
+        hbTime = new Date(trimmed).getTime();
+      }
+    }
+
     if (isNaN(hbTime) || (Date.now() - hbTime > 90000)) {
       return 'offline';
     }
@@ -168,12 +186,26 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
   };
 
   useEffect(() => {
-    syncCollection('screens', 'signageos_screens').then(serverScreens => {
-      if (serverScreens.length > 0) {
-        setScreens(serverScreens.filter((s: Screen) => s.assignedToUserEmail === userEmail));
-        mediaStore.saveScreens(serverScreens);
-      }
-    });
+    const refreshData = () => {
+      syncCollection('screens', 'signageos_screens').then(serverScreens => {
+        if (serverScreens && serverScreens.length > 0) {
+          setScreens(serverScreens.filter((s: Screen) => s.assignedToUserEmail === userEmail));
+          mediaStore.saveScreens(serverScreens);
+        }
+      });
+    };
+
+    refreshData();
+    const interval = setInterval(refreshData, 5000);
+
+    const handleScreensUpdate = () => {
+      const local = mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail);
+      setScreens(local);
+    };
+
+    window.addEventListener('storage', handleScreensUpdate);
+    window.addEventListener('signageos_screens_updated', handleScreensUpdate);
+
     syncCollection('screen_groups', 'signageos_groups').then(serverGroups => {
       if (serverGroups.length > 0) {
         setGroups(serverGroups);
@@ -193,6 +225,12 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
     syncCollection('organizations', 'signageos_organizations').then(serverOrgs => {
       if (serverOrgs.length > 0) setOrganizations(serverOrgs);
     });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleScreensUpdate);
+      window.removeEventListener('signageos_screens_updated', handleScreensUpdate);
+    };
   }, [userEmail]);
 
   const getScreenOrgName = (screen: Screen) => {
@@ -530,22 +568,21 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <select
+          <CustomSelect
             value={groupFilter}
-            onChange={e => setGroupFilter(e.target.value)}
-            className="text-xs border border-gray-200 bg-white rounded-lg px-3 py-2 outline-none text-gray-700 focus:border-blue-400 cursor-pointer"
-          >
-            <option value="all">All Groups</option>
-            <option value="none">No Group</option>
-            {(() => {
-              const myLicense = licenses.find(l => l.assignedUserEmail === userEmail);
-              const myOrgId = myLicense?.assignedOrgId;
-              const filteredGroups = myOrgId ? groups.filter(g => g.orgId === myOrgId) : groups;
-              return filteredGroups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ));
-            })()}
-          </select>
+            onChange={val => setGroupFilter(val)}
+            options={[
+              { value: 'all', label: 'All Groups' },
+              { value: 'none', label: 'No Group' },
+              ...(() => {
+                const myLicense = licenses.find(l => l.assignedUserEmail === userEmail);
+                const myOrgId = myLicense?.assignedOrgId;
+                const filteredGroups = myOrgId ? groups.filter(g => g.orgId === myOrgId) : groups;
+                return filteredGroups.map(g => ({ value: g.id, label: g.name }));
+              })()
+            ]}
+            buttonClassName="text-xs py-2 px-3 min-w-[130px]"
+          />
           {(['all', 'online', 'offline', 'warning'] as const).map(f => (
             <button
               key={f}
@@ -1053,16 +1090,16 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Group</label>
-                <select
+                <CustomSelect
                   value={editScreen.groupId ?? ''}
-                  onChange={e => setEditScreen(p => p && ({ ...p, groupId: e.target.value || null }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400 bg-white"
-                >
-                  <option value="">None (Ungrouped)</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
+                  onChange={val => setEditScreen(p => p && ({ ...p, groupId: val || null }))}
+                  placeholder="None (Ungrouped)"
+                  options={[
+                    { value: '', label: 'None (Ungrouped)' },
+                    ...groups.map(g => ({ value: g.id, label: g.name }))
+                  ]}
+                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                />
               </div>
 
               {editScreen.groupId && (() => {
@@ -1119,13 +1156,12 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                       <div className="space-y-3 p-3 bg-gray-50 border border-gray-100 rounded-xl">
                         <div>
                           <label className="block text-[10px] font-medium text-gray-500 mb-1">Target Playlist</label>
-                          <select
-                            value={editScreen.schedulePlaylist}
-                            onChange={e => setEditScreen(p => p && ({ ...p, schedulePlaylist: e.target.value }))}
-                            className="w-full px-2.5 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:border-blue-400 bg-white"
-                          >
-                            {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                          </select>
+                          <CustomSelect
+                            value={editScreen.schedulePlaylist || ''}
+                            onChange={val => setEditScreen(p => p && ({ ...p, schedulePlaylist: val }))}
+                            options={userPlaylists.map(pl => ({ value: pl.name, label: pl.name }))}
+                            buttonClassName="px-2.5 py-2 text-xs min-h-[36px]"
+                          />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
@@ -1234,14 +1270,13 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     <div className="space-y-3 p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-xl">
                       <div>
                         <label className="block text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1.5">Target Playlist</label>
-                        <select
+                        <CustomSelect
                           value={scheduleScreen.schedulePlaylist || ''}
-                          onChange={e => setScheduleScreen(p => p && ({ ...p, schedulePlaylist: e.target.value }))}
-                          className="w-full px-3 py-2 border border-indigo-200 rounded-xl text-sm outline-none focus:border-indigo-400 bg-white font-medium"
-                        >
-                          {userPlaylists.length === 0 && <option value="">No playlists available</option>}
-                          {userPlaylists.map(pl => <option key={pl.id} value={pl.name}>{pl.name}</option>)}
-                        </select>
+                          onChange={val => setScheduleScreen(p => p && ({ ...p, schedulePlaylist: val }))}
+                          placeholder={userPlaylists.length === 0 ? "No playlists available" : "Select Playlist"}
+                          options={userPlaylists.map(pl => ({ value: pl.name, label: pl.name }))}
+                          buttonClassName="px-3 py-2 text-sm min-h-[42px]"
+                        />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>

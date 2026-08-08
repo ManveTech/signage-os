@@ -6,6 +6,7 @@ import {
 import { mediaStore, Playlist, MediaItem, Screen } from '../../../lib/mediaStore';
 import { licensingStore, License } from '../../../lib/licensingStore';
 import { toast } from '../../../components/Toast';
+import CustomSelect from '../../../components/CustomSelect';
 
 const scheduleColors: Record<string, string> = {
   Running: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -379,35 +380,33 @@ export default function ClientPlaylists({ onNavigate }: Props) {
             {/* Org filter */}
             <div className="flex gap-2 items-center w-full md:w-auto shrink-0">
               <Building2 size={13} className="text-gray-400" />
-              <select 
+              <CustomSelect 
                 value={selectedOrgFilter} 
-                onChange={e => {
-                  setSelectedOrgFilter(e.target.value);
-                  setSelectedClientFilter('all'); // Reset client filter when org changes
+                onChange={val => {
+                  setSelectedOrgFilter(val);
+                  setSelectedClientFilter('all');
                 }}
-                className="px-3 py-2 text-xs border border-gray-200 rounded-xl outline-none bg-white font-bold text-slate-700 min-w-[200px]"
-              >
-                <option value="all">All Organizations</option>
-                {organizations.map(org => (
-                  <option key={org} value={org}>{org}</option>
-                ))}
-                <option value="none">Independent / No Org</option>
-              </select>
+                options={[
+                  { value: 'all', label: 'All Organizations' },
+                  ...organizations.map(org => ({ value: org, label: org })),
+                  { value: 'none', label: 'Independent / No Org' }
+                ]}
+                buttonClassName="py-2 px-3 text-xs font-bold text-slate-700 min-w-[200px]"
+              />
             </div>
 
             {/* Client filter */}
             <div className="flex gap-2 items-center w-full md:w-auto shrink-0">
               <Filter size={13} className="text-gray-400" />
-              <select 
+              <CustomSelect 
                 value={selectedClientFilter} 
-                onChange={e => setSelectedClientFilter(e.target.value)}
-                className="px-3 py-2 text-xs border border-gray-200 rounded-xl outline-none bg-white font-bold text-slate-700 min-w-[200px]"
-              >
-                <option value="all">All Clients</option>
-                {clientEmails.map(email => (
-                  <option key={email} value={email}>{getClientDisplayName(email)}</option>
-                ))}
-              </select>
+                onChange={val => setSelectedClientFilter(val)}
+                options={[
+                  { value: 'all', label: 'All Clients' },
+                  ...clientEmails.map(email => ({ value: email, label: getClientDisplayName(email) }))
+                ]}
+                buttonClassName="py-2 px-3 text-xs font-bold text-slate-700 min-w-[200px]"
+              />
             </div>
           </div>
 
@@ -595,19 +594,15 @@ export default function ClientPlaylists({ onNavigate }: Props) {
               <div>
                 <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Client Organization *</label>
                 {mode === 'create' ? (
-                  <select 
+                  <CustomSelect 
                     value={selectedClientEmail} 
-                    onChange={e => {
-                      setSelectedClientEmail(e.target.value);
-                      // Clear playlist items if switching client so they don't leak media assets
+                    onChange={val => {
+                      setSelectedClientEmail(val);
                       setPlaylistItems([]);
                     }}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-bold text-slate-700 text-xs"
-                  >
-                    {clientEmails.map(email => (
-                      <option key={email} value={email}>{getClientDisplayName(email)}</option>
-                    ))}
-                  </select>
+                    options={clientEmails.map(email => ({ value: email, label: getClientDisplayName(email) }))}
+                    buttonClassName="px-3.5 py-2.5 text-xs font-bold text-slate-700 min-h-[40px]"
+                  />
                 ) : (
                   <div className="px-3.5 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700">
                     {getClientDisplayName(selectedClientEmail)}
@@ -619,15 +614,15 @@ export default function ClientPlaylists({ onNavigate }: Props) {
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div>
                   <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Transition</label>
-                  <select 
+                  <CustomSelect 
                     value={transition} 
-                    onChange={e => setTransition(e.target.value)} 
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-semibold text-slate-800 text-xs"
-                  >
-                    {['fade', 'slide', 'zoom', 'none'].map(t => (
-                      <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-                    ))}
-                  </select>
+                    onChange={val => setTransition(val)} 
+                    options={['fade', 'slide', 'zoom', 'none'].map(t => ({
+                      value: t,
+                      label: t.charAt(0).toUpperCase() + t.slice(1)
+                    }))}
+                    buttonClassName="px-3.5 py-2 text-xs font-semibold text-slate-800 min-h-[36px]"
+                  />
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Audio Vol</label>
@@ -940,14 +935,15 @@ export default function ClientPlaylists({ onNavigate }: Props) {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">File Type</label>
-                    <select 
+                    <CustomSelect 
                       value={uploadType}
-                      onChange={e => setUploadType(e.target.value as any)}
-                      className="w-full px-3.5 py-2 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 bg-white"
-                    >
-                      <option value="image">Image</option>
-                      <option value="video">Video</option>
-                    </select>
+                      onChange={val => setUploadType(val as any)}
+                      options={[
+                        { value: 'image', label: 'Image' },
+                        { value: 'video', label: 'Video' }
+                      ]}
+                      buttonClassName="px-3.5 py-2 text-xs font-bold min-h-[36px]"
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Duration (Secs)</label>

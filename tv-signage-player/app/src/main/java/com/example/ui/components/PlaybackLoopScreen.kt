@@ -131,6 +131,7 @@ fun PlaybackLoopScreen(
             LocalVideoRenderer(
                 asset = activeAsset,
                 sharedExoPlayer = sharedExoPlayer,
+                currentIndex = currentIndex,
                 loopSingleVideo = playlist.size == 1 && playlistLoop
             )
         }
@@ -282,6 +283,7 @@ fun LocalImageRenderer(asset: PlaylistAsset) {
 fun LocalVideoRenderer(
     asset: PlaylistAsset,
     sharedExoPlayer: ExoPlayer,
+    currentIndex: Int = 0,
     loopSingleVideo: Boolean = false
 ) {
     val videoSource = if (!asset.localPath.isNullOrEmpty() && File(asset.localPath).exists()) {
@@ -290,7 +292,7 @@ fun LocalVideoRenderer(
         null
     }
 
-    LaunchedEffect(asset.id, videoSource) {
+    LaunchedEffect(currentIndex, asset.id, videoSource) {
         sharedExoPlayer.repeatMode = if (loopSingleVideo) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         val mediaItem = if (videoSource != null) {
             MediaItem.fromUri(Uri.fromFile(videoSource))

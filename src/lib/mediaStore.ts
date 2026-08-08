@@ -254,6 +254,9 @@ export const mediaStore = {
 
   saveScreens(screens: Screen[]) {
     localStorage.setItem('signageos_screens', JSON.stringify(screens));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('signageos_screens_updated'));
+    }
   },
 
   assignPlaylistToScreen(screenId: string, playlistId?: string) {

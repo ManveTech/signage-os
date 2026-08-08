@@ -326,7 +326,14 @@ fun ClockWidget(header: String) {
             fontSize = 8.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp,
-            modifier = Modifier.fillMaxWidth()
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            style = androidx.compose.ui.text.TextStyle(
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black,
+                    offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                    blurRadius = 4f
+                )
+            )
         )
         Text(
             text = timeText,
@@ -334,7 +341,15 @@ fun ClockWidget(header: String) {
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
-            modifier = Modifier.padding(vertical = 4.dp)
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(vertical = 4.dp),
+            style = androidx.compose.ui.text.TextStyle(
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black,
+                    offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                    blurRadius = 6f
+                )
+            )
         )
     }
 }

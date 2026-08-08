@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { supportStore, Ticket, FAQ, SupportDoc } from '../../../lib/supportStore';
 import { syncCollection } from '../../../lib/syncHelper';
+import CustomSelect from '../../../components/CustomSelect';
 
 type Tab = 'tickets' | 'help';
 
@@ -169,15 +170,16 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">Priority</label>
-                    <select 
+                    <CustomSelect 
                       value={ticketPriority}
-                      onChange={e => setTicketPriority(e.target.value as any)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white font-bold"
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                    </select>
+                      onChange={val => setTicketPriority(val as any)}
+                      options={[
+                        { value: 'low', label: 'Low' },
+                        { value: 'medium', label: 'Medium' },
+                        { value: 'high', label: 'High' }
+                      ]}
+                      buttonClassName="px-3.5 py-2.5 text-xs font-bold min-h-[42px]"
+                    />
                   </div>
                 </div>
 

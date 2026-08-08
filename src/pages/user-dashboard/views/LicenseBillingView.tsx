@@ -15,6 +15,8 @@ export default function LicenseBillingView({ userEmail }: Props) {
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [bizDetails, setBizDetails] = useState<BusinessDetails | null>(null);
+  const [screensCount, setScreensCount] = useState(0);
+  const [storageUsedBytes, setStorageUsedBytes] = useState(0);
 
   // Razorpay Checkout states
   const [isRzpOpen, setIsRzpOpen] = useState(false);
@@ -34,11 +36,38 @@ export default function LicenseBillingView({ userEmail }: Props) {
       syncCollection('licenses', 'signageos_licenses'),
       syncCollection('payments', 'signageos_payments'),
       syncCollection('invoices', 'signageos_invoices'),
+      syncCollection('screens', 'signageos_screens'),
+      syncCollection('media_items', 'signageos_media_items'),
     ]);
     setLicenses(licensingStore.getLicenses());
     setPayments(licensingStore.getPayments());
     setInvoices(licensingStore.getInvoices());
     setBizDetails(licensingStore.getBusinessDetails());
+
+    // Calculate user screen count
+    const storedScreens = localStorage.getItem('signageos_screens');
+    if (storedScreens) {
+      const screensList = JSON.parse(storedScreens);
+      const userEmailLower = userEmail.toLowerCase().trim();
+      const myScreens = screensList.filter((s: any) => 
+        (s.assignedToUserEmail && s.assignedToUserEmail.toLowerCase().trim() === userEmailLower) ||
+        (s.createdBy && s.createdBy.toLowerCase().trim() === userEmailLower)
+      );
+      setScreensCount(myScreens.length);
+    }
+
+    // Calculate user media storage
+    const storedMedia = localStorage.getItem('signageos_media_items');
+    if (storedMedia) {
+      const mediaList = JSON.parse(storedMedia);
+      const userEmailLower = userEmail.toLowerCase().trim();
+      const myMedia = mediaList.filter((m: any) => 
+        (m.userEmail && m.userEmail.toLowerCase().trim() === userEmailLower) ||
+        (m.createdBy && m.createdBy.toLowerCase().trim() === userEmailLower)
+      );
+      const totalBytes = myMedia.reduce((acc: number, item: any) => acc + (Number(item.size) || 0), 0);
+      setStorageUsedBytes(totalBytes);
+    }
   };
 
   // Lookup user name from synced users list (localStorage)
@@ -219,17 +248,17 @@ export default function LicenseBillingView({ userEmail }: Props) {
   };
 
   return (
-    <div className="p-6 space-y-6 text-left relative">
+    <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 text-left relative overflow-x-hidden w-full max-w-full">
       {/* Page Title */}
       <div>
         <h1 className="text-xl font-bold text-gray-900">License & Billing</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Manage your software plan, review invoices, and settle outstanding payments</p>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Manage your software plan, review invoices, and settle outstanding payments</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* LICENSE PROFILE CARD */}
-        <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
+        <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
             <span className="text-xs font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
               <Key size={14} className="text-blue-500" /> Plan Details
@@ -249,7 +278,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
             <div className="space-y-4">
               <div>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">License ID</p>
-                <p className="font-mono font-bold text-slate-900 text-sm mt-0.5">{clientLicense.id}</p>
+                <p className="font-mono font-bold text-slate-900 text-sm mt-0.5 break-all">{clientLicense.id}</p>
               </div>
 
               <div>
@@ -266,11 +295,58 @@ export default function LicenseBillingView({ userEmail }: Props) {
               </div>
 
               <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Renews / Expiry Date</p>
-                <p className="font-bold text-slate-700 mt-0.5 flex items-center gap-1.5">
+                <div className="flex justify-between items-center">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Renews / Expiry Date</p>
+                  {clientLicense.expiryDate && (
+                    <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                      {Math.max(0, Math.ceil((new Date(clientLicense.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} Days Left
+                    </span>
+                  )}
+                </div>
+                <p className="font-bold text-slate-700 mt-0.5 flex items-center gap-1.5 text-xs">
                   <Calendar size={13} className="text-slate-400" />
                   {clientLicense.expiryDate}
                 </p>
+              </div>
+
+              {/* Connected Displays Quota */}
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-150 space-y-1.5">
+                <div className="flex justify-between text-[11px] font-bold">
+                  <span className="text-slate-600">Screen Quota</span>
+                  <span className="text-slate-900">{screensCount} / {clientLicense.deviceLimit || 5} Connected</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-600 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, Math.round((screensCount / (clientLicense.deviceLimit || 5)) * 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Storage Quota */}
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-150 space-y-1.5">
+                <div className="flex justify-between text-[11px] font-bold">
+                  <span className="text-slate-600">Storage Usage</span>
+                  <span className="text-slate-900">
+                    {(storageUsedBytes / (1024 * 1024 * 1024)).toFixed(2)} GB / {clientLicense.storageLimit || 5} GB
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-indigo-600 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, Math.round(((storageUsedBytes / (1024 * 1024 * 1024)) / (clientLicense.storageLimit || 5)) * 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* White Label Branding Status */}
+              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-150 text-xs font-bold">
+                <span className="text-slate-600">White-Label Branding</span>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-extrabold ${
+                  clientLicense.whiteLabel ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {clientLicense.whiteLabel ? 'Included' : 'Not Included'}
+                </span>
               </div>
 
               {clientLicense.status !== 'active' ? (
@@ -301,10 +377,12 @@ export default function LicenseBillingView({ userEmail }: Props) {
         {/* INVOICE REGISTRY */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col justify-between">
           <div>
-            <div className="p-4 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
+            <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
               <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Your Invoice Logs</span>
             </div>
-            <div className="overflow-y-auto overflow-x-auto max-h-[300px]">
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-y-auto max-h-[300px]">
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -352,6 +430,40 @@ export default function LicenseBillingView({ userEmail }: Props) {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Card List (No Horizontal Scrollbar) */}
+            <div className="block md:hidden divide-y divide-gray-100 max-h-[350px] overflow-y-auto">
+              {clientInvoices.length > 0 ? (
+                clientInvoices.map(inv => (
+                  <div key={inv.id} className="p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-bold text-slate-800 text-xs">{inv.id}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                        inv.status === 'paid' 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                          : 'bg-rose-50 text-rose-700 border-rose-100'
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-500">{inv.issuedDate}</span>
+                      <span className="font-extrabold text-slate-900">₹{inv.amount.toLocaleString()}</span>
+                    </div>
+                    <div className="pt-1 flex justify-end">
+                      <button
+                        onClick={() => setSelectedInvoice(inv)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <FileText size={12} /> View/Print Receipt
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-slate-400 italic font-semibold text-xs">No invoices issued.</div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -359,10 +471,12 @@ export default function LicenseBillingView({ userEmail }: Props) {
 
       {/* RECENT TRANSACTION LOGS */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-100 bg-gray-50/60">
+        <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/60">
           <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Payment Transaction History</span>
         </div>
-        <div className="overflow-x-auto">
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -397,6 +511,32 @@ export default function LicenseBillingView({ userEmail }: Props) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card List (No Horizontal Scrollbar) */}
+        <div className="block md:hidden divide-y divide-gray-100">
+          {clientPayments.length > 0 ? (
+            clientPayments.map(p => (
+              <div key={p.id} className="p-3.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-slate-800">{p.id}</span>
+                  <span className="text-emerald-600 font-bold text-[10px] uppercase flex items-center gap-1 tracking-wider">
+                    <CheckCircle size={11} /> Success
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">{p.paymentDate}</span>
+                  <span className="font-extrabold text-slate-900">₹{p.amount.toLocaleString()}</span>
+                </div>
+                <div className="bg-slate-50 p-2 rounded-lg font-mono text-[10px] text-slate-600 space-y-0.5 break-all">
+                  <p><span className="text-slate-400">Pay ID:</span> {p.razorpayPaymentId}</p>
+                  <p><span className="text-slate-400">Order:</span> {p.razorpayOrderId}</p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="py-8 text-center text-slate-400 italic font-semibold text-xs">No transactions recorded.</div>
+          )}
         </div>
       </div>
 

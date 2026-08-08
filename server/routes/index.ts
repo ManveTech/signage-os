@@ -134,7 +134,6 @@ apiRouter.use('/organizations', createCrudRouter('organizations'));
 apiRouter.use('/tickets', createCrudRouter('tickets'));
 apiRouter.use('/faqs', createCrudRouter('faqs'));
 apiRouter.use('/support_docs', createCrudRouter('support_docs'));
-apiRouter.use('/payments', createCrudRouter('payments'));
 apiRouter.use('/invoices', createCrudRouter('invoices'));
 apiRouter.use('/leads', createCrudRouter('leads'));
 

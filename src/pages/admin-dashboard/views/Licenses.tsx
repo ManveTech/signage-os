@@ -4,9 +4,11 @@ import {
   XCircle, Receipt, FileText, Send, Building, ShieldCheck, Mail, MapPin, 
   Phone, Globe, Image as ImageIcon, CreditCard
 } from 'lucide-react';
+import { API_BASE } from '../../../config';
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import { toast } from '../../../components/Toast';
+import CustomSelect from '../../../components/CustomSelect';
 
 type Tab = 'management' | 'payments' | 'expirations' | 'invoices';
 
@@ -97,7 +99,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     // Fetch payments history directly from backend webhook payments API
     try {
       const token = localStorage.getItem('signageos_token');
-      const res = await fetch('/api/payments/history', {
+      const res = await fetch(`${API_BASE}/payments/history`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       if (res.ok) {
@@ -1016,43 +1018,44 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Billing Tenure</label>
-                  <select 
+                  <CustomSelect 
                     value={newLicTenure}
-                    onChange={e => setNewLicTenure(e.target.value as 'monthly' | 'yearly')}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="monthly">Monthly</option>
-                    <option value="yearly">Yearly</option>
-                  </select>
+                    onChange={val => setNewLicTenure(val as 'monthly' | 'yearly')}
+                    options={[
+                      { value: 'monthly', label: 'Monthly' },
+                      { value: 'yearly', label: 'Yearly' }
+                    ]}
+                    buttonClassName="px-3.5 py-2.5 text-xs font-bold min-h-[42px]"
+                  />
                 </div>
               </div>
 
               <div>
                 <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Assign to Organization (Optional)</label>
-                <select 
+                <CustomSelect 
                   value={newLicOrg}
-                  onChange={e => setNewLicOrg(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl outline-none focus:border-blue-500 bg-white"
-                >
-                  <option value="">Do not assign yet</option>
-                  {organizations.map(o => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
+                  onChange={val => setNewLicOrg(val)}
+                  placeholder="Do not assign yet"
+                  options={[
+                    { value: '', label: 'Do not assign yet' },
+                    ...organizations.map(o => ({ value: o.id, label: o.name }))
+                  ]}
+                  buttonClassName="px-3.5 py-2.5 text-xs min-h-[42px]"
+                />
               </div>
 
               <div>
                 <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Assign User / Billing Email</label>
-                <select
+                <CustomSelect
                   value={newLicUserEmail}
-                  onChange={e => setNewLicUserEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl outline-none focus:border-blue-500 bg-white font-mono"
-                >
-                  <option value="">No Email Assigned (Free to pool)</option>
-                  {users.map(u => (
-                    <option key={u.email} value={u.email}>{u.email} ({u.name})</option>
-                  ))}
-                </select>
+                  onChange={val => setNewLicUserEmail(val)}
+                  placeholder="No Email Assigned (Free to pool)"
+                  options={[
+                    { value: '', label: 'No Email Assigned (Free to pool)' },
+                    ...users.map(u => ({ value: u.email, label: `${u.email} (${u.name})` }))
+                  ]}
+                  buttonClassName="px-3.5 py-2.5 text-xs min-h-[42px]"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1171,29 +1174,30 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Billing Tenure</label>
-                  <select 
+                  <CustomSelect 
                     value={editLicTenure}
-                    onChange={e => setEditLicTenure(e.target.value as 'monthly' | 'yearly')}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:border-indigo-500 bg-white"
-                  >
-                    <option value="monthly">Monthly</option>
-                    <option value="yearly">Yearly</option>
-                  </select>
+                    onChange={val => setEditLicTenure(val as 'monthly' | 'yearly')}
+                    options={[
+                      { value: 'monthly', label: 'Monthly' },
+                      { value: 'yearly', label: 'Yearly' }
+                    ]}
+                    buttonClassName="px-3.5 py-2.5 text-xs font-bold min-h-[42px]"
+                  />
                 </div>
               </div>
 
               <div>
                 <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Assign User / Billing Email</label>
-                <select
+                <CustomSelect
                   value={editLicUserEmail}
-                  onChange={e => setEditLicUserEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl outline-none focus:border-indigo-500 bg-white font-mono"
-                >
-                  <option value="">No Email Assigned (Free to pool)</option>
-                  {users.map(u => (
-                    <option key={u.email} value={u.email}>{u.email} ({u.name})</option>
-                  ))}
-                </select>
+                  onChange={val => setEditLicUserEmail(val)}
+                  placeholder="No Email Assigned (Free to pool)"
+                  options={[
+                    { value: '', label: 'No Email Assigned (Free to pool)' },
+                    ...users.map(u => ({ value: u.email, label: `${u.email} (${u.name})` }))
+                  ]}
+                  buttonClassName="px-3.5 py-2.5 text-xs min-h-[42px]"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1231,15 +1235,16 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Status</label>
-                  <select 
+                  <CustomSelect 
                     value={editLicStatus}
-                    onChange={e => setEditLicStatus(e.target.value as License['status'])}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:border-indigo-500 bg-white"
-                  >
-                    <option value="active">Active</option>
-                    <option value="pending_payment">Pending Payment</option>
-                    <option value="expired">Expired</option>
-                  </select>
+                    onChange={val => setEditLicStatus(val as License['status'])}
+                    options={[
+                      { value: 'active', label: 'Active' },
+                      { value: 'pending_payment', label: 'Pending Payment' },
+                      { value: 'expired', label: 'Expired' }
+                    ]}
+                    buttonClassName="px-3.5 py-2.5 text-xs font-bold min-h-[42px]"
+                  />
                 </div>
               </div>
 
