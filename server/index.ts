@@ -2,6 +2,8 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import dns from 'dns';
 import { EventSource } from 'eventsource';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 
 // Polyfill EventSource for PocketBase SDK real-time SSE in Node.js
 (global as any).EventSource = EventSource;
@@ -18,6 +20,17 @@ import { ensureRedisRunning, isRedisReady, redis } from './redis';
 import { apiLimiter } from './middleware/rateLimiter';
 
 const app = express();
+const httpServer = createServer(app);
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: CORS_ALLOWED_ORIGINS.includes('*') ? '*' : CORS_ALLOWED_ORIGINS,
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
+
+// Make Socket.io instance globally available for video conferencing
+(global as any).io = io;
 
 // Cookie parser middleware - must be before routes that need req.cookies
 app.use(cookieParser());
@@ -121,6 +134,54 @@ app.get('*', (req: any, res: any, next: any) => {
   });
 });
 
+// Setup Socket.io event handlers for video conferencing
+io.on('connection', (socket) => {
+  console.log(`[Socket.io] Client connected: ${socket.id}`);
+
+  // Display joins a room by display ID
+  socket.on('register-display', (displayId: string) => {
+    socket.join(`screen-${displayId}`);
+    console.log(`[Socket.io] Display ${displayId} registered (socket: ${socket.id})`);
+  });
+
+  // Handle WebRTC signals between admin and displays
+  socket.on('webrtc:signal', (data: any) => {
+    const { conferenceId, toScreenId, signal } = data;
+    console.log(`[Socket.io] WebRTC signal from admin for screen ${toScreenId}`);
+
+    if (toScreenId) {
+      io.to(`screen-${toScreenId}`).emit('webrtc:signal', {
+        conferenceId,
+        signal
+      });
+    }
+  });
+
+  // Handle conference initiation
+  socket.on('video:initiate-conference', (data: any) => {
+    const { conferenceId, targetScreenIds } = data;
+    console.log(`[Socket.io] Conference ${conferenceId} initiated for screens:`, targetScreenIds);
+
+    targetScreenIds?.forEach((screenId: string) => {
+      io.to(`screen-${screenId}`).emit('conference:initiated', data);
+    });
+  });
+
+  // Handle conference end
+  socket.on('video:end-conference', (data: any) => {
+    const { conferenceId, targetScreenIds } = data;
+    console.log(`[Socket.io] Conference ${conferenceId} ended`);
+
+    targetScreenIds?.forEach((screenId: string) => {
+      io.to(`screen-${screenId}`).emit('conference:ended', { conferenceId });
+    });
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`[Socket.io] Client disconnected: ${socket.id}`);
+  });
+});
+
 // Start server only after PocketBase admin auth is ready
 async function startServer() {
   try {
@@ -129,9 +190,10 @@ async function startServer() {
     console.error('[Redis Boot] Failed to ensure Redis is running:', err.message);
   }
   await authenticatePBAdmin();
-  app.listen(PORT, () => {
+  httpServer.listen(PORT, () => {
     console.log(`[dotenv] injecting env variables`);
     console.log(`Express auth proxy server running on http://localhost:${PORT}`);
+    console.log(`Socket.io server initialized on http://localhost:${PORT}`);
     // Keep PocketBase admin token alive — refreshes every 10 minutes
     startAuthKeepAlive();
     // Start playlist scheduling cron

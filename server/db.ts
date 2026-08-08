@@ -55,6 +55,8 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
     console.log('Ensuring users collection schema is up to date...');
     const usersCollection = await pb.collections.getOne('users');
     const fields = usersCollection.fields || [];
+    let usersUpdated = false;
+
     const hasField = fields.some((f: any) => f.name === 'firstTimeLogin');
     if (!hasField) {
       fields.push({
@@ -67,11 +69,77 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         hidden: false,
         presentable: false
       });
-      usersCollection.fields = fields;
-      await pb.collections.update('users', usersCollection);
+      usersUpdated = true;
       console.log('Programmatically added firstTimeLogin field to users collection');
     } else {
       console.log('users collection schema already contains firstTimeLogin field');
+    }
+
+    // Add video conferencing feature flags
+    if (!fields.some((f: any) => f.name === 'enableVideoConferencing')) {
+      fields.push({
+        id: 'boolenablevideoconf',
+        name: 'enableVideoConferencing',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Enable video conferencing feature for this user',
+        hidden: false,
+        presentable: false
+      });
+      usersUpdated = true;
+      console.log('Programmatically added enableVideoConferencing field to users collection');
+    }
+
+    if (!fields.some((f: any) => f.name === 'enableBroadcasting')) {
+      fields.push({
+        id: 'boolenablebroadcasting',
+        name: 'enableBroadcasting',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Enable screen broadcasting feature',
+        hidden: false,
+        presentable: false
+      });
+      usersUpdated = true;
+      console.log('Programmatically added enableBroadcasting field to users collection');
+    }
+
+    if (!fields.some((f: any) => f.name === 'enableLiveChat')) {
+      fields.push({
+        id: 'boolenablelivechat',
+        name: 'enableLiveChat',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Enable live chat during conferences',
+        hidden: false,
+        presentable: false
+      });
+      usersUpdated = true;
+      console.log('Programmatically added enableLiveChat field to users collection');
+    }
+
+    if (!fields.some((f: any) => f.name === 'enableCameraMonitoring')) {
+      fields.push({
+        id: 'boolenablecameramonitoring',
+        name: 'enableCameraMonitoring',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Enable camera monitoring feature',
+        hidden: false,
+        presentable: false
+      });
+      usersUpdated = true;
+      console.log('Programmatically added enableCameraMonitoring field to users collection');
+    }
+
+    if (usersUpdated) {
+      usersCollection.fields = fields;
+      await pb.collections.update('users', usersCollection);
+      console.log('Successfully updated users collection schema');
     }
 
     // Ensure screens collection has pairing_code, pairing_code_expires, hardware_uuid, and has valid select values
@@ -306,6 +374,21 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       });
       screensUpdated = true;
       console.log('Programmatically added websiteName field to screens collection');
+    }
+
+    if (!sFields.some((f: any) => f.name === 'cameraMountEnabled')) {
+      sFields.push({
+        id: 'boolcameramountenabled',
+        name: 'cameraMountEnabled',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Is this display enabled for video conferencing with camera mount',
+        hidden: false,
+        presentable: false
+      });
+      screensUpdated = true;
+      console.log('Programmatically added cameraMountEnabled field to screens collection');
     }
 
     if (screensCollection.updateRule !== "" || screensCollection.viewRule !== "" || screensCollection.listRule !== "") {
@@ -748,6 +831,104 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       }
     } catch (logsErr: any) {
       console.warn('Failed to ensure screen_logs collection:', logsErr.message);
+    }
+
+    // Ensure video_conferences collection exists
+    try {
+      console.log('Ensuring video_conferences collection exists...');
+      let videoConfCollection;
+      try {
+        videoConfCollection = await pb.collections.getOne('video_conferences');
+        console.log('video_conferences collection already exists');
+      } catch (err) {
+        console.log('Creating video_conferences collection...');
+        videoConfCollection = await pb.collections.create({
+          id: 'collvideoconfid',
+          name: 'video_conferences',
+          type: 'base',
+          fields: [
+            {
+              id: 'confadminuserid',
+              name: 'adminUserId',
+              type: 'text',
+              required: true,
+              system: false
+            },
+            {
+              id: 'conforgid',
+              name: 'organizationId',
+              type: 'text',
+              required: true,
+              system: false
+            },
+            {
+              id: 'confmodeid',
+              name: 'mode',
+              type: 'select',
+              required: true,
+              system: false,
+              values: ['one-to-one', 'group', 'manual-select']
+            },
+            {
+              id: 'confstatusid',
+              name: 'status',
+              type: 'select',
+              required: true,
+              system: false,
+              values: ['pending', 'active', 'ended']
+            },
+            {
+              id: 'conftargetscreenid',
+              name: 'targetScreenIds',
+              type: 'text',
+              required: false,
+              system: false,
+              help: 'JSON array of screen IDs'
+            },
+            {
+              id: 'confdefaultvolumeid',
+              name: 'defaultVolume',
+              type: 'number',
+              required: false,
+              system: false,
+              onlyInt: true,
+              min: 0,
+              max: 100
+            },
+            {
+              id: 'confmuteonstartnid',
+              name: 'muteOnStart',
+              type: 'bool',
+              required: false,
+              system: false
+            },
+            {
+              id: 'confstarttimeid',
+              name: 'startTime',
+              type: 'autodate',
+              onCreate: true,
+              onUpdate: false,
+              system: false
+            },
+            {
+              id: 'confendtimeid',
+              name: 'endTime',
+              type: 'autodate',
+              onCreate: false,
+              onUpdate: true,
+              system: false
+            }
+          ],
+          listRule: '',
+          viewRule: '',
+          createRule: '',
+          updateRule: '',
+          deleteRule: ''
+        });
+        console.log('Successfully created video_conferences collection');
+      }
+    } catch (videoConfErr: any) {
+      console.warn('Failed to ensure video_conferences collection:', videoConfErr.message);
     }
 
     // Ensure support_docs collection schema has youtubeUrl field

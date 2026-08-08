@@ -6,6 +6,7 @@ import devicesRouter from './devices';
 import paymentsRouter from './payments';
 import mediaItemsRouter from './media_items';
 import organizationsRouter from './organizations';
+import videoConferenceRouter from './videoConference';
 import { createCrudRouter } from '../controllers/crud';
 import { authenticateToken, enforceLicense } from '../middleware/auth';
 import { clearAllScreenLogs } from '../controllers/screens';
@@ -119,6 +120,7 @@ apiRouter.use('/payments', paymentsRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/media_items', mediaItemsRouter);
 apiRouter.use('/organizations', organizationsRouter);
+apiRouter.use('/video-conference', videoConferenceRouter);
 
 // 6. Mount Generic PocketBase CRUD Collection Routers
 apiRouter.use('/screens', createCrudRouter('screens'));

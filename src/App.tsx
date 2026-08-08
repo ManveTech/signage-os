@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import AdminLogin from './components/AdminLogin';
+import DisplayClient from './pages/display/DisplayClient';
 import { ToastContainer } from './components/Toast';
 
 // Clear old localStorage demo data once on startup to avoid cached mock records
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/login" element={<AdminLogin initialView="login" />} />
         <Route path="/forgot-password" element={<AdminLogin initialView="forgot" />} />
         <Route path="/reset-password" element={<AdminLogin initialView="reset" />} />
+        <Route path="/display" element={<DisplayClient />} />
         <Route path="/admin/*" element={<AdminLogin initialView="dashboard" />} />
         <Route path="/*" element={<AdminLogin initialView="dashboard" />} />
       </Routes>

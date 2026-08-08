@@ -52,6 +52,12 @@ export default function Users() {
   const [generatedPassword, setGeneratedPassword] = useState('');
   const [sendEmail, setSendEmail] = useState(true);
 
+  // Feature toggle states
+  const [enableVideoConferencing, setEnableVideoConferencing] = useState(false);
+  const [enableBroadcasting, setEnableBroadcasting] = useState(true);
+  const [enableLiveChat, setEnableLiveChat] = useState(true);
+  const [enableCameraMonitoring, setEnableCameraMonitoring] = useState(false);
+
   // Edit Modal states
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [editName, setEditName] = useState('');
@@ -75,6 +81,10 @@ export default function Users() {
     setSelectedLicenseId('');
     setGeneratedPassword('');
     setSendEmail(true);
+    setEnableVideoConferencing(false);
+    setEnableBroadcasting(true);
+    setEnableLiveChat(true);
+    setEnableCameraMonitoring(false);
     setIsOnboarding(false);
   };
 
@@ -123,7 +133,11 @@ export default function Users() {
         licenseId: selectedLicenseId,
         password: generatedPassword,
         sendEmail: sendEmail,
-        role: 'org_admin'
+        role: 'org_admin',
+        enableVideoConferencing,
+        enableBroadcasting,
+        enableLiveChat,
+        enableCameraMonitoring
       };
 
       const userResult = await pushToDatabase('users', '', userPayload, 'POST');
@@ -644,10 +658,10 @@ export default function Users() {
 
                   {/* Mailing checkbox */}
                   <div className="flex items-start gap-2.5 p-1">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       id="sendEmailBox"
-                      checked={sendEmail} 
+                      checked={sendEmail}
                       onChange={e => setSendEmail(e.target.checked)}
                       className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
@@ -655,6 +669,65 @@ export default function Users() {
                       <strong>Email credentials to client automatically</strong>
                       <span className="block text-[10px] text-gray-400 mt-0.5 font-medium">Sends welcome instructions, login details, and assigned license parameters immediately.</span>
                     </label>
+                  </div>
+
+                  {/* Feature Toggles */}
+                  <div className="border border-gray-150 rounded-xl p-4 space-y-3 bg-blue-50">
+                    <h3 className="font-bold text-gray-900 text-xs uppercase tracking-wider text-blue-900">Feature Enablement</h3>
+
+                    <div className="space-y-2.5">
+                      <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableVideoConferencing}
+                          onChange={e => setEnableVideoConferencing(e.target.checked)}
+                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs text-gray-700">
+                          <strong>Video Conferencing</strong>
+                          <span className="block text-[10px] text-gray-500 mt-0.5">Enable 1-to-1, group, and manual TV calls with camera detection</span>
+                        </span>
+                      </label>
+
+                      <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableBroadcasting}
+                          onChange={e => setEnableBroadcasting(e.target.checked)}
+                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs text-gray-700">
+                          <strong>Live Broadcasting</strong>
+                          <span className="block text-[10px] text-gray-500 mt-0.5">Allow admin to broadcast video/screen to all TVs</span>
+                        </span>
+                      </label>
+
+                      <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableLiveChat}
+                          onChange={e => setEnableLiveChat(e.target.checked)}
+                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs text-gray-700">
+                          <strong>Live Chat Messaging</strong>
+                          <span className="block text-[10px] text-gray-500 mt-0.5">Send colored messages with auto-dismiss to TV displays</span>
+                        </span>
+                      </label>
+
+                      <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableCameraMonitoring}
+                          onChange={e => setEnableCameraMonitoring(e.target.checked)}
+                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-xs text-gray-700">
+                          <strong>Camera Monitoring</strong>
+                          <span className="block text-[10px] text-gray-500 mt-0.5">View all TV camera feeds and monitor screen activity</span>
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Monitor, Film, List, BarChart2, Users, Key, Building2,
   Settings, HelpCircle, User, ChevronDown, ChevronRight, Search, LogOut,
   Tv, MonitorPlay, Layers, Tag, CalendarDays, FileBarChart, Shield,
-  MessageSquare
+  MessageSquare, Video
 } from 'lucide-react';
 
 type NavSection = {
@@ -48,6 +48,7 @@ const navSections: NavSection[] = [
       { id: 'client-playlists', label: 'Client Playlists' },
     ]
   },
+  { id: 'video-conferencing', label: 'Video Conferencing', icon: <Video size={18} /> },
   { id: 'users', label: 'Users', icon: <Users size={18} /> },
   { id: 'organizations', label: 'Organizations', icon: <Building2 size={18} /> },
   {

@@ -112,10 +112,14 @@ export async function createUser(req: any, res: any) {
       password: userPassword,
       passwordConfirm: body.passwordConfirm || userPassword,
       emailVisibility: body.emailVisibility ?? true,
-      firstTimeLogin: true, // Mark as first time login
+      firstTimeLogin: true,
       licenseCount: license ? 1 : 0,
       screensAssigned: license ? (license.deviceLimit || 0) : 0,
-      status: body.status || 'active'
+      status: body.status || 'active',
+      enableVideoConferencing: body.enableVideoConferencing ?? false,
+      enableBroadcasting: body.enableBroadcasting ?? true,
+      enableLiveChat: body.enableLiveChat ?? true,
+      enableCameraMonitoring: body.enableCameraMonitoring ?? false
     };
 
     if (body.id && /^[a-z0-9]{15}$/.test(body.id)) {

@@ -28,6 +28,7 @@ import Support from './views/Support';
 import Profile from './views/Profile';
 import ClientMedia from './views/ClientMedia';
 import ClientPlaylists from './views/ClientPlaylists';
+import VideoConferencing from './views/VideoConferencing';
 import MobileDock from '../../components/MobileDock';
 import OfflineIndicator from '../../components/OfflineIndicator';
 import PullToRefresh from '../../components/PullToRefresh';
@@ -78,6 +79,7 @@ function renderView(view: string, navigate: (v: string) => void) {
     case 'licenses-invoices': return <Licenses activeTab="invoices" onNavigate={navigate} />;
     case 'licenses-code': return <LicenseDecoder />;
     case 'organizations': return <Organizations />;
+    case 'video-conferencing': return <VideoConferencing />;
     case 'settings-general': return <Settings activeTab="General" />;
     case 'settings-storage': return <Settings activeTab="Storage" />;
     case 'settings-player': return <Settings activeTab="Player Settings" />;
