@@ -18,6 +18,7 @@ import { startScheduler } from './scheduler';
 import { listenToCollectionChanges } from './cache_invalidator';
 import { ensureRedisRunning, isRedisReady, redis } from './redis';
 import { apiLimiter } from './middleware/rateLimiter';
+import { activeConferences, setActiveConference, clearActiveConferencesForConference } from './videoConferenceState';
 
 const app = express();
 const httpServer = createServer(app);
@@ -128,15 +129,17 @@ app.get('*', (req: any, res: any, next: any) => {
   });
 });
 
-// Tracks which conference is currently active for each screen, independent of
-// any single socket's lifecycle. A TV that gets killed and relaunched (or a
-// browser display that reloads) reconnects with a brand new socket — this map
-// is what lets us tell it "you're still in a call" instead of leaving it
-// stranded on signage until someone starts a fresh conference.
-const activeConferences = new Map<string, any>();
 // Reverse lookup so we know which screen a given socket represents when it
 // tells us (via video:leave-conference) that it's intentionally leaving.
 const socketScreenIds = new Map<string, string>();
+// Which caller socket(s) are currently "in" each conference (joined via
+// video:join-conference). If every caller socket for a conference disconnects
+// without ever calling video:end-conference — closed tab, browser crash, or
+// just the /end REST endpoint being hit without a matching socket emit — we
+// use this to detect the call is really over and clean up activeConferences
+// so a reconnecting display doesn't get stuck endlessly trying to rejoin a
+// call nobody is on the other end of anymore.
+const conferenceCallerSockets = new Map<string, Set<string>>();
 
 // Setup Socket.io event handlers for video conferencing
 io.on('connection', (socket) => {
@@ -172,6 +175,13 @@ io.on('connection', (socket) => {
     if (!conferenceId) return;
     socket.join(`conference-${conferenceId}`);
     console.log(`[Socket.io] Socket ${socket.id} joined conference-${conferenceId}`);
+
+    let callerSockets = conferenceCallerSockets.get(conferenceId);
+    if (!callerSockets) {
+      callerSockets = new Set();
+      conferenceCallerSockets.set(conferenceId, callerSockets);
+    }
+    callerSockets.add(socket.id);
   });
 
   // Handle WebRTC signals between caller and displays.
@@ -203,7 +213,7 @@ io.on('connection', (socket) => {
 
     targetScreenIds?.forEach((screenId: string) => {
       io.to(`screen-${screenId}`).emit('conference:initiated', data);
-      activeConferences.set(screenId, data);
+      setActiveConference(screenId, data);
     });
   });
 
@@ -216,6 +226,7 @@ io.on('connection', (socket) => {
       io.to(`screen-${screenId}`).emit('conference:ended', { conferenceId });
       activeConferences.delete(screenId);
     });
+    conferenceCallerSockets.delete(conferenceId);
   });
 
   // A display intentionally leaving (not a crash/kill) — stop tracking it as
@@ -244,10 +255,29 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`[Socket.io] Client disconnected: ${socket.id}`);
-    // Deliberately leave activeConferences untouched — a disconnect here is
-    // indistinguishable from an app crash/kill, and the whole point of this
-    // map is to let the screen rejoin its call when it reconnects.
+    // Deliberately leave activeConferences untouched here for the DISPLAY side
+    // — a disconnect is indistinguishable from an app crash/kill, and the
+    // whole point of this map is to let the screen rejoin its call when it
+    // reconnects.
     socketScreenIds.delete(socket.id);
+
+    // For the CALLER side, though, a vanished socket with no caller sockets
+    // left in the conference room means nobody is actually running the call
+    // anymore (closed tab, crash — including the case where /end was hit via
+    // REST without a matching video:end-conference emit). Without this, a
+    // screen would replay-rejoin a conference forever with no caller to
+    // answer it, and (now that the display's own end-call button is gone)
+    // no way to escape back to signage.
+    for (const [confId, callerSockets] of conferenceCallerSockets.entries()) {
+      if (callerSockets.delete(socket.id) && callerSockets.size === 0) {
+        conferenceCallerSockets.delete(confId);
+        const clearedScreenIds = clearActiveConferencesForConference(confId);
+        clearedScreenIds.forEach((screenId) => {
+          console.log(`[Socket.io] Caller for conference ${confId} is gone, notifying screen ${screenId}`);
+          io.to(`screen-${screenId}`).emit('conference:ended', { conferenceId: confId });
+        });
+      }
+    }
   });
 });
 

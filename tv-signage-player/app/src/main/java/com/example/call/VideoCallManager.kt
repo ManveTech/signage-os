@@ -44,6 +44,8 @@ sealed class CallState {
     data class Connected(val conferenceId: String) : CallState()
 }
 
+data class ChatMessage(val senderName: String, val text: String, val ts: Long)
+
 class VideoCallManager(private val context: Context) {
 
     companion object {
@@ -66,6 +68,11 @@ class VideoCallManager(private val context: Context) {
 
     private val _cameraEnabled = MutableStateFlow(true)
     val cameraEnabled: StateFlow<Boolean> = _cameraEnabled.asStateFlow()
+
+    // Receive-only chat — this is a TV, there's no keyboard to reply with.
+    // Keeps only the last 5 messages, mirroring the web display client.
+    private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
 
     val eglBase: EglBase = EglBase.create()
 
@@ -100,6 +107,7 @@ class VideoCallManager(private val context: Context) {
             newSocket.on("conference:initiated") { args -> onConferenceInitiated(args) }
             newSocket.on("conference:ended") { onConferenceEnded() }
             newSocket.on("webrtc:signal") { args -> onSignal(args) }
+            newSocket.on("chat:message") { args -> onChatMessage(args) }
             newSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 Log.w(TAG, "Socket connect error: ${args.firstOrNull()}")
             }
@@ -132,6 +140,15 @@ class VideoCallManager(private val context: Context) {
     private fun onConferenceEnded() {
         Log.d(TAG, "Conference ended by caller")
         endCall()
+    }
+
+    private fun onChatMessage(args: Array<Any>) {
+        val data = args.firstOrNull() as? JSONObject ?: return
+        val senderName = data.optString("senderName").ifEmpty { "Caller" }
+        val text = data.optString("text")
+        if (text.isEmpty()) return
+        val ts = data.optLong("ts", System.currentTimeMillis())
+        _chatMessages.value = (_chatMessages.value + ChatMessage(senderName, text, ts)).takeLast(5)
     }
 
     private fun onSignal(args: Array<Any>) {
@@ -335,6 +352,7 @@ class VideoCallManager(private val context: Context) {
         _localVideoTrackFlow.value = null
         _micEnabled.value = false
         _cameraEnabled.value = true
+        _chatMessages.value = emptyList()
         _callState.value = CallState.Idle
     }
 

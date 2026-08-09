@@ -40,6 +40,7 @@ fun VideoCallScreen(callManager: VideoCallManager) {
     val remoteTrack by callManager.remoteVideoTrack.collectAsState()
     val micEnabled by callManager.micEnabled.collectAsState()
     val cameraEnabled by callManager.cameraEnabled.collectAsState()
+    val chatMessages by callManager.chatMessages.collectAsState()
 
     Box(
         modifier = Modifier
@@ -108,6 +109,32 @@ fun VideoCallScreen(callManager: VideoCallManager) {
                 contentDescription = "Toggle camera",
                 onClick = { callManager.toggleCamera() }
             )
+        }
+
+        // Incoming chat messages (receive-only — no keyboard on a TV), sitting
+        // above the control bar so it doesn't overlap the buttons.
+        if (chatMessages.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 24.dp, bottom = 110.dp, end = 24.dp)
+                    .widthIn(max = 320.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                chatMessages.forEach { message ->
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xB3000000), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "${message.senderName}: ${message.text}",
+                            color = Color.White,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }

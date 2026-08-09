@@ -1,4 +1,5 @@
 import { pb, ensurePBAuth } from '../db';
+import { clearActiveConference } from '../videoConferenceState';
 
 // targetScreenIds is stored as a JSON-encoded string (PocketBase text field),
 // not a native array — every read/write must go through these helpers.
@@ -77,6 +78,18 @@ export async function endConference(req: any, res: any) {
 
     const updated = await pb.collection('video_conferences').update(conferenceId, {
       status: 'ended'
+    });
+
+    // The dashboard's "End Call" button only ever hits this REST endpoint —
+    // it never emits a socket event — so this is the only place that can
+    // tell the target screens the call is over. Without this, a screen keeps
+    // thinking the conference is still active and (via the reconnect-replay
+    // logic) gets pulled back into the call UI every time it reconnects,
+    // with no caller on the other end and no way to escape.
+    const targetScreenIds = parseTargetScreenIds(updated.targetScreenIds);
+    targetScreenIds.forEach((screenId: string) => {
+      clearActiveConference(screenId);
+      (global as any).io?.to(`screen-${screenId}`).emit('conference:ended', { conferenceId });
     });
 
     res.json(withParsedTargetScreenIds(updated));
