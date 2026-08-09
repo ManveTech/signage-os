@@ -61,7 +61,7 @@ class VideoCallManager(private val context: Context) {
     private val _localVideoTrackFlow = MutableStateFlow<VideoTrack?>(null)
     val localVideoTrackFlow: StateFlow<VideoTrack?> = _localVideoTrackFlow.asStateFlow()
 
-    private val _micEnabled = MutableStateFlow(true)
+    private val _micEnabled = MutableStateFlow(false)
     val micEnabled: StateFlow<Boolean> = _micEnabled.asStateFlow()
 
     private val _cameraEnabled = MutableStateFlow(true)
@@ -241,6 +241,9 @@ class VideoCallManager(private val context: Context) {
 
         val audioSource = factory.createAudioSource(MediaConstraints())
         localAudioTrack = factory.createAudioTrack("audio0", audioSource)
+        // TVs join meetings muted by default so a room full of screens doesn't
+        // open with every mic hot; the caller/screen can unmute explicitly.
+        localAudioTrack?.setEnabled(false)
         localAudioTrack?.let { pc.addTrack(it, listOf("stream0")) }
 
         val enumerator = Camera2Enumerator(context)
@@ -330,7 +333,7 @@ class VideoCallManager(private val context: Context) {
         peerConnection = null
         _remoteVideoTrack.value = null
         _localVideoTrackFlow.value = null
-        _micEnabled.value = true
+        _micEnabled.value = false
         _cameraEnabled.value = true
         _callState.value = CallState.Idle
     }

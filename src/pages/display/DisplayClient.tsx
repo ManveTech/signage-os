@@ -19,9 +19,15 @@ interface ConferenceState {
   muteOnStart: boolean;
 }
 
+interface DisplayChatMessage {
+  senderName: string;
+  text: string;
+  ts: number;
+}
+
 export default function DisplayClient() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const { socket, onConferenceInitiated, onWebRTCSignal, onConferenceEnded } = useVideoConferencing();
+  const { socket, onConferenceInitiated, onWebRTCSignal, onConferenceEnded, onChatMessage } = useVideoConferencing();
   const [searchParams] = useSearchParams();
   const screenId = searchParams.get('screenId') || '';
 
@@ -32,6 +38,7 @@ export default function DisplayClient() {
   const [volume, setVolume] = useState(50);
   const [connectionStatus, setConnectionStatus] = useState('waiting');
   const [error, setError] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<DisplayChatMessage[]>([]);
 
   const webrtcRef = useRef<WebRTCHandler | null>(null);
 
@@ -52,37 +59,42 @@ export default function DisplayClient() {
   useEffect(() => {
     if (!socket) return;
 
-    onConferenceInitiated((data: any) => {
+    const unsubscribe = onConferenceInitiated((data: any) => {
       console.log('[DisplayClient] Conference initiated:', data);
       setConferenceState(data);
       setError(null);
       acceptConference(data);
     });
 
-    return () => {
-      // Cleanup listeners
-    };
+    return unsubscribe;
   }, [socket, onConferenceInitiated]);
 
   // Listen for conference end
   useEffect(() => {
     if (!socket) return;
 
-    onConferenceEnded((data: any) => {
+    const unsubscribe = onConferenceEnded((data: any) => {
       console.log('[DisplayClient] Conference ended:', data);
       endCall();
     });
 
-    return () => {
-      // Cleanup listeners
-    };
+    return unsubscribe;
   }, [socket, onConferenceEnded]);
+
+  // Receive-only chat — this is a TV, there's no keyboard to reply with.
+  useEffect(() => {
+    if (!socket) return;
+    const unsubscribe = onChatMessage((data: any) => {
+      setChatMessages(prev => [...prev.slice(-4), { senderName: data.senderName || 'Caller', text: data.text, ts: data.ts }]);
+    });
+    return unsubscribe;
+  }, [socket, onChatMessage]);
 
   // Listen for WebRTC signals from admin
   useEffect(() => {
     if (!socket || !webrtcRef.current) return;
 
-    onWebRTCSignal(async (data: any) => {
+    const unsubscribe = onWebRTCSignal(async (data: any) => {
       console.log('[DisplayClient] WebRTC signal received:', data.signal.type);
 
       try {
@@ -107,6 +119,7 @@ export default function DisplayClient() {
         setError('Signal handling error');
       }
     });
+    return unsubscribe;
   }, [socket, onWebRTCSignal]);
 
   /**
@@ -155,11 +168,10 @@ export default function DisplayClient() {
         }
       });
 
-      // Apply conference settings
-      if (conference.muteOnStart) {
-        webrtcRef.current.setAudioEnabled(false);
-        setAudioEnabled(false);
-      }
+      // TVs always join meetings muted so a room full of screens doesn't
+      // open with every mic hot; the caller/screen can unmute explicitly.
+      webrtcRef.current.setAudioEnabled(false);
+      setAudioEnabled(false);
 
       if (conference.defaultVolume >= 0 && conference.defaultVolume <= 100) {
         setVolume(conference.defaultVolume);
@@ -203,6 +215,7 @@ export default function DisplayClient() {
     setConferenceState(null);
     setConnectionStatus('waiting');
     setError(null);
+    setChatMessages([]);
   };
 
   /**
@@ -266,6 +279,18 @@ export default function DisplayClient() {
             {error && (
               <div className="absolute top-4 right-4 bg-red-500/90 text-white px-4 py-2 rounded-lg text-sm">
                 {error}
+              </div>
+            )}
+
+            {/* Incoming chat messages (receive-only — no keyboard on a TV) */}
+            {chatMessages.length > 0 && (
+              <div className="absolute bottom-4 left-4 space-y-2 max-w-xs">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className="bg-black/70 text-white px-3 py-2 rounded-lg text-xs animate-fadeIn">
+                    <span className="font-semibold text-blue-300">{msg.senderName}: </span>
+                    {msg.text}
+                  </div>
+                ))}
               </div>
             )}
           </>

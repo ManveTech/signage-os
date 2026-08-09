@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Videocam
@@ -108,12 +107,6 @@ fun VideoCallScreen(callManager: VideoCallManager) {
                 background = if (cameraEnabled) Color(0xFF2563EB) else Color(0xFFDC2626),
                 contentDescription = "Toggle camera",
                 onClick = { callManager.toggleCamera() }
-            )
-            CallControlButton(
-                icon = Icons.Filled.CallEnd,
-                background = Color(0xFFDC2626),
-                contentDescription = "End call",
-                onClick = { callManager.endCall() }
             )
         }
     }

@@ -128,6 +128,16 @@ app.get('*', (req: any, res: any, next: any) => {
   });
 });
 
+// Tracks which conference is currently active for each screen, independent of
+// any single socket's lifecycle. A TV that gets killed and relaunched (or a
+// browser display that reloads) reconnects with a brand new socket — this map
+// is what lets us tell it "you're still in a call" instead of leaving it
+// stranded on signage until someone starts a fresh conference.
+const activeConferences = new Map<string, any>();
+// Reverse lookup so we know which screen a given socket represents when it
+// tells us (via video:leave-conference) that it's intentionally leaving.
+const socketScreenIds = new Map<string, string>();
+
 // Setup Socket.io event handlers for video conferencing
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Client connected: ${socket.id}`);
@@ -135,7 +145,23 @@ io.on('connection', (socket) => {
   // Display joins a room by display ID
   socket.on('register-display', (displayId: string) => {
     socket.join(`screen-${displayId}`);
+    socketScreenIds.set(socket.id, displayId);
     console.log(`[Socket.io] Display ${displayId} registered (socket: ${socket.id})`);
+
+    // If this screen was mid-conference when it disconnected (app killed and
+    // reopened, page reloaded, etc.), replay the call so it rejoins instead
+    // of sitting on signage while the caller is still waiting on it.
+    const active = activeConferences.get(displayId);
+    if (active) {
+      console.log(`[Socket.io] Display ${displayId} reconnected mid-conference ${active.conferenceId}, replaying conference:initiated`);
+      socket.emit('conference:initiated', active);
+      if (active.conferenceId) {
+        io.to(`conference-${active.conferenceId}`).emit('screen:rejoined', {
+          screenId: displayId,
+          conferenceId: active.conferenceId
+        });
+      }
+    }
   });
 
   // The caller joins a per-conference room right after creating the conference,
@@ -177,6 +203,7 @@ io.on('connection', (socket) => {
 
     targetScreenIds?.forEach((screenId: string) => {
       io.to(`screen-${screenId}`).emit('conference:initiated', data);
+      activeConferences.set(screenId, data);
     });
   });
 
@@ -187,11 +214,40 @@ io.on('connection', (socket) => {
 
     targetScreenIds?.forEach((screenId: string) => {
       io.to(`screen-${screenId}`).emit('conference:ended', { conferenceId });
+      activeConferences.delete(screenId);
+    });
+  });
+
+  // A display intentionally leaving (not a crash/kill) — stop tracking it as
+  // active so a future reconnect doesn't try to replay a call it opted out of.
+  socket.on('video:leave-conference', (data: any) => {
+    const conferenceId = typeof data === 'string' ? data : data?.conferenceId;
+    const screenId = socketScreenIds.get(socket.id);
+    console.log(`[Socket.io] Socket ${socket.id} (screen: ${screenId}) left conference ${conferenceId}`);
+
+    if (screenId && activeConferences.get(screenId)?.conferenceId === conferenceId) {
+      activeConferences.delete(screenId);
+    }
+  });
+
+  // In-call text chat. Caller includes targetScreenIds (routes to the display's
+  // room); the display just has conferenceId (routes to the caller's conference room).
+  socket.on('chat:message', (data: any) => {
+    const { conferenceId, targetScreenIds } = data;
+    if (conferenceId) {
+      socket.to(`conference-${conferenceId}`).emit('chat:message', data);
+    }
+    targetScreenIds?.forEach((screenId: string) => {
+      io.to(`screen-${screenId}`).emit('chat:message', data);
     });
   });
 
   socket.on('disconnect', () => {
     console.log(`[Socket.io] Client disconnected: ${socket.id}`);
+    // Deliberately leave activeConferences untouched — a disconnect here is
+    // indistinguishable from an app crash/kill, and the whole point of this
+    // map is to let the screen rejoin its call when it reconnects.
+    socketScreenIds.delete(socket.id);
   });
 });
 

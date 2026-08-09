@@ -13,6 +13,8 @@ export class WebRTCHandler {
   private peerConnection: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
   private remoteStream: MediaStream | null = null;
+  private screenStream: MediaStream | null = null;
+  private cameraVideoTrack: MediaStreamTrack | null = null;
   private config: WebRTCConfig;
 
   constructor(config: WebRTCConfig = {}) {
@@ -221,6 +223,51 @@ export class WebRTCHandler {
   }
 
   /**
+   * Start sharing the screen instead of the camera, by swapping the outgoing
+   * video track on the existing peer connection (no renegotiation needed).
+   */
+  async startScreenShare(onStoppedByBrowser?: () => void): Promise<MediaStream> {
+    if (!this.peerConnection) throw new Error('Peer connection not initialized');
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    const screenTrack = displayStream.getVideoTracks()[0];
+    this.screenStream = displayStream;
+
+    const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+    if (sender) {
+      this.cameraVideoTrack = this.cameraVideoTrack ?? this.localStream?.getVideoTracks()[0] ?? null;
+      await sender.replaceTrack(screenTrack);
+    }
+
+    // The browser's own "Stop sharing" control also needs to revert us to the camera.
+    screenTrack.onended = () => {
+      this.stopScreenShare();
+      onStoppedByBrowser?.();
+    };
+
+    return displayStream;
+  }
+
+  /**
+   * Stop sharing the screen and switch the outgoing video back to the camera.
+   */
+  async stopScreenShare(): Promise<void> {
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => track.stop());
+      this.screenStream = null;
+    }
+
+    const sender = this.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+    if (sender && this.cameraVideoTrack) {
+      await sender.replaceTrack(this.cameraVideoTrack);
+    }
+  }
+
+  isScreenSharing(): boolean {
+    return this.screenStream !== null;
+  }
+
+  /**
    * Adjust video bitrate for adaptive streaming
    */
   async setVideoBitrate(bitrate: number): Promise<void> {
@@ -283,6 +330,12 @@ export class WebRTCHandler {
       this.localStream.getTracks().forEach(track => track.stop());
       this.localStream = null;
     }
+
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => track.stop());
+      this.screenStream = null;
+    }
+    this.cameraVideoTrack = null;
 
     if (this.peerConnection) {
       this.peerConnection.close();
