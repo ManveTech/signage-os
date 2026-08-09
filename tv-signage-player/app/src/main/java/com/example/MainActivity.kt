@@ -1,7 +1,10 @@
 package com.example
 
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,7 +22,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import androidx.compose.runtime.collectAsState
@@ -28,6 +34,9 @@ import com.example.ui.SignageViewModel
 import com.example.ui.components.*
 import com.example.ui.theme.MyApplicationTheme
 import com.example.util.CrashReportingHandler
+import com.example.watchdog.AppHeartbeat
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -43,6 +52,30 @@ class MainActivity : ComponentActivity() {
         installSplashScreen().setKeepOnScreenCondition { false }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // "Display over other apps" exempts us from Android's background-activity-start
+        // restriction, which is what lets the idle/crash watchdog actually bring this
+        // activity back to front when it fires from a killed process. Only asked once
+        // per process start — the user grants it manually in system settings.
+        if (!overlayPermissionPrompted && !Settings.canDrawOverlays(this)) {
+            overlayPermissionPrompted = true
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+
+        AppHeartbeat.touch(this)
+        AppHeartbeat.scheduleNextCheck(this)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    AppHeartbeat.touch(this@MainActivity)
+                    delay(20_000)
+                }
+            }
+        }
+
         setContent {
             MyApplicationTheme {
                 Surface(
@@ -53,6 +86,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    companion object {
+        private var overlayPermissionPrompted = false
     }
 }
 
