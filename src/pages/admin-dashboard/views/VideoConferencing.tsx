@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Phone, Users, Monitor, Settings } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Phone, Users, Monitor, Settings, Search, X } from 'lucide-react';
 import { WebRTCHandler } from '../../../utils/webrtcHandler';
 import { useVideoConferencing } from '../../../hooks/useVideoConferencing';
 import { API_BASE } from '../../../config';
@@ -11,6 +11,14 @@ interface Screen {
   id: string;
   name: string;
   cameraMountEnabled: boolean;
+  groupId?: string | null;
+}
+
+interface ScreenGroup {
+  id: string;
+  name: string;
+  color?: string;
+  orgId?: string;
 }
 
 export default function VideoConferencing() {
@@ -20,10 +28,12 @@ export default function VideoConferencing() {
   const [selectedMode, setSelectedMode] = useState<ConferenceMode>('one-to-one');
   const [selectedScreens, setSelectedScreens] = useState<string[]>([]);
   const [screens, setScreens] = useState<Screen[]>([]);
+  const [groups, setGroups] = useState<ScreenGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [defaultVolume, setDefaultVolume] = useState(50);
   const [muteOnStart, setMuteOnStart] = useState(true);
   const [organizationId, setOrganizationId] = useState<string>('');
+  const [screenSearch, setScreenSearch] = useState('');
 
   const [inCall, setInCall] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('initiating');
@@ -40,6 +50,7 @@ export default function VideoConferencing() {
     const orgId = localStorage.getItem('signageos_org_id');
     if (orgId) setOrganizationId(orgId);
     fetchScreens();
+    fetchGroups();
   }, []);
 
   useEffect(() => {
@@ -119,6 +130,18 @@ export default function VideoConferencing() {
     }
   };
 
+  const fetchGroups = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/screen_groups`, { headers: authHeaders() });
+      if (response.ok) {
+        const data = await response.json();
+        setGroups(Array.isArray(data) ? data : (data.items || []));
+      }
+    } catch (error) {
+      console.error('Error fetching screen groups:', error);
+    }
+  };
+
   const targetName = () => {
     if (callTargetIds.length === 1) {
       return screens.find(s => s.id === callTargetIds[0])?.name || 'TV';
@@ -133,7 +156,7 @@ export default function VideoConferencing() {
     }
 
     const targetIds = selectedMode === 'one-to-one' ? selectedScreens.slice(0, 1) : selectedScreens;
-    if (targetIds.length === 0 && (selectedMode === 'group' || selectedMode === 'manual-select')) {
+    if (targetIds.length === 0) {
       alert('Please select at least one screen');
       return;
     }
@@ -333,6 +356,47 @@ export default function VideoConferencing() {
     }
   };
 
+  const filteredScreens = useMemo(() => {
+    const q = screenSearch.trim().toLowerCase();
+    if (!q) return screens;
+    return screens.filter(s => s.name.toLowerCase().includes(q));
+  }, [screens, screenSearch]);
+
+  const selectAllVisible = () => {
+    setSelectedScreens(prev => Array.from(new Set([...prev, ...filteredScreens.map(s => s.id)])));
+  };
+
+  // Groups are stored inversely — each screen points at its group via
+  // groupId — so membership has to be derived from the loaded screen list
+  // rather than read off the group record itself.
+  const screensByGroup = useMemo(() => {
+    const map = new Map<string, Screen[]>();
+    screens.forEach(s => {
+      if (!s.groupId) return;
+      if (!map.has(s.groupId)) map.set(s.groupId, []);
+      map.get(s.groupId)!.push(s);
+    });
+    return map;
+  }, [screens]);
+
+  // Only groups that have at least one call-eligible (camera-mounted) screen
+  // are worth showing here — an empty group is just noise in this context.
+  const callableGroups = useMemo(() => {
+    return groups.filter(g =>
+      (organizationId ? (g.orgId === organizationId || !g.orgId) : true) && screensByGroup.has(g.id)
+    );
+  }, [groups, screensByGroup, organizationId]);
+
+  const toggleGroupSelection = (groupId: string) => {
+    const memberIds = (screensByGroup.get(groupId) || []).map(s => s.id);
+    const allSelected = memberIds.length > 0 && memberIds.every(id => selectedScreens.includes(id));
+    setSelectedScreens(prev =>
+      allSelected
+        ? prev.filter(id => !memberIds.includes(id))
+        : Array.from(new Set([...prev, ...memberIds]))
+    );
+  };
+
   if (inCall) {
     return (
       <CallOverlay
@@ -355,118 +419,191 @@ export default function VideoConferencing() {
 
   return (
     <div className="p-8">
-      <div className="max-w-2xl space-y-6">
+      <div className="max-w-6xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Video Conferencing</h1>
           <p className="text-gray-600">Manage live video calls with TVs and handle camera streams</p>
         </div>
 
-        {/* Mode Selection */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Conference Mode</h2>
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { mode: 'one-to-one' as ConferenceMode, label: '1-to-1 Call', icon: Phone },
-              { mode: 'group' as ConferenceMode, label: 'Group Call', icon: Users },
-              { mode: 'manual-select' as ConferenceMode, label: 'Manual Select', icon: Monitor }
-            ].map(({ mode, label, icon: Icon }) => (
-              <button
-                key={mode}
-                onClick={() => {
-                  setSelectedMode(mode);
-                  setSelectedScreens([]);
-                }}
-                className={`p-4 rounded-lg border-2 transition-all ${
-                  selectedMode === mode
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
-              >
-                <Icon className="w-6 h-6 mx-auto mb-2" />
-                <p className="text-sm font-medium">{label}</p>
-              </button>
-            ))}
-          </div>
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* Mode + screen selection — the part that needs to scale to many TVs */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h2 className="text-sm font-semibold text-gray-900 mb-3">Conference Mode</h2>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { mode: 'one-to-one' as ConferenceMode, label: '1-to-1 Call', icon: Phone },
+                  { mode: 'group' as ConferenceMode, label: 'Group Call', icon: Users },
+                  { mode: 'manual-select' as ConferenceMode, label: 'Manual Select', icon: Monitor }
+                ].map(({ mode, label, icon: Icon }) => (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      setSelectedMode(mode);
+                      setSelectedScreens([]);
+                    }}
+                    className={`p-3 rounded-lg border-2 transition-all ${
+                      selectedMode === mode
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5 mx-auto mb-1.5" />
+                    <p className="text-xs font-medium">{label}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {/* Screen Selection */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {selectedMode === 'one-to-one' ? 'Select a TV' : 'Select TVs'}
-          </h2>
-          {screens.length === 0 ? (
-            <p className="text-gray-500 py-8 text-center">No screens with camera mount enabled</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {screens.map(screen => (
-                <label
-                  key={screen.id}
-                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                    selectedScreens.includes(screen.id)
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
+            {selectedMode === 'group' && callableGroups.length > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <h2 className="text-sm font-semibold text-gray-900 mb-3">My Groups</h2>
+                <div className="flex flex-wrap gap-2">
+                  {callableGroups.map(group => {
+                    const memberIds = (screensByGroup.get(group.id) || []).map(s => s.id);
+                    const allSelected = memberIds.length > 0 && memberIds.every(id => selectedScreens.includes(id));
+                    return (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() => toggleGroupSelection(group.id)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
+                          allSelected
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.color || '#94a3b8' }} />
+                        {group.name}
+                        <span className="text-xs text-gray-400">({memberIds.length})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-900">
+                  {selectedMode === 'one-to-one' ? 'Select a TV' : 'Select TVs'}
+                </h2>
+                <span className="text-xs text-gray-500">
+                  {selectedScreens.length > 0 ? `${selectedScreens.length} selected` : `${screens.length} available`}
+                </span>
+              </div>
+
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Search TVs by name..."
+                  value={screenSearch}
+                  onChange={e => setScreenSearch(e.target.value)}
+                  className="w-full pl-9 pr-9 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {screenSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setScreenSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {selectedMode !== 'one-to-one' && filteredScreens.length > 0 && (
+                <div className="flex items-center gap-4 mb-3 text-xs">
+                  <button type="button" onClick={selectAllVisible} className="text-blue-600 font-medium hover:underline">
+                    Select all visible ({filteredScreens.length})
+                  </button>
+                  {selectedScreens.length > 0 && (
+                    <button type="button" onClick={() => setSelectedScreens([])} className="text-gray-500 hover:underline">
+                      Clear selection
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {screens.length === 0 ? (
+                <p className="text-gray-500 py-8 text-center text-sm">No screens with camera mount enabled</p>
+              ) : filteredScreens.length === 0 ? (
+                <p className="text-gray-500 py-8 text-center text-sm">No TVs match "{screenSearch}"</p>
+              ) : (
+                <div className="max-h-96 overflow-y-auto pr-1 space-y-2">
+                  {filteredScreens.map(screen => (
+                    <label
+                      key={screen.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                        selectedScreens.includes(screen.id)
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type={selectedMode === 'one-to-one' ? 'radio' : 'checkbox'}
+                        name="screens"
+                        value={screen.id}
+                        checked={selectedScreens.includes(screen.id)}
+                        onChange={() => handleScreenSelect(screen.id)}
+                        className="shrink-0"
+                      />
+                      <span className="text-sm font-medium text-gray-900 truncate">{screen.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Settings + start — stays pinned so it's reachable without scrolling past a long TV list */}
+          <div className="space-y-6 lg:sticky lg:top-6">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h2 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Settings size={16} />
+                Conference Settings
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Default Volume: {defaultVolume}%
+                  </label>
                   <input
-                    type={selectedMode === 'one-to-one' ? 'radio' : 'checkbox'}
-                    name="screens"
-                    value={screen.id}
-                    checked={selectedScreens.includes(screen.id)}
-                    onChange={() => handleScreenSelect(screen.id)}
-                    className="mr-3"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={defaultVolume}
+                    onChange={e => setDefaultVolume(Number(e.target.value))}
+                    className="w-full"
                   />
-                  <span className="text-sm font-medium text-gray-900">{screen.name}</span>
+                </div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={muteOnStart}
+                    onChange={e => setMuteOnStart(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Mute microphone on start</span>
                 </label>
-              ))}
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Settings */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Settings size={18} />
-            Conference Settings
-          </h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Default Volume: {defaultVolume}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={defaultVolume}
-                onChange={e => setDefaultVolume(Number(e.target.value))}
-                className="w-full"
-              />
-            </div>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={muteOnStart}
-                onChange={e => setMuteOnStart(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-sm font-medium text-gray-700">Mute microphone on start</span>
-            </label>
+            <button
+              onClick={startConference}
+              disabled={loading || selectedScreens.length === 0}
+              className={`w-full py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-all ${
+                loading || selectedScreens.length === 0
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              <Phone size={18} />
+              {loading ? 'Starting...' : 'Start Conference'}
+            </button>
           </div>
         </div>
-
-        {/* Start Button */}
-        <button
-          onClick={startConference}
-          disabled={loading || (selectedMode !== 'one-to-one' && selectedScreens.length === 0)}
-          className={`w-full py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-all ${
-            loading || (selectedMode !== 'one-to-one' && selectedScreens.length === 0)
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
-        >
-          <Phone size={18} />
-          {loading ? 'Starting...' : 'Start Conference'}
-        </button>
       </div>
     </div>
   );

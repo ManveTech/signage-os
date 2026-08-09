@@ -85,6 +85,11 @@ class VideoCallManager(private val context: Context) {
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
     private var currentConferenceId: String? = null
     private var registeredScreenId: String? = null
+    // Set from conference:initiated's defaultVolume (0-100, same value sent to
+    // every target screen) and applied once the remote audio track attaches —
+    // WebRTC audio tracks otherwise always play out at unity gain regardless
+    // of what the caller configured.
+    private var pendingRemoteVolume: Double = 1.0
 
     /** Connects the signaling socket and registers this screen as a call target. */
     fun start(serverUrl: String, screenId: String) {
@@ -132,6 +137,7 @@ class VideoCallManager(private val context: Context) {
         val conferenceId = data.optString("conferenceId").takeIf { it.isNotEmpty() } ?: return
         val mode = data.optString("mode", "one-to-one")
         Log.d(TAG, "Conference initiated: $conferenceId")
+        pendingRemoteVolume = data.optInt("defaultVolume", 100).coerceIn(0, 100) / 100.0
         currentConferenceId = conferenceId
         _callState.value = CallState.Ringing(conferenceId, mode)
         scope.launch { setupPeerConnectionForIncomingCall() }
@@ -200,6 +206,7 @@ class VideoCallManager(private val context: Context) {
                 if (track != null) {
                     _remoteVideoTrack.value = track
                 }
+                stream?.audioTracks?.firstOrNull()?.setVolume(pendingRemoteVolume)
             }
 
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {
@@ -225,6 +232,8 @@ class VideoCallManager(private val context: Context) {
                 val track = receiver?.track()
                 if (track is VideoTrack) {
                     _remoteVideoTrack.value = track
+                } else if (track is AudioTrack) {
+                    track.setVolume(pendingRemoteVolume)
                 }
             }
         })
@@ -329,6 +338,9 @@ class VideoCallManager(private val context: Context) {
     }
 
     fun endCall() {
+        // Already torn down (or mid-teardown via the re-entrant path below) — nothing to do.
+        if (peerConnection == null && currentConferenceId == null && _callState.value is CallState.Idle) return
+
         val conferenceId = currentConferenceId
         if (conferenceId != null) {
             socket?.emit("video:leave-conference", JSONObject().apply { put("conferenceId", conferenceId) })
@@ -346,8 +358,18 @@ class VideoCallManager(private val context: Context) {
         localVideoTrack = null
         localAudioTrack?.dispose()
         localAudioTrack = null
-        peerConnection?.close()
+
+        // pc.close() synchronously re-enters onConnectionChange(CLOSED) on this
+        // same thread before returning — which used to call back into endCall()
+        // while `peerConnection` still pointed at the same connection, causing
+        // infinite recursion (endCall -> close -> onConnectionChange -> endCall
+        // -> ...) that stack-overflowed and SIGABRT-crashed the whole app.
+        // Nulling the field out before calling close() on the local copy means
+        // that re-entrant call sees peerConnection == null and does nothing.
+        val pc = peerConnection
         peerConnection = null
+        pc?.close()
+
         _remoteVideoTrack.value = null
         _localVideoTrackFlow.value = null
         _micEnabled.value = false

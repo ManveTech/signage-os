@@ -185,10 +185,10 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
   const screensInGroup = (groupId: string) => myScreens.filter(s => s.groupId === groupId);
   const ungroupedScreens = myScreens.filter(s => !s.groupId);
 
-  const handleCreateGroup = () => {
+  const handleCreateGroup = async () => {
     if (!newGroup.name.trim()) return;
-    const created: ScreenGroup = { 
-      ...newGroup, 
+    const draft: ScreenGroup = {
+      ...newGroup,
       id: `g${Date.now()}`,
       orgId: myOrgId || undefined,
       playlist: isScheduledNew ? (newGroup.playlist || '') : newGroup.playlist,
@@ -196,13 +196,20 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
       scheduleDate: isScheduledNew ? newGroup.scheduleDate : undefined,
       scheduleTime: isScheduledNew ? newGroup.scheduleTime : undefined,
     };
-    const updated = [...groups, created];
-    setGroups(updated);
-    localStorage.setItem('signageos_groups', JSON.stringify(updated));
-    pushToDatabase('screen_groups', created.id, created, 'POST');
     setShowNewGroup(false);
     setNewGroup(emptyGroup());
     setIsScheduledNew(false);
+
+    const result = await pushToDatabase('screen_groups', draft.id, draft, 'POST');
+    // PocketBase assigns its own id on create regardless of what we send in the
+    // payload — screen assignments, edits, and deletes all key off group.id, so
+    // keeping the local placeholder here would silently point them at a group
+    // that doesn't exist server-side.
+    const created: ScreenGroup = result.ok && result.data?.id ? { ...draft, id: result.data.id } : draft;
+
+    const updated = [...groups, created];
+    setGroups(updated);
+    localStorage.setItem('signageos_groups', JSON.stringify(updated));
     addToast(`Group "${created.name}" created`);
   };
 

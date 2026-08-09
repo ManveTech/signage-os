@@ -55,6 +55,16 @@ export default function DisplayClient() {
     socket.emit('register-display', screenId);
   }, [socket, screenId]);
 
+  // Keep the <video> element's actual volume in sync with the `volume` state —
+  // without this, setting defaultVolume on the caller's side only updated this
+  // state variable and never touched the element, so playback stayed at the
+  // browser default (100%) until someone manually dragged the slider.
+  useEffect(() => {
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.volume = volume / 100;
+    }
+  }, [volume, isInCall]);
+
   // Listen for incoming conference calls
   useEffect(() => {
     if (!socket) return;
