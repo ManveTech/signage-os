@@ -15,6 +15,7 @@ interface ConferenceEventData {
 
 export function useVideoConferencing() {
   const socketRef = useRef<Socket | null>(null);
+  const conferenceIdRef = useRef<string | null>(null);
   const [conferenceId, setConferenceId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,13 @@ export function useVideoConferencing() {
       setIsConnected(true);
       setError(null);
       console.log('[VideoConf] Socket connected:', socket.id);
+      // A reconnect gets a brand new socket.id, so the server-side room
+      // membership and caller tracking from the original join are gone —
+      // without re-joining, the server would (after its grace period) treat
+      // this caller as vanished and stop letting the screen rejoin the call.
+      if (conferenceIdRef.current) {
+        socket.emit('video:join-conference', { conferenceId: conferenceIdRef.current });
+      }
     });
 
     socket.on('disconnect', (reason: string) => {
@@ -77,6 +85,7 @@ export function useVideoConferencing() {
   const joinConference = useCallback((confId: string) => {
     if (!socketRef.current) return;
     socketRef.current.emit('video:join-conference', { conferenceId: confId });
+    conferenceIdRef.current = confId;
     setConferenceId(confId);
   }, []);
 
@@ -110,6 +119,7 @@ export function useVideoConferencing() {
   const leaveConference = useCallback(() => {
     if (!socketRef.current || !conferenceId) return;
     socketRef.current.emit('video:leave-conference', { conferenceId });
+    conferenceIdRef.current = null;
     setConferenceId(null);
   }, [conferenceId]);
 

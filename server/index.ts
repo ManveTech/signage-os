@@ -141,6 +141,13 @@ const socketScreenIds = new Map<string, string>();
 // call nobody is on the other end of anymore.
 const conferenceCallerSockets = new Map<string, Set<string>>();
 
+// A caller's socket.id changes on every reconnect (network blip, laptop sleep,
+// etc.), so losing the last caller socket doesn't necessarily mean the caller
+// is gone for good — give them a window to reconnect and re-emit
+// video:join-conference before we tear down the screen's rejoin state.
+const CALLER_GONE_GRACE_MS = 15000;
+const pendingCallerGoneCleanup = new Map<string, NodeJS.Timeout>();
+
 // Setup Socket.io event handlers for video conferencing
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Client connected: ${socket.id}`);
@@ -182,6 +189,14 @@ io.on('connection', (socket) => {
       conferenceCallerSockets.set(conferenceId, callerSockets);
     }
     callerSockets.add(socket.id);
+
+    // The caller reconnected within the grace window — cancel the pending wipe.
+    const pendingCleanup = pendingCallerGoneCleanup.get(conferenceId);
+    if (pendingCleanup) {
+      clearTimeout(pendingCleanup);
+      pendingCallerGoneCleanup.delete(conferenceId);
+      console.log(`[Socket.io] Caller for conference ${conferenceId} reconnected, cancelling scheduled cleanup`);
+    }
   });
 
   // Handle WebRTC signals between caller and displays.
@@ -227,6 +242,11 @@ io.on('connection', (socket) => {
       activeConferences.delete(screenId);
     });
     conferenceCallerSockets.delete(conferenceId);
+    const pendingCleanup = pendingCallerGoneCleanup.get(conferenceId);
+    if (pendingCleanup) {
+      clearTimeout(pendingCleanup);
+      pendingCallerGoneCleanup.delete(conferenceId);
+    }
   });
 
   // A display intentionally leaving (not a crash/kill) — stop tracking it as
@@ -271,11 +291,16 @@ io.on('connection', (socket) => {
     for (const [confId, callerSockets] of conferenceCallerSockets.entries()) {
       if (callerSockets.delete(socket.id) && callerSockets.size === 0) {
         conferenceCallerSockets.delete(confId);
-        const clearedScreenIds = clearActiveConferencesForConference(confId);
-        clearedScreenIds.forEach((screenId) => {
-          console.log(`[Socket.io] Caller for conference ${confId} is gone, notifying screen ${screenId}`);
-          io.to(`screen-${screenId}`).emit('conference:ended', { conferenceId: confId });
-        });
+        console.log(`[Socket.io] Last caller socket for conference ${confId} disconnected, scheduling cleanup in ${CALLER_GONE_GRACE_MS}ms in case it reconnects`);
+        const timeout = setTimeout(() => {
+          pendingCallerGoneCleanup.delete(confId);
+          const clearedScreenIds = clearActiveConferencesForConference(confId);
+          clearedScreenIds.forEach((screenId) => {
+            console.log(`[Socket.io] Caller for conference ${confId} is gone, notifying screen ${screenId}`);
+            io.to(`screen-${screenId}`).emit('conference:ended', { conferenceId: confId });
+          });
+        }, CALLER_GONE_GRACE_MS);
+        pendingCallerGoneCleanup.set(confId, timeout);
       }
     }
   });
