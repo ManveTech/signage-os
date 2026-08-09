@@ -21,7 +21,7 @@ interface ScreenGroup {
   orgId?: string;
 }
 
-export default function VideoConferencing({ enabled, organizationId }: { enabled: boolean; organizationId: string }) {
+export default function VideoConferencing({ enabled, organizationId, licenseChecked = true }: { enabled: boolean; organizationId: string; licenseChecked?: boolean }) {
   const { socket, initiateConference: emitInitiateConference, joinConference, onWebRTCSignal, onScreenRejoined, sendChatMessage, onChatMessage } = useVideoConferencing();
   const webrtcRef = useRef<WebRTCHandler | null>(null);
 
@@ -395,6 +395,17 @@ export default function VideoConferencing({ enabled, organizationId }: { enabled
         : Array.from(new Set([...prev, ...memberIds]))
     );
   };
+
+  if (!enabled && !licenseChecked) {
+    return (
+      <div className="p-8">
+        <div className="max-w-lg mx-auto bg-white rounded-lg border border-gray-200 p-10 text-center space-y-3">
+          <div className="w-8 h-8 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-gray-400">Checking your license...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!enabled) {
     return (

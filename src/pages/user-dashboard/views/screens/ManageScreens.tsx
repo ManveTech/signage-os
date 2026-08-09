@@ -5,6 +5,7 @@ import {
   Building2, User, MoreVertical, Filter, Activity, Pause, Eraser, Lock, FolderMinus
 } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
+import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import CustomSelect from '../../../../components/CustomSelect';
 import type { Screen } from '../../types';
@@ -76,6 +77,8 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
     const data = localStorage.getItem('signageos_groups');
     return data ? JSON.parse(data) : [];
   });
+  const [licenses] = useState(() => licensingStore.getLicenses());
+  const videoConferencingEnabled = !!licenses.find(l => l.assignedUserEmail === userEmail)?.enableVideoConferencing;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
   const [selectedScreens, setSelectedScreens] = useState<Set<string>>(new Set());
@@ -607,6 +610,20 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
                   buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                 />
               </div>
+              {videoConferencingEnabled && (
+                <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                  <div>
+                    <span className="text-xs font-semibold text-gray-700 block">Camera Mounted</span>
+                    <span className="text-[11px] text-gray-400">Makes this TV selectable for Video Conferencing</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!editScreen.cameraMountEnabled}
+                    onChange={e => setEditScreen(p => p && ({ ...p, cameraMountEnabled: e.target.checked }))}
+                    className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-550 accent-blue-600 cursor-pointer"
+                  />
+                </div>
+              )}
               {!editScreen.groupId && (
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>

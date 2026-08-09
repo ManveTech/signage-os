@@ -154,6 +154,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
     mediaStore.getPlaylists().filter(p => p.createdBy === userEmail)
   );
   const [licenses, setLicenses] = useState(() => licensingStore.getLicenses());
+  const videoConferencingEnabled = !!licenses.find(l => l.assignedUserEmail === userEmail)?.enableVideoConferencing;
   const [mediaList, setMediaList] = useState(() => mediaStore.getMedia());
   const [organizations, setOrganizations] = useState<any[]>(() => {
     const data = localStorage.getItem('signageos_organizations');
@@ -1101,6 +1102,21 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                   buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                 />
               </div>
+
+              {videoConferencingEnabled && (
+                <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+                  <div>
+                    <span className="text-xs font-semibold text-gray-700 block">Camera Mounted</span>
+                    <span className="text-[11px] text-gray-400">Makes this TV selectable for Video Conferencing</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!editScreen.cameraMountEnabled}
+                    onChange={e => setEditScreen(p => p && ({ ...p, cameraMountEnabled: e.target.checked }))}
+                    className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-550 accent-blue-600 cursor-pointer"
+                  />
+                </div>
+              )}
 
               {editScreen.groupId && (() => {
                 const gp = groups.find(g => g.id === editScreen.groupId);

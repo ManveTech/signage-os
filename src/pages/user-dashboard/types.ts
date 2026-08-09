@@ -27,6 +27,7 @@ export type Screen = {
   onlineSince?: string;
   force_sync?: boolean;
   restart_playlist?: boolean;
+  cameraMountEnabled?: boolean;
 };
 
 export type ScreenGroup = {
