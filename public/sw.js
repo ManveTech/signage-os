@@ -1,55 +1,58 @@
 /* eslint-disable no-restricted-globals */
 
 // SignageOS Service Worker for Offline Support
-const CACHE_NAME = 'signageos-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-];
+const CACHE_NAME = 'signageos-v2';
 
-// Install event - cache core assets safely
+// Install event - activate immediately
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      console.log('Opened cache');
-      for (const url of urlsToCache) {
-        try {
-          await cache.add(url);
-        } catch (err) {
-          console.warn('Service worker failed to cache URL:', url, err);
-        }
-      }
-    })
-  );
 });
 
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      // Cache hit - return response
-      if (response) {
-        return response;
-      }
-      return fetch(event.request);
-    })
-  );
-});
-
-// Activate event - clean up old caches
+// Activate event - take control immediately and purge all old caches
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (!cacheWhitelist.includes(cacheName)) {
+          if (cacheName !== CACHE_NAME) {
+            console.log('[SW] Purging old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// Fetch event - Network-First for HTML navigation/index.html to ensure fresh build assets are loaded
+self.addEventListener('fetch', (event) => {
+  const isHtmlNavigation = event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html');
+
+  if (isHtmlNavigation) {
+    // Network-First: Fetch fresh HTML from server first, fall back to cache only when offline
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cachedResponse) => cachedResponse || caches.match('/index.html'));
+        })
+    );
+    return;
+  }
+
+  // Cache-First for static assets with network fallback
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request);
     })
   );
 });
