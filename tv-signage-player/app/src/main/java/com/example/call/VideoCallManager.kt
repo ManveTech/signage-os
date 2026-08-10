@@ -107,6 +107,7 @@ class VideoCallManager(private val context: Context) {
 
             newSocket.on(Socket.EVENT_CONNECT) {
                 Log.d(TAG, "Socket connected, registering display $screenId")
+                com.example.util.Breadcrumbs.mark(context, "socket-connected")
                 newSocket.emit("register-display", screenId)
             }
             newSocket.on("conference:initiated") { args -> onConferenceInitiated(args) }
@@ -123,9 +124,16 @@ class VideoCallManager(private val context: Context) {
         }
     }
 
-    /** Disconnects everything. Safe to call even if nothing is active. */
-    fun stop() {
-        endCall()
+    /**
+     * Disconnects everything. Safe to call even if nothing is active.
+     * [notifyServer] must be false when this is called because the process itself
+     * is tearing down (e.g. ViewModel.onCleared on app quit) rather than because
+     * the user actually hung up — otherwise the server deletes its record of the
+     * active conference and the mid-conference replay on the next launch has
+     * nothing left to replay.
+     */
+    fun stop(notifyServer: Boolean = true) {
+        endCall(notifyServer)
         socket?.disconnect()
         socket?.off()
         socket = null
@@ -137,6 +145,7 @@ class VideoCallManager(private val context: Context) {
         val conferenceId = data.optString("conferenceId").takeIf { it.isNotEmpty() } ?: return
         val mode = data.optString("mode", "one-to-one")
         Log.d(TAG, "Conference initiated: $conferenceId")
+        com.example.util.Breadcrumbs.mark(context, "conference-initiated")
         pendingRemoteVolume = data.optInt("defaultVolume", 100).coerceIn(0, 100) / 100.0
         currentConferenceId = conferenceId
         _callState.value = CallState.Ringing(conferenceId, mode)
@@ -177,7 +186,9 @@ class VideoCallManager(private val context: Context) {
 
     private suspend fun setupPeerConnectionForIncomingCall() {
         if (peerConnectionFactory == null) {
+            com.example.util.Breadcrumbs.mark(context, "pc-factory-init-start")
             initFactory()
+            com.example.util.Breadcrumbs.mark(context, "pc-factory-init-done")
         }
         if (peerConnection != null) return
 
@@ -212,6 +223,7 @@ class VideoCallManager(private val context: Context) {
             override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {
                 Log.d(TAG, "Connection state: $newState")
                 if (newState == PeerConnection.PeerConnectionState.CONNECTED) {
+                    com.example.util.Breadcrumbs.mark(context, "call-connected")
                     currentConferenceId?.let { _callState.value = CallState.Connected(it) }
                 } else if (newState == PeerConnection.PeerConnectionState.FAILED ||
                     newState == PeerConnection.PeerConnectionState.CLOSED
@@ -240,11 +252,13 @@ class VideoCallManager(private val context: Context) {
 
         // A missing camera/mic must never block the call — the display just
         // sends no local media back, mirroring the web client's fallback.
+        com.example.util.Breadcrumbs.mark(context, "local-media-attach-start")
         try {
             attachLocalMedia()
         } catch (e: Exception) {
             Log.w(TAG, "Could not attach local camera/mic, continuing receive-only", e)
         }
+        com.example.util.Breadcrumbs.mark(context, "local-media-attach-done")
     }
 
     private fun initFactory() {
@@ -337,12 +351,12 @@ class VideoCallManager(private val context: Context) {
         _cameraEnabled.value = enabled
     }
 
-    fun endCall() {
+    fun endCall(notifyServer: Boolean = true) {
         // Already torn down (or mid-teardown via the re-entrant path below) — nothing to do.
         if (peerConnection == null && currentConferenceId == null && _callState.value is CallState.Idle) return
 
         val conferenceId = currentConferenceId
-        if (conferenceId != null) {
+        if (conferenceId != null && notifyServer) {
             socket?.emit("video:leave-conference", JSONObject().apply { put("conferenceId", conferenceId) })
         }
         currentConferenceId = null
@@ -376,6 +390,7 @@ class VideoCallManager(private val context: Context) {
         _cameraEnabled.value = true
         _chatMessages.value = emptyList()
         _callState.value = CallState.Idle
+        com.example.util.Breadcrumbs.mark(context, "call-ended-clean")
     }
 
     private suspend fun setRemoteDescription(pc: PeerConnection, sdp: SessionDescription) =

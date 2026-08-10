@@ -40,8 +40,9 @@ export async function initiateConference(req: any, res: any) {
 
     // Validate target screens exist and have camera mount enabled
     if (targetScreenIds && Array.isArray(targetScreenIds) && targetScreenIds.length > 0) {
+      const idFilter = targetScreenIds.map((id: string) => `id="${id}"`).join(' || ');
       const screens = await pb.collection('screens').getFullList({
-        filter: `id~"${targetScreenIds.join('|')}" && cameraMountEnabled = true`
+        filter: `(${idFilter}) && cameraMountEnabled = true`
       });
 
       if (screens.length !== targetScreenIds.length) {

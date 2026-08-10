@@ -48,6 +48,17 @@ class MainActivity : ComponentActivity() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler(CrashReportingHandler(applicationContext, defaultHandler))
 
+        // Runs before any breadcrumb from *this* process start overwrites the
+        // previous one — if last run died mid-call-setup with no JVM exception
+        // (native crash, OOM kill), this is the only trace of it we get.
+        com.example.util.Breadcrumbs.lastAbnormalExit(applicationContext)?.let { (stage, ageMs) ->
+            CrashReportingHandler.report(
+                applicationContext,
+                "Abnormal Restart Detected",
+                "Previous run died without a clean exit. Last known stage: $stage, ${ageMs}ms before this restart."
+            )
+        }
+
         // Dismiss native system splash immediately so Compose AppSplashScreen takes over
         installSplashScreen().setKeepOnScreenCondition { false }
         super.onCreate(savedInstanceState)

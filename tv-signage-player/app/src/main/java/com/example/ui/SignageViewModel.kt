@@ -484,7 +484,11 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         syncJob?.cancel()
         heartbeatJob?.cancel()
         assetRotationJob?.cancel()
-        videoCallManager.stop()
+        // notifyServer = false: this fires on every process teardown, including a
+        // routine app quit mid-call — telling the server "video:leave-conference"
+        // here would delete its active-conference record and break the
+        // mid-conference replay this screen relies on to rejoin after reopening.
+        videoCallManager.stop(notifyServer = false)
 
         kotlinx.coroutines.runBlocking {
             try {

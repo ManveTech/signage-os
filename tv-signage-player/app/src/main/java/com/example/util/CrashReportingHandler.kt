@@ -18,56 +18,59 @@ class CrashReportingHandler(
 ) : Thread.UncaughtExceptionHandler {
     companion object {
         private val sharedClient by lazy { OkHttpClient() }
+
+        /**
+         * Posts an event to screen_logs synchronously (blocking). Shared by crash
+         * reporting and by Breadcrumbs' abnormal-exit detection, both of which need
+         * this to complete before the process is torn down or before racing ahead.
+         */
+        fun report(context: Context, event: String, detail: String, type: String = "error") {
+            try {
+                val db = AppDatabase.getDatabase(context)
+                val config = runBlocking { db.screenConfigDao().getConfig() } ?: return
+                if (config.screenId.isEmpty()) return
+
+                var redactedDetail = detail
+                if (config.pocketbaseUrl.isNotEmpty()) {
+                    redactedDetail = redactedDetail.replace(config.pocketbaseUrl, "[POCKETBASE_URL]")
+                }
+                if (config.serverUrl.isNotEmpty()) {
+                    redactedDetail = redactedDetail.replace(config.serverUrl, "[SERVER_URL]")
+                }
+
+                val fields = mapOf(
+                    "screenId" to config.screenId,
+                    "screenName" to config.screenName,
+                    "event" to event,
+                    "type" to type,
+                    "detail" to redactedDetail
+                )
+                val mapType = Types.newParameterizedType(Map::class.java, String::class.java, String::class.java)
+                val json = Moshi.Builder()
+                    .addLast(KotlinJsonAdapterFactory())
+                    .build()
+                    .adapter<Map<String, String>>(mapType)
+                    .toJson(fields)
+
+                val mediaType = "application/json".toMediaTypeOrNull()
+                val body = json.toRequestBody(mediaType)
+                val request = Request.Builder()
+                    .url("${config.serverUrl}/api/v1/screen_logs")
+                    .post(body)
+                    .build()
+
+                val response = sharedClient.newCall(request).execute()
+                response.close()
+            } catch (e: Exception) {
+                Log.e("CrashReportingHandler", "Failed to log event to server", e)
+            }
+        }
     }
 
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
-        logCrashSynchronously(throwable)
+        val errorMsg = "Crash: ${throwable.message ?: throwable.javaClass.simpleName}\n" +
+                throwable.stackTraceToString()
+        report(context, "Application Crash", errorMsg)
         defaultHandler?.uncaughtException(thread, throwable)
-    }
-
-    private fun logCrashSynchronously(throwable: Throwable) {
-        try {
-            val db = AppDatabase.getDatabase(context)
-            val config = runBlocking { db.screenConfigDao().getConfig() } ?: return
-            if (config.screenId.isEmpty()) return
-
-            val client = sharedClient
-            val errorMsg = "Crash: ${throwable.message ?: throwable.javaClass.simpleName}\n" +
-                    throwable.stackTraceToString()
-            
-            var redactedDetail = errorMsg
-            if (config.pocketbaseUrl.isNotEmpty()) {
-                redactedDetail = redactedDetail.replace(config.pocketbaseUrl, "[POCKETBASE_URL]")
-            }
-            if (config.serverUrl.isNotEmpty()) {
-                redactedDetail = redactedDetail.replace(config.serverUrl, "[SERVER_URL]")
-            }
-            
-            val fields = mapOf(
-                "screenId" to config.screenId,
-                "screenName" to config.screenName,
-                "event" to "Application Crash",
-                "type" to "error",
-                "detail" to redactedDetail
-            )
-            val mapType = Types.newParameterizedType(Map::class.java, String::class.java, String::class.java)
-            val json = Moshi.Builder()
-                .addLast(KotlinJsonAdapterFactory())
-                .build()
-                .adapter<Map<String, String>>(mapType)
-                .toJson(fields)
-            
-            val mediaType = "application/json".toMediaTypeOrNull()
-            val body = json.toRequestBody(mediaType)
-            val request = Request.Builder()
-                .url("${config.serverUrl}/api/v1/screen_logs")
-                .post(body)
-                .build()
-            
-            val response = client.newCall(request).execute()
-            response.close()
-        } catch (e: Exception) {
-            Log.e("CrashReportingHandler", "Failed to log crash to server", e)
-        }
     }
 }
