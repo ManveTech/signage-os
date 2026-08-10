@@ -113,15 +113,28 @@ import path from 'path';
 // Mount all API endpoints under /api/v1
 app.use('/api/v1', apiRouter);
 
-// Serve frontend static build files from dist/
+// Serve frontend static build files from dist/ with proper Cache-Control rules
 const distPath = path.join(process.cwd(), 'dist');
-app.use(express.static(distPath));
+app.use(express.static(distPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }
+}));
 
 // SPA Catch-all Fallback: Return index.html for non-API GET requests so client-side router handles URLs on refresh
 app.get('*', (req: any, res: any, next: any) => {
   if (req.path.startsWith('/api')) {
     return next();
   }
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(distPath, 'index.html'), (err: any) => {
     if (err) {
       res.status(404).send('Application build not found. Please run npm run build.');
