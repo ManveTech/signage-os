@@ -202,6 +202,7 @@ class VideoCallManager(private val context: Context) {
                 val conferenceId = currentConferenceId ?: return
                 val payload = JSONObject().apply {
                     put("conferenceId", conferenceId)
+                    put("screenId", registeredScreenId)
                     put("signal", JSONObject().apply {
                         put("type", "candidate")
                         put("candidate", candidate.sdp)
@@ -321,6 +322,7 @@ class VideoCallManager(private val context: Context) {
         val conferenceId = currentConferenceId ?: return
         val payload = JSONObject().apply {
             put("conferenceId", conferenceId)
+            put("screenId", registeredScreenId)
             put("signal", JSONObject().apply {
                 put("type", "answer")
                 put("sdp", answer.description)

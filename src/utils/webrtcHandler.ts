@@ -9,6 +9,20 @@ export interface WebRTCConfig {
   audioBitrate?: number;
 }
 
+/**
+ * Acquires one camera/mic stream to be shared across multiple WebRTCHandler
+ * instances (one peer connection per target screen in a group call), instead
+ * of prompting getUserMedia — and opening the camera — once per screen.
+ */
+export async function acquireSharedLocalStream(constraints?: MediaStreamConstraints): Promise<MediaStream> {
+  const defaultConstraints: MediaStreamConstraints = {
+    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: true,
+    ...constraints
+  };
+  return navigator.mediaDevices.getUserMedia(defaultConstraints);
+}
+
 export class WebRTCHandler {
   private peerConnection: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
@@ -80,6 +94,25 @@ export class WebRTCHandler {
       console.error('[WebRTC] Error getting local stream:', error);
       throw error;
     }
+  }
+
+  /**
+   * Injects an already-acquired stream instead of calling getUserMedia again —
+   * used for group calls where one camera/mic capture is shared across several
+   * peer connections (one per target screen) instead of prompting per screen.
+   */
+  setLocalStream(stream: MediaStream): void {
+    this.localStream = stream;
+  }
+
+  /**
+   * Swaps this connection's outgoing video track (e.g. camera <-> shared
+   * screen-share track) without renegotiating the peer connection.
+   */
+  async replaceOutgoingVideoTrack(track: MediaStreamTrack): Promise<void> {
+    if (!this.peerConnection) return;
+    const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+    if (sender) await sender.replaceTrack(track);
   }
 
   /**

@@ -113,6 +113,7 @@ export default function DisplayClient() {
           const answer = await webrtcRef.current!.handleOffer(data.signal);
           socket.emit('webrtc:signal', {
             conferenceId: data.conferenceId,
+            screenId,
             signal: answer
           });
           setConnectionStatus('answering');
@@ -168,6 +169,7 @@ export default function DisplayClient() {
         if (candidate) {
           socket.emit('webrtc:signal', {
             conferenceId: conference.conferenceId,
+            screenId,
             signal: {
               type: 'candidate',
               candidate: candidate.candidate,

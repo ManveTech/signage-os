@@ -8,10 +8,16 @@ export interface ChatMessage {
   self: boolean;
 }
 
+interface RemoteScreenStream {
+  screenId: string;
+  name: string;
+  stream: MediaStream | null;
+}
+
 interface CallOverlayProps {
   targetName: string;
   connectionStatus: string; // 'initiating' | 'connected' | 'error' | ...
-  remoteStream: MediaStream | null;
+  remoteStreams: RemoteScreenStream[];
   localStream: MediaStream | null;
   micEnabled: boolean;
   cameraEnabled: boolean;
@@ -33,7 +39,7 @@ function formatDuration(seconds: number): string {
 export default function CallOverlay({
   targetName,
   connectionStatus,
-  remoteStream,
+  remoteStreams,
   localStream,
   micEnabled,
   cameraEnabled,
@@ -45,7 +51,6 @@ export default function CallOverlay({
   chatMessages,
   onSendChatMessage
 }: CallOverlayProps) {
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const [elapsed, setElapsed] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
@@ -53,12 +58,6 @@ export default function CallOverlay({
   const [unread, setUnread] = useState(0);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const prevMessageCount = useRef(0);
-
-  useEffect(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [remoteStream]);
 
   useEffect(() => {
     if (localVideoRef.current) {
@@ -90,7 +89,6 @@ export default function CallOverlay({
     setChatInput('');
   };
 
-  const remoteHasVideo = !!remoteStream && remoteStream.getVideoTracks().some(t => t.enabled);
   const statusLabel = connectionStatus === 'connected' ? formatDuration(elapsed) : 'Connecting…';
 
   return (
@@ -108,30 +106,28 @@ export default function CallOverlay({
         </div>
       </div>
 
-      {/* Main video stage */}
+      {/* Main video stage — one full-bleed tile for a single screen, a grid for a group call */}
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
-        {remoteHasVideo ? (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="w-full h-full object-contain bg-black"
+        {remoteStreams.length <= 1 ? (
+          <RemoteVideoTile
+            name={remoteStreams[0]?.name ?? targetName}
+            stream={remoteStreams[0]?.stream ?? null}
+            fullscreen
+            waitingLabel={
+              connectionStatus === 'connected'
+                ? `Connected — waiting for video from ${remoteStreams[0]?.name ?? targetName}`
+                : `Calling ${remoteStreams[0]?.name ?? targetName}…`
+            }
           />
         ) : (
-          <div className="flex flex-col items-center gap-3 text-slate-400">
-            <div className="w-20 h-20 rounded-full bg-slate-800 flex items-center justify-center">
-              <Tv size={32} />
-            </div>
-            <p className="text-sm font-medium">
-              {connectionStatus === 'connected'
-                ? `Connected — waiting for video from ${targetName}`
-                : `Calling ${targetName}…`}
-            </p>
+          <div
+            className="grid gap-2 w-full h-full p-3"
+            style={{ gridTemplateColumns: `repeat(${Math.ceil(Math.sqrt(remoteStreams.length))}, 1fr)` }}
+          >
+            {remoteStreams.map(rs => (
+              <RemoteVideoTile key={rs.screenId} name={rs.name} stream={rs.stream} />
+            ))}
           </div>
-        )}
-        {/* Keep the remote <video> mounted even without a visible video track so audio still plays */}
-        {!remoteHasVideo && (
-          <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
         )}
 
         {/* Local PIP */}
@@ -273,5 +269,54 @@ function ControlButton({
     >
       {active ? iconOn : iconOff}
     </button>
+  );
+}
+
+function RemoteVideoTile({
+  name,
+  stream,
+  fullscreen,
+  waitingLabel
+}: {
+  name: string;
+  stream: MediaStream | null;
+  fullscreen?: boolean;
+  waitingLabel?: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  const hasVideo = !!stream && stream.getVideoTracks().some(t => t.enabled);
+
+  return (
+    <div className={`relative flex items-center justify-center overflow-hidden ${fullscreen ? 'w-full h-full' : 'rounded-lg bg-slate-900 border border-white/10'}`}>
+      {hasVideo ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          className={`w-full h-full bg-black ${fullscreen ? 'object-contain' : 'object-cover'}`}
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-3 text-slate-400">
+          <div className={`rounded-full bg-slate-800 flex items-center justify-center ${fullscreen ? 'w-20 h-20' : 'w-10 h-10'}`}>
+            <Tv size={fullscreen ? 32 : 18} />
+          </div>
+          {fullscreen && waitingLabel && <p className="text-sm font-medium">{waitingLabel}</p>}
+        </div>
+      )}
+      {/* Keep the <video> mounted even without a visible video track so audio still plays */}
+      {!hasVideo && <video ref={videoRef} autoPlay playsInline className="hidden" />}
+      {!fullscreen && (
+        <span className="absolute bottom-1.5 left-2 max-w-[80%] truncate text-[10px] font-semibold text-white/90 bg-black/50 px-1.5 py-0.5 rounded">
+          {name}
+        </span>
+      )}
+    </div>
   );
 }

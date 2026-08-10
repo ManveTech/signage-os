@@ -204,7 +204,7 @@ io.on('connection', (socket) => {
   // toScreenId absent -> display sending back to the caller (answer/ICE),
   // routed via the per-conference room the caller joined above.
   socket.on('webrtc:signal', (data: any) => {
-    const { conferenceId, toScreenId, signal } = data;
+    const { conferenceId, toScreenId, screenId, signal } = data;
 
     if (toScreenId) {
       console.log(`[Socket.io] WebRTC signal from caller for screen ${toScreenId}`);
@@ -213,9 +213,13 @@ io.on('connection', (socket) => {
         signal
       });
     } else if (conferenceId) {
-      console.log(`[Socket.io] WebRTC signal from display for conference ${conferenceId}`);
+      // screenId identifies which display this answer/candidate belongs to —
+      // required so the caller can route it to that screen's own peer
+      // connection when a conference targets more than one screen at once.
+      console.log(`[Socket.io] WebRTC signal from display ${screenId} for conference ${conferenceId}`);
       socket.to(`conference-${conferenceId}`).emit('webrtc:signal', {
         conferenceId,
+        screenId,
         signal
       });
     }

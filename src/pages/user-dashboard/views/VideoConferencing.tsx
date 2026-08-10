@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Phone, Users, Monitor, Settings, Lock, Search, X } from 'lucide-react';
-import { WebRTCHandler } from '../../../utils/webrtcHandler';
+import { WebRTCHandler, acquireSharedLocalStream } from '../../../utils/webrtcHandler';
 import { useVideoConferencing } from '../../../hooks/useVideoConferencing';
 import { API_BASE } from '../../../config';
 import CallOverlay, { ChatMessage } from '../../../components/CallOverlay';
@@ -23,7 +23,11 @@ interface ScreenGroup {
 
 export default function VideoConferencing({ enabled, organizationId, licenseChecked = true }: { enabled: boolean; organizationId: string; licenseChecked?: boolean }) {
   const { socket, initiateConference: emitInitiateConference, joinConference, onWebRTCSignal, onScreenRejoined, sendChatMessage, onChatMessage } = useVideoConferencing();
-  const webrtcRef = useRef<WebRTCHandler | null>(null);
+  // One WebRTCHandler (one RTCPeerConnection) per target screen — a group call
+  // negotiates a separate SDP offer/answer with each screen, so they can't
+  // share a single peer connection the way a one-to-one call can.
+  const webrtcHandlersRef = useRef<Map<string, WebRTCHandler>>(new Map());
+  const screenShareRef = useRef<{ displayStream: MediaStream; screenTrack: MediaStreamTrack } | null>(null);
 
   const [selectedMode, setSelectedMode] = useState<ConferenceMode>('one-to-one');
   const [selectedScreens, setSelectedScreens] = useState<string[]>([]);
@@ -38,7 +42,7 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
   const [connectionStatus, setConnectionStatus] = useState('initiating');
   const [conferenceId, setConferenceId] = useState<string | null>(null);
   const [callTargetIds, setCallTargetIds] = useState<string[]>([]);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [micEnabled, setMicEnabled] = useState(!muteOnStart);
   const [cameraEnabled, setCameraEnabled] = useState(true);
@@ -68,13 +72,23 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
       console.log(`[VideoConferencing] Screen ${screenId} rejoined conference, re-sending offer`);
       setConnectionStatus('initiating');
 
-      webrtcRef.current?.close();
+      webrtcHandlersRef.current.get(screenId)?.close();
       const handler = new WebRTCHandler();
-      webrtcRef.current = handler;
+      webrtcHandlersRef.current.set(screenId, handler);
+      setRemoteStreams(prev => {
+        const next = new Map(prev);
+        next.delete(screenId);
+        return next;
+      });
 
       try {
-        const stream = await handler.getLocalStream();
-        setLocalStream(stream);
+        if (localStream) {
+          handler.setLocalStream(localStream);
+        } else {
+          const stream = await acquireSharedLocalStream();
+          setLocalStream(stream);
+          handler.setLocalStream(stream);
+        }
         if (!micEnabled) {
           handler.setAudioEnabled(false);
         }
@@ -83,7 +97,13 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
         console.warn('Could not access camera/microphone on rejoin, continuing without local media', err);
       }
 
-      handler.onRemoteStreamReceived((stream) => setRemoteStream(stream));
+      handler.onRemoteStreamReceived((stream) => {
+        setRemoteStreams(prev => {
+          const next = new Map(prev);
+          next.set(screenId, stream);
+          return next;
+        });
+      });
 
       handler.onICECandidate((candidate: RTCIceCandidate | null) => {
         if (candidate) {
@@ -109,7 +129,7 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
       }
     });
     return unsubscribe;
-  }, [onScreenRejoined, socket, conferenceId, callTargetIds, micEnabled]);
+  }, [onScreenRejoined, socket, conferenceId, callTargetIds, micEnabled, localStream]);
 
   const authHeaders = () => {
     const token = localStorage.getItem('signageos_token');
@@ -192,6 +212,7 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
       setCameraEnabled(true);
       setIsScreenSharing(false);
       setInCall(true);
+      setRemoteStreams(new Map());
 
       // Join our own per-conference room so displays have somewhere to send
       // their answer/ICE candidates back to.
@@ -208,44 +229,66 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
         muteOnStart
       } as any);
 
-      if (!webrtcRef.current) {
-        webrtcRef.current = new WebRTCHandler();
-      }
-
+      // One camera/mic capture shared across every target screen's peer
+      // connection — getUserMedia only ever prompts once per call, regardless
+      // of how many screens are being dialed.
+      let sharedStream: MediaStream | null = null;
       try {
-        const stream = await webrtcRef.current.getLocalStream();
-        setLocalStream(stream);
+        sharedStream = await acquireSharedLocalStream();
+        setLocalStream(sharedStream);
         if (muteOnStart) {
-          webrtcRef.current.setAudioEnabled(false);
+          sharedStream.getAudioTracks().forEach(t => { t.enabled = false; });
         }
-        await webrtcRef.current.addLocalStreamToPeerConnection();
       } catch (err) {
         console.warn('Could not access camera/microphone, continuing call without local media', err);
       }
 
-      webrtcRef.current.onRemoteStreamReceived((stream) => {
-        setRemoteStream(stream);
-      });
+      webrtcHandlersRef.current.forEach(h => h.close());
+      webrtcHandlersRef.current.clear();
 
-      // Single generic listener for whatever comes back from the display(s) in
-      // this conference — the server broadcasts answers/ICE candidates to
-      // everyone in the conference room except the sender.
+      // Generic listener for whatever comes back from the display(s) in this
+      // conference — data.screenId identifies which screen's own peer
+      // connection an answer/ICE candidate belongs to, so multiple screens in
+      // a group call each get routed to their own handler instead of
+      // colliding on a single shared one.
       onWebRTCSignal(async (data: any) => {
+        const handler = data.screenId ? webrtcHandlersRef.current.get(data.screenId) : undefined;
+        if (!handler) return;
         try {
           if (data.signal?.type === 'answer') {
-            await webrtcRef.current!.handleAnswer(data.signal);
+            await handler.handleAnswer(data.signal);
             setConnectionStatus('connected');
           } else if (data.signal?.candidate) {
-            await webrtcRef.current!.addICECandidate(data.signal);
+            await handler.addICECandidate(data.signal);
           }
         } catch (err) {
-          console.error('Error handling signal from display:', err);
+          console.error(`Error handling signal from display ${data.screenId}:`, err);
         }
       });
 
-      webrtcRef.current.onICECandidate((candidate: RTCIceCandidate | null) => {
-        if (candidate) {
-          targetIds.forEach(screenId => {
+      targetIds.forEach(async (screenId) => {
+        const handler = new WebRTCHandler();
+        webrtcHandlersRef.current.set(screenId, handler);
+
+        if (sharedStream) {
+          handler.setLocalStream(sharedStream);
+          try {
+            await handler.addLocalStreamToPeerConnection();
+          } catch (err) {
+            console.warn(`Could not attach local media for ${screenId}`, err);
+          }
+        }
+
+        handler.onRemoteStreamReceived((stream) => {
+          setRemoteStreams(prev => {
+            const next = new Map(prev);
+            next.set(screenId, stream);
+            return next;
+          });
+        });
+
+        handler.onICECandidate((candidate: RTCIceCandidate | null) => {
+          if (candidate) {
             socket.emit('webrtc:signal', {
               conferenceId: conference.conferenceId,
               toScreenId: screenId,
@@ -256,13 +299,11 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
                 sdpMid: candidate.sdpMid
               }
             });
-          });
-        }
-      });
+          }
+        });
 
-      targetIds.forEach(async (screenId) => {
         try {
-          const offer = await webrtcRef.current!.createOffer();
+          const offer = await handler.createOffer();
           socket.emit('webrtc:signal', {
             conferenceId: conference.conferenceId,
             toScreenId: screenId,
@@ -294,40 +335,58 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
     } catch (error) {
       console.error('Error ending conference:', error);
     } finally {
-      if (webrtcRef.current) {
-        webrtcRef.current.close();
-        webrtcRef.current = null;
-      }
+      webrtcHandlersRef.current.forEach(h => h.close());
+      webrtcHandlersRef.current.clear();
+      screenShareRef.current?.displayStream.getTracks().forEach(t => t.stop());
+      screenShareRef.current = null;
       setInCall(false);
       setConnectionStatus('initiating');
       setConferenceId(null);
       setCallTargetIds([]);
-      setRemoteStream(null);
+      setRemoteStreams(new Map());
       setLocalStream(null);
       setChatMessages([]);
     }
   };
 
+  // Mic/camera are shared MediaStreamTracks attached to every target screen's
+  // peer connection — toggling .enabled here affects all of them at once, no
+  // need to touch each handler individually.
   const handleToggleMic = () => {
     const next = !micEnabled;
-    webrtcRef.current?.setAudioEnabled(next);
+    localStream?.getAudioTracks().forEach(t => { t.enabled = next; });
     setMicEnabled(next);
   };
 
   const handleToggleCamera = () => {
     const next = !cameraEnabled;
-    webrtcRef.current?.setVideoEnabled(next);
+    localStream?.getVideoTracks().forEach(t => { t.enabled = next; });
     setCameraEnabled(next);
   };
 
+  const revertScreenShare = () => {
+    screenShareRef.current?.displayStream.getTracks().forEach(t => t.stop());
+    screenShareRef.current = null;
+    const cameraTrack = localStream?.getVideoTracks()[0];
+    if (cameraTrack) {
+      webrtcHandlersRef.current.forEach(h => { h.replaceOutgoingVideoTrack(cameraTrack); });
+    }
+    setIsScreenSharing(false);
+  };
+
   const handleToggleScreenShare = async () => {
-    if (!webrtcRef.current) return;
+    if (webrtcHandlersRef.current.size === 0) return;
     try {
       if (isScreenSharing) {
-        await webrtcRef.current.stopScreenShare();
-        setIsScreenSharing(false);
+        revertScreenShare();
       } else {
-        await webrtcRef.current.startScreenShare(() => setIsScreenSharing(false));
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenTrack = displayStream.getVideoTracks()[0];
+        screenShareRef.current = { displayStream, screenTrack };
+        for (const handler of webrtcHandlersRef.current.values()) {
+          await handler.replaceOutgoingVideoTrack(screenTrack);
+        }
+        screenTrack.onended = () => revertScreenShare();
         setIsScreenSharing(true);
       }
     } catch (err) {
@@ -424,11 +483,16 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
   }
 
   if (inCall) {
+    const remoteStreamList = callTargetIds.map(id => ({
+      screenId: id,
+      name: screens.find(s => s.id === id)?.name || 'TV',
+      stream: remoteStreams.get(id) || null
+    }));
     return (
       <CallOverlay
         targetName={targetName()}
         connectionStatus={connectionStatus}
-        remoteStream={remoteStream}
+        remoteStreams={remoteStreamList}
         localStream={localStream}
         micEnabled={micEnabled}
         cameraEnabled={cameraEnabled}
