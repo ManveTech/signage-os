@@ -19,7 +19,9 @@ import {
   Layers,
   ArrowLeft,
   ExternalLink,
-  UserCheck
+  UserCheck,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 import { syncAllFromDatabase } from '../lib/syncHelper';
@@ -40,7 +42,7 @@ interface LeadQuote {
   status: 'Pending' | 'Approved' | 'Declined';
   estimatedValue: string;
 }
-
+ 
 const initialLeads: LeadQuote[] = [];
 
 export default function AdminLogin({ initialView = 'login' }: Props) {
@@ -96,6 +98,11 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
   const [resetUserId, setResetUserId] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Password visibility states
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Dashboard states
   const [leads, setLeads] = useState<LeadQuote[]>(initialLeads);
@@ -198,25 +205,9 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           if (data.emailSent) {
-            setSuccessMessage(data.message || 'Password reset link sent to your email.');
-          } else if (data.resetLink) {
-            try {
-              const url = new URL(data.resetLink);
-              const tokenParam = url.searchParams.get('token');
-              const userIdParam = url.searchParams.get('userId');
-              if (tokenParam && userIdParam) {
-                setResetToken(tokenParam);
-                setResetUserId(userIdParam);
-                setView('reset');
-                setSuccessMessage('Please configure your new password below.');
-              } else {
-                setSuccessMessage(data.message || 'Password reset link generated.');
-              }
-            } catch (_) {
-              setSuccessMessage(data.message || 'Password reset link generated.');
-            }
+            setSuccessMessage(data.message || 'Password reset link sent to your email. Please check your inbox.');
           } else {
-            setSuccessMessage(data.message || 'Password reset link generated.');
+            setErrorMessage(data.message || 'SMTP email server is not configured or failed to send email. Please check server SMTP configuration in .env.');
           }
           setEmail('');
         } else {
@@ -440,12 +431,20 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
                       <Lock className="w-4 h-4" />
                     </div>
                     <input
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter security key"
-                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                      className="w-full py-3.5 pr-2 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="pr-3 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer flex items-center shrink-0"
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -548,12 +547,20 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
                       <Lock className="w-4 h-4" />
                     </div>
                     <input
-                      type="password"
+                      type={showNewPassword ? 'text' : 'password'}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Enter new password"
-                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                      className="w-full py-3.5 pr-2 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="pr-3 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer flex items-center shrink-0"
+                      title={showNewPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -569,12 +576,20 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
                       <Lock className="w-4 h-4" />
                     </div>
                     <input
-                      type="password"
+                      type={showConfirmPassword ? 'text' : 'password'}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Confirm new password"
-                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
+                      className="w-full py-3.5 pr-2 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="pr-3 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer flex items-center shrink-0"
+                      title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 

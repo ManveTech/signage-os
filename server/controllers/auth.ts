@@ -96,31 +96,49 @@ export async function forgotPassword(req: any, res: any) {
 
     const resetLink = `${baseUrl}/?token=${token}&userId=${user.id}`;
 
-    // Try sending email safely
+    // 1. Try sending email directly via PocketBase native SMTP mailer first
     let emailSent = false;
+    let pbErrorMsg = '';
     try {
-      emailSent = await sendPasswordResetEmail({
-        toEmail: user.email,
-        userName: user.name || 'SignageOS User',
-        resetLink
-      });
-    } catch (emailErr: any) {
-      console.error('Password reset email dispatch error (logging link fallback):', emailErr.message);
-      console.log(`\n[PASSWORD RESET LINK] User: ${user.email} -> ${resetLink}\n`);
+      await pb.collection('users').requestPasswordReset(lowerEmail);
+      emailSent = true;
+      console.log(`[PocketBase SMTP] Password reset email sent successfully to ${lowerEmail}`);
+    } catch (pbMailErr: any) {
+      pbErrorMsg = pbMailErr.message || 'PocketBase mail error';
+      console.warn(`[PocketBase SMTP] requestPasswordReset failed for ${lowerEmail}:`, pbMailErr.message);
     }
 
+    // 2. Fallback to custom Nodemailer SMTP if PocketBase mail fails
     if (!emailSent) {
-      console.warn(`Password reset email could not be delivered to ${user.email} via SMTP. Providing reset link fallback.`);
-      return res.status(200).json({
-        message: 'Mail server could not deliver the email. Use the reset link below to configure your new password:',
-        resetLink,
-        emailSent: false
+      try {
+        emailSent = await sendPasswordResetEmail({
+          toEmail: user.email,
+          userName: user.name || 'SignageOS User',
+          resetLink
+        });
+        if (emailSent) {
+          console.log(`[Nodemailer SMTP] Password reset email sent successfully to ${lowerEmail}`);
+        }
+      } catch (emailErr: any) {
+        console.error('[Nodemailer SMTP] reset email error:', emailErr.message);
+      }
+    }
+
+    // Log reset link for developer testing convenience
+    console.log(`\n================================================================================`);
+    console.log(`[RESET LINK FOR TESTING]: ${user.email} -> ${resetLink}`);
+    console.log(`================================================================================\n`);
+
+    if (!emailSent) {
+      return res.status(400).json({
+        message: `PocketBase SMTP mail server is not configured or failed (${pbErrorMsg}). Please configure SMTP settings in PocketBase Admin UI (Settings -> Mail Settings) or update .env SMTP credentials.`,
+        emailSent: false,
+        resetLink
       });
     }
 
     return res.status(200).json({
-      message: 'Password reset link sent to your email inbox.',
-      resetLink,
+      message: 'Password reset link has been sent to your email address via PocketBase SMTP. Please check your inbox.',
       emailSent: true
     });
 

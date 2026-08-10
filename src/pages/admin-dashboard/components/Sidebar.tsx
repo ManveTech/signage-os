@@ -49,7 +49,6 @@ const navSections: NavSection[] = [
       { id: 'client-playlists', label: 'Client Playlists' },
     ]
   },
-  { id: 'video-conferencing', label: 'Video Conferencing', icon: <Video size={18} /> },
   { id: 'users', label: 'Users', icon: <Users size={18} /> },
   { id: 'organizations', label: 'Organizations', icon: <Building2 size={18} /> },
   {
