@@ -1,5 +1,5 @@
 import PocketBase from 'pocketbase';
-import { PB_URL } from '../config';
+import { PB_URL, APP_URL } from '../config';
 import { pb, ensurePBAuth } from '../db';
 import { signJwt, verifyJwt } from '../middleware/auth';
 import { sendPasswordResetEmail } from '../email';
@@ -90,9 +90,31 @@ export async function forgotPassword(req: any, res: any) {
     });
 
     const origin = req.get('origin') || req.get('referer');
-    const protocol = req.protocol || 'http';
-    const host = req.get('host') || 'localhost:3000';
-    const baseUrl = origin ? origin.replace(/\/+$/, '') : `${protocol}://${host}`;
+    const forwardedHost = req.get('x-forwarded-host');
+    const forwardedProto = req.get('x-forwarded-proto') || 'https';
+
+    let baseUrl = APP_URL;
+    if (!baseUrl) {
+      if (origin) {
+        baseUrl = origin.replace(/\/+$/, '');
+      } else if (forwardedHost) {
+        baseUrl = `${forwardedProto}://${forwardedHost.split(',')[0].trim()}`;
+      } else {
+        const protocol = req.protocol || 'http';
+        const host = req.get('host') || 'blu.manve.co';
+        baseUrl = `${protocol}://${host}`;
+      }
+    }
+
+    // Ensure trailing slash is removed
+    baseUrl = baseUrl.replace(/\/+$/, '');
+
+    // Sync PocketBase appUrl setting dynamically so PocketBase's native password reset emails use the deployed domain URL
+    try {
+      await pb.settings.update({ appUrl: baseUrl });
+    } catch (err: any) {
+      console.warn('[PocketBase Settings] Could not update appUrl setting dynamically:', err.message);
+    }
 
     const resetLink = `${baseUrl}/?token=${token}&userId=${user.id}`;
 
@@ -102,7 +124,7 @@ export async function forgotPassword(req: any, res: any) {
     try {
       await pb.collection('users').requestPasswordReset(lowerEmail);
       emailSent = true;
-      console.log(`[PocketBase SMTP] Password reset email sent successfully to ${lowerEmail}`);
+      console.log(`[PocketBase SMTP] Password reset email sent successfully to ${lowerEmail} using appUrl: ${baseUrl}`);
     } catch (pbMailErr: any) {
       pbErrorMsg = pbMailErr.message || 'PocketBase mail error';
       console.warn(`[PocketBase SMTP] requestPasswordReset failed for ${lowerEmail}:`, pbMailErr.message);

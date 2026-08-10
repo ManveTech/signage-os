@@ -20,6 +20,7 @@ export const JWT_SECRET = requireEnv('JWT_SECRET', 'signageos_dev_jwt_secret_CHA
 export const PB_ADMIN_EMAIL = requireEnv('PB_ADMIN_EMAIL', isDev ? 'admin@example.com' : '');
 export const PB_ADMIN_PASSWORD = requireEnv('PB_ADMIN_PASSWORD', isDev ? 'changeme123' : '');
 export const PB_URL = process.env.POCKETBASE_URL || (isDev ? 'http://127.0.0.1:8090' : '');
+export const APP_URL = (process.env.APP_URL || process.env.PUBLIC_URL || '').trim();
 
 // SMTP Configuration
 export const SMTP_HOST = process.env.SMTP_HOST || '';
