@@ -146,7 +146,7 @@ const conferenceCallerSockets = new Map<string, Set<string>>();
 // is gone for good — give them a window to reconnect and re-emit
 // video:join-conference before we tear down the screen's rejoin state.
 const CALLER_GONE_GRACE_MS = 15000;
-const pendingCallerGoneCleanup = new Map<string, NodeJS.Timeout>();
+const pendingCallerGoneCleanup = new Map<string, ReturnType<typeof setTimeout>>();
 
 // Setup Socket.io event handlers for video conferencing
 io.on('connection', (socket) => {

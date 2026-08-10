@@ -22,7 +22,7 @@ export function useVideoConferencing() {
 
   useEffect(() => {
     const socket = io(BACKEND_URL, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
