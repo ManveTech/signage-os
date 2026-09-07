@@ -1,6 +1,7 @@
 import { pb, ensurePBAuth } from '../db';
 import { syncScreenSchedule } from '../scheduler';
 import { redis, isRedisReady, acquireLock, releaseLock } from '../redis';
+import { notifyScreenConfigChanged } from '../services/screenPush';
 
 async function logServerError(screenId: string, screenName: string, email: string, event: string, detail: string) {
   try {
@@ -270,6 +271,10 @@ export async function pairScreen(req: any, res: any) {
     // Sync branding details
     await syncScreenBrandingFromOrg(updatedScreen);
 
+    // The TV is actively polling its pairing loop waiting for this — push
+    // instead of leaving it to catch up on its next scheduled poll.
+    notifyScreenConfigChanged(updatedScreen.id);
+
     // Log pairing to screen_logs
     pb.collection('screen_logs').create(
       await buildScreenLog(updatedScreen, {
@@ -356,7 +361,12 @@ async function runWithConcurrencyLimit<T>(
   await Promise.all(executing);
 }
 
-const DB_WRITE_THROTTLE_MS = 15000; // 15 seconds
+// At small fleet sizes 15s made little practical difference since the app's
+// old 20s heartbeat interval already exceeded it on every call. At fleet
+// scale this is the actual lever that caps PocketBase write load independent
+// of whatever interval the TV app heartbeats at — presence/diagnostics still
+// update in Redis every heartbeat regardless, only the DB write is throttled.
+const DB_WRITE_THROTTLE_MS = 90000; // 90 seconds
 const STATUS_CHECK_CONCURRENCY = 10;
 
 export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolean }) {
@@ -576,6 +586,38 @@ export async function touchScreenPresence(screenId: string) {
     }
   } catch (e) {
     // Ignore presence touch errors
+  }
+}
+
+/**
+ * Device-facing alternative to the TV app hitting PocketBase's own REST API
+ * directly for its status-sync poll. Deliberately NOT cached: an earlier
+ * cached version of this endpoint raced with pairing — a request reading the
+ * pre-pairing "pairing" record could still be in flight when pairing
+ * completed, and would write that stale snapshot into the cache *after*
+ * pairing's own cache invalidation, re-poisoning it. Combined with the
+ * config-changed push triggering an immediate re-sync, this made a screen
+ * see stale "still pairing" data right after actually pairing and unpair
+ * itself. Always reading through to PocketBase avoids that whole class of
+ * bug. Revisit caching here only with proper invalidation ordering
+ * (e.g. a version/updated-at check) if this ever becomes a real bottleneck.
+ */
+export async function getScreenStatusForDevice(req: any, res: any) {
+  try {
+    const screenId = req.body?.screenId || req.query?.screenId;
+    if (!screenId) {
+      return res.status(400).json({ message: 'screenId is required.' });
+    }
+
+    const screenRecord = await pb.collection('screens').getOne(screenId).catch(() => null);
+    if (!screenRecord) {
+      return res.status(404).json({ message: 'Screen not found.' });
+    }
+
+    return res.status(200).json(screenRecord);
+  } catch (error: any) {
+    console.error('Error fetching screen status for device:', error);
+    res.status(500).json({ message: error.message || 'Error fetching screen status' });
   }
 }
 

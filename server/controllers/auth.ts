@@ -3,6 +3,7 @@ import { PB_URL, APP_URL } from '../config';
 import { pb, ensurePBAuth } from '../db';
 import { signJwt, verifyJwt } from '../middleware/auth';
 import { sendPasswordResetEmail } from '../email';
+import { logAudit, getClientIp } from '../services/auditLog';
 
 export async function login(req: any, res: any) {
   try {
@@ -36,6 +37,15 @@ export async function login(req: any, res: any) {
         path: '/'
       });
 
+      logAudit({
+        actorId: user.id,
+        actorEmail: user.email,
+        action: 'login.success',
+        targetType: 'user',
+        targetId: user.id,
+        ip: getClientIp(req)
+      });
+
       return res.status(200).json({
         token, // Still return token for backward compatibility with mobile app
         user: {
@@ -50,6 +60,13 @@ export async function login(req: any, res: any) {
     } catch (pbErr: any) {
       console.log('PocketBase auth failed, checking fallback:', pbErr.message);
 
+      logAudit({
+        actorEmail: lowerEmail,
+        action: 'login.failed',
+        targetType: 'user',
+        detail: pbErr.message,
+        ip: getClientIp(req)
+      });
 
       return res.status(401).json({ message: 'Invalid access credentials.' });
     }
@@ -77,8 +94,16 @@ export async function forgotPassword(req: any, res: any) {
       console.log('User lookup in PocketBase failed or not found:', pbErr.message);
     }
 
+    const genericSentResponse = {
+      message: 'If an account exists for this email address, a password reset link has been sent.',
+      emailSent: true
+    };
+
     if (!user) {
-      return res.status(404).json({ message: 'No user registered with this email address.' });
+      // Deliberately indistinguishable from the "email sent" response below —
+      // a 404 here would let anyone enumerate which emails have accounts.
+      logAudit({ actorEmail: lowerEmail, action: 'password_reset.requested_unknown_email', ip: getClientIp(req) });
+      return res.status(200).json(genericSentResponse);
     }
 
     // Sign password reset token valid for 15 minutes
@@ -146,23 +171,36 @@ export async function forgotPassword(req: any, res: any) {
       }
     }
 
-    // Log reset link for developer testing convenience
-    console.log(`\n================================================================================`);
-    console.log(`[RESET LINK FOR TESTING]: ${user.email} -> ${resetLink}`);
-    console.log(`================================================================================\n`);
+    // Log reset link for developer testing convenience — dev only, since this
+    // token grants a password reset and must never sit in production logs.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`\n================================================================================`);
+      console.log(`[RESET LINK FOR TESTING]: ${user.email} -> ${resetLink}`);
+      console.log(`================================================================================\n`);
+    }
+
+    logAudit({
+      actorId: user.id,
+      actorEmail: user.email,
+      action: emailSent ? 'password_reset.requested' : 'password_reset.email_failed',
+      targetType: 'user',
+      targetId: user.id,
+      detail: emailSent ? undefined : pbErrorMsg,
+      ip: getClientIp(req)
+    });
 
     if (!emailSent) {
+      // Never return the reset link itself in the response — it's a live
+      // account-takeover token. If email delivery is broken, fix it via the
+      // console log above (dev) or PocketBase Admin UI mail settings, not by
+      // handing the link to whoever called this endpoint.
       return res.status(400).json({
         message: `PocketBase SMTP mail server is not configured or failed (${pbErrorMsg}). Please configure SMTP settings in PocketBase Admin UI (Settings -> Mail Settings) or update .env SMTP credentials.`,
-        emailSent: false,
-        resetLink
+        emailSent: false
       });
     }
 
-    return res.status(200).json({
-      message: 'Password reset link has been sent to your email address via PocketBase SMTP. Please check your inbox.',
-      emailSent: true
-    });
+    return res.status(200).json(genericSentResponse);
 
   } catch (error: any) {
     console.error('Forgot password error:', error);
@@ -199,6 +237,15 @@ export async function resetPassword(req: any, res: any) {
       password: password,
       passwordConfirm: password,
       firstTimeLogin: false
+    });
+
+    logAudit({
+      actorId: userId,
+      actorEmail: payload.email,
+      action: 'password_reset.completed',
+      targetType: 'user',
+      targetId: userId,
+      ip: getClientIp(req)
     });
 
     return res.status(200).json({ message: 'Password has been reset successfully.' });

@@ -14,7 +14,7 @@ data class ScreenConfig(
     val serverUrl: String = com.example.AppConfig.SERVER_URL,
     val pocketbaseUrl: String = com.example.AppConfig.POCKETBASE_URL,
     val lastSyncedAt: Long = 0L,
-    val playlistOrientation: String = "vertical", // "horizontal" | "vertical"
+    val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
     val playlistShuffle: Boolean = false,
     val playlistLoop: Boolean = true,
     val playlistVolume: Int = 80,

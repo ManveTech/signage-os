@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 data class SignageUiState(
     val hardwareUuid: String = "",
@@ -38,7 +39,7 @@ data class SignageUiState(
     val downloadProgressFraction: Float = 0f,
     val showSplash: Boolean = true,
     // Playlist playback settings
-    val playlistOrientation: String = "vertical", // "horizontal" | "vertical"
+    val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
     val playlistShuffle: Boolean = false,
     val playlistLoop: Boolean = true,
     val playlistVolume: Int = 80,
@@ -80,6 +81,19 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
+        // Server pushed a config change over the socket — re-sync right away
+        // instead of waiting for the next scheduled poll (which now runs on a
+        // much longer interval than it used to, precisely because this exists).
+        viewModelScope.launch {
+            videoCallManager.configChanged.collect {
+                try {
+                    repository.syncScreenStatus()
+                } catch (e: Exception) {
+                    Log.e("SignageViewModel", "Push-triggered sync failed", e)
+                }
+            }
+        }
+
         // Collect database config state
         viewModelScope.launch {
             repository.configFlow.collectLatest { config ->
@@ -114,10 +128,13 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                             cameraMountEnabled = config.cameraMountEnabled
                         )
                     }
-                    // Only screens licensed for video conferencing (camera mount enabled)
-                    // connect the realtime call-signaling channel; everything else is
-                    // untouched normal signage playback.
-                    if (config.screenId.isNotEmpty() && config.cameraMountEnabled) {
+                    // Every paired screen holds this socket open now, not just
+                    // camera-mount-enabled ones — it's how the server pushes
+                    // "your config changed" instantly instead of the screen
+                    // waiting for its next poll. Call-signaling handlers on this
+                    // same socket stay inert for non-VC screens since the server
+                    // never initiates a conference on a screen without a camera.
+                    if (config.screenId.isNotEmpty()) {
                         videoCallManager.start(config.serverUrl, config.screenId)
                     } else {
                         videoCallManager.stop()
@@ -282,8 +299,13 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         syncJob?.cancel()
         syncJob = viewModelScope.launch {
             while (isActive) {
+                // Defaults to the responsive interval if reading config fails —
+                // fail toward keeping physical displays reactive, not toward
+                // silently going quiet for a minute.
+                var isPairing = true
                 try {
                     val config = repository.getOrCreateConfig()
+                    isPairing = config.status == "pairing"
                     if (config.screenId.isNotEmpty()) {
                         _uiState.update { it.copy(isSyncing = true) }
                         repository.syncScreenStatus()
@@ -295,8 +317,18 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     Log.e("SignageViewModel", "Background sync failure", e)
                     _uiState.update { it.copy(isSyncing = false) }
                 }
-                // Poll screen stats and pairing actions every 7.5 seconds
-                delay(7500)
+                // A human is actively watching the screen during setup, waiting for
+                // the pairing code to activate — keep that phase fast. Once a screen
+                // is actively displaying content, this is now a safety-net poll (the
+                // server pushes real changes over the socket the instant they
+                // happen), so a fleet of these can run on a much longer, jittered
+                // interval without anyone noticing slower reactions to a change that
+                // was never going to come through polling anyway.
+                if (isPairing) {
+                    delay(7500)
+                } else {
+                    delay(60000L + Random.nextLong(0, 15000))
+                }
             }
         }
     }
@@ -314,8 +346,11 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 } catch (e: Exception) {
                     Log.e("SignageViewModel", "Heartbeat broadcast failed", e)
                 }
-                // Broadcast diagnostic heartbeats every 20 seconds
-                delay(20000L)
+                // Server treats a screen as offline after 180s with no heartbeat
+                // (Redis presence TTL) — 45-60s jittered leaves a comfortable 3x
+                // margin while cutting fleet-wide heartbeat volume to a third of
+                // the old fixed 20s interval.
+                delay(45000L + Random.nextLong(0, 15000))
             }
         }
     }

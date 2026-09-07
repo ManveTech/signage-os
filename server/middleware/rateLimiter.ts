@@ -2,39 +2,56 @@ import rateLimit from 'express-rate-limit';
 import { isRedisReady, redis } from '../redis';
 
 /**
- * Redis store for rate limiting (optional - falls back to in-memory if Redis unavailable)
+ * Redis store for rate limiting, with an in-process fallback so a Redis outage
+ * degrades this to a per-instance limiter instead of disabling limiting
+ * entirely. windowMs comes from each limiter's own config via init() — it
+ * used to be hardcoded to 60s here, which silently reset the 15-minute auth
+ * limiter and hour-long upload/payment limiters every 60 seconds whenever
+ * Redis was reachable.
  */
 class RedisStore {
   prefix: string;
+  private windowMs = 60000;
+  private memoryFallback = new Map<string, { count: number; resetAt: number }>();
 
   constructor(prefix = 'rl:') {
     this.prefix = prefix;
   }
 
+  init(options: { windowMs: number }): void {
+    this.windowMs = options.windowMs;
+  }
+
+  private incrementMemoryFallback(redisKey: string): { totalHits: number; resetTime: Date } {
+    const now = Date.now();
+    const existing = this.memoryFallback.get(redisKey);
+    if (!existing || existing.resetAt <= now) {
+      const resetAt = now + this.windowMs;
+      this.memoryFallback.set(redisKey, { count: 1, resetAt });
+      return { totalHits: 1, resetTime: new Date(resetAt) };
+    }
+    existing.count += 1;
+    return { totalHits: existing.count, resetTime: new Date(existing.resetAt) };
+  }
+
   async increment(key: string): Promise<{ totalHits: number; resetTime: Date }> {
     const redisKey = `${this.prefix}${key}`;
-    const now = Date.now();
-    const windowMs = 60000; // 1 minute window
 
     if (!isRedisReady()) {
-      // Fallback to simple counter if Redis not available
-      return {
-        totalHits: 1,
-        resetTime: new Date(now + windowMs)
-      };
+      return this.incrementMemoryFallback(redisKey);
     }
 
     try {
       // Increment counter with expiry
       const hits = await redis.incr(redisKey);
 
-      // Set expiry on first hit
+      // Set expiry on first hit, using this limiter's actual configured window
       if (hits === 1) {
-        await redis.pexpire(redisKey, windowMs);
+        await redis.pexpire(redisKey, this.windowMs);
       }
 
       const ttl = await redis.pttl(redisKey);
-      const resetTime = new Date(now + (ttl > 0 ? ttl : windowMs));
+      const resetTime = new Date(Date.now() + (ttl > 0 ? ttl : this.windowMs));
 
       return {
         totalHits: hits,
@@ -42,18 +59,22 @@ class RedisStore {
       };
     } catch (error) {
       console.error('Redis rate limit error:', error);
-      // Fallback on error
-      return {
-        totalHits: 1,
-        resetTime: new Date(now + windowMs)
-      };
+      // Redis errored mid-request — fall back to an in-process counter instead
+      // of reporting "1 hit" forever, which would disable this limiter
+      // platform-wide until the process restarts.
+      return this.incrementMemoryFallback(redisKey);
     }
   }
 
   async decrement(key: string): Promise<void> {
-    if (!isRedisReady()) return;
-
     const redisKey = `${this.prefix}${key}`;
+
+    if (!isRedisReady()) {
+      const existing = this.memoryFallback.get(redisKey);
+      if (existing && existing.count > 0) existing.count -= 1;
+      return;
+    }
+
     try {
       await redis.decr(redisKey);
     } catch (error) {
@@ -62,9 +83,11 @@ class RedisStore {
   }
 
   async resetKey(key: string): Promise<void> {
+    const redisKey = `${this.prefix}${key}`;
+    this.memoryFallback.delete(redisKey);
+
     if (!isRedisReady()) return;
 
-    const redisKey = `${this.prefix}${key}`;
     try {
       await redis.del(redisKey);
     } catch (error) {

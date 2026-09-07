@@ -962,6 +962,94 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to ensure video_conferences collection:', videoConfErr.message);
     }
 
+    // Ensure audit_logs collection exists — records who did what, to what, and
+    // when, for sensitive actions (auth, deletions, role/payment changes).
+    try {
+      console.log('Ensuring audit_logs collection exists...');
+      try {
+        await pb.collections.getOne('audit_logs');
+        console.log('audit_logs collection already exists');
+      } catch (err) {
+        console.log('Creating audit_logs collection...');
+        await pb.collections.create({
+          id: 'collauditlogsid',
+          name: 'audit_logs',
+          type: 'base',
+          fields: [
+            {
+              id: 'auditactoridid',
+              name: 'actorId',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'auditactoremailid',
+              name: 'actorEmail',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'auditactionid',
+              name: 'action',
+              type: 'text',
+              required: true,
+              system: false
+            },
+            {
+              id: 'audittargettypeid',
+              name: 'targetType',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'audittargetidid',
+              name: 'targetId',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'auditdetailid',
+              name: 'detail',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'auditipid',
+              name: 'ip',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'auditautodatecreatedid',
+              name: 'created',
+              type: 'autodate',
+              onCreate: true,
+              onUpdate: false,
+              system: false,
+              hidden: false,
+              presentable: false
+            }
+          ],
+          // Written only by the server (via the admin PB client) — no client-side
+          // create/update/delete. Reads are locked down to admins.
+          listRule: '@request.auth.role = "admin"',
+          viewRule: '@request.auth.role = "admin"',
+          createRule: null,
+          updateRule: null,
+          deleteRule: null
+        });
+        console.log('Successfully created audit_logs collection');
+      }
+    } catch (auditLogsErr: any) {
+      console.warn('Failed to ensure audit_logs collection:', auditLogsErr.message);
+    }
+
     // Ensure support_docs collection schema has youtubeUrl field
     try {
       console.log('Ensuring support_docs collection schema has youtubeUrl field...');

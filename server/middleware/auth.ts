@@ -63,7 +63,11 @@ export function authenticateToken(req: any, res: any, next: any) {
     path.endsWith('/devices/offline') ||
     path.endsWith('/devices/clear-command') ||
     path.endsWith('/screens/disconnect') ||
-    (req.method === 'POST' && (path === '/screen_logs' || path === '/api/v1/screen_logs' || path.endsWith('/screen_logs')));
+    (req.method === 'POST' && (path === '/screen_logs' || path === '/api/v1/screen_logs' || path.endsWith('/screen_logs'))) ||
+    // Razorpay's servers call this directly and carry no session cookie/JWT —
+    // handleWebhook is responsible for verifying the X-Razorpay-Signature
+    // header instead, so this bypass must never be added without that check.
+    (req.method === 'POST' && (path === '/payments/webhook' || path === '/api/v1/payments/webhook' || path.endsWith('/payments/webhook')));
 
   if (isBypassedPath && !token) {
     return next();

@@ -1,0 +1,82 @@
+# Reference example for running multiple server instances behind nginx —
+# item 4 of the scaling plan. This is NOT wired into the existing deployment
+# automatically; it's a starting point to adapt to however this project is
+# actually deployed (see docker-compose.yml for the current single-instance
+# setup, which Coolify manages directly).
+#
+# Prerequisites already in place in the codebase: the Socket.IO Redis adapter
+# and Redis-backed video-conference state (server/index.ts,
+# server/videoConferenceState.ts) — without those, running more than one
+# `app` replica here would silently break video calls.
+#
+# Usage as a plain docker-compose stack (adjust for Coolify's own compose
+# handling if that's how this ends up deployed):
+#   docker compose -f server/docker-compose.scale.example.yml up -d
+#
+# To change the replica count, duplicate an `appN` block (copy `app3` to
+# `app4`, etc.) AND add the matching `server appN:5000;` line to nginx-lb.conf
+# — the two have to be kept in sync by hand, this isn't automatic.
+
+version: '3.8'
+
+services:
+  app1: &app
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: always
+    environment: &app-env
+      - POCKETBASE_URL=${POCKETBASE_URL}
+      - PB_ADMIN_EMAIL=${PB_ADMIN_EMAIL}
+      - PB_ADMIN_PASSWORD=${PB_ADMIN_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=5000
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_SENDER_EMAIL=${SMTP_SENDER_EMAIL}
+      - SMTP_SENDER_NAME=${SMTP_SENDER_NAME}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
+      - S3_ENABLED=${S3_ENABLED}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_REGION=${S3_REGION}
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
+      - S3_SECRET=${S3_SECRET}
+      - R2_PUBLIC_URL=${R2_PUBLIC_URL}
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  app2:
+    <<: *app
+    environment: *app-env
+
+  app3:
+    <<: *app
+    environment: *app-env
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "5000:80"
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app1
+      - app2
+      - app3
+
+  redis:
+    image: redis:alpine
+    restart: always

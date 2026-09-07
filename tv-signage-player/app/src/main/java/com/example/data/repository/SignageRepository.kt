@@ -156,9 +156,12 @@ class SignageRepository(private val context: Context) {
                 return@withContext Result.failure(IllegalStateException("No screen record paired yet"))
             }
 
-            // Read the real record state from Pocketbase
-            val url = "${initialConfig.pocketbaseUrl}/api/collections/screens/records/${initialConfig.screenId}"
-            val response = apiService.getScreenRecord(url)
+            // Read screen status through the server's cached device-sync endpoint
+            // rather than hitting PocketBase's REST API directly — at fleet scale,
+            // every device polling PocketBase straight was the single biggest
+            // source of load. Same record shape either way.
+            val url = "${initialConfig.serverUrl}/api/v1/devices/sync"
+            val response = apiService.getScreenStatus(url, mapOf("screenId" to initialConfig.screenId))
 
             Log.d("SignageRepository", "Synced screen status: ${response.status}")
             val currentConfig = getOrCreateConfig()
@@ -594,7 +597,7 @@ class SignageRepository(private val context: Context) {
             )
 
             val updatedConfig = currentConfig.copy(
-                playlistOrientation = response.orientation ?: "vertical",
+                playlistOrientation = response.orientation ?: "horizontal",
                 playlistShuffle = response.shuffle ?: false,
                 playlistLoop = response.loop ?: true,
                 playlistVolume = response.volume?.toInt() ?: 80,

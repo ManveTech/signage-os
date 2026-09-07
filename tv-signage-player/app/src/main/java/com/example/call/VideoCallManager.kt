@@ -7,7 +7,9 @@ import io.socket.client.Socket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -74,6 +76,13 @@ class VideoCallManager(private val context: Context) {
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
 
+    // Emits whenever the server pushes "this screen's config changed" over the
+    // socket this manager already holds open — lets the ViewModel re-sync
+    // immediately instead of waiting for its next scheduled poll. extraBufferCapacity
+    // so a signal isn't lost if it arrives before a collector is attached.
+    private val _configChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val configChanged: SharedFlow<Unit> = _configChanged
+
     val eglBase: EglBase = EglBase.create()
 
     private var socket: Socket? = null
@@ -114,6 +123,10 @@ class VideoCallManager(private val context: Context) {
             newSocket.on("conference:ended") { onConferenceEnded() }
             newSocket.on("webrtc:signal") { args -> onSignal(args) }
             newSocket.on("chat:message") { args -> onChatMessage(args) }
+            newSocket.on("screen:config-changed") {
+                Log.d(TAG, "Received screen:config-changed push, signaling immediate re-sync")
+                _configChanged.tryEmit(Unit)
+            }
             newSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 Log.w(TAG, "Socket connect error: ${args.firstOrNull()}")
             }

@@ -2,6 +2,8 @@ import { pb, ensurePBAuth } from '../db';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { updateEnvFile } from '../utils/env';
+import { logAudit, getClientIp } from '../services/auditLog';
+import { RAZORPAY_WEBHOOK_SECRET } from '../config';
 
 function getRazorpayInstance() {
   const keyId = process.env.RAZORPAY_KEY_ID || 'rzp_live_demo83920194';
@@ -48,6 +50,16 @@ export async function saveRazorpayConfig(req: any, res: any) {
     }
 
     await updateEnvFile(updates);
+
+    logAudit({
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+      action: 'payment_gateway.credentials_changed',
+      targetType: 'razorpay_config',
+      detail: `keyId updated${updates.RAZORPAY_KEY_SECRET ? '; secret rotated' : ''}`,
+      ip: getClientIp(req)
+    });
+
     res.status(200).json({ message: 'Razorpay credentials saved and applied.' });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -176,6 +188,16 @@ export async function verifyPayment(req: any, res: any) {
 
     await verifyAndProcessPayment(licenseId, razorpayPaymentId, razorpayOrderId);
 
+    logAudit({
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+      action: 'payment.verified',
+      targetType: 'license',
+      targetId: licenseId,
+      detail: `razorpayPaymentId=${razorpayPaymentId}, razorpayOrderId=${razorpayOrderId}`,
+      ip: getClientIp(req)
+    });
+
     res.status(200).json({
       status: 'success',
       message: 'Payment verified successfully. License active.'
@@ -209,6 +231,38 @@ export async function getPaymentHistory(req: any, res: any) {
 
 export async function handleWebhook(req: any, res: any) {
   try {
+    // This route is reachable with no session/JWT (Razorpay's servers call it
+    // directly), so the webhook signature is the ONLY thing standing between
+    // this handler and anyone forging a "payment.captured" event to activate
+    // a license for free. Never remove this check without also re-adding the
+    // JWT requirement in middleware/auth.ts.
+    if (RAZORPAY_WEBHOOK_SECRET) {
+      const signature = req.headers['x-razorpay-signature'];
+      const rawBody: Buffer | undefined = req.rawBody;
+      const expectedSig = rawBody
+        ? crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest('hex')
+        : '';
+      const sigBuf = Buffer.from(String(signature || ''));
+      const expectedSigBuf = Buffer.from(expectedSig);
+      const isValid = !!signature && !!rawBody && sigBuf.length === expectedSigBuf.length
+        && crypto.timingSafeEqual(sigBuf, expectedSigBuf);
+
+      if (!isValid) {
+        console.error('[Razorpay Webhook] Signature verification failed — rejecting.');
+        logAudit({
+          action: 'payment_webhook.signature_invalid',
+          detail: `event=${req.body?.event}`,
+          ip: getClientIp(req)
+        });
+        return res.status(401).json({ message: 'Invalid webhook signature.' });
+      }
+    } else {
+      // No secret configured — refusing to process unverifiable payment
+      // events rather than silently trusting an unauthenticated request.
+      console.error('[Razorpay Webhook] RAZORPAY_WEBHOOK_SECRET is not set — refusing to process webhook. Configure it in Razorpay Dashboard > Webhooks and in .env.');
+      return res.status(503).json({ message: 'Webhook not configured.' });
+    }
+
     await ensurePBAuth();
     const { event, payload } = req.body;
     console.log(`[Razorpay Webhook] Received event: "${event}"`);
@@ -234,6 +288,14 @@ export async function handleWebhook(req: any, res: any) {
       if (event === 'order.paid' || event === 'payment.captured') {
         if (matchingLicense) {
           await verifyAndProcessPayment(matchingLicense.id, paymentId, orderId);
+          logAudit({
+            actorEmail: email,
+            action: 'payment.verified_via_webhook',
+            targetType: 'license',
+            targetId: matchingLicense.id,
+            detail: `razorpayPaymentId=${paymentId}, razorpayOrderId=${orderId}`,
+            ip: getClientIp(req)
+          });
         } else {
           await pb.collection('payments').create({
             licenseId,

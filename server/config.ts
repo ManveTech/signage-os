@@ -33,6 +33,10 @@ export const SMTP_SENDER_NAME = process.env.SMTP_SENDER_NAME || 'SignageOS';
 // Razorpay Configuration
 export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 export const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+// Separate from RAZORPAY_KEY_SECRET — this is the secret configured in the
+// Razorpay Dashboard's webhook settings, used to verify that /payments/webhook
+// calls actually came from Razorpay and weren't forged by a client.
+export const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
 
 // Cloudflare R2 / S3 Storage Configuration
 export const S3_ENABLED = (process.env.S3_ENABLED || '').trim() === 'true';

@@ -156,6 +156,12 @@ interface SignageApiService {
         @Url url: String
     ): PocketBaseScreenResponse
 
+    @POST
+    suspend fun getScreenStatus(
+        @Url url: String,
+        @Body request: Map<String, String>
+    ): PocketBaseScreenResponse
+
     @retrofit2.http.PATCH
     suspend fun updateScreenRecord(
         @Url url: String,

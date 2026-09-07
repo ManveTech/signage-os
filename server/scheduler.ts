@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { pb, ensurePBAuth } from './db';
 import { checkDeviceStatuses, getLiveScreenMetrics } from './controllers/screens';
+import { notifyScreenConfigChanged } from './services/screenPush';
 
 // In-memory map of active screen cron tasks: screenId -> ScheduledTask
 const activeJobs = new Map<string, any>();
@@ -71,6 +72,10 @@ async function activateScheduledPlaylist(screen: any) {
       scheduleDate: '',
       scheduleTime: '',
     });
+
+    // This fires at an exact scheduled instant — push immediately rather than
+    // letting the screen sit on stale content until its next poll.
+    notifyScreenConfigChanged(screen.id);
 
     // Log the event to screen_logs
     try {

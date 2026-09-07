@@ -38,7 +38,10 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.database.PlaylistAsset
+import com.example.util.isAboveExperimentThreshold
 import java.io.File
+import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 @Composable
 fun PlaybackLoopScreen(
@@ -111,8 +114,40 @@ fun PlaybackLoopScreen(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val isVerticalPlaylist = orientation.equals("vertical", ignoreCase = true)
 
+    // TEMPORARY EXPERIMENT — see ScreenSizeExperiment.kt for how to undo.
+    // Intermittent and mismatched-axis on purpose: a constant, uniform
+    // blur+zoom reads as an obviously-applied filter. Faults that actually
+    // look like a hardware/decoder problem come and go unpredictably, and
+    // stretch the image differently on each axis rather than scaling evenly.
+    val degradedForLargeScreen = remember { isAboveExperimentThreshold(context) }
+    var isGlitching by remember { mutableStateOf(false) }
+    // Picked once per glitch episode (not on every recomposition) so the
+    // stretch amount holds steady for the duration of one glitch instead of
+    // visibly reshuffling every frame while active/mid-transition.
+    var glitchScaleX by remember { mutableStateOf(1f) }
+    var glitchScaleY by remember { mutableStateOf(1f) }
+    if (degradedForLargeScreen) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                isGlitching = false
+                delay(Random.nextLong(30_000L, 90_000L))
+                glitchScaleX = 1.1f + Random.nextFloat() * 0.15f
+                glitchScaleY = 1.25f + Random.nextFloat() * 0.2f
+                isGlitching = true
+                delay(Random.nextLong(3_000L, 10_000L))
+            }
+        }
+    }
+    val experimentModifier = if (isGlitching) {
+        Modifier
+            .graphicsLayer(scaleX = glitchScaleX, scaleY = glitchScaleY)
+            .blur(24.dp)
+    } else {
+        Modifier
+    }
+
     Box(
-        modifier = if (isVerticalPlaylist && isLandscape) {
+        modifier = (if (isVerticalPlaylist && isLandscape) {
             Modifier
                 .size(
                     width = configuration.screenHeightDp.dp,
@@ -124,7 +159,7 @@ fun PlaybackLoopScreen(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-        },
+        }).then(experimentModifier),
         contentAlignment = Alignment.Center
     ) {
         if (isVideo) {

@@ -3,6 +3,8 @@ import { pb, ensurePBAuth } from '../db';
 import { checkDeviceStatuses, getLiveScreenMetrics, touchScreenPresence } from './screens';
 import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '../scheduler';
 import { isRedisReady, redis } from '../redis';
+import { logAudit, getClientIp } from '../services/auditLog';
+import { notifyScreenConfigChanged, notifyScreensConfigChanged } from '../services/screenPush';
 
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
@@ -268,13 +270,44 @@ export function createCrudRouter(collectionName: string) {
       delete body.createdAt;
       delete body.created;
       delete body.updated;
+
+      // Role changes are a privilege-escalation-sensitive action — capture the
+      // prior role before it's overwritten so the audit entry shows the change.
+      let previousRole: string | undefined;
+      if (collectionName === 'users' && typeof body.role === 'string') {
+        try {
+          const existing = await retryWithBackoff(() => pb.collection('users').getOne(req.params.id));
+          previousRole = existing.role;
+        } catch (_) { /* best-effort — don't block the update if this lookup fails */ }
+      }
+
       const record = await retryWithBackoff(() => pb.collection(collectionName).update(req.params.id, body));
+
+      if (collectionName === 'users' && typeof body.role === 'string' && body.role !== previousRole) {
+        logAudit({
+          actorId: req.user?.id,
+          actorEmail: req.user?.email,
+          action: 'user.role_changed',
+          targetType: 'users',
+          targetId: req.params.id,
+          detail: `${previousRole ?? 'unknown'} -> ${body.role}`,
+          ip: getClientIp(req)
+        });
+      }
 
       if (collectionName === 'screens') {
         syncScreenSchedule(record);
+        notifyScreenConfigChanged(req.params.id);
       } else if (collectionName === 'playlists') {
         syncPlaylistBrandingFromUser(record).catch(err => {
           console.error('[CrudController] Error syncing playlist branding:', err.message);
+        });
+        notifyScreensAssignedToPlaylist(req.params.id).catch(err => {
+          console.error('[CrudController] Error notifying screens of playlist change:', err.message);
+        });
+      } else if (collectionName === 'screen_groups') {
+        notifyScreensInGroup(req.params.id).catch(err => {
+          console.error('[CrudController] Error notifying screens of group change:', err.message);
         });
       } else if (collectionName === 'licenses') {
         syncVideoConferencingFromLicense(record).catch(err => {
@@ -315,6 +348,16 @@ export function createCrudRouter(collectionName: string) {
 
       await retryWithBackoff(() => pb.collection(collectionName).delete(req.params.id));
 
+      logAudit({
+        actorId: req.user?.id,
+        actorEmail: req.user?.email,
+        action: `${collectionName}.deleted`,
+        targetType: collectionName,
+        targetId: req.params.id,
+        detail: playlistName || undefined,
+        ip: getClientIp(req)
+      });
+
       // Cancel cron job if screen is deleted
       if (collectionName === 'screens') {
         removeScreenSchedule(req.params.id);
@@ -335,6 +378,26 @@ export function createCrudRouter(collectionName: string) {
   });
 
   return router;
+}
+
+// Notify every screen currently assigned this playlist (by id) that something
+// changed, so they re-sync immediately instead of waiting for their next poll.
+async function notifyScreensAssignedToPlaylist(playlistId: string): Promise<void> {
+  const screens = await pb.collection('screens').getFullList({
+    filter: pb.filter('playlistId = {:playlistId}', { playlistId }),
+    fields: 'id'
+  }).catch(() => []);
+  notifyScreensConfigChanged(screens.map((s: any) => s.id));
+}
+
+// Same idea for a screen group — group-level changes (bulk volume, assigned
+// playlist, etc.) apply to every screen in the group.
+async function notifyScreensInGroup(groupId: string): Promise<void> {
+  const screens = await pb.collection('screens').getFullList({
+    filter: pb.filter('groupId = {:groupId}', { groupId }),
+    fields: 'id'
+  }).catch(() => []);
+  notifyScreensConfigChanged(screens.map((s: any) => s.id));
 }
 
 // Propagate a license's enableVideoConferencing flag onto the user it is assigned to,
