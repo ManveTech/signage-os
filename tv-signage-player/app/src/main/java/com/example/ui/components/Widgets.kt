@@ -383,7 +383,7 @@ fun RssTickerWidget(tickerText: String) {
                         }
                     }
                     if (itemList.isNotEmpty()) {
-                        displayText = itemList.joinToString("   + + +   ")
+                        displayText = itemList.joinToString("     •     ")
                     }
                 } else if (config.has("text")) {
                     displayText = config.optString("text", "")
@@ -404,7 +404,7 @@ fun RssTickerWidget(tickerText: String) {
             } else {
                 val parts = jsonStr.split("|").map { it.trim() }.filter { it.isNotEmpty() }
                 if (parts.isNotEmpty()) {
-                    displayText = parts.joinToString("   + + +   ")
+                    displayText = parts.joinToString("     •     ")
                 } else {
                     displayText = jsonStr
                 }
@@ -446,10 +446,17 @@ fun RssTickerWidget(tickerText: String) {
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            modifier = Modifier.basicMarquee(
-                iterations = Int.MAX_VALUE,
-                velocity = 45.dp
-            )
+            // weight(1f) must come before basicMarquee — it constrains the Text
+            // to the row's remaining width so the marquee can correctly detect
+            // that the content overflows and needs to scroll. Without a fixed
+            // width constraint here, basicMarquee can fail to trigger at all or
+            // scroll inconsistently depending on how wide the ticker text is.
+            modifier = Modifier
+                .weight(1f)
+                .basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    velocity = 45.dp
+                )
         )
     }
 }
