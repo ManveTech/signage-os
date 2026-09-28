@@ -1,28 +1,21 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import {
-  S3_ENABLED,
-  S3_BUCKET,
-  S3_REGION,
-  S3_ENDPOINT,
-  S3_ACCESS_KEY,
-  S3_SECRET
-} from './config';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { getCloudflareConfig, CloudflareConfig } from './integrationsStore';
 
-let s3Client: S3Client | null = null;
+function buildS3Client(cfg: Pick<CloudflareConfig, 'region' | 'endpoint' | 'accessKeyId' | 'secretAccessKey'>): S3Client {
+  return new S3Client({
+    region: cfg.region || 'auto',
+    endpoint: cfg.endpoint,
+    credentials: {
+      accessKeyId: cfg.accessKeyId,
+      secretAccessKey: cfg.secretAccessKey
+    },
+    forcePathStyle: true
+  });
+}
 
-function getS3Client(): S3Client {
-  if (!s3Client) {
-    s3Client = new S3Client({
-      region: S3_REGION || 'auto',
-      endpoint: S3_ENDPOINT,
-      credentials: {
-        accessKeyId: S3_ACCESS_KEY,
-        secretAccessKey: S3_SECRET
-      },
-      forcePathStyle: true
-    });
-  }
-  return s3Client;
+function publicBaseUrlFor(cfg: Pick<CloudflareConfig, 'publicUrl' | 'endpoint' | 'bucket'>): string {
+  const base = cfg.publicUrl || `${cfg.endpoint}/${cfg.bucket}`;
+  return base.replace(/\/$/, '');
 }
 
 /**
@@ -34,14 +27,15 @@ export async function uploadToR2(
   key: string,
   mimeType: string
 ): Promise<string> {
-  if (!S3_ENABLED || !S3_BUCKET || !S3_ACCESS_KEY || !S3_SECRET) {
-    throw new Error('R2 storage is not configured. Set S3_ENABLED, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET in .env');
+  const cfg = await getCloudflareConfig();
+  if (!cfg.enabled || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    throw new Error('R2 storage is not configured. Set it up in Admin > Integrations, or via S3_ENABLED/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET in .env');
   }
 
-  const client = getS3Client();
+  const client = buildS3Client(cfg);
 
   await client.send(new PutObjectCommand({
-    Bucket: S3_BUCKET,
+    Bucket: cfg.bucket,
     Key: key,
     Body: buffer,
     ContentType: mimeType
@@ -49,24 +43,18 @@ export async function uploadToR2(
     // Public access is controlled at the bucket level via the Cloudflare dashboard.
   }));
 
-  // Build public URL: either custom domain or R2 public URL format
-  // Cloudflare R2 public URL pattern: https://<accountId>.r2.cloudflarestorage.com/<bucket>/<key>
-  // If you have a custom public domain set on the bucket, set R2_PUBLIC_URL in .env instead
-  const publicBaseUrl = process.env.R2_PUBLIC_URL
-    ? process.env.R2_PUBLIC_URL.replace(/\/$/, '')
-    : `${S3_ENDPOINT}/${S3_BUCKET}`;
-
-  return `${publicBaseUrl}/${key}`;
+  return `${publicBaseUrlFor(cfg)}/${key}`;
 }
 
 /**
  * Delete a file from Cloudflare R2 by its key.
  */
 export async function deleteFromR2(key: string): Promise<void> {
-  if (!S3_ENABLED || !S3_BUCKET || !S3_ACCESS_KEY || !S3_SECRET) return;
-  const client = getS3Client();
+  const cfg = await getCloudflareConfig();
+  if (!cfg.enabled || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) return;
+  const client = buildS3Client(cfg);
   await client.send(new DeleteObjectCommand({
-    Bucket: S3_BUCKET,
+    Bucket: cfg.bucket,
     Key: key
   }));
 }
@@ -74,16 +62,40 @@ export async function deleteFromR2(key: string): Promise<void> {
 /**
  * Derive the R2 object key from a file URL (reverse of uploadToR2).
  */
-export function getKeyFromUrl(url: string): string | null {
+export async function getKeyFromUrl(url: string): Promise<string | null> {
   try {
-    const publicBaseUrl = process.env.R2_PUBLIC_URL
-      ? process.env.R2_PUBLIC_URL.replace(/\/$/, '')
-      : `${S3_ENDPOINT}/${S3_BUCKET}`;
-    if (url.startsWith(publicBaseUrl)) {
-      return url.slice(publicBaseUrl.length + 1); // +1 for the slash
+    const cfg = await getCloudflareConfig();
+    const base = publicBaseUrlFor(cfg);
+    if (base && url.startsWith(base)) {
+      return url.slice(base.length + 1); // +1 for the slash
     }
     return null;
   } catch {
     return null;
+  }
+}
+
+export async function isR2Enabled(): Promise<boolean> {
+  const cfg = await getCloudflareConfig();
+  return cfg.enabled;
+}
+
+/**
+ * Live connection test used by the Integrations dashboard's "Test Connection"
+ * button — confirms the given credentials can actually reach the bucket
+ * (HeadBucket needs no read/write permissions beyond bucket-level access) so
+ * a bad key/secret/bucket name is caught before anyone relies on it for a
+ * real upload.
+ */
+export async function testR2Connection(cfg: Pick<CloudflareConfig, 'bucket' | 'region' | 'endpoint' | 'accessKeyId' | 'secretAccessKey'>): Promise<{ ok: boolean; error?: string }> {
+  if (!cfg.bucket || !cfg.endpoint || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    return { ok: false, error: 'bucket, endpoint, accessKeyId, and secretAccessKey are all required.' };
+  }
+  try {
+    const client = buildS3Client(cfg);
+    await client.send(new HeadBucketCommand({ Bucket: cfg.bucket }));
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e.message || 'Connection failed' };
   }
 }

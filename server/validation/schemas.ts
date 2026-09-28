@@ -15,6 +15,10 @@ export const forgotPasswordSchema = z.object({
   email: emailSchema
 });
 
+export const googleLoginSchema = z.object({
+  credential: z.string().min(1, 'Google credential is required')
+});
+
 export const resetPasswordSchema = z.object({
   token: z.string().min(1, 'Token is required'),
   userId: idSchema,

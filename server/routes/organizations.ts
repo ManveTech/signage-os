@@ -1,7 +1,7 @@
 import express from 'express';
 import { pb } from '../db';
-import { S3_ENABLED } from '../config';
-import { uploadToR2, deleteFromR2, getKeyFromUrl } from '../r2';
+import { uploadToR2, deleteFromR2, getKeyFromUrl, isR2Enabled } from '../r2';
+import { logAudit, getClientIp } from '../services/auditLog';
 
 const router = express.Router();
 
@@ -103,6 +103,16 @@ async function propagateBrandingToPlaylists(orgRecord: any) {
 
 // Shared handler for PUT and PATCH organization updates
 async function handleOrgUpdate(req: any, res: any) {
+  // This custom router is mounted ahead of the generic CRUD router's own
+  // organizations tenancy rule, so it must enforce access itself rather than
+  // relying on that check ever running — admin-only, matching the same
+  // decision made there (billing-relevant fields like screensAllowed/
+  // storageLimit/planType live on this same record, not just branding).
+  const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
+
   try {
     const orgId = req.params.id;
     const body = { ...req.body };
@@ -128,7 +138,7 @@ async function handleOrgUpdate(req: any, res: any) {
         const ext = mimeType.split('/')[1] || 'png';
         const key = `organizations/${orgId}/logo_${Date.now()}.${ext}`;
 
-        if (S3_ENABLED) {
+        if (await isR2Enabled()) {
           try {
             const uploadedUrl = await uploadToR2(buffer, key, mimeType);
             websiteLogoUrl = uploadedUrl;
@@ -136,7 +146,7 @@ async function handleOrgUpdate(req: any, res: any) {
 
             // Cleanup old logo
             if (oldLogoUrl) {
-              const oldKey = getKeyFromUrl(oldLogoUrl);
+              const oldKey = await getKeyFromUrl(oldLogoUrl);
               if (oldKey) {
                 await deleteFromR2(oldKey).catch(err => {
                   console.warn('R2 old logo delete failed (non-fatal):', err.message);
@@ -152,6 +162,16 @@ async function handleOrgUpdate(req: any, res: any) {
     body.websiteLogo = websiteLogoUrl;
 
     const orgRecord = await pb.collection('organizations').update(orgId, body);
+
+    logAudit({
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+      action: 'organization.updated',
+      targetType: 'organizations',
+      targetId: orgId,
+      detail: Object.keys(body).join(','),
+      ip: getClientIp(req)
+    });
 
     // Propagate branding updates in background
     propagateBrandingToScreens(orgRecord).catch(err => {

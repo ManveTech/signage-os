@@ -1,7 +1,10 @@
 import { pb, ensurePBAuth } from '../db';
-import { uploadToR2, deleteFromR2, getKeyFromUrl } from '../r2';
+import { uploadToR2, deleteFromR2, getKeyFromUrl, isR2Enabled } from '../r2';
 import crypto from 'crypto';
-import { S3_ENABLED } from '../config';
+
+function isAdminUser(user: any): boolean {
+  return user?.role === 'admin' || user?.role === 'super_admin';
+}
 
 /**
  * Generate a unique R2 object key for a media file.
@@ -24,6 +27,13 @@ export async function uploadMediaItem(req: any, res: any) {
       return res.status(503).json({ error: 'PocketBase admin authentication failed' });
     }
 
+    // uploadedBy must come from the authenticated session, not the request
+    // body — otherwise any client could upload media and attribute it to
+    // another user's account. Admins may still upload on a client's behalf.
+    if (!isAdminUser(req.user) || !req.body.uploadedBy) {
+      req.body.uploadedBy = req.user?.email;
+    }
+
     const { fileData, fileName, mimeType } = req.body;
     if (!fileData || !fileName) {
       return res.status(400).json({ error: 'fileData and fileName are required for image/video upload' });
@@ -43,7 +53,7 @@ export async function uploadMediaItem(req: any, res: any) {
 
     let fileUrl: string;
 
-    if (S3_ENABLED) {
+    if (await isR2Enabled()) {
       // Upload directly to Cloudflare R2 via AWS S3 SDK
       const key = buildR2Key(fileName);
       console.log(`Uploading ${fileName} (${fileBuffer.length} bytes) directly to R2 key: ${key}`);
@@ -123,10 +133,14 @@ export async function deleteMediaItem(req: any, res: any) {
     // Fetch record to get file URL for R2 cleanup
     const record = await pb.collection('media_items').getOne(id);
 
+    if (!isAdminUser(req.user) && record.uploadedBy !== req.user?.email) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     // Delete from R2 if applicable
     const urlToDelete = record.fileUrl || record.thumbnail;
-    if (S3_ENABLED && urlToDelete) {
-      const key = getKeyFromUrl(urlToDelete);
+    if (urlToDelete && await isR2Enabled()) {
+      const key = await getKeyFromUrl(urlToDelete);
       if (key) {
         console.log(`[R2] Deleting object key: ${key}`);
         await deleteFromR2(key).then(() => {

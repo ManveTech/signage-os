@@ -161,7 +161,10 @@ class SignageRepository(private val context: Context) {
             // every device polling PocketBase straight was the single biggest
             // source of load. Same record shape either way.
             val url = "${initialConfig.serverUrl}/api/v1/devices/sync"
-            val response = apiService.getScreenStatus(url, mapOf("screenId" to initialConfig.screenId))
+            val response = apiService.getScreenStatus(
+                url,
+                mapOf("screenId" to initialConfig.screenId, "hardwareUuid" to initialConfig.hardwareUuid)
+            )
 
             Log.d("SignageRepository", "Synced screen status: ${response.status}")
             val currentConfig = getOrCreateConfig()
@@ -241,7 +244,7 @@ class SignageRepository(private val context: Context) {
                 // Clear the command flag on backend
                 try {
                     val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
-                    apiService.updateScreenRecord(patchUrl, mapOf("clear_cache" to false))
+                    apiService.updateScreenRecord(patchUrl, mapOf("clear_cache" to false, "hardwareUuid" to currentConfig.hardwareUuid))
                 } catch (e: Exception) {
                     Log.e("SignageRepository", "Failed to clear clear_cache flag on server", e)
                 }
@@ -256,7 +259,7 @@ class SignageRepository(private val context: Context) {
                 // Clear the command flag on backend
                 try {
                     val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
-                    apiService.updateScreenRecord(patchUrl, mapOf("force_sync" to false))
+                    apiService.updateScreenRecord(patchUrl, mapOf("force_sync" to false, "hardwareUuid" to currentConfig.hardwareUuid))
                 } catch (e: Exception) {
                     Log.e("SignageRepository", "Failed to clear force_sync flag on server", e)
                 }
@@ -270,7 +273,7 @@ class SignageRepository(private val context: Context) {
                 // Clear the command flag on backend
                 try {
                     val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
-                    apiService.updateScreenRecord(patchUrl, mapOf("restart_playlist" to false))
+                    apiService.updateScreenRecord(patchUrl, mapOf("restart_playlist" to false, "hardwareUuid" to currentConfig.hardwareUuid))
                 } catch (e: Exception) {
                     Log.e("SignageRepository", "Failed to clear restart_playlist flag on server", e)
                 }
@@ -430,7 +433,8 @@ class SignageRepository(private val context: Context) {
                 "playlistId" to newPlaylistId,
                 "schedulePlaylist" to "",
                 "scheduleDate" to "",
-                "scheduleTime" to ""
+                "scheduleTime" to "",
+                "hardwareUuid" to config.hardwareUuid
             )
             apiService.updateScreenRecord(patchUrl, fields)
             Log.d("SignageRepository", "Server screen record successfully updated/patched for schedule")
@@ -1304,7 +1308,7 @@ class SignageRepository(private val context: Context) {
             
             if (config.screenId.isNotEmpty() && config.pocketbaseUrl.isNotEmpty()) {
                 val url = "${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}"
-                apiService.updateScreenRecord(url, mapOf("volume" to volume))
+                apiService.updateScreenRecord(url, mapOf("volume" to volume, "hardwareUuid" to config.hardwareUuid))
                 Log.d("SignageRepository", "Successfully updated volume on server to: $volume")
             }
         } catch (e: Exception) {

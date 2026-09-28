@@ -66,7 +66,7 @@ const groupColorMap: Record<string, { bg: string; text: string; border: string }
 
 type Toast = { id: number; message: string; type: 'success' | 'info' };
 
-export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => void }) {
+export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }: { onNavigate: (v: string) => void; userEmail?: string }) {
   const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens());
   const [groups, setGroups] = useState<any[]>(() => {
     const data = localStorage.getItem('signageos_groups');
@@ -127,7 +127,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
     if (org) return org.name;
     const lic = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
     if (lic?.assignedOrgName) return lic.assignedOrgName;
-    if (screen.assignedToUserEmail === 'admin@demo.com') return 'Admin Org';
+    if (screen.assignedToUserEmail === userEmail) return 'Admin Org';
     return screen.assignedToUserEmail || 'None';
   };
 
@@ -667,7 +667,7 @@ export default function AllScreens({ onNavigate }: { onNavigate: (v: string) => 
                         return '';
                       })();
                       const filteredGroups = groups.filter(g => {
-                        if (editScreen.assignedToUserEmail === 'admin@demo.com') {
+                        if (editScreen.assignedToUserEmail === userEmail) {
                           return !g.orgId;
                         } else {
                           return g.orgId === screenOrgId;

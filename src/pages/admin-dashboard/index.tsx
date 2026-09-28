@@ -8,12 +8,10 @@ import Dashboard from './views/Dashboard';
 import AllScreens from './views/screens/AllScreens';
 import MyScreens from './views/screens/MyScreens';
 import AddScreen from './views/screens/AddScreen';
-import AssignScreens from './views/screens/AssignScreens';
 import ManageScreens from './views/screens/ManageScreens';
 import ScreenGroups from './views/screens/ScreenGroups';
 import Logs from './views/screens/Logs';
 import MediaLibrary from './views/media/MediaLibrary';
-import UploadMedia from './views/media/UploadMedia';
 import LayoutStudio from './views/media/LayoutStudio';
 import AllPlaylists from './views/playlists/AllPlaylists';
 import CreatePlaylist from './views/playlists/CreatePlaylist';
@@ -29,6 +27,7 @@ import Profile from './views/Profile';
 import ClientMedia from './views/ClientMedia';
 import ClientPlaylists from './views/ClientPlaylists';
 import VideoConferencing from './views/VideoConferencing';
+import Integrations from './views/Integrations';
 import MobileDock from '../../components/MobileDock';
 import OfflineIndicator from '../../components/OfflineIndicator';
 import PullToRefresh from '../../components/PullToRefresh';
@@ -37,38 +36,36 @@ import { useCapacitor } from '../../hooks/useCapacitor';
 import { syncAllFromDatabase } from '../../lib/syncHelper';
 import { Lock, X, CheckCircle } from 'lucide-react';
 
-function renderView(view: string, navigate: (v: string) => void) {
+function renderView(view: string, navigate: (v: string) => void, adminEmail: string) {
   switch (view) {
-    case 'dashboard': return <Dashboard />;
-    case 'client-screens': return <AllScreens onNavigate={navigate} />;
-    
+    case 'dashboard': return <Dashboard userEmail={adminEmail} />;
+    case 'client-screens': return <AllScreens onNavigate={navigate} userEmail={adminEmail} />;
+
     // My Channel
-    case 'my-media': return <MediaLibrary onNavigate={navigate} userEmail="admin@demo.com" />;
-    case 'my-playlists': return <AllPlaylists onNavigate={navigate} userEmail="admin@demo.com" />;
-    case 'my-create-playlist': return <CreatePlaylist userEmail="admin@demo.com" onNavigate={navigate} isMyChannel={true} />;
-    
+    case 'my-media': return <MediaLibrary onNavigate={navigate} userEmail={adminEmail} />;
+    case 'my-playlists': return <AllPlaylists onNavigate={navigate} userEmail={adminEmail} />;
+    case 'my-create-playlist': return <CreatePlaylist userEmail={adminEmail} onNavigate={navigate} isMyChannel={true} />;
+
     // Client Oversight
-    case 'client-media': return <ClientMedia />;
-    case 'client-playlists': return <ClientPlaylists onNavigate={navigate} />;
-    
-    case 'my-screens-list': return <MyScreens onNavigate={navigate} userEmail="admin@demo.com" />;
-    case 'screens-all': return <AllScreens onNavigate={navigate} />;
-    case 'screens-add': return <AddScreen mode="client" onNavigate={navigate} />;
-    case 'screens-add-client': return <AddScreen mode="client" onNavigate={navigate} />;
-    case 'screens-add-my': return <AddScreen mode="my" onNavigate={navigate} />;
-    case 'screens-assign': return <AssignScreens />;
-    case 'screens-manage': return <ManageScreens />;
+    case 'client-media': return <ClientMedia userEmail={adminEmail} />;
+    case 'client-playlists': return <ClientPlaylists onNavigate={navigate} userEmail={adminEmail} />;
+
+    case 'my-screens-list': return <MyScreens onNavigate={navigate} userEmail={adminEmail} />;
+    case 'screens-all': return <AllScreens onNavigate={navigate} userEmail={adminEmail} />;
+    case 'screens-add': return <AddScreen mode="client" onNavigate={navigate} userEmail={adminEmail} />;
+    case 'screens-add-client': return <AddScreen mode="client" onNavigate={navigate} userEmail={adminEmail} />;
+    case 'screens-add-my': return <AddScreen mode="my" onNavigate={navigate} userEmail={adminEmail} />;
+    case 'screens-manage': return <ManageScreens userEmail={adminEmail} />;
     case 'screens-groups':
-    case 'screens-groups-my': return <ScreenGroups mode="my" onNavigate={navigate} />;
-    case 'screens-groups-all': return <ScreenGroups mode="all" onNavigate={navigate} />;
-    case 'screens-logs': return <Logs userEmail="admin@demo.com" mode="all" onNavigate={navigate} />;
-    case 'screens-logs-all': return <Logs userEmail="admin@demo.com" mode="all" onNavigate={navigate} />;
-    case 'media-library': return <MediaLibrary onNavigate={navigate} userEmail="admin@demo.com" />;
-    case 'media-upload': return <UploadMedia />;
+    case 'screens-groups-my': return <ScreenGroups mode="my" onNavigate={navigate} userEmail={adminEmail} />;
+    case 'screens-groups-all': return <ScreenGroups mode="all" onNavigate={navigate} userEmail={adminEmail} />;
+    case 'screens-logs': return <Logs userEmail={adminEmail} mode="all" onNavigate={navigate} />;
+    case 'screens-logs-all': return <Logs userEmail={adminEmail} mode="all" onNavigate={navigate} />;
+    case 'media-library': return <MediaLibrary onNavigate={navigate} userEmail={adminEmail} />;
     case 'media-layout': return <LayoutStudio />;
-    case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail="admin@demo.com" />;
-    case 'playlists-create': return <CreatePlaylist userEmail="admin@demo.com" onNavigate={navigate} />;
-    case 'playlists-scheduler': return <Scheduler userEmail="admin@demo.com" />;
+    case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail={adminEmail} />;
+    case 'playlists-create': return <CreatePlaylist userEmail={adminEmail} onNavigate={navigate} />;
+    case 'playlists-scheduler': return <Scheduler userEmail={adminEmail} isAdmin={true} />;
     case 'reports-overview': return <Reports activeTab="Overview" />;
     case 'reports-screens': return <Reports activeTab="Screen Reports" />;
     case 'reports-media': return <Reports activeTab="Media Reports" />;
@@ -81,6 +78,7 @@ function renderView(view: string, navigate: (v: string) => void) {
     case 'licenses-code': return <LicenseDecoder />;
     case 'organizations': return <Organizations />;
     case 'video-conferencing': return <VideoConferencing />;
+    case 'integrations': return <Integrations />;
     case 'settings-general': return <Settings activeTab="General" />;
     case 'settings-storage': return <Settings activeTab="Storage" />;
     case 'settings-player': return <Settings activeTab="Player Settings" />;
@@ -94,7 +92,7 @@ function renderView(view: string, navigate: (v: string) => void) {
   }
 }
 
-export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogout: () => void; onSwitchToClient?: () => void }) {
+export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail = 'admin@demo.com' }: { onLogout: () => void; onSwitchToClient?: () => void; userEmail?: string }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { isMobile } = useMobileDetect();
@@ -235,7 +233,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient }: { onLogou
         {/* Pull to Refresh wrapper for mobile */}
         <PullToRefresh onRefresh={handleRefresh} enabled={isMobile}>
           <main className="flex-1 overflow-y-auto pb-20 md:pb-4">
-            {renderView(activeView, handleNavigate)}
+            {renderView(activeView, handleNavigate, userEmail)}
           </main>
         </PullToRefresh>
       </div>

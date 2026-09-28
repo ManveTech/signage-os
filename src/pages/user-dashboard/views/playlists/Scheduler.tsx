@@ -8,9 +8,10 @@ type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' }
 
 interface Props {
   userEmail?: string;
+  isAdmin?: boolean;
 }
 
-export default function Scheduler({ userEmail = 'priya@demo.com' }: Props) {
+export default function Scheduler({ userEmail = 'priya@demo.com', isAdmin = false }: Props) {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [showNew, setShowNew] = useState(false);
@@ -19,8 +20,6 @@ export default function Scheduler({ userEmail = 'priya@demo.com' }: Props) {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const isAdmin = userEmail === 'admin@demo.com';
 
   useEffect(() => {
     loadData();

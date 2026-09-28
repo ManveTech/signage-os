@@ -63,7 +63,7 @@ interface Props {
 export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigate, isMyChannel }: Props) {
   // Target Client User Email for playlist creation
   const [targetUserEmail, setTargetUserEmail] = useState<string>(() => {
-    if (isMyChannel) return 'admin@demo.com';
+    if (isMyChannel) return userEmail;
     const forClient = localStorage.getItem('signageos_create_playlist_for_client');
     if (forClient) {
       if (forClient === 'new') {
@@ -81,7 +81,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   const licenses = licensingStore.getLicenses().filter(l => l.assignedUserEmail);
   const uniqueTargets = Array.from(new Map(
     [
-      { email: 'admin@demo.com', label: 'System Admin (admin@demo.com)' },
+      { email: userEmail, label: `System Admin (${userEmail})` },
       ...licenses.map(l => ({
         email: l.assignedUserEmail!,
         label: `${l.assignedOrgName || 'Client'} (${l.assignedUserEmail})`
@@ -717,7 +717,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
     // Navigate to all playlists / my playlists view
     if (onNavigate) {
-      if (userEmail === 'admin@demo.com') {
+      if (isMyChannel) {
         onNavigate('my-playlists');
       } else {
         onNavigate('playlists-all');
@@ -787,7 +787,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       </div>
 
       {/* Target Client Organization Selector (Only for Admin) */}
-      {userEmail === 'admin@demo.com' && !isMyChannel && (
+      {!isMyChannel && (
         <div className="bg-blue-50/50 rounded-2xl border border-blue-100 p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">

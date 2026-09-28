@@ -70,7 +70,7 @@ const groupColorMap: Record<string, { bg: string; text: string; border: string }
 type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' };
 type BulkAction = 'restart' | 'disable' | 'delete' | '';
 
-export default function ManageScreens() {
+export default function ManageScreens({ userEmail = 'admin@demo.com' }: { userEmail?: string } = {}) {
   const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens());
   const [groups, setGroups] = useState<any[]>(() => {
     const data = localStorage.getItem('signageos_groups');
@@ -623,7 +623,7 @@ export default function ManageScreens() {
                       { value: 'Normal', label: 'Normal' },
                       { value: 'None', label: 'None (Stop Playback)' },
                       ...userPlaylists
-                        .filter(p => p.createdBy === editScreen.assignedToUserEmail || p.createdBy === 'admin@demo.com')
+                        .filter(p => p.createdBy === editScreen.assignedToUserEmail || p.createdBy === userEmail)
                         .map(pl => ({ value: pl.name, label: pl.name }))
                     ]}
                     buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"

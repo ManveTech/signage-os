@@ -4,6 +4,7 @@ import { pb, ensurePBAuth } from '../db';
 import { signJwt, verifyJwt } from '../middleware/auth';
 import { sendPasswordResetEmail } from '../email';
 import { logAudit, getClientIp } from '../services/auditLog';
+import { getGoogleOAuthConfig } from '../integrationsStore';
 
 export async function login(req: any, res: any) {
   try {
@@ -72,6 +73,104 @@ export async function login(req: any, res: any) {
     }
   } catch (error: any) {
     console.error('Login error:', error);
+    res.status(500).json({ message: error.message || 'Internal server error' });
+  }
+}
+
+// Public — the login page needs the client ID (not a secret) before the
+// user has any session, so it can decide whether to render the Google
+// button at all and initialize Google's SDK with it.
+export async function getGoogleAuthConfig(req: any, res: any) {
+  try {
+    const cfg = await getGoogleOAuthConfig();
+    res.json({ enabled: cfg.enabled && !!cfg.clientId, clientId: cfg.enabled ? cfg.clientId : '' });
+  } catch (error: any) {
+    res.json({ enabled: false, clientId: '' });
+  }
+}
+
+// Google sign-in never creates an account — it only ever logs in a user who
+// already exists in the `users` collection, matched by the verified email on
+// the Google credential. There is no self-registration path anywhere in this
+// app (see the users.createRule fix elsewhere in this session); this must
+// not become one.
+export async function googleLogin(req: any, res: any) {
+  try {
+    const { credential } = req.body;
+
+    const oauthCfg = await getGoogleOAuthConfig();
+    if (!oauthCfg.enabled || !oauthCfg.clientId) {
+      return res.status(503).json({ message: 'Google sign-in is not configured.' });
+    }
+
+    const { OAuth2Client } = await import('google-auth-library');
+    const client = new OAuth2Client(oauthCfg.clientId);
+
+    let payload;
+    try {
+      const ticket = await client.verifyIdToken({ idToken: credential, audience: oauthCfg.clientId });
+      payload = ticket.getPayload();
+    } catch (verifyErr: any) {
+      logAudit({ action: 'login.google_failed', detail: verifyErr.message, ip: getClientIp(req) });
+      return res.status(401).json({ message: 'Invalid Google credential.' });
+    }
+
+    if (!payload?.email || !payload.email_verified) {
+      return res.status(401).json({ message: 'Google account email is not verified.' });
+    }
+
+    const lowerEmail = payload.email.toLowerCase().trim();
+
+    const authenticated = await ensurePBAuth();
+    if (!authenticated) {
+      return res.status(503).json({ message: 'Database authentication unavailable. Try again shortly.' });
+    }
+
+    let user: any;
+    try {
+      user = await pb.collection('users').getFirstListItem(pb.filter('email = {:email}', { email: lowerEmail }));
+    } catch {
+      logAudit({ actorEmail: lowerEmail, action: 'login.google_no_account', ip: getClientIp(req) });
+      return res.status(403).json({ message: 'No account found for this email. Contact your administrator to get access.' });
+    }
+
+    const token = signJwt({
+      id: user.id,
+      email: user.email,
+      role: user.role || 'client'
+    });
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/'
+    });
+
+    logAudit({
+      actorId: user.id,
+      actorEmail: user.email,
+      action: 'login.google_success',
+      targetType: 'user',
+      targetId: user.id,
+      ip: getClientIp(req)
+    });
+
+    return res.status(200).json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name || 'Client User',
+        role: user.role || 'client',
+        organizationId: user.company || null,
+        firstTimeLogin: !!user.firstTimeLogin
+      }
+    });
+  } catch (error: any) {
+    console.error('Google login error:', error);
     res.status(500).json({ message: error.message || 'Internal server error' });
   }
 }

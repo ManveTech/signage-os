@@ -15,12 +15,10 @@ import Dashboard from './views/Dashboard';
 import AllScreens from './views/screens/AllScreens';
 import MyScreens from './views/screens/MyScreens';
 import AddScreen from './views/screens/AddScreen';
-import AssignScreens from './views/screens/AssignScreens';
 import ManageScreens from './views/screens/ManageScreens';
 import ScreenGroups from './views/screens/ScreenGroups';
 import Logs from './views/screens/Logs';
 import MediaLibrary from './views/media/MediaLibrary';
-import UploadMedia from './views/media/UploadMedia';
 import LayoutStudio from './views/media/LayoutStudio';
 import AllPlaylists from './views/playlists/AllPlaylists';
 import CreatePlaylist from './views/playlists/CreatePlaylist';
@@ -44,12 +42,10 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'my-screens-list': return <MyScreens onNavigate={navigate} userEmail={userEmail} />;
     case 'screens-all': return <AllScreens onNavigate={navigate} userEmail={userEmail} />;
     case 'screens-add': return <AddScreen userEmail={userEmail} onNavigate={navigate} />;
-    case 'screens-assign': return <AssignScreens />;
     case 'screens-manage': return <ManageScreens userEmail={userEmail} />;
     case 'screens-groups': return <ScreenGroups userEmail={userEmail} onNavigate={navigate} />;
     case 'screens-logs': return <Logs userEmail={userEmail} mode="my" onNavigate={navigate} />;
     case 'media-library': return <MediaLibrary onNavigate={navigate} userEmail={userEmail} />;
-    case 'media-upload': return <UploadMedia />;
     case 'media-layout': return <LayoutStudio />;
     case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail={userEmail} />;
     case 'playlists-create': return <CreatePlaylist userEmail={userEmail} onNavigate={navigate} />;
@@ -60,9 +56,9 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'reports-logs': return <Reports activeTab="Device Logs" />;
     case 'users': return <Users />;
     case 'license-billing':
-    case 'licenses-pool': return <Licenses activeTab="License Pool" />;
-    case 'licenses-assign': return <Licenses activeTab="Assign License" />;
-    case 'licenses-history': return <Licenses activeTab="History" />;
+    case 'licenses-pool': return <Licenses activeTab="License Pool" userEmail={userEmail} />;
+    case 'licenses-assign': return <Licenses activeTab="Assign License" userEmail={userEmail} />;
+    case 'licenses-history': return <Licenses activeTab="History" userEmail={userEmail} />;
     case 'organizations': return <Organizations />;
     case 'video-conferencing': return <VideoConferencing enabled={videoConferencingEnabled} organizationId={organizationId} licenseChecked={licenseChecked} />;
     case 'settings-general': return <Settings activeTab="General" userEmail={userEmail} />;

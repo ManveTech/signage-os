@@ -181,25 +181,30 @@ export default function Users() {
     }
   };
 
-  const handleDeleteClient = (userId: string, userEmail: string, userName: string) => {
-    if (confirm(`Are you sure you want to remove client "${userName}"? This will unassign any active license from their account.`)) {
-      // Clear license assignment in licensing store
-      const associatedLic = licenses.find(l => l.assignedUserEmail === userEmail);
-      if (associatedLic) {
-        licensingStore.updateLicense(associatedLic.id, {
-          assignedUserEmail: undefined,
-          assignedOrgName: undefined,
-          assignedOrgId: undefined
-        });
-        setLicenses(licensingStore.getLicenses());
-      }
+  const handleDeleteClient = async (userId: string, userEmail: string, userName: string) => {
+    if (!confirm(`Are you sure you want to remove client "${userName}"? This will unassign any active license from their account.`)) return;
 
-      const updated = users.filter(u => u.id !== userId);
-      setUsers(updated);
-      localStorage.setItem('signageos_users', JSON.stringify(updated));
-      pushToDatabase('users', userId, null, 'DELETE');
-      addToast(`Client "${userName}" has been successfully removed.`);
+    const result = await pushToDatabase('users', userId, null, 'DELETE');
+    if (!result.ok) {
+      addToast(`Failed to remove "${userName}". ${(result as any).error || 'Please try again.'}`);
+      return;
     }
+
+    // Clear license assignment in licensing store
+    const associatedLic = licenses.find(l => l.assignedUserEmail === userEmail);
+    if (associatedLic) {
+      licensingStore.updateLicense(associatedLic.id, {
+        assignedUserEmail: undefined,
+        assignedOrgName: undefined,
+        assignedOrgId: undefined
+      });
+      setLicenses(licensingStore.getLicenses());
+    }
+
+    const updated = users.filter(u => u.id !== userId);
+    setUsers(updated);
+    localStorage.setItem('signageos_users', JSON.stringify(updated));
+    addToast(`Client "${userName}" has been successfully removed.`);
   };
 
   const handleOpenEdit = (user: UserType) => {
@@ -235,7 +240,7 @@ export default function Users() {
     setEditStep(p => Math.max(1, p - 1));
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingUser) return;
     if (!editName.trim() || !editPhone.trim() || !editOrg.trim()) {
       addToast("Please fill out all required fields.");
@@ -250,6 +255,15 @@ export default function Users() {
       address: editAddress,
       company: editOrg
     } : u);
+
+    const updatedUserForSave = updated.find(u => u.id === editingUser.id);
+    if (!updatedUserForSave) return;
+
+    const result = await pushToDatabase('users', editingUser.id, updatedUserForSave, 'PUT');
+    if (!result.ok) {
+      addToast(`Failed to update client details. ${(result as any).error || 'Please try again.'}`);
+      return;
+    }
 
     // Handle license reassignment if changed
     const oldAssignedLic = licenses.find(l => l.assignedUserEmail === editingUser.email);
@@ -302,10 +316,6 @@ export default function Users() {
 
     setUsers(updated);
     localStorage.setItem('signageos_users', JSON.stringify(updated));
-    const updatedUser = updated.find(u => u.id === editingUser.id);
-    if (updatedUser) {
-      pushToDatabase('users', editingUser.id, updatedUser, 'PUT');
-    }
     setEditingUser(null);
     addToast("Client details updated successfully.");
   };

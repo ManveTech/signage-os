@@ -239,7 +239,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     if (org) return org.name;
     const lic = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
     if (lic?.assignedOrgName) return lic.assignedOrgName;
-    if (screen.assignedToUserEmail === 'admin@demo.com') return 'Admin Org';
+    if (screen.assignedToUserEmail === userEmail) return 'Admin Org';
     return screen.assignedToUserEmail || 'None';
   };
 

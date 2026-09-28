@@ -12,7 +12,7 @@ const steps = [
   { id: 3, label: 'Assignment', icon: <LinkIcon size={16} /> },
 ];
 
-export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'client' | 'my'; onNavigate?: (view: string) => void }) {
+export default function AddScreen({ mode = 'client', onNavigate, userEmail = 'admin@demo.com' }: { mode?: 'client' | 'my'; onNavigate?: (view: string) => void; userEmail?: string }) {
   const [step, setStep] = useState(1);
   const [isCreated, setIsCreated] = useState(false);
   const [enteredCode, setEnteredCode] = useState('');
@@ -57,10 +57,10 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
 
   const filteredPlaylists = userPlaylists.filter(p => {
     if (mode === 'my') {
-      return p.createdBy === 'admin@demo.com';
+      return p.createdBy === userEmail;
     } else {
       const clientEmail = orgLicense?.assignedUserEmail || selectedOrg?.email;
-      return !clientEmail || p.createdBy === clientEmail || p.createdBy === 'admin@demo.com';
+      return !clientEmail || p.createdBy === clientEmail || p.createdBy === userEmail;
     }
   });
 
@@ -76,7 +76,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
     }
     
     const licenseType = orgLicense ? (orgLicense.whiteLabel ? 'Pro' : 'Lite') : 'Lite';
-    const assignedUserEmail = mode === 'my' ? 'admin@demo.com' : (orgLicense?.assignedUserEmail || selectedOrg?.email || 'admin@demo.com');
+    const assignedUserEmail = mode === 'my' ? userEmail : (orgLicense?.assignedUserEmail || selectedOrg?.email || userEmail);
     
     const newScreen: any = {
       id: newScreenId,
@@ -114,7 +114,7 @@ export default function AddScreen({ mode = 'client', onNavigate }: { mode?: 'cli
       playlistId = form.playlist;
     }
 
-    const assignedUserEmail = mode === 'my' ? 'admin@demo.com' : (orgLicense?.assignedUserEmail || selectedOrg?.email || 'admin@demo.com');
+    const assignedUserEmail = mode === 'my' ? userEmail : (orgLicense?.assignedUserEmail || selectedOrg?.email || userEmail);
 
     try {
       const token = localStorage.getItem('signageos_token');

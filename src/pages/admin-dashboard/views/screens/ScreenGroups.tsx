@@ -31,7 +31,7 @@ type Toast = { id: number; message: string };
 
 const emptyGroup = (): Omit<ScreenGroup, 'id'> => ({ name: '', desc: '', color: 'blue', playlist: '', library: '', orgId: '', schedulePlaylist: '', scheduleDate: '', scheduleTime: '', volume: 80, clear_cache: false, force_sync: false });
 
-export default function ScreenGroups({ mode = 'all', onNavigate }: { mode?: 'my' | 'all'; onNavigate?: (v: string) => void }) {
+export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'admin@demo.com' }: { mode?: 'my' | 'all'; onNavigate?: (v: string) => void; userEmail?: string }) {
   const [groups, setGroups] = useState<ScreenGroup[]>(() => {
     const data = localStorage.getItem('signageos_groups');
     return data ? JSON.parse(data) : [];
@@ -71,12 +71,12 @@ export default function ScreenGroups({ mode = 'all', onNavigate }: { mode?: 'my'
 
   const filteredPlaylists = userPlaylists.filter(p => {
     if (mode === 'my') {
-      return p.createdBy === 'admin@demo.com';
+      return p.createdBy === userEmail;
     } else {
       if (selectedOrgFilter) {
         const org = organizations.find(o => o.id === selectedOrgFilter);
         const orgEmail = org?.email;
-        return !orgEmail || p.createdBy === orgEmail || p.createdBy === 'admin@demo.com';
+        return !orgEmail || p.createdBy === orgEmail || p.createdBy === userEmail;
       }
       return true;
     }
@@ -99,7 +99,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate }: { mode?: 'my'
   };
 
   const myScreens = mode === 'my'
-    ? screens.filter(s => s.assignedToUserEmail === 'admin@demo.com')
+    ? screens.filter(s => s.assignedToUserEmail === userEmail)
     : screens;
 
   const screensInGroup = (groupId: string) => myScreens.filter(s => s.groupId === groupId);
@@ -560,7 +560,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate }: { mode?: 'my'
           if (s.groupId) return false;
           const sOrgId = getScreenOrgId(s);
           if (!group.orgId) {
-            return s.assignedToUserEmail === 'admin@demo.com';
+            return s.assignedToUserEmail === userEmail;
           } else {
             return sOrgId === group.orgId;
           }

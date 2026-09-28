@@ -1,31 +1,51 @@
 import nodemailer from 'nodemailer';
 import dns from 'dns';
-import {
-  SMTP_HOST,
-  SMTP_PORT,
-  SMTP_USERNAME,
-  SMTP_PASSWORD,
-  SMTP_SENDER_EMAIL,
-  SMTP_SENDER_NAME
-} from './config';
+import { getSmtpConfig, SmtpConfig } from './integrationsStore';
 
-// Create transporter conditionally
-function getTransporter() {
-  if (!SMTP_HOST || !SMTP_USERNAME) {
+// Dashboard-saved SMTP config (Admin > Integrations) takes priority over
+// .env when enabled — see integrationsStore.getSmtpConfig(). Falls back to
+// null (fallback-log mode) if nothing is configured either way.
+async function getTransporter() {
+  const cfg = await getSmtpConfig();
+  if (!cfg.host || !cfg.username) {
     return null;
   }
   return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465, // true for 465, false for other ports
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.port === 465, // true for 465, false for other ports
     auth: {
-      user: SMTP_USERNAME,
-      pass: SMTP_PASSWORD
+      user: cfg.username,
+      pass: cfg.password
     },
     tls: {
       rejectUnauthorized: false
     }
   } as any);
+}
+
+/**
+ * Live connection test used by the Integrations dashboard's "Test Connection"
+ * button — verifies the SMTP server accepts the given credentials without
+ * actually sending an email.
+ */
+export async function testSmtpConnection(cfg: Pick<SmtpConfig, 'host' | 'port' | 'username' | 'password'>): Promise<{ ok: boolean; error?: string }> {
+  if (!cfg.host || !cfg.username) {
+    return { ok: false, error: 'host and username are required.' };
+  }
+  try {
+    const transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.port === 465,
+      auth: { user: cfg.username, pass: cfg.password },
+      tls: { rejectUnauthorized: false }
+    } as any);
+    await transporter.verify();
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e.message || 'Connection failed' };
+  }
 }
 
 interface CredentialsMailOptions {
@@ -41,7 +61,8 @@ export async function sendCredentialsEmail({
   role,
   tempPassword
 }: CredentialsMailOptions): Promise<boolean> {
-  const transporter = getTransporter();
+  const transporter = await getTransporter();
+  const smtpCfg = await getSmtpConfig();
 
   const appName = "SignageOS Technologies";
   const loginUrl = "http://localhost:3000";
@@ -214,7 +235,7 @@ export async function sendCredentialsEmail({
   `;
 
   const mailOptions = {
-    from: `"${SMTP_SENDER_NAME}" <${SMTP_SENDER_EMAIL}>`,
+    from: `"${smtpCfg.senderName}" <${smtpCfg.senderEmail}>`,
     to: toEmail,
     subject: `Your ${appName} Account Credentials`,
     html: emailHtml,
@@ -256,7 +277,8 @@ export async function sendPasswordResetEmail({
   userName,
   resetLink
 }: ResetMailOptions): Promise<boolean> {
-  const transporter = getTransporter();
+  const transporter = await getTransporter();
+  const smtpCfg = await getSmtpConfig();
   const appName = "SignageOS Technologies";
 
   const emailHtml = `
@@ -358,7 +380,7 @@ export async function sendPasswordResetEmail({
   `;
 
   const mailOptions = {
-    from: `"${SMTP_SENDER_NAME}" <${SMTP_SENDER_EMAIL}>`,
+    from: `"${smtpCfg.senderName}" <${smtpCfg.senderEmail}>`,
     to: toEmail,
     subject: `Reset your ${appName} password`,
     html: emailHtml,

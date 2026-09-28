@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE } from '../config';
 import AdminDashboard from '../pages/admin-dashboard';
@@ -135,6 +135,31 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     }
   }, [loggedInUser]);
 
+  // Shared by password login and Google sign-in — both hit different
+  // endpoints but land on the same { token, user } shape and need the same
+  // localStorage/session setup afterward.
+  const completeLogin = async (data: { token?: string; user: any }) => {
+    if (data.token) {
+      localStorage.setItem('signageos_token', data.token);
+      localStorage.setItem('signageos_user_id', data.user.id);
+      localStorage.setItem('signageos_user_email', data.user.email);
+      localStorage.setItem('signageos_user_role', data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client');
+      localStorage.setItem('signageos_first_time_login', data.user.firstTimeLogin ? 'true' : 'false');
+    }
+
+    try {
+      await syncAllFromDatabase();
+    } catch (syncErr) {
+      console.error('Initial sync error:', syncErr);
+    }
+
+    setLoggedInUser({
+      email: data.user.email,
+      role: data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client'
+    });
+    setErrorMessage('');
+  };
+
   // Handle actual login submission
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,26 +178,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       .then(async (res) => {
         if (res.ok) {
           const data = await res.json();
-          if (data.token) {
-            localStorage.setItem('signageos_token', data.token);
-            localStorage.setItem('signageos_user_id', data.user.id);
-            localStorage.setItem('signageos_user_email', data.user.email);
-            localStorage.setItem('signageos_user_role', data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client');
-            localStorage.setItem('signageos_first_time_login', data.user.firstTimeLogin ? 'true' : 'false');
-          }
-
-          // Sync database cache to localStorage
-          try {
-            await syncAllFromDatabase();
-          } catch (syncErr) {
-            console.error('Initial sync error:', syncErr);
-          }
-
-          setLoggedInUser({
-            email: data.user.email,
-            role: data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client'
-          });
-          setErrorMessage('');
+          await completeLogin(data);
         } else {
           const errData = await res.json().catch(() => ({}));
           setErrorMessage(errData.message || 'Invalid access credentials.');
@@ -183,6 +189,75 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
         setErrorMessage('Server connection error. Please verify the server is running and accessible.');
       });
   };
+
+  // Google Sign-In — only rendered when Admin > Integrations has it enabled.
+  const [googleAuth, setGoogleAuth] = useState<{ enabled: boolean; clientId: string }>({ enabled: false, clientId: '' });
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/google/config`)
+      .then(res => res.json())
+      .then(data => setGoogleAuth({ enabled: !!data.enabled, clientId: data.clientId || '' }))
+      .catch(err => console.error('Failed to load Google auth config:', err));
+  }, []);
+
+  const handleGoogleCredential = async (response: { credential: string }) => {
+    setErrorMessage('');
+    try {
+      const res = await fetch(`${API_BASE}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await completeLogin(data);
+      } else {
+        setErrorMessage(data.message || 'Google sign-in failed.');
+      }
+    } catch (err) {
+      console.error('Google sign-in error:', err);
+      setErrorMessage('Server connection error during Google sign-in.');
+    }
+  };
+
+  useEffect(() => {
+    if (!googleAuth.enabled || !googleAuth.clientId || view !== 'login') return;
+
+    const initializeButton = () => {
+      const google = (window as any).google;
+      if (!google?.accounts?.id || !googleButtonRef.current) return;
+      google.accounts.id.initialize({
+        client_id: googleAuth.clientId,
+        callback: handleGoogleCredential
+      });
+      google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: 320,
+        text: 'signin_with'
+      });
+    };
+
+    if ((window as any).google?.accounts?.id) {
+      initializeButton();
+      return;
+    }
+
+    const existingScript = document.getElementById('google-identity-script');
+    if (existingScript) {
+      existingScript.addEventListener('load', initializeButton);
+      return () => existingScript.removeEventListener('load', initializeButton);
+    }
+
+    const script = document.createElement('script');
+    script.id = 'google-identity-script';
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = initializeButton;
+    document.body.appendChild(script);
+  }, [googleAuth, view]);
 
   // Handle forgot password submit
   const handleForgotSubmit = (e: React.FormEvent) => {
@@ -278,6 +353,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       return (
         <AdminDashboard
           onLogout={handleLogout}
+          userEmail={loggedInUser.email}
           onSwitchToClient={() => {
             localStorage.setItem('signageos_user_role', 'client');
             setLoggedInUser({ email: 'priya@demo.com', role: 'client' });
@@ -479,6 +555,17 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
                 >
                   Sign In / Verify <ChevronRight className="w-4 h-4" />
                 </button>
+
+                {googleAuth.enabled && (
+                  <>
+                    <div className="flex items-center gap-3 pt-2">
+                      <div className="flex-1 h-px bg-slate-150" />
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">or</span>
+                      <div className="flex-1 h-px bg-slate-150" />
+                    </div>
+                    <div className="flex justify-center" ref={googleButtonRef} />
+                  </>
+                )}
 
               </form>
             )}

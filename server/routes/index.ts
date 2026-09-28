@@ -7,14 +7,18 @@ import paymentsRouter from './payments';
 import mediaItemsRouter from './media_items';
 import organizationsRouter from './organizations';
 import videoConferenceRouter from './videoConference';
+import integrationsRouter from './integrations';
 import { createCrudRouter } from '../controllers/crud';
 import { authenticateToken, enforceLicense } from '../middleware/auth';
 import { clearAllScreenLogs } from '../controllers/screens';
+import { PB_URL, S3_ENDPOINT } from '../config';
 
 const apiRouter = express.Router();
 
 // 1. Authentication routes (Unprotected)
 apiRouter.use('/auth', authRouter);
+
+const DEFAULT_BRANDING = { logoUrl: null, companyName: 'SignageOS', primaryColor: '#0EA5E9' };
 
 // Public dynamic tenant branding lookup
 apiRouter.get('/public/tenant-branding', async (req, res) => {
@@ -23,10 +27,18 @@ apiRouter.get('/public/tenant-branding', async (req, res) => {
     const { pb, ensurePBAuth } = await import('../db');
     const authenticated = await ensurePBAuth();
     if (!authenticated) {
-      return res.status(200).json({ logoUrl: null, companyName: 'SignageOS', primaryColor: '#0EA5E9' });
+      return res.status(200).json(DEFAULT_BRANDING);
     }
+    if (!host || typeof host !== 'string') {
+      return res.status(200).json(DEFAULT_BRANDING);
+    }
+    // Previously interpolated `host` directly into the filter string
+    // (`customDomain = "${host}"`) with no escaping — a crafted host value
+    // like `x" || id != "` broke out of the quoted literal and matched every
+    // organization, returning another tenant's real branding data instead of
+    // the intended exact match. pb.filter() parameterizes the value instead.
     const records = await pb.collection('organizations').getFullList({
-      filter: `customDomain = "${host}"`
+      filter: pb.filter('customDomain = {:host}', { host })
     });
     if (records.length > 0) {
       const org = records[0];
@@ -37,10 +49,35 @@ apiRouter.get('/public/tenant-branding', async (req, res) => {
         orgId: org.id
       });
     }
+    // No org has this as its custom domain — fall through to default
+    // branding. Previously nothing was sent here at all, leaving the
+    // request hanging until the client's own timeout for every visitor on a
+    // domain without white-label branding set up (i.e. almost everyone).
+    return res.status(200).json(DEFAULT_BRANDING);
   } catch (err) {
     console.error('Error fetching tenant branding:', err);
+    return res.status(200).json(DEFAULT_BRANDING);
   }
 });
+
+// Hosts this proxy is allowed to fetch from — this endpoint is unauthenticated
+// (any caller, no login) and forwards the raw response back to whoever asked,
+// so without an allowlist it was a plain SSRF: a caller could pass ?url= any
+// address at all, including cloud metadata endpoints or internal-only
+// services on this server's own network, and have this server fetch it and
+// hand back the response. Only the media hosts this route actually needs to
+// proxy for (R2 and PocketBase) are allowed.
+function getAllowedProxyHosts(): Set<string> {
+  const hosts = new Set<string>();
+  const addHost = (url: string | undefined) => {
+    if (!url) return;
+    try { hosts.add(new URL(url).hostname.toLowerCase()); } catch { /* ignore malformed config */ }
+  };
+  addHost(PB_URL);
+  addHost(process.env.R2_PUBLIC_URL);
+  addHost(S3_ENDPOINT);
+  return hosts;
+}
 
 // Public dynamic media proxy to bypass Tizen SSSP CORS restrictions.
 // Optional `w` query param downscales images server-side (e.g. ?w=1920) so
@@ -58,6 +95,21 @@ apiRouter.get('/public/proxy-media', async (req, res) => {
 
   try {
     const cleanUrl = decodeURIComponent(mediaUrl);
+
+    let parsed: URL;
+    try {
+      parsed = new URL(cleanUrl);
+    } catch {
+      return res.status(400).send('Invalid url parameter');
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return res.status(400).send('Unsupported URL scheme');
+    }
+    const allowedHosts = getAllowedProxyHosts();
+    if (!allowedHosts.has(parsed.hostname.toLowerCase())) {
+      return res.status(403).send('URL host is not allowed');
+    }
+
     // Fetch the remote media item
     const mediaRes = await fetch(cleanUrl);
     if (!mediaRes.ok) {
@@ -121,6 +173,7 @@ apiRouter.use('/users', usersRouter);
 apiRouter.use('/media_items', mediaItemsRouter);
 apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/video-conference', videoConferenceRouter);
+apiRouter.use('/integrations', integrationsRouter);
 
 // 6. Mount Generic PocketBase CRUD Collection Routers
 apiRouter.use('/screens', createCrudRouter('screens'));

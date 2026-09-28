@@ -16,9 +16,10 @@ const scheduleColors: Record<string, string> = {
 
 interface Props {
   onNavigate?: (v: string) => void;
+  userEmail?: string;
 }
 
-export default function ClientPlaylists({ onNavigate }: Props) {
+export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.com' }: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
   const [screens, setScreens] = useState<Screen[]>([]);
@@ -72,7 +73,7 @@ export default function ClientPlaylists({ onNavigate }: Props) {
   const loadData = () => {
     const allPlaylists = mediaStore.getPlaylists();
     // Only display client playlists (exclude admin's own playlists)
-    const clientPlaylists = allPlaylists.filter(p => p.createdBy !== 'admin@demo.com' && p.createdBy !== 'admin');
+    const clientPlaylists = allPlaylists.filter(p => p.createdBy !== userEmail && p.createdBy !== 'admin');
     setPlaylists(clientPlaylists);
 
     setMediaList(mediaStore.getMedia());

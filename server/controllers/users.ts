@@ -1,7 +1,24 @@
+import PocketBase from 'pocketbase';
 import { pb, ensurePBAuth } from '../db';
+import { PB_URL } from '../config';
 import { sendCredentialsEmail } from '../email';
+import { logAudit, getClientIp } from '../services/auditLog';
+
+function isAdminUser(user: any): boolean {
+  return user?.role === 'admin' || user?.role === 'super_admin';
+}
+
+// This whole file previously had zero role checks — any authenticated user,
+// any role, could list every user, view/edit/delete any account, and (via
+// updateUser's unrestricted body spread) set their own `role` to
+// `super_admin` in a single request. Every handler below now requires admin
+// for anything beyond a user managing their own record, and updateUser
+// restricts which fields a non-admin may touch on themselves.
 
 export async function listUsers(req: any, res: any) {
+  if (!isAdminUser(req.user)) {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
   try {
     const result = await pb.collection('users').getList(1, 500, { sort: '-created' });
     const records = result.items;
@@ -12,15 +29,23 @@ export async function listUsers(req: any, res: any) {
 }
 
 export async function getUser(req: any, res: any) {
+  const isAdmin = isAdminUser(req.user);
+  if (!isAdmin && req.user?.id !== req.params.id) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
   try {
     const record = await pb.collection('users').getOne(req.params.id);
-    res.json(record);
+    const avatarUrl = record.avatar ? `${pb.baseUrl}/api/files/users/${record.id}/${record.avatar}` : '';
+    res.json({ ...record, avatarUrl });
   } catch (error: any) {
     res.status(error.status || 404).json({ error: error.message || 'User not found' });
   }
 }
 
 export async function createUser(req: any, res: any) {
+  if (!isAdminUser(req.user)) {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
   try {
     const body = req.body;
     const email = body.email;
@@ -147,6 +172,16 @@ export async function createUser(req: any, res: any) {
       });
     }
 
+    logAudit({
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+      action: 'user.created',
+      targetType: 'users',
+      targetId: record.id,
+      detail: `email=${record.email}, role=${record.role}`,
+      ip: getClientIp(req)
+    });
+
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Error creating user:', error);
@@ -154,13 +189,72 @@ export async function createUser(req: any, res: any) {
   }
 }
 
+// Fields a non-admin is allowed to touch on their OWN account. Deliberately
+// excludes role, license/screen counts, feature flags, email, company, and
+// status — the previous version let a client PUT {"role":"super_admin"} on
+// their own id and be granted full admin instantly.
+const SELF_EDITABLE_FIELDS = new Set(['name', 'mobile', 'address', 'password', 'passwordConfirm', 'firstTimeLogin']);
+
 export async function updateUser(req: any, res: any) {
+  const isAdmin = isAdminUser(req.user);
+  const isSelf = req.user?.id === req.params.id;
+
+  if (!isAdmin && !isSelf) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
+
   try {
-    const body = { ...req.body };
+    const body: Record<string, any> = { ...req.body };
+
+    let previousRole: string | undefined;
+    if (!isAdmin) {
+      for (const key of Object.keys(body)) {
+        if (!SELF_EDITABLE_FIELDS.has(key)) delete body[key];
+      }
+    } else if (typeof body.role === 'string') {
+      // Role changes are privilege-escalation-sensitive — capture the prior
+      // value before it's overwritten so the audit entry shows the change.
+      try {
+        const existing = await pb.collection('users').getOne(req.params.id);
+        previousRole = existing.role;
+      } catch (_) { /* best-effort — don't block the update if this lookup fails */ }
+    }
+
     if (!body.password) {
       delete body.password;
       delete body.passwordConfirm;
     } else {
+      // Changing your OWN password previously only verified the current
+      // password with a separate client-side /auth/login call before this
+      // request was ever sent — the actual update never re-checked it
+      // server-side, so anyone already holding a valid session for this
+      // account could set a new password without proving they knew the old
+      // one. Re-verify here, the same way login itself authenticates.
+      // Exception: the mandatory first-time-login password change already
+      // proved the temp password moments ago (it's how the JWT was issued),
+      // and the frontend for that flow has no way to ask for it again — a
+      // fresh account has no "current password" to protect yet.
+      if (isSelf) {
+        let isFirstTimeLoginChange = false;
+        try {
+          const existing = await pb.collection('users').getOne(req.params.id);
+          isFirstTimeLoginChange = !!existing.firstTimeLogin;
+        } catch (_) { /* best-effort — falls through to requiring verification */ }
+
+        if (!isFirstTimeLoginChange) {
+          const currentPassword = req.body.currentPassword;
+          if (!currentPassword) {
+            return res.status(400).json({ error: 'Current password is required to change your password.' });
+          }
+          try {
+            const verifyPb = new PocketBase(PB_URL);
+            await verifyPb.collection('users').authWithPassword(req.user.email, currentPassword);
+          } catch {
+            return res.status(403).json({ error: 'Current password is incorrect.' });
+          }
+        }
+      }
+      delete body.currentPassword;
       body.passwordConfirm = body.password;
       // If changing password, set firstTimeLogin to false unless explicitly overridden
       if (body.firstTimeLogin === undefined) {
@@ -168,6 +262,30 @@ export async function updateUser(req: any, res: any) {
       }
     }
     const record = await pb.collection('users').update(req.params.id, body);
+
+    if (isAdmin && typeof body.role === 'string' && body.role !== previousRole) {
+      logAudit({
+        actorId: req.user?.id,
+        actorEmail: req.user?.email,
+        action: 'user.role_changed',
+        targetType: 'users',
+        targetId: req.params.id,
+        detail: `${previousRole ?? 'unknown'} -> ${body.role}`,
+        ip: getClientIp(req)
+      });
+    }
+    if (isAdmin && !isSelf) {
+      logAudit({
+        actorId: req.user?.id,
+        actorEmail: req.user?.email,
+        action: 'user.updated_by_admin',
+        targetType: 'users',
+        targetId: req.params.id,
+        detail: Object.keys(body).join(','),
+        ip: getClientIp(req)
+      });
+    }
+
     res.json(record);
   } catch (error: any) {
     console.error('Error updating user:', error);
@@ -176,9 +294,85 @@ export async function updateUser(req: any, res: any) {
 }
 
 
+// Small profile photo, not full media — same idea as the image/video limits
+// in media_items.ts but tighter, since this is just an avatar.
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Sets or clears the real `avatar` file field on a user's PocketBase record.
+ * Previously the frontend only ever stored the uploaded image as base64 in
+ * localStorage — nothing was ever written to the account itself, so the
+ * avatar never followed the user to another browser/device and admins could
+ * never see it.
+ */
+export async function updateUserAvatar(req: any, res: any) {
+  const isAdmin = isAdminUser(req.user);
+  const isSelf = req.user?.id === req.params.id;
+  if (!isAdmin && !isSelf) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
+
+  try {
+    const userId = req.params.id;
+
+    if (req.body?.removeAvatar) {
+      const record = await pb.collection('users').update(userId, { avatar: null });
+      return res.json({ ...record, avatarUrl: '' });
+    }
+
+    const { avatarData, mimeType, fileName } = req.body;
+    if (!avatarData || !mimeType) {
+      return res.status(400).json({ error: 'avatarData and mimeType are required.' });
+    }
+    if (!mimeType.startsWith('image/')) {
+      return res.status(400).json({ error: 'Avatar must be an image file.' });
+    }
+
+    const fileBuffer = Buffer.from(avatarData, 'base64');
+    if (fileBuffer.length > MAX_AVATAR_BYTES) {
+      return res.status(413).json({ error: `Avatar too large. Maximum allowed size is ${MAX_AVATAR_BYTES / (1024 * 1024)}MB.` });
+    }
+
+    const ext = mimeType.split('/')[1] || 'png';
+    const safeFileName = (fileName || `avatar.${ext}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileBlob = new File([fileBuffer], safeFileName, { type: mimeType });
+
+    const formData = new FormData();
+    formData.append('avatar', fileBlob);
+
+    const record = await pb.collection('users').update(userId, formData);
+    const avatarUrl = record.avatar ? `${pb.baseUrl}/api/files/users/${record.id}/${record.avatar}` : '';
+
+    logAudit({
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+      action: isSelf ? 'user.avatar_updated' : 'user.avatar_updated_by_admin',
+      targetType: 'users',
+      targetId: userId,
+      ip: getClientIp(req)
+    });
+
+    res.json({ ...record, avatarUrl });
+  } catch (error: any) {
+    console.error('Error updating user avatar:', error);
+    res.status(500).json({ error: error.message || 'Error updating avatar' });
+  }
+}
+
 export async function deleteUser(req: any, res: any) {
+  if (!isAdminUser(req.user)) {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
   try {
     await pb.collection('users').delete(req.params.id);
+    logAudit({
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+      action: 'user.deleted',
+      targetType: 'users',
+      targetId: req.params.id,
+      ip: getClientIp(req)
+    });
     res.status(204).end();
   } catch (error: any) {
     console.error('Error deleting user:', error);

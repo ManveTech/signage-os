@@ -605,6 +605,7 @@ export async function touchScreenPresence(screenId: string) {
 export async function getScreenStatusForDevice(req: any, res: any) {
   try {
     const screenId = req.body?.screenId || req.query?.screenId;
+    const hardwareUuid = req.body?.hardwareUuid || req.query?.hardwareUuid;
     if (!screenId) {
       return res.status(400).json({ message: 'screenId is required.' });
     }
@@ -612,6 +613,16 @@ export async function getScreenStatusForDevice(req: any, res: any) {
     const screenRecord = await pb.collection('screens').getOne(screenId).catch(() => null);
     if (!screenRecord) {
       return res.status(404).json({ message: 'Screen not found.' });
+    }
+
+    // This endpoint is unauthenticated — without this check, any caller who
+    // knows/guesses a screenId could read another tenant's full screen record
+    // (assignedToUserEmail, pairing_code, license_id). Devices on an updated
+    // app build send their own hardwareUuid alongside screenId, so mismatches
+    // are rejected. Older builds that don't send it yet are let through
+    // unverified during rollout — drop that fallback once the fleet updates.
+    if (hardwareUuid && screenRecord.hardware_uuid && screenRecord.hardware_uuid !== hardwareUuid) {
+      return res.status(403).json({ message: 'hardwareUuid does not match this screen.' });
     }
 
     return res.status(200).json(screenRecord);
@@ -666,8 +677,27 @@ export async function recordHeartbeat(req: any, res: any) {
     }
 
     if (screenRecord) {
+      // The device always sends its own hardwareUuid on this endpoint (it's
+      // a required field on the app's HeartbeatRequest, never optional), and
+      // this endpoint is unauthenticated — so unlike the sync endpoint below,
+      // there's no legacy-client compatibility reason to let a request
+      // through when hardwareUuid is missing. An attacker doesn't have to
+      // behave like the real app, so requiring it unconditionally (rather
+      // than only checking it when present) closes the gap where simply
+      // omitting the field let a caller who knows/guesses another tenant's
+      // screenId spoof that screen online and overwrite its live
+      // status/storage/asset fields. hardware_uuid is only absent on a
+      // screen that hasn't finished pairing yet, so this can't lock out a
+      // legitimately paired device.
+      if (screenRecord.hardware_uuid && screenRecord.hardware_uuid !== hardwareUuid) {
+        screenId = screenRecord.id;
+        transitionStatus = 'UNKNOWN_DEVICE';
+        console.warn(`[Heartbeat] Rejected: hardwareUuid mismatch for screen ${screenRecord.id} (request hardwareUuid=${hardwareUuid}, record hardware_uuid=${screenRecord.hardware_uuid}).`);
+        return res.status(403).json({ message: 'hardwareUuid does not match this screen.' });
+      }
+
       screenId = screenRecord.id;
-      const storageUsed = storageAvailableBytes 
+      const storageUsed = storageAvailableBytes
         ? Math.round((storageUsedBytes / (storageUsedBytes + storageAvailableBytes)) * 100) 
         : 15;
       
@@ -896,6 +926,14 @@ export async function assignPlaylistToScreen(req: any, res: any) {
       return res.status(400).json({ message: 'screenId is required.' });
     }
 
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin) {
+      const screen = await pb.collection('screens').getOne(screenId).catch(() => null);
+      if (!screen || screen.assignedToUserEmail !== req.user?.email) {
+        return res.status(403).json({ message: 'Access denied.' });
+      }
+    }
+
     const isNone = !playlistId || playlistId === 'None' || !playlistName || playlistName === 'None';
 
     const updatedScreen = await pb.collection('screens').update(screenId, {
@@ -906,6 +944,7 @@ export async function assignPlaylistToScreen(req: any, res: any) {
 
     // Sync scheduling on direct playlist assignment
     syncScreenSchedule(updatedScreen);
+    notifyScreenConfigChanged(screenId);
 
     const metrics = await getLiveScreenMetrics(updatedScreen);
     pb.collection('screen_logs').create(
@@ -1083,7 +1122,7 @@ export async function clearAllScreenLogs(req: any, res: any) {
     let targetEmail = req.headers['x-assigned-to-user-email'] || req.query.assignedToUserEmail;
     
     // Enforce security
-    if (userRole !== 'admin') {
+    if (userRole !== 'admin' && userRole !== 'super_admin') {
       targetEmail = authUserEmail;
     }
 
@@ -1206,38 +1245,3 @@ export async function disconnectScreen(req: any, res: any) {
   }
 }
 
-export async function clearScreenCommand(req: any, res: any) {
-  try {
-    const { screenId, command } = req.body;
-    if (!screenId || !command) {
-      return res.status(400).json({ error: 'screenId and command are required' });
-    }
-
-    const validCommands = ['clear_cache', 'force_sync', 'restart_playlist'];
-    if (!validCommands.includes(command)) {
-      return res.status(400).json({ error: `Invalid command: ${command}` });
-    }
-
-    const authenticated = await ensurePBAuth();
-    if (!authenticated) {
-      return res.status(503).json({ error: 'PocketBase connection authentication failed' });
-    }
-
-    const updateData: any = {};
-    updateData[command] = false;
-
-    const updatedRecord = await pb.collection('screens').update(screenId, updateData);
-
-    if (isRedisReady()) {
-      await redis.pipeline()
-        .del(`cache:screen:${screenId}`)
-        .del(`cache:screen_uuid:${updatedRecord.hardware_uuid || ''}`)
-        .exec();
-    }
-
-    return res.status(200).json({ success: true, message: `Command ${command} cleared successfully.` });
-  } catch (err: any) {
-    console.error(`Error clearing screen command ${req.body?.command}:`, err);
-    return res.status(500).json({ error: err.message || 'Internal server error clearing command' });
-  }
-}

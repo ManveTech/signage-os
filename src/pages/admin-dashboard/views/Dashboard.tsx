@@ -32,7 +32,7 @@ const activityColorMap: Record<string, string> = {
   alert: 'bg-red-100 text-red-600',
 };
 
-export default function Dashboard() {
+export default function Dashboard({ userEmail = 'admin@demo.com' }: { userEmail?: string } = {}) {
   const [, setRefreshTick] = useState(0);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [alertsPage, setAlertsPage] = useState<number>(1);
@@ -62,7 +62,7 @@ export default function Dashboard() {
   };
 
   const totalScreens = screens.length;
-  const myScreens = screens.filter(s => s.assignedToUserEmail === 'admin@demo.com').length;
+  const myScreens = screens.filter(s => s.assignedToUserEmail === userEmail).length;
   const onlineScreens = screens.filter(s => s.status === 'online' || s.status === 'active').length;
   const offlineScreens = screens.filter(s => s.status === 'offline').length;
   const totalMedia = media.length;

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Monitor, Film, List, BarChart2, Users, Key, Building2,
   Settings, HelpCircle, User, ChevronDown, ChevronRight, Search, LogOut,
   Tv, MonitorPlay, Layers, Tag, CalendarDays, FileBarChart, Shield,
-  MessageSquare, Video
+  MessageSquare, Video, Plug
 } from 'lucide-react';
 
 type NavSection = {
@@ -87,6 +87,7 @@ const navSections: NavSection[] = [
       { id: 'settings-notifications', label: 'Notifications' },
     ]
   },
+  { id: 'integrations', label: 'Integrations', icon: <Plug size={18} /> },
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
 ];
 

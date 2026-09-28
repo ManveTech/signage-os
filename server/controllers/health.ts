@@ -1,6 +1,7 @@
 import { pb } from '../db';
 import { isRedisReady, redis } from '../redis';
-import { S3_ENABLED, S3_BUCKET, S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET } from '../config';
+import { getCloudflareConfig } from '../integrationsStore';
+import { testR2Connection } from '../r2';
 
 interface HealthStatus {
   service: string;
@@ -78,7 +79,11 @@ async function checkRedis(): Promise<HealthStatus> {
  * Check S3/R2 storage connection (if enabled)
  */
 async function checkS3(): Promise<HealthStatus> {
-  if (!S3_ENABLED) {
+  // Reflects whichever config is actually in effect right now — the
+  // Admin > Integrations dashboard's saved Cloudflare config when enabled,
+  // otherwise the .env fallback. See integrationsStore.getCloudflareConfig().
+  const cfg = await getCloudflareConfig();
+  if (!cfg.enabled) {
     return {
       service: 's3',
       status: 'healthy',
@@ -86,7 +91,7 @@ async function checkS3(): Promise<HealthStatus> {
     };
   }
 
-  if (!S3_BUCKET || !S3_ENDPOINT || !S3_ACCESS_KEY || !S3_SECRET) {
+  if (!cfg.bucket || !cfg.endpoint || !cfg.accessKeyId || !cfg.secretAccessKey) {
     return {
       service: 's3',
       status: 'degraded',
@@ -95,39 +100,26 @@ async function checkS3(): Promise<HealthStatus> {
   }
 
   const start = Date.now();
-  try {
-    // Dynamic import to avoid loading S3 client if not needed
-    const { S3Client, HeadBucketCommand } = await import('@aws-sdk/client-s3');
+  const result = await testR2Connection(cfg);
+  const latency = Date.now() - start;
 
-    const s3Client = new S3Client({
-      region: 'auto',
-      endpoint: S3_ENDPOINT,
-      credentials: {
-        accessKeyId: S3_ACCESS_KEY,
-        secretAccessKey: S3_SECRET
-      }
-    });
-
-    await s3Client.send(new HeadBucketCommand({ Bucket: S3_BUCKET }));
-    const latency = Date.now() - start;
-
+  if (result.ok) {
     return {
       service: 's3',
       status: 'healthy',
       latency,
       details: {
-        bucket: S3_BUCKET,
-        endpoint: S3_ENDPOINT
+        bucket: cfg.bucket,
+        endpoint: cfg.endpoint
       }
     };
-  } catch (error: any) {
-    return {
-      service: 's3',
-      status: 'unhealthy',
-      message: error.message || 'Connection failed',
-      latency: Date.now() - start
-    };
   }
+  return {
+    service: 's3',
+    status: 'unhealthy',
+    message: result.error || 'Connection failed',
+    latency
+  };
 }
 
 /**

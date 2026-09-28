@@ -391,12 +391,37 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('Programmatically added cameraMountEnabled field to screens collection');
     }
 
-    if (screensCollection.updateRule !== "" || screensCollection.viewRule !== "" || screensCollection.listRule !== "") {
-      screensCollection.updateRule = "";
-      screensCollection.viewRule = "";
-      screensCollection.listRule = "";
+    // This previously forced listRule/viewRule/updateRule to "" (fully public)
+    // on every boot — meaning anyone with the PocketBase URL could list every
+    // tenant's screens (assignedToUserEmail, pairing_code, hardware_uuid,
+    // license_id) and write to any screen record directly, with zero
+    // authentication, completely bypassing every tenancy/role check in the
+    // Express layer (crud.ts, screens.ts). The TV app never actually performs
+    // a direct list/view/create/delete against this collection — it only
+    // PATCHes specific fields (clear_cache, force_sync, restart_playlist,
+    // volume, branding) — so those four are locked to admin-only with no
+    // functional impact.
+    //
+    // updateRule stays reachable anonymously (the device has no PocketBase
+    // auth session to check against) but now requires the caller to prove it
+    // is the paired device by echoing back the screen's own hardware_uuid in
+    // the request body. `:isset` lets requests that don't send hardwareUuid
+    // at all through unverified — that's the back-compat window for
+    // already-deployed devices still on the old APK that doesn't send it yet;
+    // once the fleet has updated, tighten this to drop that clause. Verified
+    // against a disposable test collection this session: a request with no
+    // hardwareUuid field succeeds, a wrong hardwareUuid is rejected (404 —
+    // PocketBase's normal response for a failed record-level rule), and the
+    // correct hardwareUuid succeeds.
+    const desiredUpdateRule = '(@request.body.hardwareUuid:isset = false) || (hardware_uuid = @request.body.hardwareUuid)';
+    if (screensCollection.listRule !== null || screensCollection.viewRule !== null || screensCollection.createRule !== null || screensCollection.deleteRule !== null || screensCollection.updateRule !== desiredUpdateRule) {
+      screensCollection.listRule = null;
+      screensCollection.viewRule = null;
+      screensCollection.createRule = null;
+      screensCollection.deleteRule = null;
+      screensCollection.updateRule = desiredUpdateRule;
       screensUpdated = true;
-      console.log('Programmatically updated screens collection rules to public');
+      console.log('Programmatically locked down screens collection rules (list/view/create/delete to admin-only, update to hardware_uuid-verified)');
     }
 
     if (screensUpdated) {
@@ -854,6 +879,25 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
           console.log('Programmatically added updated field to screen_logs');
         }
 
+        // This collection was created with listRule/viewRule/createRule/
+        // updateRule/deleteRule all set to "" (fully public) — anyone with
+        // the PocketBase URL could list/view/create/update/delete every
+        // tenant's screen logs with zero authentication. Nothing in this
+        // codebase ever reads/writes screen_logs directly against
+        // PocketBase — the TV app and both dashboards only ever go through
+        // this server's own admin-authenticated Express routes (which
+        // bypass collection rules entirely) — so this can be locked to
+        // admin-only with no functional impact, same as audit_logs.
+        if (logsCollection.listRule !== null || logsCollection.viewRule !== null || logsCollection.createRule !== null || logsCollection.updateRule !== null || logsCollection.deleteRule !== null) {
+          logsCollection.listRule = null;
+          logsCollection.viewRule = null;
+          logsCollection.createRule = null;
+          logsCollection.updateRule = null;
+          logsCollection.deleteRule = null;
+          logsUpdated = true;
+          console.log('Programmatically locked down screen_logs collection rules to admin-only');
+        }
+
         if (logsUpdated) {
           logsCollection.fields = fields;
           await pb.collections.update('screen_logs', logsCollection);
@@ -958,6 +1002,25 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         });
         console.log('Successfully created video_conferences collection');
       }
+
+      // This collection was created with every rule set to "" (fully
+      // public) — anyone with the PocketBase URL could list/view/create/
+      // update/delete any tenant's video conference sessions with zero
+      // authentication (join/hijack/end a call, or enumerate every org's
+      // sessions). Nothing in this codebase ever touches video_conferences
+      // directly against PocketBase — server/controllers/videoConference.ts
+      // is the only consumer, using the admin PB client which bypasses
+      // collection rules entirely — so this can be locked to admin-only
+      // with no functional impact, same as audit_logs.
+      if (videoConfCollection.listRule !== null || videoConfCollection.viewRule !== null || videoConfCollection.createRule !== null || videoConfCollection.updateRule !== null || videoConfCollection.deleteRule !== null) {
+        videoConfCollection.listRule = null;
+        videoConfCollection.viewRule = null;
+        videoConfCollection.createRule = null;
+        videoConfCollection.updateRule = null;
+        videoConfCollection.deleteRule = null;
+        await pb.collections.update('video_conferences', videoConfCollection);
+        console.log('Programmatically locked down video_conferences collection rules to admin-only');
+      }
     } catch (videoConfErr: any) {
       console.warn('Failed to ensure video_conferences collection:', videoConfErr.message);
     }
@@ -1048,6 +1111,100 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       }
     } catch (auditLogsErr: any) {
       console.warn('Failed to ensure audit_logs collection:', auditLogsErr.message);
+    }
+
+    // Ensure integrations collection exists — backs the Admin > Integrations
+    // dashboard (Cloudflare R2, SMTP, Google OAuth), one row per type. Holds
+    // real secrets (R2 secret key, SMTP password, OAuth client secret), so
+    // it's admin-only at the PocketBase-rules layer just like audit_logs —
+    // every read/write goes through server/controllers/integrations.ts using
+    // the admin PB client, never directly from a browser.
+    try {
+      console.log('Ensuring integrations collection exists...');
+      try {
+        await pb.collections.getOne('integrations');
+        console.log('integrations collection already exists');
+      } catch (err) {
+        console.log('Creating integrations collection...');
+        await pb.collections.create({
+          id: 'collintegrationsid',
+          name: 'integrations',
+          type: 'base',
+          fields: [
+            {
+              id: 'integrationtypeid',
+              name: 'type',
+              type: 'select',
+              required: true,
+              system: false,
+              maxSelect: 1,
+              values: ['cloudflare', 'smtp', 'oauth_google']
+            },
+            {
+              id: 'integrationconfigid',
+              name: 'config',
+              type: 'json',
+              required: false,
+              system: false,
+              maxSize: 0
+            },
+            {
+              id: 'integrationenabledid',
+              name: 'enabled',
+              type: 'bool',
+              required: false,
+              system: false
+            },
+            {
+              id: 'integrationteststatusid',
+              name: 'lastTestStatus',
+              type: 'select',
+              required: false,
+              system: false,
+              maxSelect: 1,
+              values: ['untested', 'success', 'failure']
+            },
+            {
+              id: 'integrationtesterrorid',
+              name: 'lastTestError',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'integrationtestedatid',
+              name: 'lastTestedAt',
+              type: 'text',
+              required: false,
+              system: false
+            },
+            {
+              id: 'integrationcreatedid',
+              name: 'created',
+              type: 'autodate',
+              onCreate: true,
+              onUpdate: false,
+              system: false
+            },
+            {
+              id: 'integrationupdatedid',
+              name: 'updated',
+              type: 'autodate',
+              onCreate: true,
+              onUpdate: true,
+              system: false
+            }
+          ],
+          listRule: null,
+          viewRule: null,
+          createRule: null,
+          updateRule: null,
+          deleteRule: null
+        });
+        console.log('Successfully created integrations collection');
+      }
+    } catch (integrationsErr: any) {
+      console.warn('Failed to ensure integrations collection:', integrationsErr.message);
     }
 
     // Ensure support_docs collection schema has youtubeUrl field
@@ -1192,6 +1349,81 @@ Notes:
       }
     } catch (docErr: any) {
       console.warn('Failed to seed support document:', docErr.message);
+    }
+
+    // These collections were all left with every rule set to "" (fully
+    // public) from however they were originally created — anyone with the
+    // PocketBase URL could list/view/create/update/delete any tenant's
+    // licenses, organizations, tickets, invoices, payments, leads, faqs,
+    // support_docs, or screen_groups with zero authentication, same root
+    // cause as screens/screen_logs/video_conferences. Nothing in this
+    // codebase ever touches any of them directly against PocketBase — every
+    // dashboard read/write for these goes through this server's own
+    // admin-authenticated Express/CRUD routes (crud.ts, payments.ts,
+    // organizations.ts), which bypass collection rules entirely — so all of
+    // them can be locked to admin-only with no functional impact.
+    try {
+      const fullyLockedCollections = ['screen_groups', 'licenses', 'organizations', 'tickets', 'faqs', 'support_docs', 'payments', 'invoices', 'leads'];
+      for (const name of fullyLockedCollections) {
+        try {
+          const coll: any = await pb.collections.getOne(name);
+          if (coll.listRule !== null || coll.viewRule !== null || coll.createRule !== null || coll.updateRule !== null || coll.deleteRule !== null) {
+            coll.listRule = null;
+            coll.viewRule = null;
+            coll.createRule = null;
+            coll.updateRule = null;
+            coll.deleteRule = null;
+            await pb.collections.update(name, coll);
+            console.log(`Programmatically locked down ${name} collection rules to admin-only`);
+          }
+        } catch (e: any) {
+          console.warn(`Failed to lock down ${name} collection rules:`, e.message);
+        }
+      }
+
+      // media_items and playlists are read directly (GET only, never
+      // written to) by the TV app with no auth of its own — list/view stay
+      // public so devices and dashboards can keep loading assets/playlists,
+      // but create/update/delete are admin-only since every legitimate
+      // write already goes through the admin-authenticated Express layer.
+      for (const name of ['media_items', 'playlists']) {
+        try {
+          const coll: any = await pb.collections.getOne(name);
+          if (coll.createRule !== null || coll.updateRule !== null || coll.deleteRule !== null) {
+            coll.createRule = null;
+            coll.updateRule = null;
+            coll.deleteRule = null;
+            await pb.collections.update(name, coll);
+            console.log(`Programmatically locked down ${name} collection write rules to admin-only (list/view left public for anonymous asset reads)`);
+          }
+        } catch (e: any) {
+          console.warn(`Failed to lock down ${name} collection write rules:`, e.message);
+        }
+      }
+
+      // users.createRule was "" (fully public) — anyone, with zero auth,
+      // could POST a new record directly to PocketBase's users collection,
+      // including role: "super_admin", and instantly have a working admin
+      // account (login validates against this same PocketBase collection).
+      // Every legitimate user-creation path already goes through this
+      // server's own admin-gated createUser controller. list/view/update/
+      // delete are left as they already were ("id = @request.auth.id") —
+      // no client here ever holds a real PocketBase auth session (login
+      // only uses PocketBase auth to verify the password, then discards it
+      // in favor of this server's own JWT), so those rules are already
+      // unreachable by any real anonymous caller and don't need changing.
+      try {
+        const usersColl: any = await pb.collections.getOne('users');
+        if (usersColl.createRule !== null) {
+          usersColl.createRule = null;
+          await pb.collections.update('users', usersColl);
+          console.log('Programmatically locked down users collection createRule to admin-only');
+        }
+      } catch (e: any) {
+        console.warn('Failed to lock down users collection createRule:', e.message);
+      }
+    } catch (rulesErr: any) {
+      console.warn('Failed to lock down collection rules:', rulesErr.message);
     }
 
     // 2. Setup SMTP settings only (S3 is now handled directly via AWS SDK, not via PocketBase)

@@ -304,6 +304,12 @@ export default function Organizations() {
           <h1 className="text-xl font-bold text-gray-900">Organizations</h1>
           <p className="text-sm text-gray-500 mt-0.5">Multi-tenant client organization directory and quotas</p>
         </div>
+        <button
+          onClick={() => setIsAddOrgOpen(true)}
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+        >
+          <Plus size={16} /> Add Organization
+        </button>
       </div>
 
       {/* Main Layout Grid */}

@@ -20,7 +20,7 @@ const typeColors: Record<string, string> = {
   ticker: 'bg-orange-100 text-orange-700',
 };
 
-export default function ClientMedia() {
+export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmail?: string } = {}) {
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>('all');
@@ -58,7 +58,7 @@ export default function ClientMedia() {
     // Get all media in the store
     const allMedia = mediaStore.getMedia();
     // Filter out admin's own media, so we only display clients' media
-    const clientOnlyMedia = allMedia.filter(m => m.uploadedBy !== 'admin@demo.com' && m.uploadedBy !== 'admin');
+    const clientOnlyMedia = allMedia.filter(m => m.uploadedBy !== userEmail && m.uploadedBy !== 'admin');
     setMediaList(clientOnlyMedia);
 
     // Get all active/assigned licenses to fetch client emails and org details

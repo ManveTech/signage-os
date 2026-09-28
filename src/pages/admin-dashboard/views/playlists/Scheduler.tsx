@@ -8,9 +8,15 @@ type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' }
 
 interface Props {
   userEmail?: string;
+  // This file is the admin-dashboard's own copy (a separate near-duplicate of
+  // the user-dashboard's Scheduler) — it always renders for an admin, so this
+  // defaults to true rather than being inferred from userEmail matching a
+  // hardcoded demo string, which broke the instant a real admin email was
+  // passed instead of the literal 'admin@demo.com' placeholder.
+  isAdmin?: boolean;
 }
 
-export default function Scheduler({ userEmail = 'admin@demo.com' }: Props) {
+export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true }: Props) {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [showNew, setShowNew] = useState(false);
@@ -19,8 +25,6 @@ export default function Scheduler({ userEmail = 'admin@demo.com' }: Props) {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const isAdmin = userEmail === 'admin@demo.com';
 
   useEffect(() => {
     loadData();

@@ -6,6 +6,96 @@ import { isRedisReady, redis } from '../redis';
 import { logAudit, getClientIp } from '../services/auditLog';
 import { notifyScreenConfigChanged, notifyScreensConfigChanged } from '../services/screenPush';
 
+// --- Tenancy rules for the generic CRUD router -----------------------------
+// Every collection mounted through createCrudRouter() is covered by exactly
+// one of the buckets below. There is deliberately no "unrecognized collection
+// falls through with no check" path anymore — that silent default is what
+// previously let any authenticated non-admin user list, read, edit, and
+// delete every tenant's licenses, organizations, tickets, and invoices, since
+// the old ownership check (`record.assignedToUserEmail || record.createdBy`)
+// only ever matched screens/screen_logs/playlists and quietly evaluated to
+// "allowed" for every other collection.
+
+// Field on the record that identifies its owning user, keyed by collection.
+const OWNER_FIELD_BY_COLLECTION: Record<string, string> = {
+  screens: 'assignedToUserEmail',
+  screen_logs: 'assignedToUserEmail',
+  playlists: 'createdBy',
+  media_items: 'uploadedBy',
+  licenses: 'assignedUserEmail',
+  organizations: 'email',
+  tickets: 'clientEmail',
+  invoices: 'clientEmail'
+};
+
+// Shared reference content with no owner — every authenticated user can read
+// these, only admins can create/update/delete them.
+const PUBLIC_READ_COLLECTIONS = new Set(['faqs', 'support_docs']);
+
+// Internal/admin-only data with no client-facing purpose at all.
+const ADMIN_ONLY_COLLECTIONS = new Set(['leads']);
+
+// Collections where even the record's own "owner" isn't allowed to create or
+// modify it directly — these are admin/billing/system-managed. A client can
+// read their own license, but never edit their device limit or activate
+// themselves, for example.
+const WRITE_ADMIN_ONLY_COLLECTIONS = new Set(['licenses', 'organizations', 'invoices', 'faqs', 'support_docs', 'tickets']);
+const CREATE_ADMIN_ONLY_COLLECTIONS = new Set(['licenses', 'organizations', 'invoices', 'faqs', 'support_docs']);
+
+function isAdminUser(user: any): boolean {
+  return user?.role === 'admin' || user?.role === 'super_admin';
+}
+
+// screen_groups is scoped by organization, not a direct user-email field —
+// resolve the caller's org via their license the same way the dashboard's own
+// client-side filtering already does (licensingStore lookups by assignedUserEmail).
+async function resolveUserOrgId(userEmail: string | undefined): Promise<string | null> {
+  if (!userEmail) return null;
+  try {
+    const license = await pb.collection('licenses').getFirstListItem(
+      pb.filter('assignedUserEmail = {:email}', { email: userEmail })
+    );
+    return license?.assignedOrgId || null;
+  } catch {
+    return null;
+  }
+}
+
+// The `company` field on a user's own record, used to match them against an
+// organizations.name — needed because roles like content_manager/viewer are
+// meant to share one org with its org_admin, so scoping organizations by the
+// org's own `email` field alone (the primary contact, stamped at creation)
+// would incorrectly lock out every other member of that same org.
+async function resolveUserCompany(userEmail: string | undefined): Promise<string | null> {
+  if (!userEmail) return null;
+  try {
+    const user = await pb.collection('users').getFirstListItem(
+      pb.filter('email = {:email}', { email: userEmail })
+    );
+    return user?.company || null;
+  } catch {
+    return null;
+  }
+}
+
+// Single record-level ownership check shared by GET/:id, PUT/PATCH, and
+// DELETE, so all three enforce the exact same rule instead of drifting apart.
+async function isOwnRecord(collectionName: string, record: any, user: any): Promise<boolean> {
+  if (collectionName === 'screen_groups') {
+    const orgId = await resolveUserOrgId(user?.email);
+    return !!record.orgId && !!orgId && record.orgId === orgId;
+  }
+  if (collectionName === 'organizations') {
+    if (record.email && record.email === user?.email) return true;
+    const company = await resolveUserCompany(user?.email);
+    return !!company && !!record.name && record.name === company;
+  }
+  const ownerField = OWNER_FIELD_BY_COLLECTION[collectionName];
+  if (!ownerField) return false;
+  const ownerValue = record[ownerField];
+  return !!ownerValue && ownerValue === user?.email;
+}
+
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   retries = 3,
@@ -76,31 +166,55 @@ export function createCrudRouter(collectionName: string) {
       });
 
       // Security: Extract and enforce user tenancy
-      const userRole = req.user?.role;
       const userEmail = req.user?.email;
-      const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+      const isAdmin = isAdminUser(req.user);
       let targetEmail = req.headers['x-assigned-to-user-email'] || req.query.assignedToUserEmail;
 
       if (!isAdmin) {
         targetEmail = userEmail; // Enforce logged-in user's tenancy
+
+        if (ADMIN_ONLY_COLLECTIONS.has(collectionName)) {
+          return res.status(403).json({ error: 'Admin access required.' });
+        }
       }
 
-      if (targetEmail && targetEmail !== 'all') {
-        if (collectionName === 'screens' || collectionName === 'screen_logs') {
-          filters.push(`assignedToUserEmail = {:assignedToUserEmail}`);
-          filterParams['assignedToUserEmail'] = String(targetEmail);
-        } else if (collectionName === 'playlists') {
-          filters.push(`createdBy = {:createdBy}`);
-          filterParams['createdBy'] = String(targetEmail);
+      const ownerField = OWNER_FIELD_BY_COLLECTION[collectionName];
+
+      if (!isAdmin && collectionName === 'screen_groups') {
+        const orgId = await resolveUserOrgId(userEmail);
+        if (orgId) {
+          filters.push(`(orgId = {:orgId} || orgId = "")`);
+          filterParams['orgId'] = orgId;
+        } else {
+          filters.push(`orgId = ""`);
         }
-      } else if (!isAdmin) {
-        if (collectionName === 'screens' || collectionName === 'screen_logs') {
-          filters.push(`assignedToUserEmail = {:assignedToUserEmail}`);
-          filterParams['assignedToUserEmail'] = String(userEmail);
-        } else if (collectionName === 'playlists') {
-          filters.push(`createdBy = {:createdBy}`);
-          filterParams['createdBy'] = String(userEmail);
+      } else if (!isAdmin && collectionName === 'organizations') {
+        // Match either the org's own primary-contact email, or the caller's
+        // `company` field against the org name — covers org_admin (whose
+        // email was stamped as the org's email at creation) and any
+        // content_manager/viewer sharing that same organization.
+        const company = await resolveUserCompany(userEmail);
+        if (company) {
+          filters.push(`(email = {:ownerEmail} || name = {:ownerCompany})`);
+          filterParams['ownerEmail'] = String(userEmail);
+          filterParams['ownerCompany'] = String(company);
+        } else {
+          filters.push(`email = {:ownerEmail}`);
+          filterParams['ownerEmail'] = String(userEmail);
         }
+      } else if (ownerField && !PUBLIC_READ_COLLECTIONS.has(collectionName)) {
+        if (targetEmail && targetEmail !== 'all') {
+          filters.push(`${ownerField} = {:ownerField}`);
+          filterParams['ownerField'] = String(targetEmail);
+        } else if (!isAdmin) {
+          filters.push(`${ownerField} = {:ownerField}`);
+          filterParams['ownerField'] = String(userEmail);
+        }
+      } else if (!isAdmin && !PUBLIC_READ_COLLECTIONS.has(collectionName) && collectionName !== 'screen_groups') {
+        // No recognized tenancy rule for this collection — deny by default
+        // instead of silently returning every tenant's records, which is
+        // exactly the bug this whole block replaces.
+        return res.status(403).json({ error: 'Access denied.' });
       }
       const filterStr = filters.length > 0 ? pb.filter(filters.join(' && '), filterParams) : '';
 
@@ -158,12 +272,14 @@ export function createCrudRouter(collectionName: string) {
         touchScreenPresence(req.params.id);
       }
       const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
-      
-      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+
+      const isAdmin = isAdminUser(req.user);
       // Enforce security tenancy
       if (!isAdmin) {
-        const ownerEmail = record.assignedToUserEmail || record.createdBy;
-        if (ownerEmail && ownerEmail !== req.user?.email) {
+        if (ADMIN_ONLY_COLLECTIONS.has(collectionName)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        if (!PUBLIC_READ_COLLECTIONS.has(collectionName) && !(await isOwnRecord(collectionName, record, req.user))) {
           return res.status(403).json({ error: 'Access denied' });
         }
       }
@@ -214,13 +330,30 @@ export function createCrudRouter(collectionName: string) {
         }
       }
 
-      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
-      // Enforce security tenancy on creation
+      const isAdmin = isAdminUser(req.user);
       if (!isAdmin) {
+        if (ADMIN_ONLY_COLLECTIONS.has(collectionName) || CREATE_ADMIN_ONLY_COLLECTIONS.has(collectionName)) {
+          return res.status(403).json({ error: 'Admin access required.' });
+        }
+
+        // Enforce security tenancy on creation — always stamp identity fields
+        // from the authenticated session, never trust them from the request body.
         if (collectionName === 'screens') {
           body.assignedToUserEmail = req.user?.email;
-        } else if (collectionName === 'playlists' || collectionName === 'screen_groups') {
+        } else if (collectionName === 'playlists') {
           body.createdBy = req.user?.email;
+        } else if (collectionName === 'screen_groups') {
+          // Always overwrite from the session, even when unresolved (null) —
+          // leaving a client-supplied orgId in place when the caller has no
+          // license/org of their own let an unlicensed user set an arbitrary
+          // orgId and have the record show up inside another tenant's
+          // screen-group listing (isOwnRecord/GET-list both scope purely by
+          // orgId equality). Matches the PATCH/PUT handler below, which
+          // already deletes any client-supplied orgId outright.
+          const orgId = await resolveUserOrgId(req.user?.email);
+          body.orgId = orgId || '';
+        } else if (collectionName === 'tickets') {
+          body.clientEmail = req.user?.email;
         }
       }
 
@@ -249,17 +382,20 @@ export function createCrudRouter(collectionName: string) {
   // Shared handler for PUT and PATCH (both perform a full or partial update)
   async function handleUpdate(req: any, res: any) {
     try {
-      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+      const isAdmin = isAdminUser(req.user);
       // Enforce security tenancy
       if (!isAdmin) {
+        if (ADMIN_ONLY_COLLECTIONS.has(collectionName) || WRITE_ADMIN_ONLY_COLLECTIONS.has(collectionName)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
         const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
-        const ownerEmail = record.assignedToUserEmail || record.createdBy;
-        if (ownerEmail && ownerEmail !== req.user?.email) {
+        if (!(await isOwnRecord(collectionName, record, req.user))) {
           return res.status(403).json({ error: 'Access denied' });
         }
         // Client cannot update tenancy properties
         delete req.body.assignedToUserEmail;
         delete req.body.createdBy;
+        delete req.body.orgId;
       }
 
       const body = { ...req.body };
@@ -328,12 +464,14 @@ export function createCrudRouter(collectionName: string) {
   // DELETE
   router.delete('/:id', async (req: any, res: any) => {
     try {
-      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+      const isAdmin = isAdminUser(req.user);
       // Enforce security tenancy
       if (!isAdmin) {
+        if (ADMIN_ONLY_COLLECTIONS.has(collectionName) || WRITE_ADMIN_ONLY_COLLECTIONS.has(collectionName)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
         const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
-        const ownerEmail = record.assignedToUserEmail || record.createdBy;
-        if (ownerEmail && ownerEmail !== req.user?.email) {
+        if (!(await isOwnRecord(collectionName, record, req.user))) {
           return res.status(403).json({ error: 'Access denied' });
         }
       }

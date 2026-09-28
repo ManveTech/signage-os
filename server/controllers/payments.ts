@@ -3,10 +3,16 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { updateEnvFile } from '../utils/env';
 import { logAudit, getClientIp } from '../services/auditLog';
-import { RAZORPAY_WEBHOOK_SECRET } from '../config';
+import { RAZORPAY_WEBHOOK_SECRET, RAZORPAY_KEY_ID } from '../config';
+
+// Placeholder used only when no real key is configured — deliberately not
+// shaped like a real Razorpay key id (the old fallback, 'rzp_live_...', could
+// be mistaken for a real production key if it ever showed up in a log or a
+// support screenshot).
+const UNCONFIGURED_KEY_ID_PLACEHOLDER = 'razorpay_not_configured';
 
 function getRazorpayInstance() {
-  const keyId = process.env.RAZORPAY_KEY_ID || 'rzp_live_demo83920194';
+  const keyId = RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER;
   const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
   if (!keySecret) {
     return null;
@@ -23,7 +29,7 @@ export async function getRazorpayConfig(req: any, res: any) {
       return res.status(403).json({ message: 'Access denied.' });
     }
     res.status(200).json({
-      keyId: process.env.RAZORPAY_KEY_ID || 'rzp_live_demo83920194',
+      keyId: RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER,
       keySecret: process.env.RAZORPAY_KEY_SECRET ? '••••••••••••' : ''
     });
   } catch (error: any) {
@@ -77,6 +83,10 @@ export async function createOrder(req: any, res: any) {
     let amount = 5000;
     try {
       const license = await pb.collection('licenses').getOne(licenseId);
+      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+      if (!isAdmin && license.assignedUserEmail !== req.user?.email) {
+        return res.status(403).json({ message: 'This license does not belong to you.' });
+      }
       amount = license.price || 5000;
     } catch (e) {
       console.log('Using default amount for Order creation');
@@ -97,7 +107,7 @@ export async function createOrder(req: any, res: any) {
         orderId: order.id,
         amount: order.amount,
         currency: 'INR',
-        razorpayKeyId: process.env.RAZORPAY_KEY_ID
+        razorpayKeyId: RAZORPAY_KEY_ID
       });
     }
 
@@ -109,7 +119,7 @@ export async function createOrder(req: any, res: any) {
       orderId,
       amount: totalAmount * 100,
       currency: 'INR',
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID || 'rzp_live_demo83920194'
+      razorpayKeyId: RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER
     });
   } catch (error: any) {
     console.error('Error creating payment order:', error);
@@ -118,6 +128,16 @@ export async function createOrder(req: any, res: any) {
 }
 
 async function verifyAndProcessPayment(licenseId: string, paymentId: string, orderId: string) {
+  // Shared by both the /verify REST endpoint and the webhook handler — this
+  // dedup check has to live here, not just in one caller, so a payment id
+  // can never activate/extend a license more than once via either path.
+  const alreadyUsed = await pb.collection('payments').getFirstListItem(
+    pb.filter('razorpayPaymentId = {:id}', { id: paymentId })
+  ).catch(() => null);
+  if (alreadyUsed) {
+    throw new Error('This payment has already been processed.');
+  }
+
   const license = await pb.collection('licenses').getOne(licenseId);
 
   const currentExpiry = license.expiryDate ? new Date(license.expiryDate) : new Date();
@@ -160,6 +180,29 @@ export async function verifyPayment(req: any, res: any) {
     const { razorpayPaymentId, razorpayOrderId, razorpaySignature, licenseId } = req.body;
     if (!razorpayPaymentId || !razorpayOrderId || !licenseId) {
       return res.status(400).json({ message: 'Missing payment details or License ID.' });
+    }
+
+    // A valid signature only proves *a* payment happened — it says nothing
+    // about which license it was for. Without this check, anyone could take
+    // one real (or, in demo mode with no secret configured, entirely
+    // fabricated) payment proof and activate any license by id, not just
+    // their own.
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin) {
+      const license = await pb.collection('licenses').getOne(licenseId).catch(() => null);
+      if (!license || license.assignedUserEmail !== req.user?.email) {
+        return res.status(403).json({ message: 'This license does not belong to you.' });
+      }
+    }
+
+    // Reject replay: the same payment proof must not activate a license more
+    // than once (whether reused for the same license repeatedly or, worse,
+    // pointed at a different licenseId each time).
+    const alreadyUsed = await pb.collection('payments').getFirstListItem(
+      pb.filter('razorpayPaymentId = {:id}', { id: razorpayPaymentId })
+    ).catch(() => null);
+    if (alreadyUsed) {
+      return res.status(409).json({ message: 'This payment has already been processed.' });
     }
 
     // Verify cryptographic signature if secret is set

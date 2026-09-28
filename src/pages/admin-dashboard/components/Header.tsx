@@ -12,7 +12,6 @@ const breadcrumbMap: Record<string, string[]> = {
   'screens-logs': ['Screens', 'Logs'],
   'screens-logs-all': ['Screens', 'All Logs'],
   'media-library': ['Media', 'Library'],
-  'media-upload': ['Media', 'Upload Media'],
   'media-layout': ['Media', 'Layout Studio'],
   'media-tags': ['Media', 'Tags'],
   'playlists-all': ['Playlists', 'All Playlists'],
