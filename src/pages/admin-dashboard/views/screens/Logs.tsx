@@ -220,7 +220,7 @@ export default function Logs({ userEmail = 'admin@demo.com', mode = 'all', onNav
       <ScreenSubNav activeTab="logs" onNavigate={onNavigate} role="admin" logsMode={logsMode} onLogsModeChange={setLogsMode} />
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-950">System Logs</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">System Logs</h1>
           <p className="text-sm text-gray-500 mt-0.5">Real-time TV screen heartbeat events, pairing, and sync logs</p>
         </div>
         <div className="flex items-center gap-2">

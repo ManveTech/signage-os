@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { 
-  Search, ChevronDown, User, LogOut, Home, Settings, Play, Film, HelpCircle, Users, Activity, Menu 
+import {
+  Search, ChevronDown, User, LogOut, Home, Settings, Play, Film, HelpCircle, Users, Activity, Menu
 } from 'lucide-react';
 import logoImg from '../../../assets/BS-main-Logo.png';
+import { mediaStore } from '../../../lib/mediaStore';
 
 const breadcrumbMap: Record<string, string[]> = {
   dashboard: ['Dashboard'],
@@ -12,7 +13,6 @@ const breadcrumbMap: Record<string, string[]> = {
   'screens-logs': ['Screens', 'Logs'],
   'screens-logs-all': ['Screens', 'All Logs'],
   'media-library': ['Media', 'Library'],
-  'media-layout': ['Media', 'Layout Studio'],
   'media-tags': ['Media', 'Tags'],
   'playlists-all': ['Playlists', 'All Playlists'],
   'playlists-create': ['Playlists', 'Create Playlist'],
@@ -48,8 +48,9 @@ type SearchItem = {
   view: string;
 };
 
-const searchDatabase: SearchItem[] = [
-  // Views
+// Static page shortcuts — real routes, always searchable regardless of
+// whether any data has loaded yet.
+const pageSearchEntries: SearchItem[] = [
   { title: 'Dashboard Analytics', type: 'Page', view: 'dashboard' },
   { title: 'All screens list', type: 'Page', view: 'screens-all' },
   { title: 'Screen groups (Manage / Create)', type: 'Page', view: 'screens-groups' },
@@ -57,34 +58,40 @@ const searchDatabase: SearchItem[] = [
   { title: 'All media items library', type: 'Page', view: 'my-media' },
   { title: 'Playlists catalog', type: 'Page', view: 'my-playlists' },
   { title: 'Create new playlist template', type: 'Page', view: 'my-create-playlist' },
-  { title: 'Layout Studio design custom canvas', type: 'Page', view: 'media-layout' },
   { title: 'Client playlist and media assets oversight', type: 'Page', view: 'client-media' },
   { title: 'User organization accounts', type: 'Page', view: 'users' },
   { title: 'Organizations list & details', type: 'Page', view: 'organizations' },
   { title: 'Licenses Pool and Invoice management', type: 'Page', view: 'licenses-management' },
   { title: 'FAQ & Ongoing issues support', type: 'Page', view: 'support-issues' },
   { title: 'Profile settings & Razorpay keys', type: 'Page', view: 'profile' },
-
-  // Screens
-  { title: 'Cafe Screen 1 (Active)', type: 'Screen', view: 'screens-all' },
-  { title: 'Store Front C (Offline)', type: 'Screen', view: 'screens-all' },
-  { title: 'Lobby Display 3 (Standby)', type: 'Screen', view: 'screens-all' },
-
-  // Playlists
-  { title: 'Food Promo Loop (Active)', type: 'Playlist', view: 'my-playlists' },
-  { title: 'Corporate Video Playlist (Pending)', type: 'Playlist', view: 'my-playlists' },
-  { title: 'Product Launch Showcase (Idle)', type: 'Playlist', view: 'my-playlists' },
-
-  // Media
-  { title: 'menu-flyer.png (Image)', type: 'Media', view: 'my-media' },
-  { title: 'welcome-video.mp4 (Video)', type: 'Media', view: 'my-media' },
-  { title: 'promo-banner.jpg (Image)', type: 'Media', view: 'my-media' },
-
-  // Users
-  { title: 'Super Admin Account details', type: 'User', view: 'profile' },
-  { title: 'Priya Sharma (Phoenix Mall)', type: 'User', view: 'users' },
-  { title: 'Rahul Verma (Barista Cafe)', type: 'User', view: 'users' }
 ];
+
+// Screens/playlists/media/users used to be hardcoded fake demo entries
+// ("Cafe Screen 1", "Priya Sharma (Phoenix Mall)", etc.) that always showed
+// up in search results regardless of what actually existed — this builds
+// the same shape from the real, already-synced data instead.
+function buildLiveSearchEntries(): SearchItem[] {
+  const entries: SearchItem[] = [];
+
+  mediaStore.getScreens().forEach(s => {
+    entries.push({ title: `${s.name} (${s.status})`, type: 'Screen', view: 'screens-all' });
+  });
+  mediaStore.getPlaylists().forEach(p => {
+    entries.push({ title: `${p.name} (${p.scheduleStatus})`, type: 'Playlist', view: 'my-playlists' });
+  });
+  mediaStore.getMedia().forEach(m => {
+    entries.push({ title: `${m.title} (${m.type})`, type: 'Media', view: 'my-media' });
+  });
+
+  try {
+    const users = JSON.parse(localStorage.getItem('signageos_users') || '[]');
+    users.forEach((u: any) => {
+      if (u?.name) entries.push({ title: `${u.name}${u.company ? ` (${u.company})` : ''}`, type: 'User', view: 'users' });
+    });
+  } catch { /* ignore malformed cache */ }
+
+  return entries;
+}
 
 export default function Header({ activeView, onNavigate, onLogout, onToggleSidebar, onSwitchToClient }: Props) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -144,6 +151,7 @@ export default function Header({ activeView, onNavigate, onLogout, onToggleSideb
       setSearchResults([]);
       return;
     }
+    const searchDatabase = [...pageSearchEntries, ...buildLiveSearchEntries()];
     const filtered = searchDatabase.filter(item =>
       item.title.toLowerCase().includes(query.toLowerCase()) ||
       item.type.toLowerCase().includes(query.toLowerCase())

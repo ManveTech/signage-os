@@ -19,7 +19,19 @@ export function verifyJwt(token: string): any {
     if (!crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
       return null;
     }
-    return JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    // Every token this app issues (session login, password reset) is meant to
+    // expire — but this was the one place that would have actually enforced
+    // it, and it only checked the signature. Session tokens were signed with
+    // no `exp` at all, and callers (authenticateToken) never checked it
+    // either, so a leaked/stolen token — especially one sent as a Bearer
+    // header rather than the httpOnly cookie, which is all that protects the
+    // mobile app's copy — stayed valid forever. Centralizing the check here
+    // covers every caller, including the password-reset token verification.
+    if (typeof payload.exp === 'number' && Date.now() / 1000 > payload.exp) {
+      return null;
+    }
+    return payload;
   } catch (e) {
     return null;
   }

@@ -31,7 +31,6 @@ const navSections: NavSection[] = [
       { id: 'media-library', label: 'All Media' },
       { id: 'playlists-all', label: 'All Playlists' },
       { id: 'playlists-create', label: 'Create Playlist' },
-      { id: 'media-layout', label: 'Layout Studio' },
     ]
   },
   { id: 'license-billing', label: 'License & Billing', icon: <Key size={18} /> },

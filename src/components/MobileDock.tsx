@@ -4,7 +4,7 @@ import {
   Film, Users, Building2, BarChart3, Settings as SettingsIcon,
   User, ScanLine, Plus, Clock, FileText,
   CreditCard, ShieldAlert, ChevronRight, HelpCircle, Layers,
-  Monitor, CalendarDays, Upload, Sparkles, ArrowLeft
+  Monitor, CalendarDays, Upload, ArrowLeft
 } from 'lucide-react';
 
 interface SubSectionItem {
@@ -113,7 +113,6 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
             { id: 'my-playlists', label: 'My Playlists', icon: Tv, desc: 'Your digital signage playlists' },
             { id: 'my-create-playlist', label: 'Create Playlist', icon: Plus, desc: 'Build multi-zone layouts' },
             { id: 'playlists-scheduler', label: 'Schedule Shift', icon: CalendarDays, desc: 'Automatic timed switches' },
-            { id: 'media-layout', label: 'Layout Studio', icon: Sparkles, desc: 'Custom canvas designer' },
             { id: 'my-media', label: 'My Media Library', icon: Film, desc: 'Uploaded images and videos' },
           ];
         } else {
@@ -127,7 +126,6 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
         { id: 'media-library', label: 'All Media', icon: Film, desc: 'Manage your assets' },
         { id: 'playlists-all', label: 'All Playlists', icon: Tv, desc: 'Playlists catalog' },
         { id: 'playlists-create', label: 'Create Playlist', icon: Plus, desc: 'Design signage schedule' },
-        { id: 'media-layout', label: 'Layout Studio', icon: Sparkles, desc: 'Multi-zone designer' },
       ];
     }
 

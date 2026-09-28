@@ -12,7 +12,6 @@ import ManageScreens from './views/screens/ManageScreens';
 import ScreenGroups from './views/screens/ScreenGroups';
 import Logs from './views/screens/Logs';
 import MediaLibrary from './views/media/MediaLibrary';
-import LayoutStudio from './views/media/LayoutStudio';
 import AllPlaylists from './views/playlists/AllPlaylists';
 import CreatePlaylist from './views/playlists/CreatePlaylist';
 import Scheduler from './views/playlists/Scheduler';
@@ -62,7 +61,6 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'screens-logs': return <Logs userEmail={adminEmail} mode="all" onNavigate={navigate} />;
     case 'screens-logs-all': return <Logs userEmail={adminEmail} mode="all" onNavigate={navigate} />;
     case 'media-library': return <MediaLibrary onNavigate={navigate} userEmail={adminEmail} />;
-    case 'media-layout': return <LayoutStudio />;
     case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail={adminEmail} />;
     case 'playlists-create': return <CreatePlaylist userEmail={adminEmail} onNavigate={navigate} />;
     case 'playlists-scheduler': return <Scheduler userEmail={adminEmail} isAdmin={true} />;

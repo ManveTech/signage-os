@@ -482,17 +482,17 @@ export default function VideoConferencing() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6">
       <div className="max-w-6xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Video Conferencing</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight mb-1">Video Conferencing</h1>
           <p className="text-gray-600">Manage live video calls with TVs and handle camera streams</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           {/* Mode + screen selection — the part that needs to scale to many TVs */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="bg-white rounded-2xl border border-gray-200 p-4">
               <h2 className="text-sm font-semibold text-gray-900 mb-3">Conference Mode</h2>
               <div className="grid grid-cols-3 gap-3">
                 {[
@@ -520,7 +520,7 @@ export default function VideoConferencing() {
             </div>
 
             {selectedMode === 'group' && callableGroups.length > 0 && (
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="bg-white rounded-2xl border border-gray-200 p-4">
                 <h2 className="text-sm font-semibold text-gray-900 mb-3">My Groups</h2>
                 <div className="flex flex-wrap gap-2">
                   {callableGroups.map(group => {
@@ -547,7 +547,7 @@ export default function VideoConferencing() {
               </div>
             )}
 
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="bg-white rounded-2xl border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-semibold text-gray-900">
                   {selectedMode === 'one-to-one' ? 'Select a TV' : 'Select TVs'}
@@ -623,7 +623,7 @@ export default function VideoConferencing() {
 
           {/* Settings + start — stays pinned so it's reachable without scrolling past a long TV list */}
           <div className="space-y-6 lg:sticky lg:top-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="bg-white rounded-2xl border border-gray-200 p-4">
               <h2 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Settings size={16} />
                 Conference Settings

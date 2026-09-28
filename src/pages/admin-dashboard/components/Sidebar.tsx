@@ -39,7 +39,6 @@ const navSections: NavSection[] = [
       { id: 'my-media', label: 'All Media' },
       { id: 'my-playlists', label: 'All Playlists' },
       { id: 'my-create-playlist', label: 'Create Playlist' },
-      { id: 'media-layout', label: 'Layout Studio' },
     ]
   },
   {
@@ -138,7 +137,7 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
       return activeView === 'screens' || activeView === 'client-screens' || (activeView.startsWith('screens-') && activeView !== 'screens-add-my' && activeView !== 'screens-groups-my');
     }
     if (id === 'my-channel') {
-      return activeView.startsWith('my-') || activeView === 'media-layout';
+      return activeView.startsWith('my-');
     }
     if (id === 'client-management') {
       return activeView.startsWith('client-');

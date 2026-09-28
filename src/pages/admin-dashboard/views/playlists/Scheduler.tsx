@@ -151,7 +151,7 @@ export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-950">Scheduler</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Scheduler</h1>
           <p className="text-sm text-gray-500 mt-0.5">Control when and where your playlists run on screens</p>
         </div>
         {!showNew && (

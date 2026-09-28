@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { 
-  Search, ChevronDown, User, LogOut, Home, Settings, Play, Film, HelpCircle, Users, Activity, Menu, ShieldCheck 
+import {
+  Search, ChevronDown, User, LogOut, Home, Settings, Play, Film, HelpCircle, Users, Activity, Menu, ShieldCheck
 } from 'lucide-react';
 import logoImg from '../../../assets/BS-main-Logo.png';
+import { mediaStore } from '../../../lib/mediaStore';
 
 const breadcrumbMap: Record<string, string[]> = {
   dashboard: ['Dashboard'],
@@ -11,7 +12,6 @@ const breadcrumbMap: Record<string, string[]> = {
   'screens-groups': ['Screens', 'Screen Groups'],
   'screens-logs': ['Screens', 'Logs'],
   'media-library': ['Media', 'Library'],
-  'media-layout': ['Media', 'Layout Studio'],
   'media-tags': ['Media', 'Tags'],
   'playlists-all': ['Playlists', 'All Playlists'],
   'playlists-create': ['Playlists', 'Create Playlist'],
@@ -48,38 +48,43 @@ type SearchItem = {
   view: string;
 };
 
-const searchDatabase: SearchItem[] = [
-  // Views
+// Static page shortcuts — real routes, always searchable regardless of
+// whether any data has loaded yet.
+const pageSearchEntries: SearchItem[] = [
   { title: 'Dashboard Summary', type: 'Page', view: 'dashboard' },
   { title: 'My Screen Players', type: 'Page', view: 'my-screens-list' },
   { title: 'All media uploads library', type: 'Page', view: 'media-library' },
   { title: 'All play lists', type: 'Page', view: 'playlists-all' },
   { title: 'Create new playlist template', type: 'Page', view: 'playlists-create' },
-  { title: 'Layout Studio design custom canvas', type: 'Page', view: 'media-layout' },
   { title: 'License & Billing billing history', type: 'Page', view: 'license-billing' },
   { title: 'My Support Tickets log', type: 'Page', view: 'support-tickets' },
   { title: 'Help center documentation', type: 'Page', view: 'support-help' },
   { title: 'User Profile & Credentials', type: 'Page', view: 'profile' },
-
-  // Screens
-  { title: 'Cafe Screen 1 (Active)', type: 'Screen', view: 'my-screens-list' },
-  { title: 'Store Front C (Offline)', type: 'Screen', view: 'my-screens-list' },
-  { title: 'Lobby Display 3 (Standby)', type: 'Screen', view: 'my-screens-list' },
-
-  // Playlists
-  { title: 'Food Promo Loop (Active)', type: 'Playlist', view: 'playlists-all' },
-  { title: 'Corporate Video Playlist (Pending)', type: 'Playlist', view: 'playlists-all' },
-  { title: 'Product Launch Showcase (Idle)', type: 'Playlist', view: 'playlists-all' },
-
-  // Media
-  { title: 'menu-flyer.png (Image)', type: 'Media', view: 'media-library' },
-  { title: 'welcome-video.mp4 (Video)', type: 'Media', view: 'media-library' },
-  { title: 'promo-banner.jpg (Image)', type: 'Media', view: 'media-library' },
-
-  // Support
   { title: 'Raise new support ticket', type: 'Support', view: 'support-tickets' },
   { title: 'Help Center FAQs & Pair Guide', type: 'Support', view: 'support-help' }
 ];
+
+// Screens/playlists/media used to be hardcoded fake demo entries ("Cafe
+// Screen 1", "Food Promo Loop", etc.) that always showed up in search
+// results regardless of what the client actually owned — this builds the
+// same shape from their real, already-synced data instead.
+function buildLiveSearchEntries(userEmail: string): SearchItem[] {
+  const entries: SearchItem[] = [];
+
+  mediaStore.getScreens()
+    .filter(s => s.assignedToUserEmail === userEmail)
+    .forEach(s => entries.push({ title: `${s.name} (${s.status})`, type: 'Screen', view: 'my-screens-list' }));
+
+  mediaStore.getPlaylists()
+    .filter(p => p.createdBy === userEmail)
+    .forEach(p => entries.push({ title: `${p.name} (${p.scheduleStatus})`, type: 'Playlist', view: 'playlists-all' }));
+
+  mediaStore.getMedia()
+    .filter(m => m.uploadedBy === userEmail)
+    .forEach(m => entries.push({ title: `${m.title} (${m.type})`, type: 'Media', view: 'media-library' }));
+
+  return entries;
+}
 
 export default function Header({ activeView, onNavigate, onLogout, userEmail = 'priya@demo.com', onToggleSidebar, onSwitchToAdmin }: Props) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -151,6 +156,7 @@ export default function Header({ activeView, onNavigate, onLogout, userEmail = '
       setSearchResults([]);
       return;
     }
+    const searchDatabase = [...pageSearchEntries, ...buildLiveSearchEntries(userEmail)];
     const filtered = searchDatabase.filter(item =>
       item.title.toLowerCase().includes(query.toLowerCase()) ||
       item.type.toLowerCase().includes(query.toLowerCase())

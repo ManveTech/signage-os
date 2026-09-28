@@ -10,8 +10,8 @@ const router = express.Router();
 router.post('/login', authLimiter, validateBody(loginSchema), login);
 router.get('/google/config', apiLimiter, getGoogleAuthConfig);
 router.post('/google', authLimiter, validateBody(googleLoginSchema), googleLogin);
-router.post('/forgot-password', apiLimiter, validateBody(forgotPasswordSchema), forgotPassword);
-router.post('/reset-password', apiLimiter, validateBody(resetPasswordSchema), resetPassword);
+router.post('/forgot-password', authLimiter, validateBody(forgotPasswordSchema), forgotPassword);
+router.post('/reset-password', authLimiter, validateBody(resetPasswordSchema), resetPassword);
 router.post('/logout', logout);
 
 export default router;

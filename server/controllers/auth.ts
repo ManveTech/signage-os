@@ -22,10 +22,14 @@ export async function login(req: any, res: any) {
       const tempPb = new PocketBase(PB_URL);
       const authData = await tempPb.collection('users').authWithPassword(lowerEmail, password);
       const user = authData.record;
+      // Matches the auth_token cookie's own maxAge below — the token itself
+      // now actually enforces that lifetime (see verifyJwt) instead of
+      // relying solely on the browser dropping the cookie.
       const token = signJwt({
         id: user.id,
         email: user.email,
-        role: user.role || 'client'
+        role: user.role || 'client',
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
       });
 
       // Set httpOnly cookie for token (secure in production)
