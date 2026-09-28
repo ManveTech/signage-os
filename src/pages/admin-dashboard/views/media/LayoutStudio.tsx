@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Clock, Cloud, AlignLeft, Square, Image, Sliders, Save, Grid } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Clock, Cloud, AlignLeft, Square, Image, Sliders, Save, Grid, Construction } from 'lucide-react';
 
 const templates = [
   { id: '1', label: 'Full Screen', layout: [[100, 100]], icon: '▪' },
@@ -20,6 +20,12 @@ export default function LayoutStudio() {
   const [selected, setSelected] = useState('1');
   const [bgColor, setBgColor] = useState('#000000');
   const [addedWidgets, setAddedWidgets] = useState<string[]>([]);
+  const [clockTime, setClockTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setClockTime(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const template = templates.find(t => t.id === selected)!;
 
@@ -27,12 +33,17 @@ export default function LayoutStudio() {
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Layout Studio</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Layout Studio</h1>
           <p className="text-sm text-gray-500 mt-0.5">Design split-screen layouts for your displays</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+        <button disabled title="Not wired up yet" className="flex items-center gap-2 px-4 py-2 bg-gray-300 text-white rounded-lg text-sm font-medium cursor-not-allowed">
           <Save size={16} /> Save Layout
         </button>
+      </div>
+
+      <div className="flex items-start gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
+        <Construction size={16} className="flex-shrink-0 mt-0.5" />
+        <p className="text-xs">This page is not wired up yet — layouts aren't saved or connected to your screens. Building it out is on the roadmap.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -135,11 +146,11 @@ export default function LayoutStudio() {
             )}
             {addedWidgets.includes('clock') && (
               <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded font-mono">
-                02:32:10 PM
+                {clockTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </div>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-2 text-center">Drag zones to resize (interactive mode)</p>
+          <p className="text-xs text-gray-400 mt-2 text-center">Zone sizes are fixed per template for now</p>
         </div>
       </div>
     </div>

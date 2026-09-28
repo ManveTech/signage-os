@@ -173,13 +173,13 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Client Helpdesk & Support</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-ink-950 tracking-tight">Client Helpdesk & Support</h1>
           <p className="text-xs text-slate-500 font-semibold mt-1">Manage raised issues, edit FAQs, and draft helper documentation guides</p>
         </div>
         {tab === 'faq' && (
           <button
             onClick={() => setIsFaqFormOpen(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-md shadow-blue-600/10 cursor-pointer"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md shadow-blue-600/10 cursor-pointer"
           >
             <Plus size={15} /> Add New FAQ
           </button>
@@ -187,7 +187,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
         {tab === 'docs' && !isDocFormOpen && (
           <button
             onClick={() => setIsDocFormOpen(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-md shadow-indigo-600/10 cursor-pointer"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors shadow-md shadow-indigo-600/10 cursor-pointer"
           >
             <Plus size={15} /> Draft Document
           </button>
@@ -228,7 +228,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-150 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     <th className="px-5 py-3.5">Ticket ID</th>
                     <th className="px-5 py-3.5">Client User</th>
                     <th className="px-5 py-3.5">Issue Subject</th>
@@ -255,13 +255,13 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                         </td>
                         <td className="px-5 py-4 font-semibold text-slate-700 max-w-xs truncate">{ticket.subject}</td>
                         <td className="px-5 py-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-wider ${priorityColors[ticket.priority]}`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${priorityColors[ticket.priority]}`}>
                             {ticket.priority}
                           </span>
                         </td>
                         <td className="px-5 py-4 font-medium text-slate-500">{ticket.createdDate}</td>
                         <td className="px-5 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase border tracking-wider ${statusColors[ticket.status]}`}>
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border tracking-wider ${statusColors[ticket.status]}`}>
                             {ticket.status.replace('_', ' ')}
                           </span>
                         </td>
@@ -292,7 +292,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                         <p className="font-mono font-bold text-slate-900 text-xs">{ticket.id}</p>
                         <p className="font-bold text-slate-800 text-sm mt-0.5 truncate">{ticket.subject}</p>
                       </div>
-                      <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border tracking-wider flex-shrink-0 ${statusColors[ticket.status]}`}>
+                      <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase border tracking-wider flex-shrink-0 ${statusColors[ticket.status]}`}>
                         {ticket.status.replace('_', ' ')}
                       </span>
                     </div>
@@ -301,7 +301,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                       {' · '}<span className="font-mono">{ticket.clientEmail}</span>
                     </p>
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-black tracking-wider ${priorityColors[ticket.priority]}`}>
+                      <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider ${priorityColors[ticket.priority]}`}>
                         {ticket.priority}
                       </span>
                       <span className="text-[10px] text-slate-400 font-medium">{ticket.createdDate}</span>
@@ -324,13 +324,13 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
       {tab === 'faq' && (
         <div className="max-w-4xl space-y-4">
           {faqs.length === 0 ? (
-            <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-10 text-center text-slate-450 italic">
+            <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-10 text-center text-slate-400 italic">
               No FAQs created yet. Click "Add New FAQ" to create one.
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
               {faqs.map(faq => (
-                <div key={faq.id} className="bg-white p-5 rounded-2xl border border-slate-150 hover:shadow-xs transition-shadow flex items-start justify-between gap-4">
+                <div key={faq.id} className="bg-white p-5 rounded-2xl border border-slate-100 hover:shadow-xs transition-shadow flex items-start justify-between gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <HelpCircle size={15} className="text-blue-600 shrink-0" />
@@ -360,7 +360,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
             /* Document Editor Builder Form */
             <div className="max-w-2xl bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5 animate-fadeIn">
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+                <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
                   <FileText size={16} className="text-indigo-600" /> Draft Support Documentation
                 </h2>
                 <button 
@@ -374,18 +374,18 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
               <form onSubmit={handleCreateDoc} className="space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="sm:col-span-2">
-                    <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Document Title</label>
+                    <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Document Title</label>
                     <input 
                       type="text" 
                       required
                       placeholder="e.g. Setting Up Dual HDMI Displays"
                       value={docTitle}
                       onChange={e => setDocTitle(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold placeholder-slate-350 outline-none focus:border-indigo-500 bg-slate-50"
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold placeholder-slate-300 outline-none focus:border-indigo-500 bg-slate-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Category</label>
+                    <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Category</label>
                     <CustomSelect 
                       value={docCategory}
                       onChange={val => setDocCategory(val)}
@@ -401,26 +401,26 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Content / Body Text</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Content / Body Text</label>
                   <textarea 
                     rows={8}
                     required
                     placeholder="Draft the helper documentation article detailing setup procedures, configuration variables, and step-by-step instructions..."
                     value={docContent}
                     onChange={e => setDocContent(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-350 outline-none focus:border-indigo-500 bg-slate-50 resize-none leading-relaxed"
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-300 outline-none focus:border-indigo-500 bg-slate-50 resize-none leading-relaxed"
                   />
                 </div>
 
                 {/* YouTube Link Section */}
                 <div className="space-y-2 border-t border-slate-100 pt-3">
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">YouTube Video URL</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">YouTube Video URL</label>
                   <input 
                     type="url" 
                     placeholder="e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                     value={docYoutubeUrl}
                     onChange={e => setDocYoutubeUrl(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-350 outline-none focus:border-indigo-500 bg-slate-50 text-xs"
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-300 outline-none focus:border-indigo-500 bg-slate-50 text-xs"
                   />
                   <p className="text-[9px] text-gray-400 mt-1">Provide a watch or share link to embed this video directly under the document.</p>
                 </div>
@@ -449,25 +449,25 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
             /* Support Documents List grid */
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {docs.length === 0 ? (
-                <div className="md:col-span-2 bg-white border border-dashed border-gray-300 rounded-2xl p-10 text-center text-slate-455 italic">
+                <div className="md:col-span-2 bg-white border border-dashed border-gray-300 rounded-2xl p-10 text-center text-slate-400 italic">
                   No support documents created yet. Click "Draft Document" to publish one.
                 </div>
               ) : (
                 docs.map(doc => (
-                  <div key={doc.id} className="bg-white rounded-2xl border border-slate-150 p-5 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow space-y-4">
+                  <div key={doc.id} className="bg-white rounded-2xl border border-slate-100 p-5 shadow-xs flex flex-col justify-between hover:shadow-sm transition-shadow space-y-4">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded text-[9px] font-black uppercase tracking-wider">{doc.category}</span>
+                        <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded text-[9px] font-bold uppercase tracking-wider">{doc.category}</span>
                         <span className="text-[9px] font-mono text-slate-400 font-semibold">{doc.createdDate}</span>
                       </div>
-                      <h3 className="text-sm font-black text-slate-800 leading-snug">{doc.title}</h3>
+                      <h3 className="text-sm font-bold text-slate-800 leading-snug">{doc.title}</h3>
                       <p className="text-xs text-slate-500 leading-relaxed line-clamp-3 whitespace-pre-line">{doc.content}</p>
 
                       {/* YouTube Embed Player */}
                       {(doc.youtubeUrl || (doc as any).youtube_url) && getYouTubeId(doc.youtubeUrl || (doc as any).youtube_url) && (
                         <div className="space-y-1.5 border-t border-slate-50 pt-2.5">
-                          <p className="text-[8px] font-black uppercase text-slate-400 tracking-wider">Embedded Video</p>
-                          <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-150 shadow-2xs">
+                          <p className="text-[8px] font-bold uppercase text-slate-400 tracking-wider">Embedded Video</p>
+                          <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-100 shadow-2xs">
                             <iframe
                               className="absolute top-0 left-0 w-full h-full"
                               src={`https://www.youtube.com/embed/${getYouTubeId(doc.youtubeUrl || (doc as any).youtube_url)}`}
@@ -503,7 +503,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn text-left p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
                 <HelpCircle size={16} className="text-blue-600" /> Create Platform FAQ
               </h2>
               <button 
@@ -516,26 +516,26 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
 
             <form onSubmit={handleCreateFAQ} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Question / Query Title</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Question / Query Title</label>
                 <input 
                   type="text" 
                   required
                   placeholder="e.g. How do I pair a new screen?"
                   value={newFaqQ}
                   onChange={e => setNewFaqQ(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold placeholder-slate-350 outline-none focus:border-blue-500 bg-slate-50"
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold placeholder-slate-300 outline-none focus:border-blue-500 bg-slate-50"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Answer Description</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Answer Description</label>
                 <textarea 
                   rows={4}
                   required
                   placeholder="Describe step-by-step resolution details clearly..."
                   value={newFaqA}
                   onChange={e => setNewFaqA(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-350 outline-none focus:border-blue-500 bg-slate-50 resize-none leading-relaxed"
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-300 outline-none focus:border-blue-500 bg-slate-50 resize-none leading-relaxed"
                 />
               </div>
 
@@ -567,11 +567,11 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono text-slate-400 font-bold">{selectedTicket.id}</span>
-                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase border tracking-wider ${statusColors[selectedTicket.status]}`}>
+                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase border tracking-wider ${statusColors[selectedTicket.status]}`}>
                     {selectedTicket.status.replace('_', ' ')}
                   </span>
                 </div>
-                <h2 className="text-sm font-black text-slate-800 mt-1">Manage Ticket Details</h2>
+                <h2 className="text-sm font-bold text-slate-800 mt-1">Manage Ticket Details</h2>
               </div>
               <button 
                 onClick={() => setSelectedTicket(null)}
@@ -582,7 +582,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
             </div>
 
             <div className="space-y-3.5 text-xs">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 space-y-2">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2">
                 <p className="font-extrabold text-slate-800 text-[13px]">{selectedTicket.subject}</p>
                 <p className="text-slate-600 font-medium leading-relaxed whitespace-pre-line">{selectedTicket.description}</p>
               </div>
@@ -601,7 +601,7 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
 
               {/* Status Update Options */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black">Change Ticket Status</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold">Change Ticket Status</label>
                 <div className="flex gap-2">
                   {(['open', 'in_progress', 'resolved', 'closed'] as Ticket['status'][]).map(st => (
                     <button

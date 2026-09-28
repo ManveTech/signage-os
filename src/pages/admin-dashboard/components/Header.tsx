@@ -193,7 +193,7 @@ export default function Header({ activeView, onNavigate, onLogout, onToggleSideb
           />
           {searchResults.length > 0 && (
             <div className="absolute right-0 top-11 w-80 bg-white border border-gray-200 rounded-xl shadow-xl max-h-80 overflow-y-auto py-2 z-50 animate-fadeIn">
-              <div className="px-3.5 py-1 text-[10px] font-black uppercase text-slate-400 tracking-wider border-b border-slate-50 mb-1">
+              <div className="px-3.5 py-1 text-[10px] font-bold uppercase text-slate-400 tracking-wider border-b border-slate-50 mb-1">
                 Search Results ({searchResults.length})
               </div>
               {searchResults.map((item, index) => (
@@ -206,7 +206,7 @@ export default function Header({ activeView, onNavigate, onLogout, onToggleSideb
                     <p className="text-xs font-bold text-slate-700 truncate group-hover:text-blue-600">{item.title}</p>
                     <p className="text-[9px] text-slate-400 font-mono mt-0.5">{item.type} View</p>
                   </div>
-                  <span className="text-[9px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
+                  <span className="text-[9px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
                     {item.type}
                   </span>
                 </button>
@@ -235,7 +235,7 @@ export default function Header({ activeView, onNavigate, onLogout, onToggleSideb
             <div className="absolute right-0 top-11 w-52 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden text-xs py-1.5 animate-scaleIn">
               <div className="px-3.5 py-2 border-b border-gray-100 bg-slate-50/50">
                 <p className="font-bold text-gray-900 truncate">{adminName}</p>
-                <p className="text-[9px] text-slate-400 font-black uppercase mt-0.5">Super Admin Role</p>
+                <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">Super Admin Role</p>
               </div>
 
               <button

@@ -56,6 +56,13 @@ data class SignageUiState(
     val cameraMountEnabled: Boolean = false
 )
 
+// Dead-man's-switch ceiling for a video that never reaches STATE_ENDED or
+// onPlayerError — see the rotation loop in restartAssetRotation(). All
+// signage video content here is a locally-downloaded file, not a stream, so
+// there's no legitimate reason a healthy video should still be "playing"
+// this long after the loop last checked it.
+private const val VIDEO_WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000L // 10 minutes
+
 class SignageViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = SignageRepository(application)
@@ -401,8 +408,34 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 val currentAsset = livePlaylist.getOrNull(currentIndex) ?: break
 
                 if (currentAsset.mediaType.equals("video", ignoreCase = true)) {
-                    // Wait for video player completion callback to trigger advanceToNextAsset
-                    delay(3600000L) // 1 hour safety delay fallback
+                    // Normal advancement for video comes from the player
+                    // listener calling advanceToNextAsset() on STATE_ENDED /
+                    // onPlayerError (see PlaybackLoopScreen.kt) — this
+                    // ViewModel has no direct handle on the ExoPlayer
+                    // instance, so it can't observe playback health itself.
+                    // This is strictly a dead-man's switch for a decoder
+                    // that hangs mid-playback with neither callback ever
+                    // firing. Previously this just delayed and looped back
+                    // around with zero corrective action, so a genuine
+                    // silent hang stalled the screen forever in dead 1-hour
+                    // naps instead of ever actually recovering. All content
+                    // here is a locally-downloaded file (not streamed), so
+                    // there's no legitimate reason for a healthy video to
+                    // run this long without reaching STATE_ENDED — after the
+                    // timeout, force the same advancement a normal
+                    // completion would have triggered.
+                    delay(VIDEO_WATCHDOG_TIMEOUT_MS)
+                    _uiState.update { s ->
+                        val livePl = s.playlist
+                        // Only force it if we're still stuck on the exact
+                        // asset we started waiting on — if the player's own
+                        // callback already advanced (or a sync/restart
+                        // changed things) while we were sleeping, don't
+                        // double-advance on top of that.
+                        if (livePl.isEmpty() || s.currentAssetIndex != currentIndex) return@update s
+                        val nextIndex = (s.currentAssetIndex + 1) % livePl.size
+                        s.copy(currentAssetIndex = nextIndex)
+                    }
                     continue
                 }
 

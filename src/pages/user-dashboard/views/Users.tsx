@@ -31,7 +31,7 @@ export default function Users() {
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Users</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Users</h1>
           <p className="text-sm text-gray-500 mt-0.5">{mockUsers.length} users in the platform</p>
         </div>
         <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">

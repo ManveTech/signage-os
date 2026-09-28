@@ -219,7 +219,7 @@ export default function Integrations() {
       </div>
 
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Integrations</h1>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Integrations</h1>
         <p className="text-sm text-gray-500 mt-0.5">Configure Cloudflare R2 storage, SMTP email, and Google OAuth from here — changes take effect immediately, no server restart needed.</p>
       </div>
 
@@ -257,7 +257,7 @@ export default function Integrations() {
                     const hasSavedSecret = isSecret && state.config[field.key] === '';
                     return (
                       <div key={field.key} className={field.key === 'endpoint' || field.key === 'publicUrl' ? 'sm:col-span-2' : ''}>
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">{field.label}</label>
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">{field.label}</label>
                         <input
                           type={field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'}
                           value={state.config[field.key] || ''}

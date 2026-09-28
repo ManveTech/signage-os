@@ -166,7 +166,7 @@ export default function Testimonials() {
                 className={`h-[4px] rounded-full transition-all duration-300 cursor-pointer ${
                   idx === activeIndex 
                     ? "bg-[#f97316] w-6" 
-                    : "bg-slate-200 w-3 hover:bg-slate-350"
+                    : "bg-slate-200 w-3 hover:bg-slate-300"
                 }`}
                 aria-label={`Go to testimonial slide ${idx + 1}`}
               />

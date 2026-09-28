@@ -105,6 +105,18 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
   const screensInGroup = (groupId: string) => myScreens.filter(s => s.groupId === groupId);
   const ungroupedScreens = myScreens.filter(s => !s.groupId && (!selectedOrgFilter || getScreenOrgId(s) === selectedOrgFilter));
 
+  // The groups a given screen is actually allowed to join — mirrors the org
+  // check the "Add Screens" modal already applies (a group with no orgId is
+  // the admin's own "My Screens" bucket; otherwise the group's orgId must
+  // match the screen's own org). The inline "Assign to group…" dropdown on
+  // the Ungrouped Screens panel previously offered every group in the
+  // system regardless of org, letting a screen from one client (or the
+  // admin's own account) be dropped straight into another client's group.
+  const groupsForScreen = (screen: Screen) => {
+    const sOrgId = getScreenOrgId(screen);
+    return groups.filter(g => (g.orgId || '') === sOrgId);
+  };
+
   const [editGroup, setEditGroup] = useState<ScreenGroup | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<ScreenGroup | null>(null);
   const [showNewGroup, setShowNewGroup] = useState(false);
@@ -416,7 +428,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">
             {mode === 'my' ? 'My Screen Groups' : 'Client Screen Groups'}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -503,10 +515,10 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   <button onClick={() => setAddScreensTo(group.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium">
                     <UserPlus size={12} /> Add Screens
                   </button>
-                  <button onClick={() => handleBulkClearCache(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-purple-650 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors font-medium">
+                  <button onClick={() => handleBulkClearCache(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors font-medium">
                     <Eraser size={12} /> Bulk Clear Cache
                   </button>
-                  <button onClick={() => handleBulkForceSync(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-650 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors font-medium">
+                  <button onClick={() => handleBulkForceSync(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors font-medium">
                     <RefreshCw size={12} /> Bulk Force Sync
                   </button>
                   <button onClick={() => handleStartPlaylistAssignDirect(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium">
@@ -657,7 +669,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   type="checkbox"
                   checked={!!editGroup.clear_cache}
                   onChange={e => setEditGroup(p => p && ({ ...p, clear_cache: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                 />
               </div>
 
@@ -670,7 +682,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   type="checkbox"
                   checked={!!editGroup.force_sync}
                   onChange={e => setEditGroup(p => p && ({ ...p, force_sync: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                 />
               </div>
               {mode !== 'my' && (
@@ -766,7 +778,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                 Delete Group
               </button>
               <div className="flex-1" />
-              <button onClick={() => setEditGroup(null)} className="px-4 py-2.5 text-xs font-semibold text-gray-650 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
+              <button onClick={() => setEditGroup(null)} className="px-4 py-2.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
               <button onClick={handleEditSave} className="px-5 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"><Check size={14} /> Save Changes</button>
             </div>
           </div>
@@ -943,7 +955,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   placeholder="Assign to group..."
                   options={[
                     { value: '', label: 'Assign to group...' },
-                    ...groups.map(g => ({ value: g.id, label: g.name }))
+                    ...groupsForScreen(screen).map(g => ({ value: g.id, label: g.name }))
                   ]}
                   buttonClassName="text-xs py-1 px-2 border-gray-200 min-h-[32px] max-w-[150px]"
                 />

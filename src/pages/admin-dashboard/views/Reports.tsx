@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Monitor, Film, Wifi, HardDrive, Wifi as WifiIcon, WifiOff, RefreshCw, AlertTriangle, Terminal } from 'lucide-react';
+import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { syncCollection } from '../../../lib/syncHelper';
 import { mediaStore } from '../../../lib/mediaStore';
 
@@ -65,14 +66,41 @@ function timeAgo(dateStr?: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function Bar({ val, max, color }: { val: number; max: number; color: string }) {
+// A magnitude comparison across a handful of categories/entities — one hue,
+// thin bars, rounded only at the data end (never at the baseline), value
+// labeled directly at the tip, with a hover tooltip carrying the same value.
+function HorizontalBarChart({
+  data, labelKey, valueKey, formatValue = (v: number) => v.toLocaleString(), color = '#4A6CF7'
+}: {
+  data: Record<string, any>[];
+  labelKey: string;
+  valueKey: string;
+  formatValue?: (v: number) => string;
+  color?: string;
+}) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${max > 0 ? Math.min(100, (val / max) * 100) : 0}%` }} />
-      </div>
-      <span className="text-xs text-gray-600 w-16 text-right">{val.toLocaleString()}</span>
-    </div>
+    <ResponsiveContainer width="100%" height={Math.max(120, data.length * 42)}>
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 44, left: 0, bottom: 4 }}>
+        <XAxis type="number" hide />
+        <YAxis
+          type="category"
+          dataKey={labelKey}
+          width={112}
+          axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 12, fill: '#6B7280' }}
+        />
+        <Tooltip
+          cursor={{ fill: 'rgba(15,23,42,0.03)' }}
+          formatter={(value: number) => [formatValue(value), '']}
+          labelFormatter={(label: string) => label}
+          contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #E5E7EB', boxShadow: '0 4px 16px -4px rgba(0,0,0,0.1)' }}
+        />
+        <RBar dataKey={valueKey} fill={color} radius={[0, 4, 4, 0]} barSize={16}>
+          <LabelList dataKey={valueKey} position="right" formatter={formatValue} style={{ fontSize: 11, fontWeight: 600, fill: '#374151' }} />
+        </RBar>
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -103,23 +131,21 @@ export default function Reports({ activeTab: initTab = 'Overview' }: { activeTab
   const totalMedia = media.length;
   const totalStorageBytes = media.reduce((sum, m) => sum + (m.fileSizeBytes || 0), 0);
 
-  const mediaByType = ['video', 'image', 'layout', 'ticker'].map(type => ({
-    type,
-    count: media.filter(m => m.type === type).length
-  })).filter(t => t.count > 0);
-  const maxMediaTypeCount = Math.max(1, ...mediaByType.map(t => t.count));
+  const mediaByType = ['video', 'image', 'layout', 'ticker']
+    .map(type => ({ type: type[0].toUpperCase() + type.slice(1), count: media.filter(m => m.type === type).length }))
+    .filter(t => t.count > 0)
+    .sort((a, b) => b.count - a.count);
 
   const topScreensByUptime = [...screens]
     .map(s => ({ ...s, uptimeSeconds: getScreenTotalUptimeSeconds(s) }))
     .sort((a, b) => b.uptimeSeconds - a.uptimeSeconds)
     .slice(0, 5);
-  const maxUptimeSeconds = Math.max(1, ...topScreensByUptime.map(s => s.uptimeSeconds));
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Reports</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Reports</h1>
           <p className="text-sm text-gray-500 mt-0.5">Live analytics computed from your actual fleet</p>
         </div>
       </div>
@@ -136,47 +162,33 @@ export default function Reports({ activeTab: initTab = 'Overview' }: { activeTab
         <div className="space-y-4 sm:space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             {[
-              { label: 'Total Screens', value: totalScreens.toString(), icon: <Monitor size={18} />, color: 'text-blue-600', bg: 'bg-blue-50' },
-              { label: 'Screens Online', value: `${onlineScreens} (${onlinePct}%)`, icon: <Wifi size={18} />, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-              { label: 'Total Media Items', value: totalMedia.toString(), icon: <Film size={18} />, color: 'text-teal-600', bg: 'bg-teal-50' },
-              { label: 'Total Storage Used', value: formatBytes(totalStorageBytes), icon: <HardDrive size={18} />, color: 'text-orange-600', bg: 'bg-orange-50' },
+              { label: 'Total Screens', value: totalScreens.toString(), icon: <Monitor size={16} />, accent: 'text-gray-400' },
+              { label: 'Screens Online', value: `${onlineScreens} (${onlinePct}%)`, icon: <Wifi size={16} />, accent: onlineScreens > 0 ? 'text-emerald-600' : 'text-gray-400' },
+              { label: 'Total Media Items', value: totalMedia.toString(), icon: <Film size={16} />, accent: 'text-gray-400' },
+              { label: 'Total Storage Used', value: formatBytes(totalStorageBytes), icon: <HardDrive size={16} />, accent: 'text-gray-400' },
             ].map(kpi => (
-              <div key={kpi.label} className="bg-white rounded-xl border border-gray-100 p-4">
-                <div className={`w-9 h-9 rounded-lg ${kpi.bg} ${kpi.color} flex items-center justify-center mb-3`}>{kpi.icon}</div>
-                <p className="text-2xl font-bold text-gray-900">{kpi.value}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{kpi.label}</p>
+              <div key={kpi.label} className="bg-white rounded-2xl border border-gray-100 p-4 transition-colors hover:border-gray-200">
+                <div className={`flex items-center gap-1.5 mb-2.5 ${kpi.accent}`}>{kpi.icon}</div>
+                <p className="text-2xl font-semibold text-ink-950 tracking-tight">{kpi.value}</p>
+                <p className="text-[11px] text-gray-500 mt-1 font-medium">{kpi.label}</p>
               </div>
             ))}
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <h2 className="text-sm font-semibold text-gray-900 mb-4">Media Library by Type</h2>
+            <div className="bg-white rounded-2xl border border-gray-100 p-5">
+              <h2 className="text-sm font-semibold text-ink-950 mb-4">Media Library by Type</h2>
               {mediaByType.length === 0 ? (
                 <p className="text-xs text-gray-400">No media uploaded yet.</p>
               ) : (
-                <div className="space-y-3">
-                  {mediaByType.map(t => (
-                    <div key={t.type}>
-                      <div className="flex justify-between text-xs text-gray-600 mb-1 capitalize"><span>{t.type}</span></div>
-                      <Bar val={t.count} max={maxMediaTypeCount} color="bg-blue-500" />
-                    </div>
-                  ))}
-                </div>
+                <HorizontalBarChart data={mediaByType} labelKey="type" valueKey="count" color="#4A6CF7" />
               )}
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <h2 className="text-sm font-semibold text-gray-900 mb-4">Top Screens by Uptime</h2>
+            <div className="bg-white rounded-2xl border border-gray-100 p-5">
+              <h2 className="text-sm font-semibold text-ink-950 mb-4">Top Screens by Uptime</h2>
               {topScreensByUptime.length === 0 ? (
                 <p className="text-xs text-gray-400">No screens registered yet.</p>
               ) : (
-                <div className="space-y-3">
-                  {topScreensByUptime.map(s => (
-                    <div key={s.id}>
-                      <div className="flex justify-between text-xs text-gray-600 mb-1"><span>{s.name}</span><span>{formatDuration(s.uptimeSeconds)}</span></div>
-                      <Bar val={s.uptimeSeconds} max={maxUptimeSeconds} color="bg-teal-500" />
-                    </div>
-                  ))}
-                </div>
+                <HorizontalBarChart data={topScreensByUptime} labelKey="name" valueKey="uptimeSeconds" formatValue={formatDuration} color="#14B8A6" />
               )}
             </div>
           </div>

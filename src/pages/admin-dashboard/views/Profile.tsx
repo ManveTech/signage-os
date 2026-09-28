@@ -346,7 +346,7 @@ export default function Profile() {
       )}
 
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Profile & Credentials</h1>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Profile & Credentials</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage your super admin account settings and Razorpay API credentials</p>
       </div>
 
@@ -358,11 +358,11 @@ export default function Profile() {
             {avatar ? (
               <img src={avatar} className="w-full h-full rounded-2xl object-cover border border-gray-200" alt="Admin Profile" />
             ) : (
-              <div className="w-full h-full rounded-2xl bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center text-white text-xl font-black">
+              <div className="w-full h-full rounded-2xl bg-gradient-to-br from-blue-500 to-teal-500 flex items-center justify-center text-white text-xl font-bold">
                 {name.substring(0, 2).toUpperCase()}
               </div>
             )}
-            <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[9px] rounded-2xl cursor-pointer transition-opacity font-black uppercase tracking-wider select-none">
+            <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[9px] rounded-2xl cursor-pointer transition-opacity font-bold uppercase tracking-wider select-none">
               <Camera size={14} className="mb-0.5" />
               Upload
               <input 
@@ -375,9 +375,9 @@ export default function Profile() {
           </div>
           
           <div className="text-center sm:text-left flex-1 min-w-0">
-            <h2 className="text-lg font-black text-gray-900 truncate">{name}</h2>
+            <h2 className="text-lg font-bold text-gray-900 truncate">{name}</h2>
             <p className="text-xs text-gray-400 font-mono font-semibold">{email}</p>
-            <span className="text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded mt-1 inline-block">
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded mt-1 inline-block">
               Super Admin Role
             </span>
           </div>
@@ -387,7 +387,7 @@ export default function Profile() {
               type="button"
               onClick={handleRemoveAvatar}
               disabled={isUploadingAvatar}
-              className="px-2.5 py-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-[10px] font-black uppercase transition-colors cursor-pointer"
+              className="px-2.5 py-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-[10px] font-bold uppercase transition-colors cursor-pointer"
             >
               Remove Logo
             </button>
@@ -443,7 +443,7 @@ export default function Profile() {
       <form onSubmit={handleSaveRazorpayCredentials} className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
         <div className="flex items-center gap-2 border-b border-slate-50 pb-3">
           <CreditCard size={16} className="text-blue-600" />
-          <h2 className="text-xs font-black uppercase text-gray-900 tracking-wider">Razorpay Payment Credentials</h2>
+          <h2 className="text-xs font-bold uppercase text-gray-900 tracking-wider">Razorpay Payment Credentials</h2>
         </div>
         
         <p className="text-[11px] text-gray-500 font-semibold leading-relaxed">
@@ -452,7 +452,7 @@ export default function Profile() {
 
         <div className="space-y-3.5 text-xs">
           <div>
-            <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Razorpay Key ID</label>
+            <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Razorpay Key ID</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Key size={14} className="absolute left-3 top-3 text-gray-400" />
@@ -482,7 +482,7 @@ export default function Profile() {
           </div>
 
           <div>
-            <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Razorpay Key Secret</label>
+            <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Razorpay Key Secret</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Lock size={14} className="absolute left-3 top-3 text-gray-400" />
@@ -524,7 +524,7 @@ export default function Profile() {
 
       {/* Change Password */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <h2 className="text-xs font-black uppercase text-gray-900 tracking-wider flex items-center gap-2 mb-4"><Lock size={15} className="text-blue-600" /> Change Console Password</h2>
+        <h2 className="text-xs font-bold uppercase text-gray-900 tracking-wider flex items-center gap-2 mb-4"><Lock size={15} className="text-blue-600" /> Change Console Password</h2>
         <div className="space-y-3.5 max-w-sm text-xs font-semibold">
           {[
             { label: 'Current Password', value: currentPassword, setValue: setCurrentPassword },

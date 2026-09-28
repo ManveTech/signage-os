@@ -125,7 +125,7 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Add New Screen</h1>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Add New Screen</h1>
         <p className="text-sm text-gray-500 mt-0.5">Register a new display device to your signage network</p>
       </div>
 

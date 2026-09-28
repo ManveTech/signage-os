@@ -157,12 +157,12 @@ export default function Hero({ onOpenQuote }: HeroProps) {
             className="max-w-3xl mx-auto flex flex-col items-center sm:items-start text-center sm:text-left"
           >
             {/* Tagline */}
-            <span className="text-accent font-black tracking-[0.2em] uppercase text-[9px] sm:text-xs mb-2 sm:mb-3 block text-center sm:text-left" id="hero-tagline">
+            <span className="text-accent font-bold tracking-[0.2em] uppercase text-[9px] sm:text-xs mb-2 sm:mb-3 block text-center sm:text-left" id="hero-tagline">
               // {slides[currentSlide].tagline}
             </span>
 
             {/* Heading highlighting beautiful corporate colors */}
-            <h1 className="text-white text-xl xs:text-2xl sm:text-4xl md:text-5xl lg:text-5.5xl font-black tracking-tight mb-3 sm:mb-4 leading-tight select-none text-center sm:text-left" id="hero-title">
+            <h1 className="text-white text-xl xs:text-2xl sm:text-4xl md:text-5xl lg:text-5.5xl font-bold tracking-tight mb-3 sm:mb-4 leading-tight select-none text-center sm:text-left" id="hero-title">
               {slides[currentSlide].titlePart1}
               <span className="text-accent">
                 {slides[currentSlide].highlightText}

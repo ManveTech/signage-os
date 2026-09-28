@@ -323,7 +323,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Licensing Command Center</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold text-ink-950 tracking-tight">Licensing</h1>
           <p className="text-xs text-slate-500 font-semibold mt-1">Manage billing schedules, Razorpay invoices, and client access limits</p>
         </div>
         <button
@@ -332,7 +332,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             setNewLicId(`LN-BLST-${randomDigits}`);
             setIsCreateModalOpen(true);
           }}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 shadow-md shadow-blue-600/10 cursor-pointer"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-150 shadow-md shadow-blue-600/10 cursor-pointer"
         >
           <Plus size={15} /> Create New License
         </button>
@@ -344,13 +344,13 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       {tab === 'management' && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Active License Pool</span>
+            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Active License Pool</span>
             <span className="text-xs font-bold text-slate-400">{licenses.length} Total Licenses</span>
           </div>
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   <th className="px-5 py-3.5">License ID</th>
                   <th className="px-5 py-3.5">Title</th>
                   <th className="px-5 py-3.5">Tenure / Pricing</th>
@@ -370,7 +370,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                         <div className="flex items-center gap-2">
                           <p className="font-bold text-slate-800">{lic.name}</p>
                           {lic.whiteLabel && (
-                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-150 rounded text-[9px] font-black uppercase tracking-wider">
+                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-[9px] font-bold uppercase tracking-wider">
                               White Label
                             </span>
                           )}
@@ -402,7 +402,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                     </td>
                     <td className="px-5 py-4 font-semibold text-slate-600">{lic.expiryDate}</td>
                     <td className="px-5 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase border tracking-wider ${statusColors[lic.status]}`}>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border tracking-wider ${statusColors[lic.status]}`}>
                         {lic.status.replace('_', ' ')}
                       </span>
                     </td>
@@ -442,14 +442,14 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-bold text-slate-900 text-sm">{lic.id}</span>
                         {lic.whiteLabel && (
-                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-150 rounded text-[9px] font-black uppercase tracking-wider">
+                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-[9px] font-bold uppercase tracking-wider">
                             White Label
                           </span>
                         )}
                       </div>
                       <p className="font-bold text-slate-800 text-sm mt-0.5 truncate">{lic.name}</p>
                     </div>
-                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border tracking-wider flex-shrink-0 ${statusColors[lic.status]}`}>
+                    <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase border tracking-wider flex-shrink-0 ${statusColors[lic.status]}`}>
                       {lic.status.replace('_', ' ')}
                     </span>
                   </div>
@@ -509,13 +509,13 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       {tab === 'payments' && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Razorpay Payment Logs</span>
+            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Razorpay Payment Logs</span>
             <span className="text-xs font-bold text-slate-400">{payments.length} Payments Registered</span>
           </div>
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   <th className="px-5 py-3.5">Transaction ID</th>
                   <th className="px-5 py-3.5">License</th>
                   <th className="px-5 py-3.5">Client User</th>
@@ -606,12 +606,12 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       {tab === 'expirations' && (
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Expiry Timeline (Next 30 Days)</span>
+            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Expiry Timeline (Next 30 Days)</span>
           </div>
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   <th className="px-5 py-3.5">License</th>
                   <th className="px-5 py-3.5">Assigned Client</th>
                   <th className="px-5 py-3.5">Pricing</th>
@@ -756,12 +756,12 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           {/* Invoices List */}
           <div className="lg:col-span-8 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Billing Invoice Registry</span>
+              <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Billing Invoice Registry</span>
             </div>
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     <th className="px-5 py-3.5">Invoice ID</th>
                     <th className="px-5 py-3.5">Client User</th>
                     <th className="px-5 py-3.5">License</th>
@@ -790,7 +790,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                       </td>
                       <td className="px-5 py-4 font-mono font-medium text-slate-500">{inv.dueDate}</td>
                       <td className="px-5 py-4">
-                        <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-wider text-[9px] border ${
+                        <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[9px] border ${
                           inv.status === 'paid'
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                             : 'bg-rose-50 text-rose-700 border-rose-100 animate-pulse'
@@ -802,7 +802,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                         {inv.status === 'unpaid' && (
                           <button
                             onClick={() => sendReminder(inv.clientEmail, inv.id, 'invoice')}
-                            className="flex items-center gap-1 px-2.5 py-1.5 ml-auto text-[10px] font-black uppercase text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg transition-colors cursor-pointer"
+                            className="flex items-center gap-1 px-2.5 py-1.5 ml-auto text-[10px] font-bold uppercase text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg transition-colors cursor-pointer"
                           >
                             <Send size={10} /> Remind
                           </button>
@@ -830,7 +830,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                         <p className="font-semibold text-slate-700 text-xs mt-0.5 truncate">{inv.clientName}</p>
                         <p className="text-[10px] text-slate-400 font-mono truncate">{inv.clientEmail}</p>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-wider text-[9px] border flex-shrink-0 ${
+                      <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[9px] border flex-shrink-0 ${
                         inv.status === 'paid'
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                           : 'bg-rose-50 text-rose-700 border-rose-100 animate-pulse'
@@ -855,7 +855,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                     {inv.status === 'unpaid' ? (
                       <button
                         onClick={() => sendReminder(inv.clientEmail, inv.id, 'invoice')}
-                        className="flex items-center justify-center gap-1 px-2.5 py-2 text-[11px] font-black uppercase text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg transition-colors cursor-pointer"
+                        className="flex items-center justify-center gap-1 px-2.5 py-2 text-[11px] font-bold uppercase text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg transition-colors cursor-pointer"
                       >
                         <Send size={11} /> Remind
                       </button>
@@ -872,12 +872,12 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 space-y-4">
             <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
               <Building size={16} className="text-blue-600" />
-              <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">Business & Invoice Details</h2>
+              <h2 className="text-xs font-bold uppercase text-slate-900 tracking-wider">Business & Invoice Details</h2>
             </div>
 
             <form onSubmit={handleSaveBusinessSettings} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-[10px] text-slate-450 uppercase tracking-widest font-black mb-1">Registered Business Name</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Registered Business Name</label>
                 <input 
                   type="text"
                   value={bizName}
@@ -887,7 +887,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Billing Address</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Address</label>
                 <textarea 
                   rows={3}
                   value={bizAddress}
@@ -897,7 +897,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">GSTIN Number</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">GSTIN Number</label>
                 <input 
                   type="text"
                   value={bizGst}
@@ -909,7 +909,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Billing Email</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Email</label>
                   <input 
                     type="email"
                     value={bizEmail}
@@ -918,7 +918,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Billing Phone</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Phone</label>
                   <input 
                     type="text"
                     value={bizPhone}
@@ -929,7 +929,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Company Logo</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Company Logo</label>
                 <div className="flex items-center gap-3 mt-1.5">
                   {bizLogo ? (
                     <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center group">
@@ -937,7 +937,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                       <button 
                         type="button"
                         onClick={() => setBizLogo('')}
-                        className="absolute inset-0 bg-rose-600/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[9px] font-black uppercase tracking-wider transition-opacity cursor-pointer"
+                        className="absolute inset-0 bg-rose-600/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[9px] font-bold uppercase tracking-wider transition-opacity cursor-pointer"
                       >
                         Remove
                       </button>
@@ -975,7 +975,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn text-left p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
                 <Key size={16} className="text-blue-600" /> Create License Profile
               </h2>
               <button 
@@ -988,32 +988,32 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
             <form onSubmit={handleCreateLicense} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">License ID / Number</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">License ID / Number</label>
                 <input 
                   type="text" 
                   placeholder="e.g. LIC-981"
                   required
                   value={newLicId}
                   onChange={e => setNewLicId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold uppercase placeholder-slate-350 outline-none focus:border-blue-500 bg-slate-50"
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold uppercase placeholder-slate-300 outline-none focus:border-blue-500 bg-slate-50"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Title</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Title</label>
                 <input 
                   type="text" 
                   placeholder="e.g. Phoenix Mall Entry Display"
                   required
                   value={newLicName}
                   onChange={e => setNewLicName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-350 outline-none focus:border-blue-500 bg-slate-50"
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-300 outline-none focus:border-blue-500 bg-slate-50"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Price (INR)</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Price (INR)</label>
                   <input 
                     type="number" 
                     required
@@ -1023,7 +1023,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Billing Tenure</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Tenure</label>
                   <CustomSelect 
                     value={newLicTenure}
                     onChange={val => setNewLicTenure(val as 'monthly' | 'yearly')}
@@ -1037,7 +1037,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Assign to Organization (Optional)</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Assign to Organization (Optional)</label>
                 <CustomSelect 
                   value={newLicOrg}
                   onChange={val => setNewLicOrg(val)}
@@ -1051,7 +1051,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Assign User / Billing Email</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Assign User / Billing Email</label>
                 <CustomSelect
                   value={newLicUserEmail}
                   onChange={val => setNewLicUserEmail(val)}
@@ -1066,7 +1066,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Storage Limit (GB)</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Storage Limit (GB)</label>
                   <input 
                     type="number" 
                     required
@@ -1076,7 +1076,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Allowed Screens</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Allowed Screens</label>
                   <input 
                     type="number" 
                     required
@@ -1088,7 +1088,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Expiry Date (Optional)</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Expiry Date (Optional)</label>
                 <input 
                   type="date" 
                   value={newLicExpiry}
@@ -1150,7 +1150,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn text-left p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
                 <Edit2 size={16} className="text-indigo-600" /> Rework License Settings
               </h2>
               <button 
@@ -1164,7 +1164,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
             <form onSubmit={handleEditLicense} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">License ID</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">License ID</label>
                 <input 
                   type="text" 
                   value={currentLicense?.id} 
@@ -1174,7 +1174,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Title</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Title</label>
                 <input 
                   type="text" 
                   value={editLicName}
@@ -1185,7 +1185,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Price (INR)</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Price (INR)</label>
                   <input 
                     type="number" 
                     value={editLicPrice}
@@ -1194,7 +1194,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Billing Tenure</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Tenure</label>
                   <CustomSelect 
                     value={editLicTenure}
                     onChange={val => setEditLicTenure(val as 'monthly' | 'yearly')}
@@ -1208,7 +1208,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Assign User / Billing Email</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Assign User / Billing Email</label>
                 <CustomSelect
                   value={editLicUserEmail}
                   onChange={val => setEditLicUserEmail(val)}
@@ -1223,7 +1223,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Storage Limit (GB)</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Storage Limit (GB)</label>
                   <input 
                     type="number" 
                     required
@@ -1233,7 +1233,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Allowed Screens</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Allowed Screens</label>
                   <input 
                     type="number" 
                     required
@@ -1246,7 +1246,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Expiration Date</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Expiration Date</label>
                   <input 
                     type="date" 
                     value={editLicExpiry}
@@ -1255,7 +1255,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Status</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Status</label>
                   <CustomSelect 
                     value={editLicStatus}
                     onChange={val => setEditLicStatus(val as License['status'])}

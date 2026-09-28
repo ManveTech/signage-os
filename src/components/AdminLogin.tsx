@@ -1,25 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE } from '../config';
 import AdminDashboard from '../pages/admin-dashboard';
 import UserDashboard from '../pages/user-dashboard';
 import logoImg from '../assets/BS-main-Logo.png';
 import {
-  ShieldCheck,
   Mail,
   Lock,
-  ChevronRight,
+  ArrowRight,
   Check,
   X,
-  Users,
-  PhoneCall,
-  IndianRupee,
-  Sliders,
-  TrendingUp,
-  Layers,
   ArrowLeft,
-  ExternalLink,
-  UserCheck,
   Eye,
   EyeOff
 } from 'lucide-react';
@@ -235,6 +227,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
         theme: 'outline',
         size: 'large',
         width: 320,
+        shape: 'pill',
         text: 'signin_with'
       });
     };
@@ -370,351 +363,326 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     }
   }
 
-  // Otherwise, render the gorgeous dual-panel Login Page resembling the layout mockup
+  // Field styling shared by every input across all three views — a plain
+  // neutral field on the light sign-in panel, brand color reserved for the
+  // focus state instead of being smeared across every element.
+  const fieldWrapClass = "flex items-center gap-3 rounded-xl bg-ink-950/[0.03] border border-ink-950/10 px-3.5 transition-all duration-200 focus-within:border-brand-500/60 focus-within:bg-brand-50/50 focus-within:shadow-[0_0_0_4px_rgba(74,108,247,0.10)]";
+  const fieldInputClass = "w-full bg-transparent py-3 text-sm text-ink-950 placeholder-ink-950/30 focus:outline-none";
+  const fieldLabelClass = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-950/40 block mb-1.5";
+
+  const submitButtonClass = "group w-full py-3.5 rounded-xl bg-ink-950 text-white text-sm font-semibold shadow-[0_10px_24px_-8px_rgba(11,13,20,0.35)] hover:shadow-[0_14px_32px_-8px_rgba(11,13,20,0.45)] transition-shadow flex items-center justify-center gap-2 cursor-pointer";
+  const backLinkClass = "text-ink-950/45 hover:text-ink-950/80 flex items-center gap-1.5 cursor-pointer bg-transparent border-none outline-none font-medium text-xs transition-colors";
+
+  const viewCopy: Record<typeof view, { eyebrow: string; title: string; sub: string }> = {
+    login: { eyebrow: 'Welcome back', title: 'Sign in', sub: 'Enter your credentials to reach your dashboard.' },
+    forgot: { eyebrow: 'Account recovery', title: 'Reset access', sub: 'We’ll email you a secure link to choose a new password.' },
+    reset: { eyebrow: 'Almost there', title: 'New password', sub: 'Choose something strong you haven’t used before.' }
+  };
+
+  const featureBullets = [
+    'Live playlist sync across every screen',
+    'Real-time device health & uptime',
+    'Schedule campaigns weeks in advance'
+  ];
+
+  // Otherwise, render the login screen — an asymmetric split rather than a
+  // centered card: an editorial dark panel that tells you what the product
+  // is, and a plain light panel that does the one job of signing you in.
   return (
-    <div className="w-full min-h-screen bg-slate-100 pt-24 pb-16 flex items-center justify-center font-sans px-4 relative select-none" id="admin-login-screen">
+    <div className="w-full min-h-screen bg-white flex select-none" id="admin-login-screen">
 
-      {/* Absolute Decorative Circles & Grid Background */}
-      <div className="absolute inset-0 pointer-events-none opacity-40 overflow-hidden z-0">
-        <svg className="absolute inset-0 w-full h-full" width="100%" height="100%">
-          <pattern id="login-grid" width="30" height="30" patternUnits="userSpaceOnUse">
-            <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(15, 23, 42, 0.03)" strokeWidth="1" />
-          </pattern>
-          <rect width="100%" height="100%" fill="url(#login-grid)" />
-        </svg>
+      {/* Left — brand & product story (desktop only) */}
+      <div className="hidden lg:flex lg:w-[44%] xl:w-[42%] relative overflow-hidden bg-ink-950 flex-col justify-between p-12 xl:p-16">
+        <div className="absolute inset-0 bg-[radial-gradient(60%_50%_at_20%_10%,rgba(74,108,247,0.18),transparent_60%)]" />
+        <div className="absolute -bottom-32 -left-24 w-[28rem] h-[28rem] rounded-full bg-brand-500/[0.16] blur-[130px] animate-floatSlow" />
+        <div className="grain-overlay" />
+
+        <div className="relative flex items-center gap-2.5">
+          <img src={branding.logoUrl || logoImg} className="w-9 h-9 object-contain shrink-0 rounded-lg" alt={`${branding.companyName} Logo`} />
+          <span className="text-white font-semibold text-sm tracking-tight">{branding.companyName}</span>
+        </div>
+
+        <div className="relative max-w-md">
+          <p className="text-brand-400 text-[11px] font-bold uppercase tracking-[0.24em] mb-5">Signage Platform</p>
+          <h2 className="font-display text-[2.75rem] xl:text-[3.25rem] leading-[1.05] text-white">
+            Every screen,
+            <br />
+            <span className="italic text-brand-300">under one roof.</span>
+          </h2>
+          <p className="mt-5 max-w-[22rem] text-sm leading-relaxed text-white/45">
+            Push content, monitor uptime, and manage every display from a single
+            secure dashboard — whether it's one screen or five hundred.
+          </p>
+
+          <div className="mt-8 space-y-3">
+            {featureBullets.map((t) => (
+              <div key={t} className="flex items-center gap-3 text-[13px] text-white/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse shrink-0" />
+                {t}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="relative text-white/25 text-[10.5px]">
+          {branding.companyName} Technologies Ltd. &copy; 2026
+        </p>
       </div>
 
-      {/* Main Container - Dual Pane Card */}
-      <div className="relative w-full max-w-4xl bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 grid md:grid-cols-12 z-10 animate-scaleIn">
+      {/* Right — sign-in form */}
+      <div className="flex-1 relative flex items-center justify-center px-6 py-14 sm:px-10">
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(50%_35%_at_85%_0%,rgba(74,108,247,0.05),transparent_60%)]" />
 
-        {/* LEFT PANE: Ambient Bright Tech Blue Panel */}
-        <div className="md:col-span-6 bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 p-8 sm:p-12 flex flex-col justify-between text-white relative overflow-hidden text-left min-h-[380px] md:min-h-[500px]">
-
-          {/* Wave Curve Decorative Overlays */}
-          <div className="absolute inset-0 pointer-events-none opacity-20">
-            <svg className="absolute -bottom-20 -left-10 w-[140%] h-[140%]" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <path d="M0,50 Q25,80 50,50 T100,50 L100,100 L0,100 Z" fill="rgba(255,255,255,0.15)"></path>
-              <path d="M0,60 Q25,90 50,70 T100,80 L100,100 L0,100 Z" fill="rgba(255,255,255,0.1)"></path>
-            </svg>
-          </div>
-
-          {/* Top Company Title */}
-          <div className="relative z-10 flex items-center gap-2" id="login-pane-company">
-            <img src={branding.logoUrl || logoImg} className="w-14 h-14 object-contain shrink-0 rounded-lg" alt={`${branding.companyName} Logo`} />
-            <div className="flex flex-col text-left">
-              <span className="text-sm font-black tracking-tight leading-none text-white">{branding.companyName.toUpperCase()}</span>
-              <span className="text-[7.5px] font-black tracking-[0.25em] text-cyan-200 leading-none">SYSTEMS</span>
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="relative z-10 w-full max-w-[380px]"
+        >
+          {/* Mobile-only brand row — the left panel is hidden below lg */}
+          <div className="flex lg:hidden items-center gap-2.5 mb-10">
+            <img src={branding.logoUrl || logoImg} className="w-9 h-9 object-contain shrink-0 rounded-lg" alt={`${branding.companyName} Logo`} />
+            <div>
+              <p className="text-ink-950 font-semibold text-sm tracking-tight leading-none">{branding.companyName}</p>
+              <p className="text-ink-950/35 text-[9px] font-bold tracking-[0.22em] uppercase mt-1">Signage Platform</p>
             </div>
           </div>
 
-          {/* Central Typography Heading */}
-          <div className="relative z-10 my-auto" id="login-pane-welcome">
-            <span className="text-cyan-100 text-xs font-bold uppercase tracking-wider block mb-2 opacity-90">
-              {view === 'login' ? 'Nice to see you again' : view === 'forgot' ? 'Retrieve access' : 'Configure security'}
-            </span>
-            <h2 className="text-4xl xs:text-5xl font-black text-white leading-none tracking-tight mb-4 uppercase">
-              {view === 'login' ? 'WELCOME BACK' : view === 'forgot' ? 'RESET SECURITY' : 'NEW PASSWORD'}
-            </h2>
-            <div className="w-14 h-1 bg-white rounded-full mb-6" />
-            <p className="text-white/80 text-[11px] sm:text-xs leading-relaxed max-w-[280px]">
-              {view === 'login'
-                ? 'Log into your account.'
-                : view === 'forgot'
-                  ? 'Submit your email to request recovery link.'
-                  : 'Choose a strong password key.'}
-            </p>
-          </div>
-
-        </div>
-
-        {/* RIGHT PANE: White Minimal Form Panel */}
-        <div className="md:col-span-6 p-8 sm:p-12 flex flex-col justify-between text-left bg-white relative">
-
-          <div className="my-auto pt-6" id="login-right-pane-body">
-
-            {/* Header Typography */}
-            <div className="mb-8 select-text">
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
-                {view === 'login' ? 'Login Account' : view === 'forgot' ? 'Forgot Password' : 'Reset Password'}
-              </h1>
-              <p className="text-xs text-slate-400 font-semibold mt-1">
-                {view === 'login'
-                  ? 'Enter your credentials to enter your dashboard.'
-                  : view === 'forgot'
-                    ? 'Enter your email to receive a password reset link.'
-                    : 'Enter and confirm your new password key.'}
-              </p>
-            </div>
-
-            {/* Simulated Error Alert */}
-            {errorMessage && (
-              <div className="mb-6 p-3 bg-rose-50 border border-rose-100 rounded-xl text-[11px] text-rose-600 font-semibold flex items-start gap-2 animate-pulse">
-                <X className="w-4 h-4 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-extrabold block">Access Denied:</span>
-                  {errorMessage}
-                </div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={view}
+              initial={{ opacity: 0, x: 14 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -14 }}
+              transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="mb-8">
+                <span className="text-brand-500 text-[10.5px] font-bold uppercase tracking-[0.16em] block mb-2">
+                  {viewCopy[view].eyebrow}
+                </span>
+                <h1 className="font-display text-[2.5rem] leading-none text-ink-950 tracking-tight">
+                  {viewCopy[view].title}
+                </h1>
+                <p className="text-ink-950/45 text-xs mt-3 leading-relaxed max-w-[300px]">
+                  {viewCopy[view].sub}
+                </p>
               </div>
-            )}
 
-            {/* Success Alert */}
-            {successMessage && (
-              <div className="mb-6 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-[11px] text-emerald-600 font-semibold flex items-start gap-2">
-                <Check className="w-4 h-4 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-extrabold block">Verification:</span>
-                  {successMessage}
-                </div>
-              </div>
-            )}
+              {errorMessage && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="mb-5 p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11.5px] text-rose-700 font-medium flex items-start gap-2"
+                >
+                  <X className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                  <span>{errorMessage}</span>
+                </motion.div>
+              )}
 
-            {view === 'login' && (
-              /* Main Form Fields */
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
+              {successMessage && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="mb-5 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11.5px] text-emerald-700 font-medium flex items-start gap-2"
+                >
+                  <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+                  <span>{successMessage}</span>
+                </motion.div>
+              )}
 
-                {/* Email ID input built with blue bar styling */}
-                <div className="group relative">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
-                    Email ID
-                  </label>
-                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                    {/* Glowing left primary vertical blue border block identical to layout design */}
-                    <div className="w-1.5 self-stretch bg-blue-500" />
-
-                    <div className="pl-3.5 pr-2.5 text-slate-400">
-                      <Mail className="w-4 h-4" />
+              {view === 'login' && (
+                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                  <div>
+                    <label className={fieldLabelClass}>Email</label>
+                    <div className={fieldWrapClass}>
+                      <Mail className="w-4 h-4 text-ink-950/30 shrink-0" />
+                      <input
+                        type="text"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@company.com"
+                        className={fieldInputClass}
+                      />
                     </div>
-                    <input
-                      type="text"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="e.g. admin@demo.com"
-                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                    />
                   </div>
-                </div>
 
-                {/* Password ID input built with blue bar styling */}
-                <div className="group relative">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
-                    Password
-                  </label>
-                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                    {/* Glowing left primary vertical blue border block */}
-                    <div className="w-1.5 self-stretch bg-blue-500" />
-
-                    <div className="pl-3.5 pr-2.5 text-slate-400">
-                      <Lock className="w-4 h-4" />
+                  <div>
+                    <label className={fieldLabelClass}>Password</label>
+                    <div className={fieldWrapClass}>
+                      <Lock className="w-4 h-4 text-ink-950/30 shrink-0" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter your password"
+                        className={fieldInputClass}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="text-ink-950/30 hover:text-ink-950/60 focus:outline-none cursor-pointer flex items-center shrink-0 transition-colors"
+                        title={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter security key"
-                      className="w-full py-3.5 pr-2 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-0.5 pb-1 text-xs">
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none text-ink-950/55">
+                      <span className="relative flex items-center justify-center w-4 h-4 shrink-0 rounded border border-ink-950/25 transition-colors has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500">
+                        <input
+                          type="checkbox"
+                          checked={keepSignedIn}
+                          onChange={() => setKeepSignedIn(!keepSignedIn)}
+                          className="peer sr-only"
+                        />
+                        <Check className="w-3 h-3 text-white opacity-0 peer-checked:opacity-100" strokeWidth={3} />
+                      </span>
+                      Keep me signed in
+                    </label>
+                    <span
+                      onClick={() => {
+                        setView('forgot');
+                        setErrorMessage('');
+                        setSuccessMessage('');
+                      }}
+                      className="text-brand-600 hover:text-ink-950 cursor-pointer font-medium transition-colors"
+                    >
+                      Forgot password?
+                    </span>
+                  </div>
+
+                  <motion.button
+                    whileTap={{ scale: 0.985 }}
+                    type="submit"
+                    className={submitButtonClass}
+                  >
+                    Sign in <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  </motion.button>
+
+                  {googleAuth.enabled && (
+                    <>
+                      <div className="flex items-center gap-3 pt-1">
+                        <div className="flex-1 h-px bg-ink-950/10" />
+                        <span className="text-[10px] text-ink-950/30 font-semibold uppercase tracking-widest">or</span>
+                        <div className="flex-1 h-px bg-ink-950/10" />
+                      </div>
+                      <div className="flex justify-center [&>div]:rounded-xl [&>div]:overflow-hidden" ref={googleButtonRef} />
+                    </>
+                  )}
+                </form>
+              )}
+
+              {view === 'forgot' && (
+                <form onSubmit={handleForgotSubmit} className="space-y-4">
+                  <div>
+                    <label className={fieldLabelClass}>Email</label>
+                    <div className={fieldWrapClass}>
+                      <Mail className="w-4 h-4 text-ink-950/30 shrink-0" />
+                      <input
+                        type="text"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@company.com"
+                        className={fieldInputClass}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center pt-0.5 pb-1">
                     <button
                       type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="pr-3 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer flex items-center shrink-0"
-                      title={showPassword ? 'Hide password' : 'Show password'}
+                      onClick={() => {
+                        setView('login');
+                        setErrorMessage('');
+                        setSuccessMessage('');
+                      }}
+                      className={backLinkClass}
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      <ArrowLeft className="w-3.5 h-3.5" /> Back to sign in
                     </button>
                   </div>
-                </div>
 
-                {/* Checkboxes from styling guideline */}
-                <div className="flex items-center justify-between pt-1 pb-4 text-[11px] font-semibold text-slate-400">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={keepSignedIn}
-                      onChange={() => setKeepSignedIn(!keepSignedIn)}
-                      className="accent-blue-500 rounded border-slate-300"
-                    />
-                    <span>Keep me signed in</span>
-                  </label>
-                  <span
-                    onClick={() => {
-                      setView('forgot');
-                      setErrorMessage('');
-                      setSuccessMessage('');
-                    }}
-                    className="text-blue-500 hover:underline cursor-pointer"
-                  >
-                    Forgot Password?
-                  </span>
-                </div>
+                  <motion.button whileTap={{ scale: 0.985 }} type="submit" className={submitButtonClass}>
+                    Send reset link <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  </motion.button>
+                </form>
+              )}
 
-                {/* Large blue action button styled like SUBSCRBE in design preview */}
-                <button
-                  type="submit"
-                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 active:scale-98 cursor-pointer flex items-center justify-center gap-2"
-                  id="login-subscribe-btn"
-                >
-                  Sign In / Verify <ChevronRight className="w-4 h-4" />
-                </button>
-
-                {googleAuth.enabled && (
-                  <>
-                    <div className="flex items-center gap-3 pt-2">
-                      <div className="flex-1 h-px bg-slate-150" />
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">or</span>
-                      <div className="flex-1 h-px bg-slate-150" />
+              {view === 'reset' && (
+                <form onSubmit={handleResetSubmit} className="space-y-4">
+                  <div>
+                    <label className={fieldLabelClass}>New password</label>
+                    <div className={fieldWrapClass}>
+                      <Lock className="w-4 h-4 text-ink-950/30 shrink-0" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password"
+                        className={fieldInputClass}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="text-ink-950/30 hover:text-ink-950/60 focus:outline-none cursor-pointer flex items-center shrink-0 transition-colors"
+                        title={showNewPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                    <div className="flex justify-center" ref={googleButtonRef} />
-                  </>
-                )}
-
-              </form>
-            )}
-
-            {view === 'forgot' && (
-              /* Forgot Password Request Form */
-              <form onSubmit={handleForgotSubmit} className="space-y-4">
-
-                <div className="group relative">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
-                    Email ID
-                  </label>
-                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                    <div className="w-1.5 self-stretch bg-blue-500" />
-
-                    <div className="pl-3.5 pr-2.5 text-slate-400">
-                      <Mail className="w-4 h-4" />
-                    </div>
-                    <input
-                      type="text"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="e.g. admin@demo.com"
-                      className="w-full py-3.5 pr-4 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                    />
                   </div>
-                </div>
 
-                <div className="flex items-center justify-between pt-1 pb-4 text-[11px] font-semibold text-slate-400">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setView('login');
-                      setErrorMessage('');
-                      setSuccessMessage('');
-                    }}
-                    className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer bg-transparent border-none outline-none font-semibold"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" /> Back to Login
-                  </button>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 active:scale-98 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  Send Reset Link <ChevronRight className="w-4 h-4" />
-                </button>
-
-              </form>
-            )}
-
-            {view === 'reset' && (
-              /* Reset Password Form */
-              <form onSubmit={handleResetSubmit} className="space-y-4">
-
-                {/* New Password input */}
-                <div className="group relative">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
-                    New Password
-                  </label>
-                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                    <div className="w-1.5 self-stretch bg-blue-500" />
-
-                    <div className="pl-3.5 pr-2.5 text-slate-400">
-                      <Lock className="w-4 h-4" />
+                  <div>
+                    <label className={fieldLabelClass}>Confirm password</label>
+                    <div className={fieldWrapClass}>
+                      <Lock className="w-4 h-4 text-ink-950/30 shrink-0" />
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm new password"
+                        className={fieldInputClass}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="text-ink-950/30 hover:text-ink-950/60 focus:outline-none cursor-pointer flex items-center shrink-0 transition-colors"
+                        title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
-                    <input
-                      type={showNewPassword ? 'text' : 'password'}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Enter new password"
-                      className="w-full py-3.5 pr-2 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                    />
+                  </div>
+
+                  <div className="flex items-center pt-0.5 pb-1">
                     <button
                       type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="pr-3 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer flex items-center shrink-0"
-                      title={showNewPassword ? 'Hide password' : 'Show password'}
+                      onClick={() => {
+                        setView('login');
+                        setErrorMessage('');
+                        setSuccessMessage('');
+                      }}
+                      className={backLinkClass}
                     >
-                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      <ArrowLeft className="w-3.5 h-3.5" /> Back to sign in
                     </button>
                   </div>
-                </div>
 
-                {/* Confirm Password input */}
-                <div className="group relative">
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
-                    Confirm Password
-                  </label>
-                  <div className="flex items-center relative rounded-lg bg-slate-50 border border-slate-200 transition-all duration-300 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 overflow-hidden">
-                    <div className="w-1.5 self-stretch bg-blue-500" />
+                  <motion.button whileTap={{ scale: 0.985 }} type="submit" className={submitButtonClass}>
+                    Reset password <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  </motion.button>
+                </form>
+              )}
+            </motion.div>
+          </AnimatePresence>
 
-                    <div className="pl-3.5 pr-2.5 text-slate-400">
-                      <Lock className="w-4 h-4" />
-                    </div>
-                    <input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Confirm new password"
-                      className="w-full py-3.5 pr-2 text-xs font-semibold text-slate-800 placeholder-slate-350 focus:outline-none bg-transparent"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="pr-3 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer flex items-center shrink-0"
-                      title={showConfirmPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-1 pb-4 text-[11px] font-semibold text-slate-400">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setView('login');
-                      setErrorMessage('');
-                      setSuccessMessage('');
-                    }}
-                    className="text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer bg-transparent border-none outline-none font-semibold"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" /> Back to Login
-                  </button>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md shadow-blue-500/20 active:scale-98 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  Reset Password <ChevronRight className="w-4 h-4" />
-                </button>
-
-              </form>
-            )}
-
-          </div>
-
-          {/* Copyright notice styled cleanly at bottom margin */}
-          <div className="text-[9px] text-slate-350 mt-6 select-text text-center">
-            Designed for SignageOS Technologies Ltd. © 2026.
-          </div>
-
-        </div>
-
+          <p className="lg:hidden text-ink-950/35 text-[10.5px] mt-10">
+            {branding.companyName} Technologies Ltd. &copy; 2026
+          </p>
+        </motion.div>
       </div>
-
     </div>
   );
 }

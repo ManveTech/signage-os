@@ -166,7 +166,7 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
       {/* Title */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Client Media Repository</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Client Media Repository</h1>
           <p className="text-sm text-gray-500 mt-0.5">Oversee and manage media uploads for all client organizations</p>
         </div>
         {filteredMedia.length > 0 && (
@@ -177,7 +177,7 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
                 setSelectedIds([]);
               }}
               className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer ${
-                isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                isSelectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
               }`}
             >
               <CheckCircle size={14} />
@@ -186,7 +186,7 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
             {isSelectionMode && selectedIds.length > 0 && (
               <button
                 onClick={() => setDeleteConfirm(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-650 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer animate-fadeIn"
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer animate-fadeIn"
               >
                 <Trash size={14} />
                 Delete Selected ({selectedIds.length})
@@ -204,7 +204,7 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
           </div>
           <div className="flex-1">
             <div className="flex justify-between items-baseline mb-1">
-              <span className="text-xs font-black text-slate-800 uppercase tracking-wide">{storageInfo.orgName}</span>
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">{storageInfo.orgName}</span>
               <span className="text-xs text-gray-500 font-semibold">{storageInfo.mbUsed} MB / {storageInfo.limitGb} GB</span>
             </div>
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-100">
@@ -299,7 +299,7 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
                     type="checkbox"
                     checked={selectedIds.includes(media.id)}
                     onChange={() => {}}
-                    className="w-5 h-5 rounded border-slate-350 text-blue-600 focus:ring-blue-550 cursor-pointer shadow-sm"
+                    className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm"
                   />
                 </div>
               )}
@@ -402,9 +402,9 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
 
         {filteredMedia.length === 0 && (
           <div className="col-span-full py-16 text-center text-slate-400 space-y-2 border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
-            <ShieldAlert size={36} className="mx-auto text-slate-350" />
+            <ShieldAlert size={36} className="mx-auto text-slate-300" />
             <p className="text-xs font-semibold">No client media matches selection</p>
-            <p className="text-[10px] text-slate-450">Ensure clients have uploaded files or select a different filter.</p>
+            <p className="text-[10px] text-slate-400">Ensure clients have uploaded files or select a different filter.</p>
           </div>
         )}
       </div>

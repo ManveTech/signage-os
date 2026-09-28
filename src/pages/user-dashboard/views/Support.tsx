@@ -132,7 +132,7 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Help & Support</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Help & Support</h1>
           <p className="text-sm text-gray-500 mt-0.5">Browse support guides or open a ticket with our executive team</p>
         </div>
         {tab === 'tickets' && !showNewTicket && (
@@ -227,13 +227,13 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
                     <div>
                       <div className="flex items-center gap-2 mb-1.5">
                         <span className="text-[10.5px] font-mono text-gray-400 font-bold">{ticket.id}</span>
-                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase border tracking-wider ${statusColors[ticket.status]}`}>
+                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase border tracking-wider ${statusColors[ticket.status]}`}>
                           {ticket.status.replace('_', ' ')}
                         </span>
                       </div>
                       <h3 className="text-sm font-bold text-gray-900 leading-snug">{ticket.subject}</h3>
                     </div>
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-700 capitalize`}>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-700 capitalize`}>
                       Priority: <span className={priorityColors[ticket.priority].split(' ')[0]}>{ticket.priority}</span>
                     </span>
                   </div>
@@ -269,11 +269,11 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
                     key={doc.id} 
                     onClick={() => setSelectedDoc(doc)}
                     className={`bg-white rounded-2xl border p-5 shadow-xs cursor-pointer hover:border-indigo-400 hover:shadow-sm transition-all text-left flex flex-col justify-between min-h-[160px] ${
-                      selectedDoc?.id === doc.id ? 'ring-2 ring-indigo-500 border-transparent' : 'border-slate-150'
+                      selectedDoc?.id === doc.id ? 'ring-2 ring-indigo-500 border-transparent' : 'border-slate-100'
                     }`}
                   >
                     <div className="space-y-2">
-                      <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded text-[9px] font-black uppercase tracking-wider">{doc.category}</span>
+                      <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded text-[9px] font-bold uppercase tracking-wider">{doc.category}</span>
                       <h3 className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug">{doc.title}</h3>
                       <p className="text-[11px] text-slate-500 line-clamp-3 leading-relaxed">{doc.content}</p>
                     </div>
@@ -288,8 +288,8 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
               <div className="bg-white border border-indigo-100 rounded-2xl p-6 space-y-4 shadow-sm animate-fadeIn">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div>
-                    <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-indigo-700 rounded text-[9px] font-black uppercase tracking-wider">{selectedDoc.category}</span>
-                    <h3 className="text-base font-black text-slate-900 mt-2">{selectedDoc.title}</h3>
+                    <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded text-[9px] font-bold uppercase tracking-wider">{selectedDoc.category}</span>
+                    <h3 className="text-base font-bold text-slate-900 mt-2">{selectedDoc.title}</h3>
                   </div>
                   <button 
                     onClick={() => setSelectedDoc(null)}
@@ -304,7 +304,7 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
                 {/* YouTube Embed Player */}
                 {(selectedDoc.youtubeUrl || (selectedDoc as any).youtube_url) && getYouTubeId(selectedDoc.youtubeUrl || (selectedDoc as any).youtube_url) && (
                   <div className="space-y-2 border-t border-slate-100 pt-4">
-                    <p className="text-[10px] font-black uppercase text-slate-550 tracking-wider">
+                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">
                       Reference Video Guide
                     </p>
                     <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-slate-200 shadow-sm max-w-2xl">
@@ -336,7 +336,7 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
                 {faqs.map(faq => {
                   const isOpen = openFaqId === faq.id;
                   return (
-                    <div key={faq.id} className="bg-white rounded-xl border border-slate-150 overflow-hidden transition-all duration-150">
+                    <div key={faq.id} className="bg-white rounded-xl border border-slate-100 overflow-hidden transition-all duration-150">
                       <button 
                         onClick={() => setOpenFaqId(isOpen ? null : faq.id)}
                         className="w-full flex items-start justify-between p-4 text-left gap-3"

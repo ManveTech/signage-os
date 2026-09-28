@@ -169,11 +169,11 @@ export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true
         <form onSubmit={handleSaveSchedule} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5 animate-fade-in">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <h2 className="text-sm font-bold text-gray-900">Create Screen Shift Schedule</h2>
-            <button type="button" onClick={() => setShowNew(false)} className="text-gray-400 hover:text-gray-650"><X size={18} /></button>
+            <button type="button" onClick={() => setShowNew(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-semibold">
             <div>
-              <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Target TV Screen</label>
+              <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Target TV Screen</label>
               <CustomSelect 
                 value={selectedScreenId} 
                 onChange={val => setSelectedScreenId(val)} 
@@ -186,7 +186,7 @@ export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true
               />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Playlist to Run</label>
+              <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Playlist to Run</label>
               <CustomSelect 
                 value={selectedPlaylistName} 
                 onChange={val => setSelectedPlaylistName(val)} 
@@ -199,21 +199,21 @@ export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true
               />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Start Date</label>
+              <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Start Date</label>
               <input 
                 type="date" 
                 value={scheduleDate} 
                 onChange={e => setScheduleDate(e.target.value)} 
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-400 text-slate-750 font-semibold" 
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-400 text-slate-700 font-semibold" 
               />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Start Time</label>
+              <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Start Time</label>
               <input 
                 type="time" 
                 value={scheduleTime} 
                 onChange={e => setScheduleTime(e.target.value)} 
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-400 text-slate-750 font-semibold" 
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-400 text-slate-700 font-semibold" 
               />
             </div>
           </div>
@@ -237,9 +237,9 @@ export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true
 
       {/* Existing Schedules */}
       <div className="space-y-3">
-        <h2 className="text-xs font-black uppercase text-slate-455 tracking-widest">Active Schedule Shifts ({scheduledScreens.length})</h2>
+        <h2 className="text-xs font-bold uppercase text-slate-400 tracking-widest">Active Schedule Shifts ({scheduledScreens.length})</h2>
         {scheduledScreens.map(s => (
-          <div key={s.id} className="bg-white rounded-2xl border border-slate-150 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs hover:border-slate-300 transition-all duration-300">
+          <div key={s.id} className="bg-white rounded-2xl border border-slate-100 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs hover:border-slate-300 transition-all duration-300">
             <div className="flex items-start gap-3.5">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
                 <Monitor size={20} />
@@ -249,7 +249,7 @@ export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true
                   <h3 className="text-sm font-extrabold text-slate-800">{s.name}</h3>
                   <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">{s.location}</span>
                 </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-455 font-bold">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 font-bold">
                   <div className="flex items-center gap-1.5">
                     <Play size={12} className="text-emerald-500 shrink-0" />
                     <span>Runs Playlist: <strong className="text-slate-700">{s.schedulePlaylist}</strong></span>
@@ -274,13 +274,13 @@ export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true
                   setScheduleTime(s.scheduleTime || '');
                   setShowNew(true);
                 }} 
-                className="px-3.5 py-2 text-xs font-bold text-slate-655 bg-slate-100 hover:bg-slate-205 rounded-xl transition-all cursor-pointer"
+                className="px-3.5 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all cursor-pointer"
               >
                 Edit
               </button>
               <button 
                 onClick={() => handleCancelSchedule(s)} 
-                className="px-3.5 py-2 text-xs font-bold text-red-655 bg-red-50 hover:bg-red-105 rounded-xl transition-all cursor-pointer"
+                className="px-3.5 py-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all cursor-pointer"
               >
                 Delete
               </button>
@@ -289,7 +289,7 @@ export default function Scheduler({ userEmail = 'admin@demo.com', isAdmin = true
         ))}
 
         {scheduledScreens.length === 0 && (
-          <div className="py-16 text-center bg-white rounded-2xl border border-slate-150">
+          <div className="py-16 text-center bg-white rounded-2xl border border-slate-100">
             <Calendar size={36} className="mx-auto text-slate-200 mb-3" />
             <p className="text-sm font-bold text-gray-500">No scheduled playlist switches</p>
             <p className="text-xs text-gray-400 mt-1">Use the "New Schedule" button to schedule a playlist swap on any screen</p>

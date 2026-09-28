@@ -388,7 +388,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
       )}
 
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Profile</h1>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Profile</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage your user profile and billing integration credentials</p>
       </div>
 
@@ -419,7 +419,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
           <div className="text-center sm:text-left flex-1 min-w-0">
             <h2 className="text-lg font-bold text-gray-900 truncate">{name}</h2>
             <p className="text-xs text-gray-400 font-mono font-semibold">{email}</p>
-            <span className="text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded mt-1 inline-block">
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded mt-1 inline-block">
               Client Console User
             </span>
           </div>
@@ -429,7 +429,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
               type="button"
               onClick={handleRemoveAvatar}
               disabled={isUploadingAvatar}
-              className="px-2.5 py-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-[10px] font-black uppercase transition-colors cursor-pointer"
+              className="px-2.5 py-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-[10px] font-bold uppercase transition-colors cursor-pointer"
             >
               Remove Picture
             </button>
@@ -484,7 +484,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
         <form onSubmit={handleSaveBranding} className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-50 pb-3">
             <Globe size={16} className="text-blue-600" />
-            <h2 className="text-xs font-black uppercase text-gray-900 tracking-wider">Website Custom Branding</h2>
+            <h2 className="text-xs font-bold uppercase text-gray-900 tracking-wider">Website Custom Branding</h2>
           </div>
           
           <p className="text-[11px] text-gray-500 font-semibold leading-relaxed">
@@ -511,7 +511,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
             <div>
               <p className="text-xs font-bold text-gray-900">Company Logo</p>
               <p className="text-[10px] text-gray-400 mt-0.5">PNG or SVG format (recommended)</p>
-              <label className="mt-2 inline-block px-3 py-1.5 text-[10px] text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer font-black uppercase tracking-wider select-none">
+              <label className="mt-2 inline-block px-3 py-1.5 text-[10px] text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer font-bold uppercase tracking-wider select-none">
                 Upload Logo
                 <input 
                   type="file" 
@@ -524,7 +524,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
           </div>
 
           <div className="text-xs">
-            <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-black mb-1.5">Company Name / Website Name</label>
+            <label className="block text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-1.5">Company Name / Website Name</label>
             <input 
               type="text"
               required
@@ -547,7 +547,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
 
       {/* Change Password */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <h2 className="text-xs font-black uppercase text-gray-900 tracking-wider flex items-center gap-2 mb-4"><Lock size={15} className="text-blue-600" /> Change Console Password</h2>
+        <h2 className="text-xs font-bold uppercase text-gray-900 tracking-wider flex items-center gap-2 mb-4"><Lock size={15} className="text-blue-600" /> Change Console Password</h2>
         <div className="space-y-3.5 max-w-sm text-xs font-semibold">
           {[
             { label: 'Current Password', value: currentPassword, setValue: setCurrentPassword },

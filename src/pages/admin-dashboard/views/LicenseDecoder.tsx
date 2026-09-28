@@ -40,7 +40,7 @@ export default function LicenseDecoder() {
     <div className="p-6 space-y-6 max-w-4xl">
       {/* Title */}
       <div>
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight flex items-center gap-2">
           <Shield className="text-blue-600" size={24} /> License Code Decoder
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
@@ -55,7 +55,7 @@ export default function LicenseDecoder() {
         <div className="md:col-span-2 space-y-4">
           <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-6 space-y-5">
             <div className="space-y-2">
-              <label className="block text-xs font-black uppercase text-slate-400 tracking-wider">
+              <label className="block text-xs font-bold uppercase text-slate-400 tracking-wider">
                 Enter Text to Decode
               </label>
               <input
@@ -71,12 +71,12 @@ export default function LicenseDecoder() {
             {inputText && (
               <div className="space-y-3 pt-4 border-t border-slate-100">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                     Decoded Numeric Value
                   </span>
                   <button
                     onClick={handleCopy}
-                    className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-550/10 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-500/10 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
                   >
                     {copied ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
                     {copied ? 'Copied' : 'Copy Code'}
@@ -92,14 +92,14 @@ export default function LicenseDecoder() {
           {/* Breakdown Table */}
           {inputText && (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-6 space-y-3">
-              <h3 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+              <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider">
                 Character Breakdown
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
                 {breakdown.map((item, i) => (
                   <div key={i} className="flex flex-col items-center justify-center p-3.5 bg-slate-50 border border-slate-100 rounded-xl text-center">
                     <span className="text-xs text-slate-400 font-bold">{item.char}</span>
-                    <span className="text-sm font-bold text-slate-850 mt-1 font-mono">{item.code}</span>
+                    <span className="text-sm font-bold text-slate-800 mt-1 font-mono">{item.code}</span>
                   </div>
                 ))}
               </div>
@@ -110,7 +110,7 @@ export default function LicenseDecoder() {
         {/* Right Reference Matrix Column */}
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-6 space-y-4">
-            <h3 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+            <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
               <Info size={14} className="text-slate-400" /> Decode Matrix
             </h3>
             <div className="grid grid-cols-2 gap-2 text-xs font-mono font-bold text-slate-700">

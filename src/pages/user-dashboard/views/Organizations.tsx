@@ -15,7 +15,7 @@ export default function Organizations() {
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Organizations</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Organizations</h1>
           <p className="text-sm text-gray-500 mt-0.5">Multi-tenant organization management</p>
         </div>
       </div>

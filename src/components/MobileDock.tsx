@@ -250,7 +250,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
           {popoverStep === 'choose_scope' && (activePopover === 'screens' || activePopover === 'playlists') && role === 'admin' ? (
             <div>
               <div className="flex items-center justify-between px-1 pb-2.5 mb-2 border-b border-slate-100">
-                <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   Select {activePopover === 'screens' ? 'Screens Scope' : 'Playlists Scope'}
                 </span>
                 <button
@@ -273,7 +273,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
                           <MonitorPlay size={20} />
                         </div>
                         <div>
-                          <p className="text-xs font-black text-blue-950">My Screens</p>
+                          <p className="text-xs font-bold text-blue-950">My Screens</p>
                           <p className="text-[11px] text-blue-600/90 mt-0.5 font-medium">Personal displays, groups & logs</p>
                         </div>
                       </div>
@@ -289,7 +289,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
                           <Monitor size={20} />
                         </div>
                         <div>
-                          <p className="text-xs font-black text-slate-950">Client Screens</p>
+                          <p className="text-xs font-bold text-slate-950">Client Screens</p>
                           <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Organization TV network & oversight</p>
                         </div>
                       </div>
@@ -307,7 +307,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
                           <Tv size={20} />
                         </div>
                         <div>
-                          <p className="text-xs font-black text-blue-950">My Channel</p>
+                          <p className="text-xs font-bold text-blue-950">My Channel</p>
                           <p className="text-[11px] text-blue-600/90 mt-0.5 font-medium">Playlists, studio, scheduler & media</p>
                         </div>
                       </div>
@@ -323,7 +323,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
                           <Building2 size={20} />
                         </div>
                         <div>
-                          <p className="text-xs font-black text-slate-950">Client Assets</p>
+                          <p className="text-xs font-bold text-slate-950">Client Assets</p>
                           <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Organization playlists & client media</p>
                         </div>
                       </div>
@@ -347,7 +347,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
                       <ArrowLeft size={15} />
                     </button>
                   )}
-                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     {activePopover === 'screens' ? (screensScope === 'my' ? 'My Screens' : 'Client Screens') :
                      activePopover === 'playlists' ? (playlistsScope === 'my' ? 'My Channel' : 'Client Assets') :
                      `${activePopover} Subsections`}

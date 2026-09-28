@@ -106,7 +106,7 @@ export default function FeaturesStandOut() {
             <span className="text-accent font-extrabold uppercase tracking-widest text-xs mb-3 block">
               WHY CHOOSE SIGNAGEOS
             </span>
-            <h3 className="text-3xl sm:text-[42px] font-black leading-tight text-white tracking-tight mb-6">
+            <h3 className="text-3xl sm:text-[42px] font-bold leading-tight text-white tracking-tight mb-6">
               Built for Performance.<br />
               <span className="text-accent">Designed for Impact.</span>
             </h3>

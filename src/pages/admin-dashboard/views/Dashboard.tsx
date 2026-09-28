@@ -1,40 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import { Monitor, Wifi, WifiOff, AlertTriangle, Film, List, Key, Clock, Upload, Edit, UserCheck, RefreshCw, HardDrive, Cpu } from 'lucide-react';
+import { Monitor, Wifi, WifiOff, AlertTriangle, Film, List, Key, Clock, Upload, Edit } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
 import { mediaStore } from '../../../lib/mediaStore';
-import { activityFeed } from '../data/mockData';
 import { syncCollection } from '../../../lib/syncHelper';
 
-const colorMap: Record<string, { bg: string; text: string; light: string }> = {
-  blue: { bg: 'bg-blue-600', text: 'text-blue-600', light: 'bg-blue-50' },
-  green: { bg: 'bg-emerald-500', text: 'text-emerald-600', light: 'bg-emerald-50' },
-  red: { bg: 'bg-red-500', text: 'text-red-600', light: 'bg-red-50' },
-  yellow: { bg: 'bg-yellow-500', text: 'text-yellow-600', light: 'bg-yellow-50' },
-  teal: { bg: 'bg-teal-500', text: 'text-teal-700', light: 'bg-teal-50' },
-  orange: { bg: 'bg-orange-500', text: 'text-orange-600', light: 'bg-orange-50' },
+// Accent color per KPI — deliberately neutral (gray) by default. Color is
+// reserved for the cards where it's actually a signal (Online is good news,
+// Offline/Expiring are bad news), not decoration on every tile.
+const accentMap: Record<string, string> = {
+  neutral: 'text-gray-400',
+  good: 'text-emerald-600',
+  bad: 'text-rose-600',
+  warn: 'text-amber-600',
 };
 
 const activityIconMap: Record<string, React.ReactNode> = {
-  screen: <Monitor size={14} />,
-  media: <Upload size={14} />,
-  playlist: <Edit size={14} />,
-  license: <Key size={14} />,
-  user: <UserCheck size={14} />,
-  alert: <AlertTriangle size={14} />,
+  media: <Upload size={13} />,
+  playlist: <Edit size={13} />,
 };
 
 const activityColorMap: Record<string, string> = {
-  screen: 'bg-blue-100 text-blue-600',
-  media: 'bg-teal-100 text-teal-600',
-  playlist: 'bg-yellow-100 text-yellow-600',
-  license: 'bg-purple-100 text-purple-600',
-  user: 'bg-emerald-100 text-emerald-600',
-  alert: 'bg-red-100 text-red-600',
+  media: 'bg-teal-50 text-teal-600',
+  playlist: 'bg-blue-50 text-blue-600',
 };
+
+function timeAgo(iso?: string): string {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 export default function Dashboard({ userEmail = 'admin@demo.com' }: { userEmail?: string } = {}) {
   const [, setRefreshTick] = useState(0);
-  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [alertsPage, setAlertsPage] = useState<number>(1);
 
   // Sync all collections from server on mount
@@ -70,24 +74,28 @@ export default function Dashboard({ userEmail = 'admin@demo.com' }: { userEmail?
   const totalLicenses = licenses.length;
   const expiringLicenses = licenses.filter(l => calculateDaysLeft(l.expiryDate) < 15 && l.status === 'active').length;
 
-  const kpiCards = [
-    { label: 'Total Screens', value: totalScreens.toString(), icon: <Monitor size={20} />, color: 'blue' },
-    { label: 'My Screens', value: myScreens.toString(), icon: <Monitor size={20} />, color: 'teal' },
-    { label: 'Online', value: onlineScreens.toString(), icon: <Wifi size={20} />, color: 'green' },
-    { label: 'Offline', value: offlineScreens.toString(), icon: <WifiOff size={20} />, color: 'red' },
-    { label: 'Total Media', value: totalMedia.toString(), icon: <Film size={20} />, color: 'blue' },
-    { label: 'Active Playlists', value: activePlaylists.toString(), icon: <List size={20} />, color: 'teal' },
-    { label: 'Total Licenses', value: totalLicenses.toString(), icon: <Key size={20} />, color: 'blue' },
-    { label: 'Expiring Licenses', value: expiringLicenses.toString(), icon: <Clock size={20} />, color: 'orange' },
+  const kpiCards: { label: string; value: string; icon: React.ReactNode; accent: keyof typeof accentMap }[] = [
+    { label: 'Total Screens', value: totalScreens.toString(), icon: <Monitor size={15} />, accent: 'neutral' },
+    { label: 'My Screens', value: myScreens.toString(), icon: <Monitor size={15} />, accent: 'neutral' },
+    { label: 'Online', value: onlineScreens.toString(), icon: <Wifi size={15} />, accent: onlineScreens > 0 ? 'good' : 'neutral' },
+    { label: 'Offline', value: offlineScreens.toString(), icon: <WifiOff size={15} />, accent: offlineScreens > 0 ? 'bad' : 'neutral' },
+    { label: 'Total Media', value: totalMedia.toString(), icon: <Film size={15} />, accent: 'neutral' },
+    { label: 'Active Playlists', value: activePlaylists.toString(), icon: <List size={15} />, accent: 'neutral' },
+    { label: 'Total Licenses', value: totalLicenses.toString(), icon: <Key size={15} />, accent: 'neutral' },
+    { label: 'Expiring Licenses', value: expiringLicenses.toString(), icon: <Clock size={15} />, accent: expiringLicenses > 0 ? 'warn' : 'neutral' },
   ];
 
-  const colorGlowMap: Record<string, { borderColor: string; glowColor: string }> = {
-    blue: { borderColor: '#3B82F6', glowColor: 'rgba(59,130,246,0.3)' },
-    teal: { borderColor: '#14B8A6', glowColor: 'rgba(20,184,166,0.3)' },
-    green: { borderColor: '#10B981', glowColor: 'rgba(16,185,129,0.3)' },
-    red: { borderColor: '#EF4444', glowColor: 'rgba(239,68,68,0.3)' },
-    orange: { borderColor: '#F97316', glowColor: 'rgba(249,115,22,0.3)' },
-  };
+  // Recent Activity is built from real creation timestamps on media and
+  // playlists (both already loaded for the KPI cards above) — the panel
+  // used to read from a hardcoded, permanently-empty mock array, so it
+  // never actually showed anything.
+  const recentActivity = [
+    ...media.map(m => ({ id: `media-${m.id}`, type: 'media' as const, text: `"${m.title}" added to the media library`, time: m.createdDate, ts: new Date(m.createdDate || 0).getTime() })),
+    ...playlists.map(p => ({ id: `playlist-${p.id}`, type: 'playlist' as const, text: `Playlist "${p.name}" created`, time: p.createdDate, ts: new Date(p.createdDate || 0).getTime() })),
+  ]
+    .filter(a => Number.isFinite(a.ts) && a.ts > 0)
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 8);
 
   const alerts: { type: 'error' | 'warning' | 'info'; title: string; desc: string; time: string }[] = [];
 
@@ -130,63 +138,48 @@ export default function Dashboard({ userEmail = 'admin@demo.com' }: { userEmail?
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Page title */}
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-0.5">Welcome back — here's your network at a glance</p>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards — a plain number and label, with color reserved for the
+          two tiles where it's actually a signal (Online/Offline/Expiring),
+          not scattered across every tile for decoration. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4">
-        {kpiCards.map(card => {
-          const c = colorMap[card.color] || colorMap.blue;
-          const glow = colorGlowMap[card.color] || colorGlowMap.blue;
-          const isHovered = hoveredCard === card.label;
-          const shadowStyle = isHovered ? {
-            boxShadow: `0 10px 25px -5px ${glow.glowColor}, 0 8px 10px -6px ${glow.glowColor}`,
-            borderColor: glow.borderColor,
-            transform: 'translateY(-2px)'
-          } : {};
-
-          return (
-            <div
-              key={card.label}
-              className="bg-white rounded-xl border border-gray-100 p-3 sm:p-4 transition-all duration-300 cursor-pointer"
-              style={shadowStyle}
-              onMouseEnter={() => setHoveredCard(card.label)}
-              onMouseLeave={() => setHoveredCard(null)}
-            >
-              <div className="mb-2 sm:mb-3">
-                <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg ${c.light} ${c.text} flex items-center justify-center`}>
-                  {card.icon}
-                </div>
-              </div>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900">{card.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5 truncate">{card.label}</p>
+        {kpiCards.map(card => (
+          <div
+            key={card.label}
+            className="bg-white rounded-2xl border border-gray-100 p-4 transition-colors hover:border-gray-200"
+          >
+            <div className={`flex items-center gap-1.5 mb-2.5 ${accentMap[card.accent]}`}>
+              {card.icon}
             </div>
-          );
-        })}
+            <p className="text-2xl font-semibold text-ink-950 tracking-tight">{card.value}</p>
+            <p className="text-[11px] text-gray-500 mt-1 font-medium truncate">{card.label}</p>
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-        {/* Activity Feed */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
+        {/* Recent Activity */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-900">Activity Feed</h2>
-            <button className="text-xs text-blue-600 hover:underline font-medium">View all</button>
+            <h2 className="text-sm font-semibold text-ink-950">Recent Activity</h2>
           </div>
           <div className="space-y-3">
-            {activityFeed.length === 0 ? (
+            {recentActivity.length === 0 ? (
               <div className="py-8 text-center text-xs text-gray-400">
-                No recent activity logged.
+                Nothing added yet — new media and playlists will show up here.
               </div>
             ) : (
-              activityFeed.map(item => (
+              recentActivity.map(item => (
                 <div key={item.id} className="flex items-start gap-3">
                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${activityColorMap[item.type]}`}>
                     {activityIconMap[item.type]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-gray-700 leading-relaxed">{item.text}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{item.time}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{timeAgo(item.time)}</p>
                   </div>
                 </div>
               ))
@@ -195,9 +188,9 @@ export default function Dashboard({ userEmail = 'admin@demo.com' }: { userEmail?
         </div>
 
         {/* Alerts Panel */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-5">
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-900">Alerts</h2>
+            <h2 className="text-sm font-semibold text-ink-950">Alerts</h2>
             <span className="text-xs bg-red-50 text-red-600 font-semibold px-2 py-0.5 rounded-full">{alerts.length}</span>
           </div>
           <div className="space-y-3">

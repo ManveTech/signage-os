@@ -1,11 +1,27 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Instrument+Serif:ital@0;1&family=Outfit:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
   --color-primary: #030408;
   --color-accent: #38BDF8;
   --color-accent-hover: #0EA5E9;
+
+  /* Design tokens — a slightly warmer, less generic-SaaS-blue palette than
+     the Tailwind defaults (blue-600/gray-50) used almost everywhere else. */
+  --color-ink-950: #0B0D14;
+  --color-ink-900: #12141F;
+  --color-ink-800: #1B1E2C;
+  --color-ink-700: #262A3D;
+  --color-brand-50: #EEF4FF;
+  --color-brand-100: #DCE7FF;
+  --color-brand-400: #6B8AFF;
+  --color-brand-500: #4A6CF7;
+  --color-brand-600: #3654E0;
+  --color-brand-700: #2A41B8;
+  --color-glow-cyan: #5EEAD4;
+  --color-glow-violet: #A78BFA;
 }
 
 @layer base {
@@ -26,6 +42,29 @@
 .glass-card {
   @apply bg-white/10 backdrop-blur-md border border-white/20;
 }
+
+/* Subtle film-grain overlay — breaks up flat gradients so dark hero surfaces
+   read as designed material rather than a plain CSS gradient. */
+.grain-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes floatSlow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(2%, -3%) scale(1.05); }
+}
+.animate-floatSlow { animation: floatSlow 14s ease-in-out infinite; }
+
+@keyframes floatSlower {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-3%, 2%) scale(1.08); }
+}
+.animate-floatSlower { animation: floatSlower 18s ease-in-out infinite; }
 
 .btn-primary {
   @apply bg-accent text-primary font-semibold px-6 py-3 rounded-full transition-all hover:bg-accent-hover flex items-center gap-2;

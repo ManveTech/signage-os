@@ -270,7 +270,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
             ) : (
               <form onSubmit={handleFirstLoginSubmit} className="space-y-4">
                 <div>
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-bold block mb-1.5">
                     New Password
                   </label>
                   <input
@@ -283,7 +283,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-bold block mb-1.5">
                     Confirm Password
                   </label>
                   <input

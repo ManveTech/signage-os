@@ -26,7 +26,7 @@ const typeConfig: Record<string, { icon: React.ReactNode; cls: string }> = {
   sync: { icon: <RefreshCw size={13} />, cls: 'bg-blue-100 text-blue-600 border border-blue-200' },
   clear_cache: { icon: <AlertTriangle size={13} />, cls: 'bg-purple-100 text-purple-600 border border-purple-200' },
   error: { icon: <AlertTriangle size={13} />, cls: 'bg-orange-100 text-orange-600 border border-orange-200' },
-  other: { icon: <Terminal size={13} />, cls: 'bg-slate-100 text-slate-650 border border-slate-200' }
+  other: { icon: <Terminal size={13} />, cls: 'bg-slate-100 text-slate-600 border border-slate-200' }
 };
 
 interface Props {
@@ -319,7 +319,7 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my', onNavi
             className={`flex items-center gap-2 px-3.5 py-2 border rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer ${
               confirmClear 
                 ? 'border-red-300 bg-red-50 hover:bg-red-100 text-red-700 animate-pulse' 
-                : 'border-slate-200 hover:border-slate-350 bg-white text-slate-700'
+                : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
             }`}
           >
             <Trash2 size={13} className={clearing ? 'animate-spin' : ''} />
@@ -327,7 +327,7 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my', onNavi
           </button>
           <button 
             onClick={handleRefresh} 
-            className="flex items-center gap-2 px-3.5 py-2 border border-slate-200 hover:border-slate-350 bg-white rounded-xl text-xs font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer animate-fadeIn"
+            className="flex items-center gap-2 px-3.5 py-2 border border-slate-200 hover:border-slate-300 bg-white rounded-xl text-xs font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer animate-fadeIn"
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh Logs
           </button>
@@ -343,7 +343,7 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my', onNavi
                 key={f} 
                 onClick={() => setTypeFilter(f)} 
                 className={`px-3 py-2 text-xs font-bold rounded-xl capitalize transition-colors cursor-pointer ${
-                  typeFilter === f ? 'bg-blue-600 text-white shadow' : 'bg-slate-50 text-slate-650 hover:bg-slate-100 border border-slate-200/50'
+                  typeFilter === f ? 'bg-blue-600 text-white shadow' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/50'
                 }`}
               >
                 {f === 'clear_cache' ? 'Clear Cache' : f}
@@ -390,8 +390,8 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my', onNavi
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={totalColumns} className="px-5 py-12 text-center text-slate-455 font-bold">
-                    <FileText size={24} className="mx-auto text-slate-250 mb-2" />
+                  <td colSpan={totalColumns} className="px-5 py-12 text-center text-slate-400 font-bold">
+                    <FileText size={24} className="mx-auto text-slate-200 mb-2" />
                     No system logs available matching this filter
                   </td>
                 </tr>
@@ -434,7 +434,7 @@ export default function Logs({ userEmail = 'priya@demo.com', mode = 'my', onNavi
                   })}
                   {hasMore && (
                     <tr ref={loadMoreRef}>
-                      <td colSpan={totalColumns} className="px-5 py-4 text-center text-slate-450 font-bold">
+                      <td colSpan={totalColumns} className="px-5 py-4 text-center text-slate-400 font-bold">
                         {loadingMore ? (
                           <span className="flex items-center justify-center gap-2">
                             <RefreshCw size={14} className="animate-spin" /> Loading more logs...

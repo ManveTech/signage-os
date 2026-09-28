@@ -1,15 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Monitor, Wifi, WifiOff, AlertTriangle, Film, List, Key, Clock, 
-  Upload, Edit, UserCheck, RefreshCw, HardDrive, Cpu, CreditCard, ShieldAlert 
+import {
+  Monitor, AlertTriangle, Film, List, Key,
+  Upload, Edit, UserCheck, HardDrive, Cpu
 } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
 import { mediaStore } from '../../../lib/mediaStore';
 import { syncCollection } from '../../../lib/syncHelper';
 
+function timeAgo(iso?: string): string {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?: string }) {
   const [, setRefreshTick] = useState(0);
-  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   // Sync all relevant collections from server on mount
   useEffect(() => {
@@ -115,13 +127,17 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
     });
   }
 
-  // 4. Activity Feed (Mocked based on user actions)
+  // 4. Recent Activity — built from real creation timestamps on this user's
+  // own media and playlists, rather than the fabricated "5 min ago" /
+  // "20 min ago" placeholder events this previously showed regardless of
+  // whether anything had actually happened.
   const myActivityFeed = [
-    { text: `Welcome back. Managed profile associated with "${userEmail}"`, time: 'Just now', type: 'user' },
-    ...(myScreens.length > 0 ? [{ text: `Screen "${myScreens[0].name}" reported normal heartbeat signal`, time: '5 min ago', type: 'screen' }] : []),
-    ...(myMedia.length > 0 ? [{ text: `Media asset "${myMedia[0].title}" verified inside player cache`, time: '20 min ago', type: 'media' }] : []),
-    ...(myPlaylists.length > 0 ? [{ text: `Active Playlist "${myPlaylists[0].name}" sync broadcast succeeded`, time: '1 hour ago', type: 'playlist' }] : []),
-  ];
+    ...myMedia.map(m => ({ id: `media-${m.id}`, text: `"${m.title}" added to your media library`, time: m.createdDate, ts: new Date(m.createdDate || 0).getTime(), type: 'media' as const })),
+    ...myPlaylists.map(p => ({ id: `playlist-${p.id}`, text: `Playlist "${p.name}" created`, time: p.createdDate, ts: new Date(p.createdDate || 0).getTime(), type: 'playlist' as const })),
+  ]
+    .filter(a => Number.isFinite(a.ts) && a.ts > 0)
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 8);
 
   const activityIconMap: Record<string, React.ReactNode> = {
     screen: <Monitor size={14} />,
@@ -141,19 +157,14 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 text-left">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-0.5">Welcome back — manage your screens and licenses at a glance</p>
       </div>
 
       {/* Main KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Screen Network & Playbacks */}
-        <div 
-          className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-          style={hoveredCard === 'screens' ? { boxShadow: '0 10px 25px -5px rgba(34,197,94,0.25), 0 8px 10px -6px rgba(34,197,94,0.25)', borderColor: '#22C55E' } : {}}
-          onMouseEnter={() => setHoveredCard('screens')}
-          onMouseLeave={() => setHoveredCard(null)}
-        >
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-colors hover:border-slate-300">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
               <Monitor size={20} />
@@ -163,14 +174,14 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
             </span>
           </div>
           <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
-            <h3 className="text-2xl font-black text-slate-800">
+            <h3 className="text-2xl font-bold text-slate-800">
               {myScreens.length} <span className="text-xs text-slate-400 font-semibold">of {deviceLimit} slots</span>
             </h3>
             <p className="text-xs text-slate-500 font-medium">
-              Status: <span className="font-bold text-green-600">{uptimeText}</span>
+              Status: <span className="font-semibold text-green-600">{uptimeText}</span>
             </p>
             <div className="pt-2 border-t border-slate-100 mt-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Campaign Loops</p>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Active Campaign Loops</p>
               <p className="text-xs text-slate-700 font-semibold truncate mt-0.5" title={playlistSummary}>
                 {playlistSummary}
               </p>
@@ -179,12 +190,7 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
         </div>
 
         {/* License Profile */}
-        <div 
-          className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-          style={hoveredCard === 'license' ? { boxShadow: '0 10px 25px -5px rgba(59,130,246,0.25), 0 8px 10px -6px rgba(59,130,246,0.25)', borderColor: '#3B82F6' } : {}}
-          onMouseEnter={() => setHoveredCard('license')}
-          onMouseLeave={() => setHoveredCard(null)}
-        >
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-colors hover:border-slate-300">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
               <Key size={20} />
@@ -194,15 +200,15 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
             </span>
           </div>
           <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
-            <h3 className="text-lg font-black text-slate-850 truncate" title={userLicense?.id}>
+            <h3 className="text-lg font-bold text-slate-800 truncate" title={userLicense?.id}>
               {userLicense?.id || 'NO LICENSE'}
             </h3>
             <p className="text-xs text-slate-500 font-medium">
               Slots: {deviceLimit} · Storage: {storageLimitGb} GB
             </p>
             <div className="pt-2 border-t border-slate-100 mt-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Expires In</p>
-              <p className="text-xs text-blue-600 font-bold mt-0.5">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Expires In</p>
+              <p className="text-xs text-blue-600 font-semibold mt-0.5">
                 {daysUntilExpiry} days left ({userLicense?.expiryDate})
               </p>
             </div>
@@ -210,12 +216,7 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
         </div>
 
         {/* Storage Vault Stats */}
-        <div 
-          className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-          style={hoveredCard === 'storage' ? { boxShadow: '0 10px 25px -5px rgba(139,92,246,0.25), 0 8px 10px -6px rgba(139,92,246,0.25)', borderColor: '#8B5CF6' } : {}}
-          onMouseEnter={() => setHoveredCard('storage')}
-          onMouseLeave={() => setHoveredCard(null)}
-        >
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-colors hover:border-slate-300">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
               <HardDrive size={20} />
@@ -225,14 +226,14 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
             </span>
           </div>
           <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
-            <h3 className="text-2xl font-black text-slate-800">
+            <h3 className="text-2xl font-bold text-slate-800">
               {storageUsedMb} <span className="text-xs text-slate-400 font-semibold">MB of {storageLimitGb} GB</span>
             </h3>
             <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-100 mt-1">
-              <div className="h-full bg-purple-500 rounded-full animate-pulse" style={{ width: `${storageUsedPercent}%` }} />
+              <div className="h-full bg-purple-500 rounded-full transition-all duration-500" style={{ width: `${storageUsedPercent}%` }} />
             </div>
             <div className="pt-2 border-t border-slate-100 mt-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Asset Pool</p>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Asset Pool</p>
               <p className="text-xs text-slate-700 font-semibold mt-0.5">
                 {myMedia.length} Media Files Uploaded
               </p>
@@ -241,12 +242,7 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
         </div>
 
         {/* Diagnostics & Warnings */}
-        <div 
-          className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 shadow-xs flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 cursor-pointer"
-          style={hoveredCard === 'diagnostics' ? { boxShadow: '0 10px 25px -5px rgba(245,158,11,0.25), 0 8px 10px -6px rgba(245,158,11,0.25)', borderColor: '#F59E0B' } : {}}
-          onMouseEnter={() => setHoveredCard('diagnostics')}
-          onMouseLeave={() => setHoveredCard(null)}
-        >
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-colors hover:border-slate-300">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
               <Cpu size={20} />
@@ -256,15 +252,15 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
             </span>
           </div>
           <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
-            <h3 className="text-2xl font-black text-slate-800">
+            <h3 className="text-2xl font-bold text-slate-800">
               {offlineScreens} <span className="text-xs text-slate-400 font-semibold">offline</span>
             </h3>
             <p className="text-xs text-slate-500 font-medium">
               Diagnostics check: {warningScreens} warning(s)
             </p>
             <div className="pt-2 border-t border-slate-100 mt-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Payment Status</p>
-              <p className="text-xs text-slate-750 font-semibold mt-0.5">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Payment Status</p>
+              <p className="text-xs text-slate-700 font-semibold mt-0.5">
                 {unpaidInvoice ? `Overdue: ₹${unpaidInvoice.amount.toLocaleString()}` : 'No Pending Dues'}
               </p>
             </div>
@@ -280,11 +276,11 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
               <Film size={16} />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-slate-800">Media</p>
+              <p className="text-xs font-semibold text-slate-800">Media</p>
               <p className="text-[10px] text-slate-400 truncate hidden sm:block">Total uploaded image/video files</p>
             </div>
           </div>
-          <span className="text-lg font-black text-slate-700 self-end sm:self-auto">{myMedia.length}</span>
+          <span className="text-lg font-bold text-slate-700 self-end sm:self-auto">{myMedia.length}</span>
         </div>
 
         <div className="bg-slate-50 rounded-2xl border border-slate-200/60 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 sm:justify-between">
@@ -293,11 +289,11 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
               <List size={16} />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-slate-800">Loops</p>
+              <p className="text-xs font-semibold text-slate-800">Loops</p>
               <p className="text-[10px] text-slate-400 truncate hidden sm:block">Total play sequences built</p>
             </div>
           </div>
-          <span className="text-lg font-black text-slate-700 self-end sm:self-auto">{myPlaylists.length}</span>
+          <span className="text-lg font-bold text-slate-700 self-end sm:self-auto">{myPlaylists.length}</span>
         </div>
       </div>
 
@@ -306,28 +302,34 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
         {/* Activity Log */}
         <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3.5 sm:space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="text-xs font-black uppercase tracking-wider text-slate-850">Recent System Activity</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-800">Recent Activity</h2>
           </div>
           <div className="space-y-3.5">
-            {myActivityFeed.map((item, idx) => (
-              <div key={idx} className="flex items-start gap-3">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${activityColorMap[item.type]}`}>
-                  {activityIconMap[item.type]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-slate-750 font-medium leading-relaxed">{item.text}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{item.time}</p>
-                </div>
+            {myActivityFeed.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                Nothing added yet — new media and playlists will show up here.
               </div>
-            ))}
+            ) : (
+              myActivityFeed.map(item => (
+                <div key={item.id} className="flex items-start gap-3">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${activityColorMap[item.type]}`}>
+                    {activityIconMap[item.type]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-slate-700 font-medium leading-relaxed">{item.text}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{timeAgo(item.time)}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
         {/* Alerts & Critical Warnings */}
         <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-3.5 sm:space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="text-xs font-black uppercase tracking-wider text-slate-850">Alerts & Notifications</h2>
-            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-800">Alerts & Notifications</h2>
+            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
               myAlerts.length > 0 ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-slate-50 text-slate-400'
             }`}>
               {myAlerts.length} Active

@@ -416,6 +416,20 @@ export function createCrudRouter(collectionName: string) {
         delete req.body.assignedToUserEmail;
         delete req.body.createdBy;
         delete req.body.orgId;
+
+        // A screen's groupId was never validated against the target group's
+        // owner — a client could PATCH their own screen (which passes the
+        // isOwnRecord check above) with any screen_group id, including one
+        // belonging to a different organization, and silently move their
+        // screen into another tenant's group. Require the target group to
+        // resolve to this caller's own org before the assignment is allowed.
+        if (collectionName === 'screens' && req.body.groupId) {
+          const targetGroup = await retryWithBackoff(() => pb.collection('screen_groups').getOne(req.body.groupId)).catch(() => null);
+          const callerOrgId = await resolveUserOrgId(req.user?.email);
+          if (!targetGroup || targetGroup.orgId !== (callerOrgId || '')) {
+            return res.status(403).json({ error: 'Access denied: that group does not belong to your organization.' });
+          }
+        }
       }
 
       const body = { ...req.body };

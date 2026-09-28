@@ -14,7 +14,7 @@ export default function Settings({ activeTab: initTab = 'General' }: { activeTab
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Settings</h1>
         <p className="text-sm text-gray-500 mt-0.5">Configure your SignageOS platform</p>
       </div>
 

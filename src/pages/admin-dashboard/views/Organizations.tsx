@@ -183,7 +183,7 @@ export default function Organizations() {
     return (
       <div className="p-4 sm:p-5 space-y-4 sm:space-y-5 text-xs text-slate-600 border-t border-gray-100 bg-slate-50/50">
         <div className="space-y-2">
-          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Assigned License profile</h3>
+          <h3 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Assigned License profile</h3>
           {associatedLic ? (
             <div className="border border-blue-100 bg-blue-50/30 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -191,10 +191,10 @@ export default function Organizations() {
                   <Key size={14} className="text-blue-600" />
                   <span className="font-mono font-bold text-slate-900 text-sm">{associatedLic.id}</span>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${
+                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
                   associatedLic.status === 'active' 
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-250' 
-                    : 'bg-rose-50 text-rose-700 border-rose-250'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                    : 'bg-rose-50 text-rose-700 border-rose-200'
                 }`}>
                   {associatedLic.status}
                 </span>
@@ -202,15 +202,15 @@ export default function Organizations() {
           
               <div className="grid grid-cols-2 gap-y-2 text-xs">
                 <div>
-                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">License Name</p>
+                  <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">License Name</p>
                   <p className="font-bold text-slate-800 mt-0.5 truncate">{associatedLic.name}</p>
                 </div>
                 <div>
-                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Expiry Date</p>
+                  <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Expiry Date</p>
                   <p className="font-mono font-bold text-slate-800 mt-0.5">{associatedLic.expiryDate}</p>
                 </div>
                 <div>
-                  <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Billing structure</p>
+                  <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Billing structure</p>
                   <p className="font-bold text-slate-800 mt-0.5 capitalize">₹{associatedLic.price.toLocaleString()} / {associatedLic.tenure}</p>
                 </div>
               </div>
@@ -224,8 +224,8 @@ export default function Organizations() {
           )}
         </div>
 
-        <div className="space-y-3.5 pt-1 border-t border-gray-150">
-          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Device & Storage Allocation</h3>
+        <div className="space-y-3.5 pt-1 border-t border-gray-100">
+          <h3 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Device & Storage Allocation</h3>
           
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
@@ -261,8 +261,8 @@ export default function Organizations() {
 
         </div>
 
-        <div className="space-y-2 pt-3.5 border-t border-gray-150">
-          <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">White Label & Custom Domain</h3>
+        <div className="space-y-2 pt-3.5 border-t border-gray-100">
+          <h3 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">White Label & Custom Domain</h3>
           <div>
             <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Custom Domain / Hostname</label>
             <input 
@@ -301,7 +301,7 @@ export default function Organizations() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Organizations</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Organizations</h1>
           <p className="text-sm text-gray-500 mt-0.5">Multi-tenant client organization directory and quotas</p>
         </div>
         <button
@@ -348,7 +348,7 @@ export default function Organizations() {
                     </div>
 
                     <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider border ${statusColors[org.subscriptionStatus]}`}>
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider border ${statusColors[org.subscriptionStatus]}`}>
                         {org.subscriptionStatus}
                       </span>
                       <ChevronRight size={16} className={`text-slate-400 transition-transform ${isActive ? 'rotate-90 text-blue-600' : ''}`} />
@@ -469,7 +469,7 @@ export default function Organizations() {
                     type="date"
                     value={renewalDate}
                     onChange={e => setRenewalDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-blue-500 bg-slate-50 font-semibold text-slate-850"
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg outline-none focus:border-blue-500 bg-slate-50 font-semibold text-slate-800"
                   />
                 </div>
               </div>

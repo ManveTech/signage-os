@@ -27,7 +27,7 @@ const getStatusColors = (status: string) => {
       return {
         borderColor: '#10B981', // emerald-500
         textColor: 'text-emerald-700',
-        badgeBg: 'bg-emerald-550/10',
+        badgeBg: 'bg-emerald-500/10',
         glowColor: 'rgba(16, 185, 129, 0.2)',
         label: 'Online'
       };
@@ -35,7 +35,7 @@ const getStatusColors = (status: string) => {
       return {
         borderColor: '#10B981', // emerald-500
         textColor: 'text-emerald-700',
-        badgeBg: 'bg-emerald-550/10',
+        badgeBg: 'bg-emerald-500/10',
         glowColor: 'rgba(16, 185, 129, 0.2)',
         label: 'Active'
       };
@@ -117,7 +117,7 @@ const renderStatusBadge = (screenOrStatus: any) => {
   const info = getStatusColors(status);
   return (
     <span 
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-2xs ${info.badgeBg} ${info.textColor}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border backdrop-blur-md shadow-2xs ${info.badgeBg} ${info.textColor}`}
       style={{ borderColor: `${info.borderColor}20` }}
     >
       {status === 'active' || status === 'online' ? (
@@ -483,7 +483,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">My Screens</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">My Screens</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {screens.length} screen{screens.length !== 1 ? 's' : ''} assigned to your account
           </p>
@@ -497,7 +497,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                   setSelectedIds([]);
                 }}
                 className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-semibold transition-all shadow-sm cursor-pointer ${
-                  isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                  isSelectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
                 }`}
               >
                 <CheckCircle size={15} />
@@ -628,7 +628,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
             return (
               <div 
                 key={screen.id} 
-                className="bg-white rounded-3xl border border-slate-150 transition-all duration-300 group flex flex-col justify-between hover:border-slate-200 relative"
+                className="bg-white rounded-3xl border border-slate-100 transition-all duration-300 group flex flex-col justify-between hover:border-slate-200 relative"
                 style={shadowStyle}
                 onMouseEnter={() => setHoveredScreen(screen.id)}
                 onMouseLeave={() => { if (openMenu !== screen.id) setHoveredScreen(null); }}
@@ -642,7 +642,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                       type="checkbox"
                       checked={selectedIds.includes(screen.id)}
                       onChange={() => {}}
-                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-550 cursor-pointer shadow-sm"
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm"
                     />
                   </div>
                 )}
@@ -656,53 +656,27 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
 
                 {/* 3-dot menu removed */}
 
-                {/* Visual Preview */}
-                <div className="relative h-44 overflow-hidden flex items-center justify-center p-4 bg-slate-900 border-b border-slate-800 rounded-t-3xl">
-                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:1rem_1rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 z-0" />
-                  <div className="flex flex-col items-center justify-center h-full w-full relative z-10 pt-2">
-                    <div className="w-[85%] aspect-[16/10] rounded-xl border-2 flex flex-col justify-between relative shadow-2xl transition-all duration-300 overflow-hidden bg-slate-950 border-slate-800 group-hover:border-slate-700/80">
-                      {screen.thumbnail ? (
-                        <div className="absolute inset-0 bg-cover bg-center z-0 transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url(${screen.thumbnail})` }} />
-                      ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 z-0" />
-                      )}
-                      <div className="absolute inset-0 bg-slate-950/40 z-10 group-hover:bg-slate-950/20 transition-colors duration-300" />
-                      <div className="relative z-20 p-1.5 flex justify-between items-center opacity-70">
-                        <div className="flex gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500/80" />
-                          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500/80" />
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500/80" />
-                        </div>
-                        <div className="w-12 h-1 rounded-full bg-white/20" />
-                      </div>
-                      <div className="relative z-20 flex flex-col items-center justify-center flex-1">
-                        {!screen.thumbnail && (
-                          <Monitor size={24} className="text-white/60 transition-transform duration-300 group-hover:scale-110" />
-                        )}
-                        {screen.playlist !== 'None' && (
-                          <span className="mt-1 px-1.5 py-0.5 rounded bg-blue-600/90 text-[7px] text-white font-bold tracking-widest uppercase animate-pulse">
-                            Playing
-                          </span>
-                        )}
-                      </div>
-                      <div className="relative z-20 bg-slate-950/90 border-t border-white/5 py-1.5 px-2 flex justify-end items-center text-[8px] text-white/50">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[7px] uppercase font-mono text-white/40">{screen.status}</span>
-                          <span className={`h-1.5 w-1.5 rounded-full shadow-xs ${
-                            screen.status === 'active' || screen.status === 'online'
-                              ? 'bg-emerald-500 shadow-emerald-500/50 animate-pulse'
-                              : screen.status === 'offline'
-                              ? 'bg-rose-500 shadow-rose-500/50'
-                              : screen.status === 'pairing'
-                              ? 'bg-amber-500 shadow-amber-500/50'
-                              : 'bg-slate-500'
-                          }`} />
-                        </div>
-                      </div>
+                {/* Visual Preview — the live screenshot (or a plain
+                    placeholder) filling the card, not a decorative
+                    monitor-on-a-stand illustration around it. */}
+                <div className="relative h-40 overflow-hidden rounded-t-3xl bg-ink-950">
+                  {screen.thumbnail ? (
+                    <div
+                      className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-[1.03]"
+                      style={{ backgroundImage: `url(${screen.thumbnail})` }}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Monitor size={26} className="text-white/15" />
                     </div>
-                    <div className="w-3 h-2 bg-gradient-to-b from-slate-700 to-slate-800 border-x border-slate-800" />
-                    <div className="w-14 h-1 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 rounded-t border-t border-x border-slate-800 shadow-sm" />
-                  </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-ink-950/0 to-ink-950/0" />
+                  {screen.playlist !== 'None' && (
+                    <span className="absolute bottom-2.5 left-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 backdrop-blur-sm text-[9px] text-white/80 font-semibold uppercase tracking-wide">
+                      <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+                      Playing
+                    </span>
+                  )}
                 </div>
 
                 {/* Details Section */}
@@ -722,7 +696,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     const storageInfo = getScreenStorageInfo(screen);
                     return (
                       <div className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <div className="flex justify-between text-[9.5px] font-bold text-slate-450 uppercase tracking-wide">
+                        <div className="flex justify-between text-[9.5px] font-bold text-slate-400 uppercase tracking-wide">
                           <span>Signage Storage</span>
                           <span>{storageInfo.friendlySize} / {storageInfo.limitGb} GB</span>
                         </div>
@@ -756,7 +730,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                             e.stopPropagation();
                             handleRemoveScreenFromGroup(screen);
                           }}
-                          className="absolute top-2 right-2 px-1.5 py-0.5 text-[9px] bg-red-100 hover:bg-red-200 text-red-750 border border-red-200 rounded cursor-pointer font-bold opacity-0 group-hover/group-badge:opacity-100 transition-opacity flex items-center gap-0.5"
+                          className="absolute top-2 right-2 px-1.5 py-0.5 text-[9px] bg-red-100 hover:bg-red-200 text-red-700 border border-red-200 rounded cursor-pointer font-bold opacity-0 group-hover/group-badge:opacity-100 transition-opacity flex items-center gap-0.5"
                           title="Remove from group"
                         >
                           Remove Group
@@ -765,7 +739,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     );
                   })() : (
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Active Loop Playlist</label>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Active Loop Playlist</label>
                       <div className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5">
                         {screen.playlist || 'Normal'}
                       </div>
@@ -782,7 +756,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                   <div className="flex flex-wrap items-center gap-1 pt-2 border-t border-slate-100">
                     <button
                       onClick={() => setEditScreen({ ...screen })}
-                      className="p-1 text-blue-600 bg-blue-550/10 hover:bg-blue-550/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer"
+                      className="p-1 text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer"
                       title="Edit Screen"
                     >
                       <Edit size={13} />
@@ -898,7 +872,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                           type="checkbox"
                           checked={selectedIds.includes(screen.id)}
                           onChange={() => toggleSelect(screen.id)}
-                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-550 cursor-pointer"
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                         />
                       </td>
                     )}
@@ -955,7 +929,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                       <div className="flex flex-wrap items-center justify-end gap-1">
                         <button
                           onClick={() => setEditScreen({ ...screen })}
-                          className="p-1 text-blue-600 bg-blue-550/10 hover:bg-blue-550/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer"
+                          className="p-1 text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer"
                           title="Edit Screen"
                         >
                           <Edit size={13} />
@@ -1113,7 +1087,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     type="checkbox"
                     checked={!!editScreen.cameraMountEnabled}
                     onChange={e => setEditScreen(p => p && ({ ...p, cameraMountEnabled: e.target.checked }))}
-                    className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-550 accent-blue-600 cursor-pointer"
+                    className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                   />
                 </div>
               )}
@@ -1131,7 +1105,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     <button
                       type="button"
                       onClick={() => setEditScreen(p => p && ({ ...p, groupId: null }))}
-                      className="w-full mt-1.5 py-2 text-xs font-semibold text-red-650 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full mt-1.5 py-2 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <FolderMinus size={13} />
                       Remove Screen from Group
@@ -1165,7 +1139,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                             }
                           });
                         }}
-                        className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-550 accent-blue-600 cursor-pointer"
+                        className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                       />
                     </div>
                     {editScreen.schedulePlaylist !== undefined && (
@@ -1404,7 +1378,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                             <p className="text-[10px] text-gray-400 mt-0.5">{pl.mediaIds?.length || 0} items · {pl.scheduleStatus}</p>
                           </div>
                           {assignScreen.playlistId === pl.id && (
-                            <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Active</span>
+                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Active</span>
                           )}
                         </button>
                       ))}

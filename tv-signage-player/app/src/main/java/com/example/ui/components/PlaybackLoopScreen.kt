@@ -132,7 +132,19 @@ fun PlaybackLoopScreen(
                 asset = activeAsset,
                 sharedExoPlayer = sharedExoPlayer,
                 currentIndex = currentIndex,
-                loopSingleVideo = playlist.size == 1 && playlistLoop
+                // A single-video playlist has nowhere else to advance to —
+                // (currentIndex + 1) % 1 always yields the same index, so the
+                // state never structurally changes and the LaunchedEffect
+                // below that would normally re-seek/replay the video never
+                // re-fires. With playlistLoop=false (a real toggle in the
+                // dashboard's playlist editor) this froze the screen on the
+                // last frame forever once the video ended, with no recovery
+                // short of a playlist change or device reboot. Every
+                // multi-asset playlist already always wraps back to index 0
+                // regardless of playlistLoop (see SignageViewModel's rotation
+                // loop) — a single-asset "playlist" should behave the same
+                // way, so this ignores playlistLoop entirely here.
+                loopSingleVideo = playlist.size == 1
             )
         }
 

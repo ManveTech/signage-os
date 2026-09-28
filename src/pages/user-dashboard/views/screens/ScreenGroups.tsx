@@ -386,7 +386,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Screen Groups</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Screen Groups</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage bulk screen assignments and actions</p>
         </div>
         <button onClick={() => setShowNewGroup(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
@@ -445,10 +445,10 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
                   <button onClick={() => setAddScreensTo(group.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium">
                     <UserPlus size={12} /> Add Screens
                   </button>
-                  <button onClick={() => handleBulkClearCache(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-purple-650 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors font-medium">
+                  <button onClick={() => handleBulkClearCache(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors font-medium">
                     <Eraser size={12} /> Bulk Clear Cache
                   </button>
-                  <button onClick={() => handleBulkForceSync(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-650 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors font-medium">
+                  <button onClick={() => handleBulkForceSync(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors font-medium">
                     <RefreshCw size={12} /> Bulk Force Sync
                   </button>
                   <button onClick={() => handleStartPlaylistAssignDirect(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium">
@@ -591,7 +591,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
                   type="checkbox"
                   checked={!!editGroup.clear_cache}
                   onChange={e => setEditGroup(p => p && ({ ...p, clear_cache: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                 />
               </div>
 
@@ -604,7 +604,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
                   type="checkbox"
                   checked={!!editGroup.force_sync}
                   onChange={e => setEditGroup(p => p && ({ ...p, force_sync: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                 />
               </div>
               <div className="space-y-3">
@@ -685,7 +685,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
                 Delete Group
               </button>
               <div className="flex-1" />
-              <button onClick={() => setEditGroup(null)} className="px-4 py-2.5 text-xs font-semibold text-gray-650 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
+              <button onClick={() => setEditGroup(null)} className="px-4 py-2.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
               <button onClick={handleEditSave} className="px-5 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"><Check size={14} /> Save Changes</button>
             </div>
           </div>
@@ -744,7 +744,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
                   type="checkbox"
                   checked={!!newGroup.clear_cache}
                   onChange={e => setNewGroup(p => ({ ...p, clear_cache: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                 />
               </div>
 
@@ -757,7 +757,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
                   type="checkbox"
                   checked={!!newGroup.force_sync}
                   onChange={e => setNewGroup(p => ({ ...p, force_sync: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-650 focus:ring-blue-550 accent-blue-650 cursor-pointer"
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                 />
               </div>
               <div className="space-y-3">

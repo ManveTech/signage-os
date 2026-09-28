@@ -144,7 +144,7 @@ export default function Process({ onOpenQuote }: ProcessProps) {
                 id={`process-step-card-${i}`}
               >
                 {/* Step Circle Badge */}
-                <div className="absolute top-6 right-8 text-4xl font-black text-slate-200 group-hover:text-slate-800 transition-colors select-none leading-none">
+                <div className="absolute top-6 right-8 text-4xl font-bold text-slate-200 group-hover:text-slate-800 transition-colors select-none leading-none">
                   {step.step}
                 </div>
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Monitor, Film, Calendar, Trash2, Play, Pause, Tv, CheckSquare, Square, FolderOpen, AlertTriangle, Edit } from 'lucide-react';
 import { mediaStore, Playlist, Screen } from '../../../../lib/mediaStore';
-import { mockGroups } from '../../data/mockData';
+import { syncCollection } from '../../../../lib/syncHelper';
 
 const scheduleColors: Record<string, string> = {
   Running: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -17,12 +17,14 @@ interface Props {
 export default function AllPlaylists({ onNavigate, userEmail }: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [screens, setScreens] = useState<Screen[]>([]);
+  const [groups, setGroups] = useState<any[]>(() => mediaStore.getScreenGroups());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-
 
   useEffect(() => {
     loadData();
+    syncCollection('screen_groups', 'signageos_groups').then(serverGroups => {
+      if (serverGroups.length > 0) setGroups(serverGroups);
+    });
   }, [userEmail]);
 
   const loadData = () => {
@@ -86,12 +88,12 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Signage Playlists</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Signage Playlists</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage and organize layout broadcasting for your screens</p>
         </div>
         <button
           onClick={() => onNavigate('playlists-create')}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
         >
           <Plus size={14} /> Create Playlist
         </button>
@@ -101,7 +103,7 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {playlists.map(playlist => {
           const assignedScreensCount = screens.filter(s => s.playlistId === playlist.id).length;
-          const assignedGroups = mockGroups.filter(g => g.playlist === playlist.name);
+          const assignedGroups = groups.filter(g => g.playlist === playlist.name);
           const assignedIndividualScreens = screens.filter(s =>
             !s.groupId && (s.playlist === playlist.name || s.playlistId === playlist.id)
           );
@@ -120,7 +122,7 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
                   </button>
                   <div className="min-w-0">
                     <h3 className="text-xs font-bold text-slate-800 truncate" title={playlist.name}>{playlist.name}</h3>
-                    <p className="text-[10px] text-gray-450 mt-0.5 truncate">Created: {playlist.createdDate}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">Created: {playlist.createdDate}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -148,11 +150,11 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
               <div className="grid grid-cols-2 gap-2 bg-slate-50/55 p-2 sm:p-2.5 rounded-xl border border-slate-100 text-center">
                 <div>
                   <p className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Media Slides</p>
-                  <p className="text-sm font-black text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Film size={11} className="text-gray-455" /> {playlist.mediaCount}</p>
+                  <p className="text-sm font-bold text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Film size={11} className="text-gray-400" /> {playlist.mediaCount}</p>
                 </div>
                 <div>
                   <p className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Active Screens</p>
-                  <p className="text-sm font-black text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Monitor size={11} className="text-gray-455" /> {assignedScreensCount}</p>
+                  <p className="text-sm font-bold text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Monitor size={11} className="text-gray-400" /> {assignedScreensCount}</p>
                 </div>
               </div>
 
@@ -198,10 +200,10 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
         })}
 
         {playlists.length === 0 && (
-          <div className="col-span-full py-16 text-center text-slate-450 space-y-2 border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
-            <FolderOpen size={36} className="mx-auto text-slate-350" />
+          <div className="col-span-full py-16 text-center text-slate-400 space-y-2 border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
+            <FolderOpen size={36} className="mx-auto text-slate-300" />
             <p className="text-xs font-semibold">No playlists created yet</p>
-            <p className="text-[10px] text-slate-450">Click "Create Playlist" above to set up your first media channel timeline.</p>
+            <p className="text-[10px] text-slate-400">Click "Create Playlist" above to set up your first media channel timeline.</p>
           </div>
         )}
       </div>

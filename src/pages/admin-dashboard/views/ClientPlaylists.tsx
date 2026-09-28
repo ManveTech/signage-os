@@ -338,7 +338,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
           {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Client Playlists</h1>
+              <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Client Playlists</h1>
               <p className="text-sm text-gray-500 mt-0.5">Manage digital playlists created by or assigned to client screens</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -350,7 +350,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                       setSelectedIds([]);
                     }}
                     className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer ${
-                      isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                      isSelectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
                     }`}
                   >
                     <CheckCircle size={14} />
@@ -359,7 +359,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                   {isSelectionMode && selectedIds.length > 0 && (
                     <button
                       onClick={() => setDeleteConfirm(true)}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-650 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
                     >
                       <Trash size={14} />
                       Delete Selected ({selectedIds.length})
@@ -369,7 +369,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
               )}
               <button 
                 onClick={handleOpenCreateMode}
-                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
               >
                 <Plus size={14} /> Create Client Playlist
               </button>
@@ -433,7 +433,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                         type="checkbox"
                         checked={selectedIds.includes(playlist.id)}
                         onChange={() => {}}
-                        className="w-5 h-5 rounded border-slate-350 text-blue-600 focus:ring-blue-550 cursor-pointer shadow-sm"
+                        className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm"
                       />
                     </div>
                   )}
@@ -458,7 +458,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                       </button>
                       <div className="min-w-0">
                         <h3 className="text-xs font-bold text-slate-800 truncate max-w-[150px]" title={playlist.name}>{playlist.name}</h3>
-                        <p className="text-[10px] text-gray-450 mt-0.5">Created: {playlist.createdDate}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Created: {playlist.createdDate}</p>
                       </div>
                     </div>
                     <div className="flex gap-1.5">
@@ -493,11 +493,11 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                   <div className="grid grid-cols-2 gap-2 bg-slate-50/40 p-2 rounded-xl border border-slate-100">
                     <div className="text-center py-1">
                       <p className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Media Items</p>
-                      <p className="text-sm font-black text-slate-700 flex items-center justify-center gap-1 mt-0.5"><Film size={12} className="text-slate-400" />{playlist.mediaCount}</p>
+                      <p className="text-sm font-bold text-slate-700 flex items-center justify-center gap-1 mt-0.5"><Film size={12} className="text-slate-400" />{playlist.mediaCount}</p>
                     </div>
                     <div className="text-center py-1">
                       <p className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Assigned TVs</p>
-                      <p className="text-sm font-black text-slate-700 flex items-center justify-center gap-1 mt-0.5"><Monitor size={12} className="text-slate-400" />{assignedToScreensCount}</p>
+                      <p className="text-sm font-bold text-slate-700 flex items-center justify-center gap-1 mt-0.5"><Monitor size={12} className="text-slate-400" />{assignedToScreensCount}</p>
                     </div>
                   </div>
 
@@ -539,7 +539,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                     </span>
                     <button 
                       onClick={() => handleOpenAssignModal(playlist)}
-                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                     >
                       <Tv size={11} /> Assign Screens
                     </button>
@@ -550,9 +550,9 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
 
             {filteredPlaylists.length === 0 && (
               <div className="col-span-full py-16 text-center text-slate-400 space-y-2 border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
-                <FolderOpen size={36} className="mx-auto text-slate-350" />
+                <FolderOpen size={36} className="mx-auto text-slate-300" />
                 <p className="text-xs font-semibold">No playlists found</p>
-                <p className="text-[10px] text-slate-450">Select a different client filter or create a new playlist.</p>
+                <p className="text-[10px] text-slate-400">Select a different client filter or create a new playlist.</p>
               </div>
             )}
           </div>
@@ -571,7 +571,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
               <ArrowLeft size={16} />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{mode === 'create' ? 'Create Client Playlist' : 'Edit Playlist Profile'}</h1>
+              <h1 className="text-xl font-semibold text-ink-950 tracking-tight">{mode === 'create' ? 'Create Client Playlist' : 'Edit Playlist Profile'}</h1>
               <p className="text-sm text-gray-500 mt-0.5">Customize display layouts, transitions, and media slide sequences</p>
             </div>
           </div>
@@ -579,10 +579,10 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Left settings column */}
             <div className="lg:col-span-4 bg-white rounded-3xl border border-gray-200 p-5 space-y-4 shadow-xs">
-              <h2 className="text-xs font-black uppercase text-slate-800 tracking-wider">Playlist Specifications</h2>
+              <h2 className="text-xs font-bold uppercase text-slate-800 tracking-wider">Playlist Specifications</h2>
               
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Playlist Name *</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Playlist Name *</label>
                 <input 
                   value={playlistName} 
                   onChange={e => setPlaylistName(e.target.value)} 
@@ -593,7 +593,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
 
               {/* Client Selector (Only editable on create) */}
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Client Organization *</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Client Organization *</label>
                 {mode === 'create' ? (
                   <CustomSelect 
                     value={selectedClientEmail} 
@@ -614,7 +614,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
               {/* Layout controls */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Transition</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Transition</label>
                   <CustomSelect 
                     value={transition} 
                     onChange={val => setTransition(val)} 
@@ -626,7 +626,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Audio Vol</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Audio Vol</label>
                   <input 
                     type="range" 
                     min={0} 
@@ -671,10 +671,10 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
             <div className="lg:col-span-8 space-y-4">
               <div className="bg-white rounded-3xl border border-gray-200 p-5 shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xs font-black uppercase text-slate-800 tracking-wider">Sequence Timeline ({playlistItems.length} items)</h2>
+                  <h2 className="text-xs font-bold uppercase text-slate-800 tracking-wider">Sequence Timeline ({playlistItems.length} items)</h2>
                   <button 
                     onClick={handleOpenMediaPicker}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-750 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-colors cursor-pointer shadow-xs"
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition-colors cursor-pointer shadow-xs"
                   >
                     <Plus size={12} className="stroke-[3]" /> Add Slide Content
                   </button>
@@ -682,9 +682,9 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
 
                 {playlistItems.length === 0 ? (
                   <div className="py-16 text-center text-slate-400 space-y-2 border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
-                    <FolderOpen size={32} className="mx-auto text-slate-355" />
+                    <FolderOpen size={32} className="mx-auto text-slate-300" />
                     <p className="text-xs font-semibold">Timeline list is empty</p>
-                    <p className="text-[10px] text-slate-450">Click "Add Slide Content" to upload videos, images, or ticker alerts for this client.</p>
+                    <p className="text-[10px] text-slate-400">Click "Add Slide Content" to upload videos, images, or ticker alerts for this client.</p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
@@ -694,7 +694,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
 
                       return (
                         <div key={index} className="flex items-center gap-3 p-3 bg-slate-50/60 hover:bg-slate-50 border border-slate-200 rounded-xl transition-all group">
-                          <span className="text-[10px] font-black text-slate-400 w-5 shrink-0 text-center">#{index + 1}</span>
+                          <span className="text-[10px] font-bold text-slate-400 w-5 shrink-0 text-center">#{index + 1}</span>
                           <img src={media.thumbnail} alt={media.title} className="w-12 h-8 rounded-lg object-cover shrink-0 border border-slate-200" />
                           
                           <div className="flex-1 min-w-0">
@@ -738,7 +738,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
 
                           <button 
                             onClick={() => setPlaylistItems(prev => prev.filter((_, i) => i !== index))} 
-                            className="text-slate-350 hover:text-rose-600 transition-colors p-1 cursor-pointer shrink-0"
+                            className="text-slate-300 hover:text-rose-600 transition-colors p-1 cursor-pointer shrink-0"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -758,14 +758,14 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 p-6 space-y-4 animate-scaleIn text-left">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
                 <Tv size={16} className="text-blue-600" /> Screen Broadcasting Matrix
               </h2>
               <button onClick={() => setAssignModalPlaylist(null)} className="text-gray-400 hover:text-gray-600 font-bold p-1 cursor-pointer">&times;</button>
             </div>
 
             <p className="text-xs text-gray-500 leading-relaxed">
-              Assign playlist <span className="font-bold text-slate-800">"{assignModalPlaylist.name}"</span> to client TV screens. Only screens registered under client account <span className="font-bold text-slate-850">{assignModalPlaylist.createdBy}</span> are eligible.
+              Assign playlist <span className="font-bold text-slate-800">"{assignModalPlaylist.name}"</span> to client TV screens. Only screens registered under client account <span className="font-bold text-slate-800">{assignModalPlaylist.createdBy}</span> are eligible.
             </p>
 
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
@@ -836,7 +836,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="w-full max-w-lg bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 p-6 space-y-4 animate-scaleIn text-left">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
                 <FolderOpen size={16} className="text-blue-500" /> Assemble Playlist Slides
               </h2>
               <button onClick={() => setIsPickerOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold p-1 cursor-pointer">&times;</button>
@@ -846,7 +846,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
             <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl w-fit">
               <button
                 onClick={() => setPickerTab('bucket')}
-                className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
                   pickerTab === 'bucket' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -854,7 +854,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
               </button>
               <button
                 onClick={() => setPickerTab('upload')}
-                className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
                   pickerTab === 'upload' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -922,7 +922,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
             {pickerTab === 'upload' && (
               <form onSubmit={handleQuickUploadMedia} className="space-y-3.5 text-xs">
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Slide Title</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Slide Title</label>
                   <input 
                     type="text" 
                     placeholder="e.g. Coffee Promo Poster"
@@ -935,7 +935,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">File Type</label>
+                    <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">File Type</label>
                     <CustomSelect 
                       value={uploadType}
                       onChange={val => setUploadType(val as any)}
@@ -947,7 +947,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Duration (Secs)</label>
+                    <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Duration (Secs)</label>
                     <input 
                       type="number" 
                       required
@@ -959,7 +959,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                 </div>
 
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Estimated File Size (MB)</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Estimated File Size (MB)</label>
                   <input 
                     type="number" 
                     required

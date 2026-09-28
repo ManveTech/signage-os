@@ -819,9 +819,13 @@ class SignageRepository(private val context: Context) {
                         }
 
                 if (hasChanged) {
-                    // Update database
-                    assetDao.clearAllAssets()
-                    assetDao.insertAssets(mergedAssets)
+                    // Atomic replace — clearing and inserting as two separate
+                    // statements let a Flow observer see a momentary empty
+                    // playlist mid-sync, which a screen mid-playback treats
+                    // as a structural change (index reset, full player
+                    // teardown/rebuild) even though nothing was actually
+                    // meant to go blank here.
+                    assetDao.replaceAllAssets(mergedAssets)
                     cleanupOrphanCacheFiles()
                 } else if (wasWhiteLabelLogoMissing) {
                     startDownloadingPendingAssets()

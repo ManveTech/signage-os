@@ -113,7 +113,7 @@ export default function Industries({ onOpenQuote }: IndustriesProps) {
             <span className="text-accent font-semibold tracking-widest uppercase text-[10px] sm:text-xs mb-2 sm:mb-4 block">
               // EXPERT DEPLOYMENT
             </span>
-            <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mb-4 sm:mb-6 tracking-tight leading-tight">
+            <h3 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-4 sm:mb-6 tracking-tight leading-tight">
               Built for <br />
               <span className="text-accent">Diverse Industries</span>
             </h3>
@@ -131,7 +131,7 @@ export default function Industries({ onOpenQuote }: IndustriesProps) {
               ].map((benefit, i) => (
                 <li key={i} className="flex items-center gap-2 sm:gap-3 font-semibold text-slate-800 text-[11px] sm:text-sm">
                   <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-accent/25 flex items-center justify-center text-primary shrink-0">
-                    <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-accent-hover font-black" />
+                    <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-accent-hover font-bold" />
                   </div>
                   {benefit}
                 </li>

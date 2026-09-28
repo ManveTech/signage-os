@@ -101,7 +101,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">My Channel Playlists</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">My Channel Playlists</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage layout playlists broadcasting to your local screens</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -113,7 +113,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
                   setSelectedIds([]);
                 }}
                 className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer ${
-                  isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                  isSelectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
                 }`}
               >
                 <CheckCircle size={14} />
@@ -122,7 +122,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
               {isSelectionMode && selectedIds.length > 0 && (
                 <button
                   onClick={() => setDeleteConfirm(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-650 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
                 >
                   <Trash size={14} />
                   Delete Selected ({selectedIds.length})
@@ -132,7 +132,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
           )}
           <button 
             onClick={() => onNavigate('my-create-playlist')} 
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
           >
             <Plus size={14} /> Create Playlist
           </button>
@@ -158,7 +158,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
                     type="checkbox"
                     checked={selectedIds.includes(playlist.id)}
                     onChange={() => {}}
-                    className="w-5 h-5 rounded border-slate-350 text-blue-600 focus:ring-blue-550 cursor-pointer shadow-sm"
+                    className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm"
                   />
                 </div>
               )}
@@ -175,7 +175,7 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
                   </button>
                   <div className="min-w-0">
                     <h3 className="text-xs font-bold text-slate-800 truncate" title={playlist.name}>{playlist.name}</h3>
-                    <p className="text-[10px] text-gray-450 mt-0.5 truncate">Created: {playlist.createdDate}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5 truncate">Created: {playlist.createdDate}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -203,11 +203,11 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
               <div className="grid grid-cols-2 gap-2 bg-slate-50/55 p-2 sm:p-2.5 rounded-xl border border-slate-100 text-center">
                 <div>
                   <p className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Media Slides</p>
-                  <p className="text-sm font-black text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Film size={11} className="text-gray-455" /> {playlist.mediaCount}</p>
+                  <p className="text-sm font-bold text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Film size={11} className="text-gray-400" /> {playlist.mediaCount}</p>
                 </div>
                 <div>
                   <p className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Active Screens</p>
-                  <p className="text-sm font-black text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Monitor size={11} className="text-gray-455" /> {assignedScreensCount}</p>
+                  <p className="text-sm font-bold text-slate-800 flex items-center justify-center gap-1 mt-0.5"><Monitor size={11} className="text-gray-400" /> {assignedScreensCount}</p>
                 </div>
               </div>
 
@@ -253,10 +253,10 @@ export default function AllPlaylists({ onNavigate, userEmail = 'admin@demo.com' 
         })}
 
         {playlists.length === 0 && (
-          <div className="col-span-full py-16 text-center text-slate-450 space-y-2 border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
-            <FolderOpen size={36} className="mx-auto text-slate-350" />
+          <div className="col-span-full py-16 text-center text-slate-400 space-y-2 border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
+            <FolderOpen size={36} className="mx-auto text-slate-300" />
             <p className="text-xs font-semibold">No playlists created yet</p>
-            <p className="text-[10px] text-slate-450">Click "Create Playlist" above to set up your first media channel timeline.</p>
+            <p className="text-[10px] text-slate-400">Click "Create Playlist" above to set up your first media channel timeline.</p>
           </div>
         )}
       </div>

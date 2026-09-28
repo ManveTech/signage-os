@@ -20,7 +20,7 @@ const renderStatusBadge = (screenOrStatus: any) => {
     case 'online':
     case 'active':
       label = status === 'online' ? 'Online' : 'Active';
-      bg = 'bg-emerald-500/10 text-emerald-700 border-emerald-550/20';
+      bg = 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20';
       dot = (
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -30,28 +30,28 @@ const renderStatusBadge = (screenOrStatus: any) => {
       break;
     case 'offline':
       label = 'Offline';
-      bg = 'bg-rose-500/10 text-rose-700 border-rose-550/20';
+      bg = 'bg-rose-500/10 text-rose-700 border-rose-500/20';
       dot = <span className="h-2 w-2 rounded-full bg-rose-500"></span>;
       break;
     case 'warning':
       label = 'Warning';
-      bg = 'bg-yellow-500/10 text-yellow-700 border-yellow-550/20';
+      bg = 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20';
       dot = <span className="h-2 w-2 rounded-full bg-yellow-500"></span>;
       break;
     case 'pairing':
       label = 'Pairing';
-      bg = 'bg-blue-500/10 text-blue-700 border-blue-550/20';
+      bg = 'bg-blue-500/10 text-blue-700 border-blue-500/20';
       dot = <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>;
       break;
     case 'suspended':
       label = 'Suspended';
-      bg = 'bg-slate-500/10 text-slate-700 border-slate-550/20';
+      bg = 'bg-slate-500/10 text-slate-700 border-slate-500/20';
       dot = <Lock size={9} className="text-slate-500" />;
       break;
   }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-2xs ${bg}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border backdrop-blur-md shadow-2xs ${bg}`}>
       {dot}
       <span>{label}</span>
     </span>
@@ -78,6 +78,10 @@ export default function ManageScreens({ userEmail = 'admin@demo.com' }: { userEm
   });
   const [organizations, setOrganizations] = useState<any[]>(() => {
     const data = localStorage.getItem('signageos_organizations');
+    return data ? JSON.parse(data) : [];
+  });
+  const [licenses, setLicenses] = useState<any[]>(() => {
+    const data = localStorage.getItem('signageos_licenses');
     return data ? JSON.parse(data) : [];
   });
   const [search, setSearch] = useState('');
@@ -121,6 +125,9 @@ export default function ManageScreens({ userEmail = 'admin@demo.com' }: { userEm
         setOrganizations(serverOrgs);
       }
     });
+    syncCollection('licenses', 'signageos_licenses').then(serverLicenses => {
+      if (serverLicenses.length > 0) setLicenses(serverLicenses);
+    });
     syncCollection('playlists', 'signageos_playlists').then(serverPlaylists => {
       if (serverPlaylists.length > 0) {
         setUserPlaylists(serverPlaylists);
@@ -133,6 +140,16 @@ export default function ManageScreens({ userEmail = 'admin@demo.com' }: { userEm
       window.removeEventListener('signageos_screens_updated', handleScreensUpdate);
     };
   }, []);
+
+  // Which org a screen belongs to, so the group picker below can be scoped
+  // to that same org — mirrors AllScreens.tsx, which already gets this right.
+  const getScreenOrgId = (screen: Screen) => {
+    const org = organizations.find(o => o.email === screen.assignedToUserEmail);
+    if (org) return org.id;
+    const lic = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
+    if (lic?.assignedOrgId) return lic.assignedOrgId;
+    return '';
+  };
 
   const filtered = screens.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
@@ -298,7 +315,7 @@ export default function ManageScreens({ userEmail = 'admin@demo.com' }: { userEm
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Manage Screens</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Manage Screens</h1>
           <p className="text-sm text-gray-500 mt-0.5">Monitor, configure and control all registered screens</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -310,7 +327,7 @@ export default function ManageScreens({ userEmail = 'admin@demo.com' }: { userEm
                   setSelectedScreens(new Set());
                 }}
                 className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm font-semibold transition-all shadow-sm cursor-pointer ${
-                  isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                  isSelectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
                 }`}
               >
                 <CheckCircle size={15} />
@@ -605,7 +622,9 @@ export default function ManageScreens({ userEmail = 'admin@demo.com' }: { userEm
                   placeholder="None (Ungrouped)"
                   options={[
                     { value: '', label: 'None (Ungrouped)' },
-                    ...groups.map(g => ({ value: g.id, label: g.name }))
+                    ...groups
+                      .filter(g => (g.orgId || '') === getScreenOrgId(editScreen))
+                      .map(g => ({ value: g.id, label: g.name }))
                   ]}
                   buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                 />
@@ -638,7 +657,7 @@ export default function ManageScreens({ userEmail = 'admin@demo.com' }: { userEm
                     <button
                       type="button"
                       onClick={() => setEditScreen(p => p && ({ ...p, groupId: null }))}
-                      className="w-full mt-1.5 py-2 text-xs font-semibold text-red-655 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full mt-1.5 py-2 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <FolderMinus size={13} />
                       Remove Screen from Group

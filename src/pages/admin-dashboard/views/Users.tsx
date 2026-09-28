@@ -347,7 +347,7 @@ export default function Users() {
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Clients</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Clients</h1>
           <p className="text-sm text-gray-500 mt-0.5">{users.length} clients registered in the system</p>
         </div>
         <button 
@@ -374,7 +374,7 @@ export default function Users() {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+              <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 <th className="px-5 py-3.5">Client</th>
                 <th className="px-5 py-3.5">Email</th>
                 <th className="px-5 py-3.5">Phone Number</th>
@@ -550,7 +550,7 @@ export default function Users() {
               </div>
               <button 
                 onClick={() => setIsAddClientOpen(false)}
-                className="text-gray-400 hover:text-gray-650 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -667,7 +667,7 @@ export default function Users() {
               {step === 3 && (
                 <div className="space-y-4">
                   {/* Summary card */}
-                  <div className="border border-gray-150 rounded-xl p-4 bg-slate-50/50 space-y-2 text-xs">
+                  <div className="border border-gray-100 rounded-xl p-4 bg-slate-50/50 space-y-2 text-xs">
                     <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-1.5 mb-2 uppercase text-[10px] tracking-wider">Client Onboarding Summary</h3>
                     <div className="grid grid-cols-3 gap-y-1.5 text-gray-600">
                       <span className="font-medium text-gray-400">Name:</span>
@@ -693,7 +693,7 @@ export default function Users() {
                   </div>
 
                   {/* Password Generation */}
-                  <div className="border border-gray-150 rounded-xl p-4 space-y-3 bg-white">
+                  <div className="border border-gray-100 rounded-xl p-4 space-y-3 bg-white">
                     <h3 className="font-bold text-gray-900 text-xs flex items-center gap-1.5">
                       <Lock size={14} className="text-blue-600" /> Account Security Credentials
                     </h3>
@@ -735,7 +735,7 @@ export default function Users() {
                   </div>
 
                   {/* Feature Toggles */}
-                  <div className="border border-gray-150 rounded-xl p-4 space-y-3 bg-blue-50">
+                  <div className="border border-gray-100 rounded-xl p-4 space-y-3 bg-blue-50">
                     <h3 className="font-bold text-gray-900 text-xs uppercase tracking-wider text-blue-900">Feature Enablement</h3>
 
                     <div className="space-y-2.5">
@@ -811,7 +811,7 @@ export default function Users() {
               <div className="flex gap-2">
                 <button 
                   onClick={() => setIsAddClientOpen(false)}
-                  className="px-4 py-2.5 text-sm font-semibold text-gray-650 hover:bg-gray-150 rounded-lg transition-colors cursor-pointer"
+                  className="px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -853,7 +853,7 @@ export default function Users() {
               </div>
               <button
                 onClick={() => setEditingUser(null)}
-                className="text-gray-400 hover:text-gray-650 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -963,7 +963,7 @@ export default function Users() {
               {editStep === 3 && (
                 <div className="space-y-4">
                   {/* Summary card */}
-                  <div className="border border-gray-150 rounded-xl p-4 bg-slate-50/50 space-y-2 text-xs">
+                  <div className="border border-gray-100 rounded-xl p-4 bg-slate-50/50 space-y-2 text-xs">
                     <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-1.5 mb-2 uppercase text-[10px] tracking-wider">Update Summary</h3>
                     <div className="grid grid-cols-3 gap-y-1.5 text-gray-600">
                       <span className="font-medium text-gray-400">Name:</span>
@@ -1009,7 +1009,7 @@ export default function Users() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setEditingUser(null)}
-                  className="px-4 py-2.5 text-sm font-semibold text-gray-650 hover:bg-gray-150 rounded-lg transition-colors cursor-pointer"
+                  className="px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>

@@ -572,15 +572,15 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       } catch (err) {
         console.error(err);
         failedCount++;
-        showToast(`⚠️ Failed: ${file.name} — ${err instanceof Error ? err.message : 'Upload error'}`);
+        showToast(`Failed: ${file.name} — ${err instanceof Error ? err.message : 'Upload error'}`);
       }
       setUploadProgress((count / files.length) * 100);
     }
 
     if (failedCount === 0) {
-      showToast(`✅ All ${files.length} file(s) uploaded successfully!`);
+      showToast(`All ${files.length} file(s) uploaded successfully!`);
     } else {
-      showToast(`⚠️ ${files.length - failedCount} of ${files.length} files uploaded. ${failedCount} failed.`);
+      showToast(`${files.length - failedCount} of ${files.length} files uploaded. ${failedCount} failed.`);
     }
 
     setTimeout(() => {
@@ -608,11 +608,11 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       return;
     }
     if (!playlistName.trim()) {
-      showToast('⚠️ Please enter a playlist name.');
+      showToast('Please enter a playlist name.');
       return;
     }
     if (playlistItems.length === 0) {
-      showToast('⚠️ Please add at least one media slide to the sequence.');
+      showToast('Please add at least one media slide to the sequence.');
       return;
     }
 
@@ -649,7 +649,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         volume: playlistVolume,
         slides: playlistItems
       });
-      showToast(`✅ Playlist "${playlistName}" updated successfully!`);
+      showToast(`Playlist "${playlistName}" updated successfully!`);
     } else {
       // Create new playlist
       mediaStore.createPlaylist({
@@ -670,7 +670,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         volume: playlistVolume,
         slides: playlistItems
       });
-      showToast(`✅ Playlist "${playlistName}" created successfully!`);
+      showToast(`Playlist "${playlistName}" created successfully!`);
     }
 
     // Refresh playlists dropdown list
@@ -742,8 +742,8 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Create Dynamic Playlist</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Build split-screen layouts, upload files, configure widget overlays, and preview standby standee animations.</p>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Create Dynamic Playlist</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Upload media, arrange the sequence, and configure how each slide plays.</p>
       </div>
 
       {/* Playlist Selector for Editing */}
@@ -776,7 +776,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
             <button
               type="button"
               onClick={handleStartNewPlaylist}
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-750 text-xs font-extrabold uppercase rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap"
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold uppercase rounded-xl transition-all cursor-pointer shadow-xs whitespace-nowrap"
             >
               Cancel Edit
             </button>
@@ -789,7 +789,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         {/* ================= LEFT COLUMN: MEDIA ASSETS POOL & UPLOAD ================= */}
         <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-4 space-y-4 shadow-xs">
           <div>
-            <h2 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase text-slate-800 tracking-wider flex items-center justify-between">
               <span>Media Assets</span>
               <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase">{mediaList.length} Items</span>
             </h2>
@@ -868,18 +868,18 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
               <div>
-                <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Sequence Timeline</h3>
+                <h3 className="text-xs font-bold uppercase text-slate-800 tracking-wider">Sequence Timeline</h3>
                 <p className="text-[9.5px] text-gray-400 mt-0.5">Drag assets from left pool to populate sequence, or click "+". Set duration in seconds.</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] bg-slate-100 text-slate-700 px-2.5 py-1.5 rounded-xl font-black uppercase">
+                <span className="text-[10px] bg-slate-100 text-slate-700 px-2.5 py-1.5 rounded-xl font-bold uppercase">
                   Length: {playlistItems.reduce((acc, curr) => acc + curr.duration, 0)}s
                 </span>
               </div>
             </div>
 
             {totalFilesToUpload > 0 && (
-              <div className="bg-blue-50/50 border border-blue-150 rounded-xl p-3.5 space-y-2">
+              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3.5 space-y-2">
                 <div className="flex justify-between items-center text-xs font-bold text-slate-800">
                   <span>Uploading playlist assets...</span>
                   <span>{uploadingFilesCount} of {totalFilesToUpload} files ({Math.round(uploadProgress)}%)</span>
@@ -896,7 +896,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
             {playlistItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 border border-dashed border-slate-200 rounded-2xl bg-slate-50 text-center">
                 <ImageIcon size={32} className="text-slate-300 mb-2" />
-                <p className="text-xs font-bold text-slate-650">Timeline sequence is empty</p>
+                <p className="text-xs font-bold text-slate-600">Timeline sequence is empty</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">Drag and drop slides from Left Media Assets to start.</p>
               </div>
             ) : (
@@ -952,7 +952,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                             <p className="text-xs font-bold text-slate-800 truncate" title={media.title}>{media.title}</p>
                             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 uppercase flex items-center gap-1">
-                                {media.type === 'image' && '🖼 Image'}
+                                {media.type === 'image' && 'Image'}
                                 {media.type !== 'image' && media.type}
                               </span>
                               <span className="text-[9.5px] text-gray-400 font-semibold">{media.fileSize}</span>
@@ -969,9 +969,9 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                             min={1}
                             value={item.duration}
                             onChange={e => updateItem(item.id, { duration: Math.max(1, parseInt(e.target.value) || 5) })}
-                            className="w-10 border border-slate-200 rounded bg-white px-1 py-0.5 text-xs text-center font-bold outline-none focus:border-blue-550 text-gray-800"
+                            className="w-10 border border-slate-200 rounded bg-white px-1 py-0.5 text-xs text-center font-bold outline-none focus:border-blue-500 text-gray-800"
                           />
-                          <span className="text-[9.5px] text-slate-455 font-bold uppercase">sec</span>
+                          <span className="text-[9.5px] text-slate-400 font-bold uppercase">sec</span>
                         </div>
                       </div>
 
@@ -1017,7 +1017,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                                   max={300}
                                   value={item.scalePercent ?? 100}
                                   onChange={e => updateItem(item.id, { scalePercent: Math.max(10, parseInt(e.target.value) || 100) })}
-                                  className="w-14 border border-slate-200 rounded bg-white px-1.5 py-0.5 text-center text-xs font-bold outline-none focus:border-blue-550 text-gray-800"
+                                  className="w-14 border border-slate-200 rounded bg-white px-1.5 py-0.5 text-center text-xs font-bold outline-none focus:border-blue-500 text-gray-800"
                                 />
                                 <span className="text-[10px] text-gray-600 font-bold">%</span>
                               </div>
@@ -1033,7 +1033,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                               onDrop={e => handleZone2Drop(e, item.id)}
                               className={`border rounded-xl p-2 transition-all ${
                                 secondMedia 
-                                  ? 'bg-slate-550/10 border-slate-200' 
+                                  ? 'bg-slate-500/10 border-slate-200' 
                                   : 'border-dashed border-blue-300 bg-blue-50/10'
                               }`}
                             >
@@ -1091,21 +1091,21 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
           {/* Playlist Settings Form */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5 shadow-xs">
-            <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Broadcasting Settings</h3>
+            <h3 className="text-xs font-bold uppercase text-slate-800 tracking-wider">Broadcasting Settings</h3>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Playlist Name *</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Playlist Name *</label>
                 <input 
                   value={playlistName} 
                   onChange={e => setPlaylistName(e.target.value)} 
                   placeholder="e.g. Lobby Entrance Banner" 
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-850" 
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-800" 
                 />
               </div>
               
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Content Category</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Content Category</label>
                 <CustomSelect 
                   value={category} 
                   onChange={val => setCategory(val)} 
@@ -1115,20 +1115,20 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               </div>
 
               <div className="sm:col-span-2">
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Description</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Description</label>
                 <textarea 
                   value={playlistDesc} 
                   onChange={e => setPlaylistDesc(e.target.value)} 
                   rows={2} 
                   placeholder="Provide brief notes..." 
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 resize-none font-semibold text-slate-855" 
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none font-semibold text-slate-800" 
                 />
               </div>
 
               {/* Display orientation with Enable Toggle Switch */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black">Enable Custom Orientation</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold">Enable Custom Orientation</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -1153,7 +1153,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                     type="button"
                     disabled={!allowCustomOrientation}
                     onClick={() => setPlaylistOrientation('horizontal')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-xs whitespace-nowrap transition-colors ${playlistOrientation === 'horizontal' ? 'bg-blue-600 text-white font-black' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-xs whitespace-nowrap transition-colors ${playlistOrientation === 'horizontal' ? 'bg-blue-600 text-white font-bold' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <span>Landscape (16:9)</span>
                   </button>
@@ -1161,7 +1161,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                     type="button"
                     disabled={!allowCustomOrientation}
                     onClick={() => setPlaylistOrientation('vertical')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-xs whitespace-nowrap transition-colors ${playlistOrientation === 'vertical' ? 'bg-blue-600 text-white font-black' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-xs whitespace-nowrap transition-colors ${playlistOrientation === 'vertical' ? 'bg-blue-600 text-white font-bold' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <span>Portrait Standee (9:16)</span>
                   </button>
@@ -1170,7 +1170,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
               {/* Transition Settings */}
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Slide Transition Effect</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Slide Transition Effect</label>
                 <CustomSelect
                   value={playlistTransition}
                   onChange={val => setPlaylistTransition(val as any)}
@@ -1178,13 +1178,13 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                     { value: 'fade', label: 'Fade In' },
                     { value: 'slide', label: 'Slide Left' },
                     { value: 'zoom', label: 'Zoom In' },
-                    { value: 'slide-up', label: 'Slide Up ⬆️' },
-                    { value: 'slide-down', label: 'Slide Down ⬇️' },
-                    { value: 'flip', label: '3D Flip 🔄' },
-                    { value: 'spin', label: 'Spin Rotate 🌀' },
-                    { value: 'blur', label: 'Focus Blur 🌫️' },
-                    { value: 'bounce', label: 'Bounce Elastic 🎈' },
-                    { value: 'wipe', label: 'Linear Wipe ↔️' }
+                    { value: 'slide-up', label: 'Slide Up' },
+                    { value: 'slide-down', label: 'Slide Down' },
+                    { value: 'flip', label: '3D Flip' },
+                    { value: 'spin', label: 'Spin Rotate' },
+                    { value: 'blur', label: 'Focus Blur' },
+                    { value: 'bounce', label: 'Bounce Elastic' },
+                    { value: 'wipe', label: 'Linear Wipe' }
                   ]}
                   buttonClassName="min-h-[40px] px-3.5 py-2.5 text-xs font-semibold text-slate-800 border-slate-200"
                 />
@@ -1193,7 +1193,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               {/* Loop and Shuffle Switches */}
               <div className="flex items-center justify-between border border-slate-200 rounded-xl px-4 h-[42px] bg-white shadow-xs">
                 <div className="flex items-center gap-2">
-                  <Shuffle size={14} className="text-gray-450" />
+                  <Shuffle size={14} className="text-gray-400" />
                   <span className="font-bold text-gray-600 text-xs">Shuffle Sequence</span>
                 </div>
                 <button
@@ -1211,7 +1211,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
               <div className="flex items-center justify-between border border-slate-200 rounded-xl px-4 h-[42px] bg-white shadow-xs">
                 <div className="flex items-center gap-2">
-                  <RotateCcw size={14} className="text-gray-450" />
+                  <RotateCcw size={14} className="text-gray-400" />
                   <span className="font-bold text-gray-600 text-xs">Loop Playback</span>
                 </div>
                 <button
@@ -1231,7 +1231,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               <div className="flex flex-col justify-center border border-slate-200 rounded-xl px-4 py-2 bg-white shadow-xs">
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
-                    <Volume2 size={14} className="text-gray-450" />
+                    <Volume2 size={14} className="text-gray-400" />
                     <span className="font-bold text-gray-600">Default Playlist Volume</span>
                   </div>
                   <span className="font-bold text-blue-600">{playlistVolume}%</span>
@@ -1249,7 +1249,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
               {/* Widget overlays */}
               <div className="space-y-2">
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Global Widget Overlay</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Global Widget Overlay</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { id: 'rss', name: 'News RSS Ticker' },
@@ -1263,7 +1263,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       onClick={() => toggleWidgetType(opt.id)}
                       className={`flex items-center justify-center text-center px-3 py-2.5 border rounded-xl font-bold text-[11px] sm:text-xs leading-tight min-h-10 transition-all cursor-pointer ${
                         isWidgetActive(opt.id)
-                          ? 'border-blue-600 bg-blue-50 text-blue-600 shadow-xs font-black'
+                          ? 'border-blue-600 bg-blue-50 text-blue-600 shadow-xs font-bold'
                           : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                       }`}
                     >
@@ -1275,7 +1275,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
               {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Secondary Widget Placement</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Secondary Widget Placement</label>
                   <CustomSelect
                     value={playlistWidgetPlacement}
                     onChange={val => setPlaylistWidgetPlacement(val as any)}
@@ -1291,8 +1291,8 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               )}
 
               {playlistWidgetType && isWidgetActive('rss') && (
-                <div className="sm:col-span-2 space-y-4 bg-slate-550/10 p-4 rounded-xl border border-slate-200 text-left">
-                  <span className="block text-[10px] text-slate-455 uppercase tracking-widest font-black">Ticker Configuration</span>
+                <div className="sm:col-span-2 space-y-4 bg-slate-500/10 p-4 rounded-xl border border-slate-200 text-left">
+                  <span className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold">Ticker Configuration</span>
                   
                   <div className="space-y-1.5">
                     <label className="block text-xs font-semibold text-slate-700">Ticker Label / Header</label>
@@ -1301,7 +1301,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       value={tickerLabel}
                       onChange={e => setTickerLabel(e.target.value)}
                       placeholder="e.g. WORLD NEWS (leave blank for no label)"
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-semibold text-slate-800 text-xs shadow-xs"
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-semibold text-slate-800 text-xs shadow-xs"
                     />
                   </div>
                   
@@ -1356,7 +1356,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                               setTickerParagraphs(newParas);
                             }}
                             placeholder={`Item ${idx + 1}`}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-850 text-sm bg-white"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-800 text-sm bg-white"
                           />
                           {tickerParagraphs.length > 1 && (
                             <button
@@ -1387,7 +1387,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
               {playlistWidgetType && playlistWidgetType !== 'rss' && (
                 <div className="sm:col-span-2">
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">
                     {playlistWidgetType === 'qrcode' ? 'QR Code Link / URL' :
                      playlistWidgetType === 'weather' ? 'Weather Location / City' : 'Clock Label / Header'}
                   </label>
@@ -1399,7 +1399,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       playlistWidgetType === 'qrcode' ? 'https://example.com/menu.pdf' :
                       playlistWidgetType === 'weather' ? 'e.g. Bengaluru' : 'e.g. Lobby Clock'
                     }
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-550 bg-white font-semibold text-slate-850"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-semibold text-slate-800"
                   />
                 </div>
               )}
@@ -1410,7 +1410,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 type="button"
                 onClick={openPreview}
                 disabled={playlistItems.length === 0}
-                className="flex-1 px-2 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px] whitespace-nowrap"
+                className="flex-1 px-2 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px] whitespace-nowrap"
               >
                 <Eye size={12} /> Preview
               </button>
@@ -1418,7 +1418,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               <button 
                 onClick={handleSavePlaylist}
                 disabled={!playlistName.trim() || playlistItems.length === 0}
-                className="flex-1 px-2 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px] whitespace-nowrap"
+                className="flex-1 px-2 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[36px] whitespace-nowrap"
               >
                 <Save size={13} /> Save Playlist
               </button>
@@ -1579,7 +1579,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                                 <WeatherIcon className={`${iconColor} w-5 h-5 ${animateClass}`} />
                                 <span className="text-base font-extrabold text-slate-800">{temp}°C</span>
                               </div>
-                              <div className="text-[9px] font-medium text-slate-650 mt-0.5 truncate max-w-full" title={`${location} · ${condition}`}>
+                              <div className="text-[9px] font-medium text-slate-600 mt-0.5 truncate max-w-full" title={`${location} · ${condition}`}>
                                 {location} · {condition}
                               </div>
                             </div>
@@ -1657,7 +1657,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                       >
                         {labelText && labelText.trim() !== '' && (
                           <div 
-                            className="bg-rose-600 text-white h-full flex items-center px-3 pr-5 text-[8px] font-black uppercase tracking-wider whitespace-nowrap z-20" 
+                            className="bg-rose-600 text-white h-full flex items-center px-3 pr-5 text-[8px] font-bold uppercase tracking-wider whitespace-nowrap z-20" 
                             style={{ clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%)' }}
                           >
                             {labelText}
@@ -1677,7 +1677,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                   })()}
 
                   {/* Volume overlay indicator */}
-                  <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl text-[10px] font-bold border border-slate-200/80 text-slate-850 shadow-sm">
+                  <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl text-[10px] font-bold border border-slate-200/80 text-slate-800 shadow-sm">
                     <Volume2 size={12} className="text-slate-500" />
                     <span>Vol: {playlistVolume}%</span>
                   </div>
@@ -1692,7 +1692,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => { setPreviewIndex(p => (p - 1 + simulatedItems.length) % simulatedItems.length); setIsPlaying(false); }}
-                className="p-2 bg-slate-550/10 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 transition-colors cursor-pointer"
+                className="p-2 bg-slate-500/10 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 transition-colors cursor-pointer"
                 title="Previous Slide"
               >
                 <ChevronLeft size={16} />
@@ -1700,7 +1700,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               
               <button 
                 onClick={() => setIsPlaying(!isPlaying)}
-                className="p-2.5 bg-blue-600 hover:bg-blue-750 rounded-full text-white transition-colors cursor-pointer"
+                className="p-2.5 bg-blue-600 hover:bg-blue-700 rounded-full text-white transition-colors cursor-pointer"
                 title={isPlaying ? 'Pause Simulation' : 'Play Simulation'}
               >
                 {isPlaying ? <Pause size={16} /> : <Play size={16} />}
@@ -1708,7 +1708,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
               <button 
                 onClick={() => { setPreviewIndex(p => (p + 1) % simulatedItems.length); setIsPlaying(false); }}
-                className="p-2 bg-slate-550/10 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 transition-colors cursor-pointer"
+                className="p-2 bg-slate-500/10 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 transition-colors cursor-pointer"
                 title="Next Slide"
               >
                 <ChevronRight size={16} />

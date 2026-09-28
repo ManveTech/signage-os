@@ -236,7 +236,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
     <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 text-left relative overflow-x-hidden w-full max-w-full">
       {/* Page Title */}
       <div>
-        <h1 className="text-xl font-bold text-gray-900">License & Billing</h1>
+        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">License & Billing</h1>
         <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Manage your software plan, review invoices, and settle outstanding payments</p>
       </div>
 
@@ -245,11 +245,11 @@ export default function LicenseBillingView({ userEmail }: Props) {
         {/* LICENSE PROFILE CARD */}
         <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <span className="text-xs font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
+            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-1">
               <Key size={14} className="text-blue-500" /> Plan Details
             </span>
             {clientLicense && (
-              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
                 clientLicense.status === 'active' 
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
                   : 'bg-rose-50 text-rose-700 border-rose-100'
@@ -295,7 +295,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
               </div>
 
               {/* Connected Displays Quota */}
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-150 space-y-1.5">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5">
                 <div className="flex justify-between text-[11px] font-bold">
                   <span className="text-slate-600">Screen Quota</span>
                   <span className="text-slate-900">{screensCount} / {clientLicense.deviceLimit || 5} Connected</span>
@@ -309,7 +309,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
               </div>
 
               {/* Storage Quota */}
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-150 space-y-1.5">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5">
                 <div className="flex justify-between text-[11px] font-bold">
                   <span className="text-slate-600">Storage Usage</span>
                   <span className="text-slate-900">
@@ -325,7 +325,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
               </div>
 
               {/* White Label Branding Status */}
-              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-150 text-xs font-bold">
+              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs font-bold">
                 <span className="text-slate-600">White-Label Branding</span>
                 <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-extrabold ${
                   clientLicense.whiteLabel ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-600'
@@ -354,7 +354,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
             <div className="py-8 text-center text-slate-400 space-y-2">
               <Key size={30} className="mx-auto text-slate-300" />
               <p className="text-xs font-semibold">No active license profile linked to this user.</p>
-              <p className="text-[10px] text-slate-455">Please contact administrative billing (billing@demo.com) to assign a license.</p>
+              <p className="text-[10px] text-slate-400">Please contact administrative billing (billing@demo.com) to assign a license.</p>
             </div>
           )}
         </div>
@@ -363,14 +363,14 @@ export default function LicenseBillingView({ userEmail }: Props) {
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col justify-between">
           <div>
             <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
-              <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Your Invoice Logs</span>
+              <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Your Invoice Logs</span>
             </div>
 
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-y-auto max-h-[300px]">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     <th className="px-4 py-3">Invoice ID</th>
                     <th className="px-4 py-3">Issue Date</th>
                     <th className="px-4 py-3">Amount</th>
@@ -389,7 +389,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
                           <p className="text-[9px] text-slate-400">Incl. GST 18%</p>
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
                             inv.status === 'paid' 
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
                               : 'bg-rose-50 text-rose-700 border-rose-100 animate-pulse'
@@ -423,7 +423,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
                   <div key={inv.id} className="p-3.5 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-bold text-slate-800 text-xs">{inv.id}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
                         inv.status === 'paid' 
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
                           : 'bg-rose-50 text-rose-700 border-rose-100'
@@ -457,14 +457,14 @@ export default function LicenseBillingView({ userEmail }: Props) {
       {/* RECENT TRANSACTION LOGS */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/60">
-          <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Payment Transaction History</span>
+          <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Payment Transaction History</span>
         </div>
 
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+              <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 <th className="px-4 py-3">Transaction ID</th>
                 <th className="px-4 py-3">Paid Amount</th>
                 <th className="px-4 py-3">Date</th>
@@ -480,7 +480,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
                     <td className="px-4 py-3.5 font-mono font-bold text-slate-800">{p.id}</td>
                     <td className="px-4 py-3.5 font-extrabold text-slate-900">₹{p.amount.toLocaleString()}</td>
                     <td className="px-4 py-3.5 font-semibold text-slate-500">{p.paymentDate}</td>
-                    <td className="px-4 py-3.5 font-mono text-slate-650">{p.razorpayPaymentId}</td>
+                    <td className="px-4 py-3.5 font-mono text-slate-600">{p.razorpayPaymentId}</td>
                     <td className="px-4 py-3.5 font-mono text-slate-400">{p.razorpayOrderId}</td>
                     <td className="px-4 py-3.5">
                       <span className="text-emerald-600 font-bold text-[10px] uppercase flex items-center gap-1 tracking-wider">
@@ -533,10 +533,10 @@ export default function LicenseBillingView({ userEmail }: Props) {
             <div className="bg-[#111827] px-4 py-3.5 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded bg-blue-500 flex items-center justify-center">
-                  <span className="text-[10px] font-black italic text-white">R</span>
+                  <span className="text-[10px] font-bold italic text-white">R</span>
                 </div>
                 <div>
-                  <p className="text-[10px] font-black tracking-wider uppercase text-slate-300">Razorpay Checkout</p>
+                  <p className="text-[10px] font-bold tracking-wider uppercase text-slate-300">Razorpay Checkout</p>
                   <p className="text-[8px] text-slate-400">SignageOS Technologies Ltd.</p>
                 </div>
               </div>
@@ -553,12 +553,12 @@ export default function LicenseBillingView({ userEmail }: Props) {
               <div className="p-5 space-y-4">
                 <div className="text-center py-2 bg-slate-800/40 rounded-xl border border-slate-800">
                   <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Total Payable Amount</p>
-                  <p className="text-2xl font-black mt-0.5 text-blue-400">₹{(payingLicense.price * 1.18).toLocaleString()}</p>
+                  <p className="text-2xl font-bold mt-0.5 text-blue-400">₹{(payingLicense.price * 1.18).toLocaleString()}</p>
                   <p className="text-[8.5px] text-slate-400">Includes 18% GST (₹{(payingLicense.price * 0.18).toLocaleString()})</p>
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[9px] text-slate-450 uppercase tracking-widest font-black block">Select Payment Method</p>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold block">Select Payment Method</p>
                   
                   <button 
                     onClick={() => setSelectedMethod('upi')}
@@ -641,7 +641,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
             
             {/* Actions header */}
             <div className="flex items-center justify-between border-b border-gray-100 pb-3 no-print">
-              <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Invoice Document Preview</span>
+              <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Invoice Document Preview</span>
               <div className="flex gap-2">
                 <button
                   onClick={() => window.print()}
@@ -668,10 +668,10 @@ export default function LicenseBillingView({ userEmail }: Props) {
                     <span className="font-extrabold text-sm text-slate-900 tracking-tight">{bizDetails.name}</span>
                   </div>
                   <p className="text-[10px] text-slate-500 max-w-[250px] leading-normal">{bizDetails.address}</p>
-                  <p className="text-[10px] text-slate-450 font-semibold">GSTIN: {bizDetails.gstNumber}</p>
+                  <p className="text-[10px] text-slate-400 font-semibold">GSTIN: {bizDetails.gstNumber}</p>
                 </div>
                 <div className="text-right space-y-1">
-                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">TAX INVOICE</h2>
+                  <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">TAX INVOICE</h2>
                   <p className="text-xs font-mono font-bold text-slate-800">{selectedInvoice.id}</p>
                   <p className="text-[10px] text-slate-400">Date: {selectedInvoice.issuedDate}</p>
                 </div>
@@ -682,12 +682,12 @@ export default function LicenseBillingView({ userEmail }: Props) {
               {/* Billed To / From */}
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
-                  <p className="text-[9px] uppercase tracking-wider text-slate-450 font-black mb-1">Billed To</p>
+                  <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Billed To</p>
                   <p className="font-extrabold text-slate-800">{selectedInvoice.clientName}</p>
                   <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedInvoice.clientEmail}</p>
                 </div>
                 <div>
-                  <p className="text-[9px] uppercase tracking-wider text-slate-450 font-black mb-1">Billing Support</p>
+                  <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Billing Support</p>
                   <p className="font-semibold text-slate-700">Email: {bizDetails.contactEmail}</p>
                   <p className="text-[10px] text-slate-500 mt-0.5">Phone: {bizDetails.contactPhone}</p>
                 </div>
@@ -697,7 +697,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
               <div className="border border-gray-100 rounded-xl overflow-x-auto text-xs">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-gray-100 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                    <tr className="bg-slate-50 border-b border-gray-100 text-[9px] font-bold uppercase tracking-wider text-slate-400">
                       <th className="px-4 py-2.5">Description</th>
                       <th className="px-4 py-2.5 text-right">Base Amount</th>
                       <th className="px-4 py-2.5 text-right">GST (18%)</th>
@@ -727,16 +727,16 @@ export default function LicenseBillingView({ userEmail }: Props) {
               {/* Total block */}
               <div className="flex justify-between items-center bg-slate-50 rounded-xl p-4 border border-gray-100">
                 <div>
-                  <p className="text-[10px] text-slate-450 font-bold uppercase">Payment Status</p>
-                  <p className={`text-xs font-black uppercase mt-0.5 ${
+                  <p className="text-[10px] text-slate-400 font-bold uppercase">Payment Status</p>
+                  <p className={`text-xs font-bold uppercase mt-0.5 ${
                     selectedInvoice.status === 'paid' ? 'text-emerald-600' : 'text-rose-600'
                   }`}>
                     {selectedInvoice.status}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] text-slate-455 font-bold uppercase">Net Total Payable</p>
-                  <p className="text-xl font-black text-slate-900">₹{selectedInvoice.amount.toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase">Net Total Payable</p>
+                  <p className="text-xl font-bold text-slate-900">₹{selectedInvoice.amount.toLocaleString()}</p>
                 </div>
               </div>
 

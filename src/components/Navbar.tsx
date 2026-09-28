@@ -99,7 +99,7 @@ export default function Navbar({ onOpenQuote, view = 'home', setView }: NavbarPr
             <img src={logoImg} className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0 group-hover:rotate-6 transition-transform duration-300" alt="SignageOS Logo" />
             <div className="flex flex-col">
               <span className="text-white text-base sm:text-lg font-bold tracking-tighter leading-none">SIGNAGEOS</span>
-              <span className="text-[8px] sm:text-[9px] text-accent tracking-widest font-black uppercase text-left">TECHNOLOGIES</span>
+              <span className="text-[8px] sm:text-[9px] text-accent tracking-widest font-bold uppercase text-left">TECHNOLOGIES</span>
             </div>
           </a>
 
@@ -232,7 +232,7 @@ export default function Navbar({ onOpenQuote, view = 'home', setView }: NavbarPr
                   setMobileMenuOpen(false);
                   onOpenQuote();
                 }}
-                className="btn-primary w-full justify-center text-xs font-black uppercase py-3 cursor-pointer tracking-wider flex items-center gap-1.5 shadow-md shadow-accent/10"
+                className="btn-primary w-full justify-center text-xs font-bold uppercase py-3 cursor-pointer tracking-wider flex items-center gap-1.5 shadow-md shadow-accent/10"
               >
                 Contact Us <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
               </button>

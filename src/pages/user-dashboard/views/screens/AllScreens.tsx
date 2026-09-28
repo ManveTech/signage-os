@@ -17,7 +17,7 @@ const renderStatusBadge = (screenOrStatus: any) => {
     case 'online':
     case 'active':
       label = status === 'online' ? 'Online' : 'Active';
-      bg = 'bg-emerald-500/10 text-emerald-700 border-emerald-550/20';
+      bg = 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20';
       dot = (
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -27,28 +27,28 @@ const renderStatusBadge = (screenOrStatus: any) => {
       break;
     case 'offline':
       label = 'Offline';
-      bg = 'bg-rose-500/10 text-rose-700 border-rose-550/20';
+      bg = 'bg-rose-500/10 text-rose-700 border-rose-500/20';
       dot = <span className="h-2 w-2 rounded-full bg-rose-500"></span>;
       break;
     case 'warning':
       label = 'Warning';
-      bg = 'bg-yellow-500/10 text-yellow-700 border-yellow-550/20';
+      bg = 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20';
       dot = <span className="h-2 w-2 rounded-full bg-yellow-500"></span>;
       break;
     case 'pairing':
       label = 'Pairing';
-      bg = 'bg-blue-500/10 text-blue-700 border-blue-550/20';
+      bg = 'bg-blue-500/10 text-blue-700 border-blue-500/20';
       dot = <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>;
       break;
     case 'suspended':
       label = 'Suspended';
-      bg = 'bg-slate-500/10 text-slate-700 border-slate-550/20';
+      bg = 'bg-slate-500/10 text-slate-700 border-slate-500/20';
       dot = <Lock size={9} className="text-slate-500" />;
       break;
   }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-2xs ${bg}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border backdrop-blur-md shadow-2xs ${bg}`}>
       {dot}
       <span>{label}</span>
     </span>
@@ -273,7 +273,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">All Screens</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">All Screens</h1>
           <p className="text-sm text-gray-500 mt-0.5">{screens.length} total screens registered</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -398,7 +398,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
               {paginatedRecords.map(screen => {
                 const isSelected = selectedIds.includes(screen.id);
                 return (
-                  <tr key={screen.id} className={`hover:bg-gray-50 transition-colors group ${isSelected ? 'bg-blue-50/70 hover:bg-blue-55/70' : ''}`} onClick={() => isSelectionMode && toggleSelect(screen.id)}>
+                  <tr key={screen.id} className={`hover:bg-gray-50 transition-colors group ${isSelected ? 'bg-blue-50/70 hover:bg-blue-50/70' : ''}`} onClick={() => isSelectionMode && toggleSelect(screen.id)}>
                     {isSelectionMode && (
                       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         <input
@@ -590,7 +590,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-4 border-t border-gray-150 bg-white">
+          <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-white">
             <span className="text-xs text-gray-500 font-medium">
               Showing {((activePage - 1) * recordsPerPage) + 1} to {Math.min(activePage * recordsPerPage, filtered.length)} of {filtered.length} screens
             </span>
@@ -598,14 +598,14 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
               <button
                 disabled={activePage === 1}
                 onClick={() => setCurrentPage(activePage - 1)}
-                className="px-3 py-1.5 border border-gray-205 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
               >
                 Previous
               </button>
               <button
                 disabled={activePage === totalPages}
                 onClick={() => setCurrentPage(activePage + 1)}
-                className="px-3 py-1.5 border border-gray-205 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
               >
                 Next
               </button>
@@ -689,7 +689,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
                     type="checkbox"
                     checked={!!editScreen.cameraMountEnabled}
                     onChange={e => setEditScreen(p => p && ({ ...p, cameraMountEnabled: e.target.checked }))}
-                    className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-550 accent-blue-600 cursor-pointer"
+                    className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500 accent-blue-600 cursor-pointer"
                   />
                 </div>
               )}
@@ -719,7 +719,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
                     <button
                       type="button"
                       onClick={() => setEditScreen(p => p && ({ ...p, groupId: undefined }))}
-                      className="w-full mt-1.5 py-2 text-xs font-semibold text-red-655 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full mt-1.5 py-2 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200/60 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <FolderMinus size={13} />
                       Remove Screen from Group

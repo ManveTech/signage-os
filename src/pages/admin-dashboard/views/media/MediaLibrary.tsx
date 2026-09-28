@@ -353,7 +353,7 @@ export default function MediaLibrary({ userEmail }: Props) {
 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Media Bucket (My Channel)</h1>
+          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Media Bucket (My Channel)</h1>
           <p className="text-sm text-gray-500 mt-0.5">Admin internal media files</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -365,7 +365,7 @@ export default function MediaLibrary({ userEmail }: Props) {
                   setSelectedIds([]);
                 }}
                 className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer ${
-                  isSelectionMode ? 'bg-slate-100 border-slate-350 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+                  isSelectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
                 }`}
               >
                 <CheckCircle size={14} />
@@ -374,7 +374,7 @@ export default function MediaLibrary({ userEmail }: Props) {
               {isSelectionMode && selectedIds.length > 0 && (
                 <button
                   onClick={() => setDeleteConfirm(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-650 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer"
                 >
                   <Trash size={14} />
                   Delete Selected ({selectedIds.length})
@@ -384,7 +384,7 @@ export default function MediaLibrary({ userEmail }: Props) {
           )}
           <button 
             onClick={() => setIsUploadOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
           >
             <Upload size={14} /> Upload Media
           </button>
@@ -440,7 +440,7 @@ export default function MediaLibrary({ userEmail }: Props) {
                   type="checkbox"
                   checked={selectedIds.includes(media.id)}
                   onChange={() => {}}
-                  className="w-5 h-5 rounded border-slate-350 text-blue-600 focus:ring-blue-550 cursor-pointer shadow-sm"
+                  className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm"
                 />
               </div>
             )}
@@ -550,7 +550,7 @@ export default function MediaLibrary({ userEmail }: Props) {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 p-6 space-y-4 animate-scaleIn">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
                 <Upload size={16} className="text-blue-600" /> Add Admin Media
               </h2>
               <button 
@@ -570,7 +570,7 @@ export default function MediaLibrary({ userEmail }: Props) {
 
             <form onSubmit={handleUploadSubmit} className="space-y-4 text-xs">
               {totalFilesToUpload > 0 && (
-                <div className="bg-blue-50/50 border border-blue-150 rounded-xl p-3.5 space-y-2">
+                <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3.5 space-y-2">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-800">
                     <span>Uploading files sequentially...</span>
                     <span>{uploadingFilesCount} of {totalFilesToUpload} ({Math.round(uploadProgress)}%)</span>
@@ -585,7 +585,7 @@ export default function MediaLibrary({ userEmail }: Props) {
               )}
 
               <div>
-                <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1.5">Select File(s) *</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Select File(s) *</label>
                 <input 
                   type="file" 
                   multiple 
@@ -599,7 +599,7 @@ export default function MediaLibrary({ userEmail }: Props) {
                       setCustomTitle('');
                     }
                   }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-slate-50 font-medium outline-none focus:border-blue-550"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-slate-50 font-medium outline-none focus:border-blue-500"
                   required
                   disabled={totalFilesToUpload > 0}
                 />
@@ -608,13 +608,13 @@ export default function MediaLibrary({ userEmail }: Props) {
 
               {filesArray.length <= 1 && (
                 <div>
-                  <label className="block text-[10px] text-slate-455 uppercase tracking-widest font-black mb-1">Media Title (Optional)</label>
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Media Title (Optional)</label>
                   <input 
                     type="text" 
                     placeholder="e.g. Counter Promotion Slide"
                     value={customTitle}
                     onChange={e => setCustomTitle(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold outline-none focus:border-blue-550 bg-slate-50"
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold outline-none focus:border-blue-500 bg-slate-50"
                     disabled={totalFilesToUpload > 0}
                   />
                 </div>

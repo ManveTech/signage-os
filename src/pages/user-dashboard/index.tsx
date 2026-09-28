@@ -329,7 +329,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
             </div>
 
             {clientLicense && (
-              <div className="bg-slate-850 border border-slate-800 rounded-2xl p-4 text-left space-y-2 text-xs">
+              <div className="bg-slate-800 border border-slate-800 rounded-2xl p-4 text-left space-y-2 text-xs">
                 <div className="flex justify-between items-center text-slate-400">
                   <span>Organization Name:</span>
                   <span className="font-semibold text-white">{clientLicense.assignedOrgName || 'N/A'}</span>
@@ -395,8 +395,8 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
               <form onSubmit={handleFirstLoginSubmit} className="space-y-4">
                 
                 {isWhiteLabelEnabled && (
-                  <div className="space-y-3 p-4 rounded-2xl bg-slate-850 border border-slate-800">
-                    <span className="text-[10px] text-blue-400 uppercase tracking-widest font-black block">
+                  <div className="space-y-3 p-4 rounded-2xl bg-slate-800 border border-slate-800">
+                    <span className="text-[10px] text-blue-400 uppercase tracking-widest font-bold block">
                       White-Label Tenant Customization
                     </span>
 
@@ -454,7 +454,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                 )}
 
                 <div>
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-bold block mb-1.5">
                     New Password
                   </label>
                   <input
@@ -467,7 +467,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-black block mb-1.5">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest font-bold block mb-1.5">
                     Confirm Password
                   </label>
                   <input
