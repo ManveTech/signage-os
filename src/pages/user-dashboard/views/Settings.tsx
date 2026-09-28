@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Image, Palette, Globe, HardDrive, Link, Monitor, Bell, Mail, Phone, Webhook, ShieldAlert, CheckCircle } from 'lucide-react';
+import { Image, Palette, Globe, Monitor, Bell, Mail, Phone, Webhook, ShieldAlert, CheckCircle } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
 import { syncCollection, pushToDatabase } from '../../../lib/syncHelper';
 
-const tabs = ['General', 'Storage', 'Player Settings', 'Notifications'] as const;
+// Storage config is an admin/platform-operator concern (Cloudflare R2 setup
+// now lives in Admin > Integrations) — this tab was showing a client the
+// exact same unwired provider/bucket/region form, which never made sense
+// for a customer to see or edit in the first place.
+const tabs = ['General', 'Player Settings', 'Notifications'] as const;
 type Tab = typeof tabs[number];
 
 export default function Settings({ activeTab: initTab = 'General', userEmail = 'priya@demo.com' }: { activeTab?: Tab; userEmail?: string }) {
@@ -106,6 +110,13 @@ export default function Settings({ activeTab: initTab = 'General', userEmail = '
           }`}>{t}</button>
         ))}
       </div>
+
+      {tab !== 'General' && (
+        <div className="max-w-2xl flex items-start gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
+          <ShieldAlert size={16} className="flex-shrink-0 mt-0.5" />
+          <p className="text-xs">This page is not wired up yet — nothing below is saved. Building it out is on the roadmap.</p>
+        </div>
+      )}
 
       {tab === 'General' && (
         <div className="max-w-2xl space-y-5">
@@ -210,50 +221,6 @@ export default function Settings({ activeTab: initTab = 'General', userEmail = '
         </div>
       )}
 
-      {tab === 'Storage' && (
-        <div className="max-w-2xl space-y-5">
-          <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><HardDrive size={15} /> Storage Configuration</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Storage Provider</label>
-                <select className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400 bg-white">
-                  <option>AWS S3</option>
-                  <option>MinIO</option>
-                  <option>Google Cloud Storage</option>
-                  <option>Azure Blob Storage</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Bucket Name</label>
-                <input defaultValue="signageos-media" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Region</label>
-                <input defaultValue="ap-south-1" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-gray-700 mb-1.5"><Link size={12} className="inline mr-1" />CDN URL</label>
-                <input defaultValue="https://cdn.signageos.io" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Storage Limit (GB)</label>
-                <input type="number" defaultValue={500} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
-              </div>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="flex justify-between text-xs text-gray-600 mb-1.5">
-                <span>Storage Used</span>
-                <span className="font-semibold">2.4 TB / 3.6 TB (67%)</span>
-              </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-yellow-400 rounded-full" style={{ width: '67%' }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {tab === 'Player Settings' && (
         <div className="max-w-2xl space-y-5">
           <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
@@ -326,12 +293,18 @@ export default function Settings({ activeTab: initTab = 'General', userEmail = '
       )}
 
       <div className="flex justify-end">
-        <button 
-          onClick={handleSave}
-          className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
-        >
-          Save Changes
-        </button>
+        {tab === 'General' ? (
+          <button
+            onClick={handleSave}
+            className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+          >
+            Save Changes
+          </button>
+        ) : (
+          <button disabled title="Not wired up yet" className="px-5 py-2.5 bg-gray-300 text-white text-sm font-medium rounded-lg cursor-not-allowed">
+            Save Changes
+          </button>
+        )}
       </div>
     </div>
   );

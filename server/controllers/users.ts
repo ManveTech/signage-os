@@ -364,6 +364,50 @@ export async function deleteUser(req: any, res: any) {
     return res.status(403).json({ error: 'Admin access required.' });
   }
   try {
+    // Previously this only ever deleted the users record — every screen,
+    // license, playlist, and media item that referenced this account by
+    // email kept doing so forever, with no owner able to ever manage them
+    // again. Screens and licenses are unassigned back to a reusable state
+    // (mirroring what disconnectScreen already does for a single screen);
+    // playlists/media_items keep createdBy/uploadedBy as a historical
+    // attribution rather than being touched or deleted, since content
+    // itself shouldn't disappear just because the account that made it did.
+    const deletedUser = await pb.collection('users').getOne(req.params.id).catch(() => null);
+    const userEmail = deletedUser?.email;
+
+    if (userEmail) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const orphanedScreens = await pb.collection('screens').getFullList({
+        filter: pb.filter('assignedToUserEmail = {:email}', { email: userEmail })
+      }).catch(() => [] as any[]);
+      await Promise.all(orphanedScreens.map((screen: any) => {
+        let pairingCode = '';
+        for (let i = 0; i < 6; i++) pairingCode += chars.charAt(Math.floor(Math.random() * chars.length));
+        return pb.collection('screens').update(screen.id, {
+          status: 'pairing',
+          pairing_code: pairingCode,
+          pairing_code_expires: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+          assignedToUserEmail: '',
+          license_id: '',
+          groupId: null,
+          playlist: '',
+          playlistId: '',
+          onlineSince: ''
+        }).catch(() => {});
+      }));
+
+      const orphanedLicenses = await pb.collection('licenses').getFullList({
+        filter: pb.filter('assignedUserEmail = {:email}', { email: userEmail })
+      }).catch(() => [] as any[]);
+      await Promise.all(orphanedLicenses.map((lic: any) =>
+        pb.collection('licenses').update(lic.id, {
+          assignedUserEmail: '',
+          assignedOrgName: '',
+          assignedOrgId: ''
+        }).catch(() => {})
+      ));
+    }
+
     await pb.collection('users').delete(req.params.id);
     logAudit({
       actorId: req.user?.id,
@@ -371,6 +415,7 @@ export async function deleteUser(req: any, res: any) {
       action: 'user.deleted',
       targetType: 'users',
       targetId: req.params.id,
+      detail: userEmail ? `email=${userEmail}` : undefined,
       ip: getClientIp(req)
     });
     res.status(204).end();

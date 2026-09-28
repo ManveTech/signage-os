@@ -80,7 +80,8 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'video-conferencing': return <VideoConferencing />;
     case 'integrations': return <Integrations />;
     case 'settings-general': return <Settings activeTab="General" />;
-    case 'settings-storage': return <Settings activeTab="Storage" />;
+    // Storage config moved to Integrations (Cloudflare R2) — redirect any old link/bookmark there.
+    case 'settings-storage': return <Integrations />;
     case 'settings-player': return <Settings activeTab="Player Settings" />;
     case 'settings-notifications': return <Settings activeTab="Notifications" />;
     case 'support':

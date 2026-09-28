@@ -80,6 +80,8 @@ export interface Screen {
   volume?: number;
   force_sync?: boolean;
   restart_playlist?: boolean;
+  cumulativeUptime?: number; // Total seconds online, accumulated across sessions
+  cumulativeLoops?: number; // Total playlist loops completed
 }
 
 const INITIAL_MEDIA: MediaItem[] = [];

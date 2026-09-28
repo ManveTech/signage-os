@@ -82,7 +82,6 @@ const navSections: NavSection[] = [
     id: 'settings', label: 'Settings', icon: <Settings size={18} />,
     children: [
       { id: 'settings-general', label: 'General' },
-      { id: 'settings-storage', label: 'Storage' },
       { id: 'settings-player', label: 'Player Settings' },
       { id: 'settings-notifications', label: 'Notifications' },
     ]

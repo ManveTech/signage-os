@@ -329,6 +329,47 @@ function getScreenLock(screenId: string): AsyncMutex {
   return lock;
 }
 
+// Serializes read-modify-write access to a single screen's cumulative
+// uptime/status fields. checkDeviceStatuses's Redis path previously was the
+// only caller using a real distributed lock (acquireLock, backed by Redis
+// SET NX) — recordHeartbeat, reportOffline, and disconnectScreen all only
+// ever used the local in-process AsyncMutex below, which does nothing to
+// stop a *different* server instance in a scaled/multi-process deployment
+// from reading the same cumulativeUptime concurrently and writing back
+// independently (a lost update — whichever write lands second wins,
+// silently discarding the other transition's uptime/loop delta). Now every
+// one of these call sites locks the same resource name, so they actually
+// exclude each other instead of just their own function. Retries briefly on
+// contention rather than failing outright, to match the "wait until free"
+// behavior every caller already expected from the local mutex; if Redis
+// itself is unreachable, falls back to the local mutex, since there's only
+// one process to coordinate with in that case anyway.
+async function withScreenLock<T>(screenId: string, fn: () => Promise<T>): Promise<T> {
+  if (isRedisReady()) {
+    const resource = `screen-update:${screenId}`;
+    let token: string | null = null;
+    const deadline = Date.now() + 5000;
+    while (!token && Date.now() < deadline) {
+      token = await acquireLock(resource, 10000);
+      if (!token) await new Promise(r => setTimeout(r, 100));
+    }
+    if (token) {
+      try {
+        return await fn();
+      } finally {
+        await releaseLock(resource, token);
+      }
+    }
+    console.warn(`[ScreenLock] Could not acquire distributed lock for screen ${screenId} within 5s — falling back to local mutex.`);
+  }
+  const release = await getScreenLock(screenId).acquire();
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   retries = 3,
@@ -388,8 +429,12 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
         console.log(`[Status Checker] Redis found ${devicesCheckedCount} stale screens. Transitioning to offline...`);
 
         await runWithConcurrencyLimit(STATUS_CHECK_CONCURRENCY, staleScreenIds, async (screenId) => {
-          const lockToken = await acquireLock(`offline:${screenId}`, 10000);
-          if (!lockToken) return; // Skip if another instance is already processing
+          // Shared resource name with withScreenLock() below — this bulk
+          // sweep and a concurrent recordHeartbeat/reportOffline call on
+          // this same screen (possibly on a different instance) must
+          // exclude each other, not just other sweep workers.
+          const lockToken = await acquireLock(`screen-update:${screenId}`, 10000);
+          if (!lockToken) return; // Skip if another instance is already processing this screen
 
           try {
             // Double check presence hasn't updated while we got the lock
@@ -458,7 +503,7 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
           } catch (err: any) {
             console.error(`[Status Checker] Error processing screen ${screenId}:`, err.message);
           } finally {
-            await releaseLock(`offline:${screenId}`, lockToken);
+            await releaseLock(`screen-update:${screenId}`, lockToken);
           }
         });
       }
@@ -736,9 +781,13 @@ export async function recordHeartbeat(req: any, res: any) {
 
         const lastHbTime = screenRecord.lastHeartbeat ? new Date(screenRecord.lastHeartbeat).getTime() : 0;
         if (wasOffline || (now - lastHbTime) > DB_WRITE_THROTTLE_MS) {
-          // Update DB with throttled write
-          const release = await getScreenLock(screenId).acquire();
-          try {
+          // Update DB with throttled write. Uses the distributed lock (when
+          // Redis is available) rather than the local mutex, since this path
+          // only runs when Redis IS ready — a different server instance's
+          // checkDeviceStatuses sweep or reportOffline call for this exact
+          // screen must be excluded too, not just concurrent requests on
+          // this one process.
+          await withScreenLock(screenId, async () => {
             const latest = await pb.collection('screens').getOne(screenId).catch(() => screenRecord);
             const updateData: any = {
               status: 'online',
@@ -768,9 +817,7 @@ export async function recordHeartbeat(req: any, res: any) {
                 })
               )).catch(err => console.error('Error logging screen online:', err));
             }
-          } finally {
-            release();
-          }
+          });
         }
       } else {
         // --- FALLBACK (DIRECT POCKETBASE PATH IF REDIS OFFLINE) ---
@@ -1013,10 +1060,15 @@ export async function syncScreenBrandingFromOrg(screenRecord: any) {
       ).catch(() => null);
     }
 
-    if (!org) return;
-
-    const updatedLogo = isWhiteLabel ? (org.websiteLogo || '') : '';
-    const updatedName = isWhiteLabel ? (org.websiteName || '') : '';
+    // Previously returned here, leaving the screen stuck with whatever
+    // branding it last had forever once its org became unresolvable
+    // (deleted, or the user's `company` no longer matches any org's name) —
+    // there was no path back to non-white-label even though the org backing
+    // that branding no longer exists. Treat an unresolvable org the same as
+    // "not white-label" instead.
+    isWhiteLabel = org ? isWhiteLabel : false;
+    const updatedLogo = isWhiteLabel ? (org?.websiteLogo || '') : '';
+    const updatedName = isWhiteLabel ? (org?.websiteName || '') : '';
 
     if (
       screenRecord.whiteLabel !== isWhiteLabel ||
@@ -1062,10 +1114,12 @@ export async function reportOffline(req: any, res: any) {
           .exec();
       }
 
-      const release = await getScreenLock(screenId).acquire();
-      try {
+      // Distributed lock (when Redis is available) — this and a concurrent
+      // checkDeviceStatuses sweep or recordHeartbeat call for the same
+      // screen, possibly on a different instance, must exclude each other.
+      await withScreenLock(screenId, async () => {
         const latestScreen = await retryWithBackoff(() => pb.collection('screens').getOne(screenId));
-        
+
         if (latestScreen.status === 'online' || latestScreen.status === 'active') {
           let additionalUptime = 0;
           let additionalLoops = 0;
@@ -1097,12 +1151,10 @@ export async function reportOffline(req: any, res: any) {
               loopsPlayed: updatedCumulativeLoops
             })
           )).catch(err => console.error('Error logging screen offline:', err));
-          
+
           console.log(`Screen "${latestScreen.name}" (${latestScreen.id}) marked offline immediately. Reason: ${reason || 'App closed'}`);
         }
-      } finally {
-        release();
-      }
+      });
     }
 
     res.status(204).end();
@@ -1200,16 +1252,42 @@ export async function disconnectScreen(req: any, res: any) {
     }
     const pairingCodeExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-    const updatedScreen = await pb.collection('screens').update(screenRecord.id, {
-      status: 'pairing',
-      pairing_code: pairingCode,
-      pairing_code_expires: pairingCodeExpires,
-      assignedToUserEmail: '',
-      license_id: '',
-      groupId: null,
-      playlist: '',
-      playlistId: '',
-      onlineSince: ''
+    // Every other offline transition (reportOffline, checkDeviceStatuses)
+    // folds the current online session into cumulativeUptime/cumulativeLoops
+    // before clearing onlineSince — this one was clearing onlineSince
+    // without ever doing that, permanently losing whatever time the screen
+    // had been online for at the moment it was disconnected/unpaired. Locked
+    // (distributed, when Redis is available) and re-fetched fresh here since
+    // a concurrent heartbeat/offline-sweep could otherwise race this exact
+    // read-modify-write on another instance.
+    const updatedScreen = await withScreenLock(screenRecord.id, async () => {
+      const latest = await pb.collection('screens').getOne(screenRecord.id).catch(() => screenRecord);
+
+      const updateData: Record<string, any> = {
+        status: 'pairing',
+        pairing_code: pairingCode,
+        pairing_code_expires: pairingCodeExpires,
+        assignedToUserEmail: '',
+        license_id: '',
+        groupId: null,
+        playlist: '',
+        playlistId: '',
+        onlineSince: ''
+      };
+
+      if ((latest.status === 'online' || latest.status === 'active') && latest.onlineSince) {
+        const sessionEnd = latest.lastHeartbeat ? new Date(latest.lastHeartbeat).getTime() : Date.now();
+        const onlineTime = new Date(latest.onlineSince).getTime();
+        if (onlineTime > 0 && sessionEnd > onlineTime) {
+          const additionalUptime = Math.floor((sessionEnd - onlineTime) / 1000);
+          const playlistLength = await getScreenPlaylistLength(latest);
+          const additionalLoops = Math.floor(additionalUptime / playlistLength);
+          updateData.cumulativeUptime = (latest.cumulativeUptime || 0) + additionalUptime;
+          updateData.cumulativeLoops = (latest.cumulativeLoops || 0) + additionalLoops;
+        }
+      }
+
+      return pb.collection('screens').update(screenRecord.id, updateData);
     });
 
     if (isRedisReady()) {

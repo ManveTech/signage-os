@@ -87,7 +87,10 @@ export async function createOrder(req: any, res: any) {
       if (!isAdmin && license.assignedUserEmail !== req.user?.email) {
         return res.status(403).json({ message: 'This license does not belong to you.' });
       }
-      amount = license.price || 5000;
+      // `|| 5000` previously treated a legitimate free/comped license
+      // (price: 0) as "no price set," silently charging the 5000 default
+      // instead of actually letting them through for free.
+      amount = typeof license.price === 'number' ? license.price : 5000;
     } catch (e) {
       console.log('Using default amount for Order creation');
     }
@@ -100,7 +103,12 @@ export async function createOrder(req: any, res: any) {
       const order = await rzp.orders.create({
         amount: totalAmount * 100, // paise
         currency: 'INR',
-        receipt: `rcpt_${licenseId.substring(0, 10)}`
+        receipt: `rcpt_${licenseId.substring(0, 10)}`,
+        // Lets both the /verify endpoint and the webhook identify exactly
+        // which license this order was for — without this, the webhook had
+        // to guess by looking up "some license assigned to this email,"
+        // which picks the wrong one for any user with more than one license.
+        notes: { licenseId }
       });
 
       return res.status(200).json({
@@ -127,7 +135,7 @@ export async function createOrder(req: any, res: any) {
   }
 }
 
-async function verifyAndProcessPayment(licenseId: string, paymentId: string, orderId: string) {
+async function verifyAndProcessPayment(licenseId: string, paymentId: string, orderId: string, chargedAmount?: number) {
   // Shared by both the /verify REST endpoint and the webhook handler — this
   // dedup check has to live here, not just in one caller, so a payment id
   // can never activate/extend a license more than once via either path.
@@ -139,6 +147,13 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
   }
 
   const license = await pb.collection('licenses').getOne(licenseId);
+
+  // Record what was actually charged (fetched from Razorpay's own order, or
+  // the exact amount the webhook reports as captured) rather than the
+  // license's CURRENT price — if an admin edits the price between order
+  // creation and payment capture, the invoice/payment must reflect what the
+  // customer actually paid, not whatever the price happens to be now.
+  const amount = typeof chargedAmount === 'number' && chargedAmount > 0 ? chargedAmount : license.price;
 
   const currentExpiry = license.expiryDate ? new Date(license.expiryDate) : new Date();
   const daysToAdd = license.tenure === 'yearly' ? 365 : 30;
@@ -155,7 +170,7 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     licenseName: license.name,
     clientName: license.assignedOrgName || 'Client Org',
     clientEmail: license.assignedUserEmail || 'client@demo.com',
-    amount: license.price,
+    amount,
     paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
     status: 'success',
     razorpayPaymentId: paymentId,
@@ -167,7 +182,7 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     licenseName: license.name,
     clientName: license.assignedOrgName || 'Client Org',
     clientEmail: license.assignedUserEmail || 'client@demo.com',
-    amount: Math.round(license.price * 1.18),
+    amount: Math.round(amount * 1.18),
     dueDate: newExpiryStr,
     status: 'paid',
     issuedDate: new Date().toISOString().split('T')[0]
@@ -229,7 +244,21 @@ export async function verifyPayment(req: any, res: any) {
       console.log('Razorpay Secret not configured, bypassing signature verification (demo mode).');
     }
 
-    await verifyAndProcessPayment(licenseId, razorpayPaymentId, razorpayOrderId);
+    // Fetch the real order from Razorpay to record what was actually
+    // charged — the license's current `price` field can drift from that if
+    // it's edited between order creation and payment capture.
+    let chargedAmount: number | undefined;
+    const rzp = getRazorpayInstance();
+    if (rzp) {
+      try {
+        const order = await rzp.orders.fetch(razorpayOrderId);
+        chargedAmount = Number(order.amount) / 100;
+      } catch (fetchErr: any) {
+        console.warn('Could not fetch Razorpay order for amount verification, falling back to license price:', fetchErr.message);
+      }
+    }
+
+    await verifyAndProcessPayment(licenseId, razorpayPaymentId, razorpayOrderId, chargedAmount);
 
     logAudit({
       actorId: req.user?.id,
@@ -319,18 +348,31 @@ export async function handleWebhook(req: any, res: any) {
       const email = paymentEntity.email || 'client@demo.com';
       const status = event === 'payment.failed' ? 'failed' : 'success';
 
-      // Find matching license if available
-      const licensesResult = await pb.collection('licenses').getList(1, 10, {
-        filter: pb.filter('assignedUserEmail = {:email}', { email })
-      }).catch(() => ({ items: [] }));
-
-      const matchingLicense = licensesResult.items[0];
+      // createOrder stamps the order (and, per Razorpay, every payment
+      // captured against it) with notes.licenseId — use that to identify the
+      // exact license this payment was for. Previously this only matched by
+      // email, which silently renews/activates the WRONG license for any
+      // customer who has more than one, and finds nothing at all (payment
+      // recorded as "successful" with no license ever activated) on a
+      // case-mismatched email. Fall back to the email lookup only for orders
+      // created before this fix, which won't have notes.licenseId set.
+      let matchingLicense: any = null;
+      const licenseIdFromNotes = paymentEntity.notes?.licenseId;
+      if (licenseIdFromNotes) {
+        matchingLicense = await pb.collection('licenses').getOne(licenseIdFromNotes).catch(() => null);
+      }
+      if (!matchingLicense) {
+        const licensesResult = await pb.collection('licenses').getList(1, 10, {
+          filter: pb.filter('assignedUserEmail = {:email}', { email })
+        }).catch(() => ({ items: [] }));
+        matchingLicense = licensesResult.items[0];
+      }
       const licenseId = matchingLicense?.id || 'LIC-GENERAL';
       const licenseName = matchingLicense?.name || 'General License';
 
       if (event === 'order.paid' || event === 'payment.captured') {
         if (matchingLicense) {
-          await verifyAndProcessPayment(matchingLicense.id, paymentId, orderId);
+          await verifyAndProcessPayment(matchingLicense.id, paymentId, orderId, amountRupees || undefined);
           logAudit({
             actorEmail: email,
             action: 'payment.verified_via_webhook',

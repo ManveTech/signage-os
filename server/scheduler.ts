@@ -166,14 +166,38 @@ export function removeScreenSchedule(screenId: string) {
 }
 
 /**
- * Handles playlist deletion: clears scheduled swaps on screens scheduling this playlist.
+ * Handles playlist deletion: clears both the ACTIVE assignment (playlistId/
+ * playlist) on any screen currently playing it, and any future scheduled
+ * swap (schedulePlaylist/scheduleDate/scheduleTime) referencing it.
+ * Previously this only ever cleared the scheduled-swap fields — a screen
+ * actively playing the deleted playlist kept its playlistId/playlist
+ * pointing at a now-nonexistent record forever, with the device left trying
+ * to fetch/play something that 404s.
  */
-export async function syncPlaylistDeletion(playlistName: string) {
-  if (!playlistName) return;
-  console.log(`[Scheduler] Handling deletion of playlist: "${playlistName}". Checking for scheduled switches...`);
+export async function syncPlaylistDeletion(playlistName: string, playlistId?: string) {
+  if (!playlistName && !playlistId) return;
 
   try {
     await ensurePBAuth();
+
+    if (playlistId) {
+      console.log(`[Scheduler] Handling deletion of playlist "${playlistName}" (${playlistId}). Checking for active assignments...`);
+      const assignedResult = await pb.collection('screens').getList(1, 500, {
+        filter: pb.filter('playlistId = {:playlistId}', { playlistId }),
+      });
+      for (const screen of assignedResult.items) {
+        console.log(`[Scheduler] Clearing active playlist assignment on screen "${screen.name}" because playlist was deleted.`);
+        const updatedScreen = await pb.collection('screens').update(screen.id, {
+          playlist: '',
+          playlistId: '',
+          restart_playlist: true
+        });
+        syncScreenSchedule(updatedScreen);
+      }
+    }
+
+    if (!playlistName) return;
+    console.log(`[Scheduler] Checking for scheduled switches referencing "${playlistName}"...`);
 
     // Query screens scheduling this playlist
     const screensResult = await pb.collection('screens').getList(1, 500, {
@@ -182,7 +206,7 @@ export async function syncPlaylistDeletion(playlistName: string) {
 
     for (const screen of screensResult.items) {
       console.log(`[Scheduler] Clearing playlist schedule on screen "${screen.name}" because playlist was deleted.`);
-      
+
       // Update screen in database
       const updatedScreen = await pb.collection('screens').update(screen.id, {
         schedulePlaylist: '',

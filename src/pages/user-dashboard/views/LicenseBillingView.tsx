@@ -201,33 +201,18 @@ export default function LicenseBillingView({ userEmail }: Props) {
 
       if (verifyRes.ok) {
         setRzpStep('success');
-        
-        // Update local mock store for UI immediacy
-        const durationDays = payingLicense.tenure === 'monthly' ? 30 : 365;
-        const today = new Date();
-        const nextExpiry = new Date(today.getTime() + durationDays * 24 * 60 * 60 * 1000)
-          .toISOString()
-          .split('T')[0];
 
-        licensingStore.updateLicense(payingLicense.id, {
-          status: 'active',
-          expiryDate: nextExpiry
-        });
-
-        // Add mock payment history and invoices
-        licensingStore.addPayment({
-          id: `PMT-${Math.floor(100 + Math.random() * 900)}`,
-          licenseId: payingLicense.id,
-          licenseName: payingLicense.name,
-          clientName: clientUserName,
-          clientEmail: userEmail,
-          amount: payingLicense.price,
-          paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          status: 'success',
-          razorpayPaymentId: rzpPaymentId,
-          razorpayOrderId: rzpOrderId
-        });
-
+        // The server's /payments/verify call above already extended the
+        // license's expiry (from its actual prior expiry, not from today)
+        // and created the payment + invoice records. Previously this also
+        // wrote its own guess at the new expiry (today + duration, silently
+        // discarding any days the customer had already paid for and not yet
+        // used) and a second payment record with the SAME razorpayPaymentId
+        // — both real writes to the backend, not just local UI state,
+        // permanently duplicating/corrupting billing data on every payment.
+        // loadData() below already re-syncs the real, server-authoritative
+        // license/payment/invoice state, so there's nothing to do here but
+        // wait for it.
         setTimeout(() => {
           setIsRzpOpen(false);
           loadData();

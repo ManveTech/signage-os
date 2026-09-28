@@ -629,7 +629,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                     );
                     return { lic, daysRemaining };
                   })
-                  .filter(item => item.daysRemaining < 10) // only show expirations below 10 days
+                  .filter(item => item.daysRemaining <= 30) // matches the "Next 30 Days" header above
                   .sort((a, b) => a.daysRemaining - b.daysRemaining) // sort ascending of days left
                   .map(({ lic, daysRemaining }) => {
                     const isExpiringSoon = daysRemaining <= 30;
@@ -695,7 +695,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   );
                   return { lic, daysRemaining };
                 })
-                .filter(item => item.daysRemaining < 10)
+                .filter(item => item.daysRemaining <= 30)
                 .sort((a, b) => a.daysRemaining - b.daysRemaining);
 
               if (rows.length === 0) {

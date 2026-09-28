@@ -340,6 +340,26 @@ export function createCrudRouter(collectionName: string) {
         // from the authenticated session, never trust them from the request body.
         if (collectionName === 'screens') {
           body.assignedToUserEmail = req.user?.email;
+
+          // The real "Add Screen" UI flow goes through /screens/pair, which
+          // already checks this — but this generic create endpoint is also
+          // live and reachable directly, and had no equivalent check at all,
+          // letting a caller create unlimited screens under their own
+          // account regardless of their license's deviceLimit.
+          const licensesResult = await pb.collection('licenses').getList(1, 100, {
+            filter: pb.filter('assignedUserEmail = {:email} && status = "active"', { email: req.user?.email })
+          }).catch(() => ({ items: [] as any[] }));
+          const licenseItems: any[] = licensesResult.items;
+          if (licenseItems.length > 0) {
+            const totalAllowed = licenseItems.reduce((sum: number, lic: any) => sum + (lic.deviceLimit || 0), 0);
+            const activeScreensResult = await pb.collection('screens').getList(1, 500, {
+              filter: pb.filter('assignedToUserEmail = {:email} && status != "pairing"', { email: req.user?.email })
+            }).catch(() => ({ items: [] as any[] }));
+            const activeScreenItems: any[] = activeScreensResult.items;
+            if (activeScreenItems.length >= totalAllowed) {
+              return res.status(400).json({ error: `Device limit reached. Your active license(s) only support up to ${totalAllowed} screen(s).` });
+            }
+          }
         } else if (collectionName === 'playlists') {
           body.createdBy = req.user?.email;
         } else if (collectionName === 'screen_groups') {
@@ -484,7 +504,22 @@ export function createCrudRouter(collectionName: string) {
         } catch (_) { /* ignore */ }
       }
 
+      let deletedLicense: any = null;
+      if (collectionName === 'licenses') {
+        deletedLicense = await retryWithBackoff(() => pb.collection('licenses').getOne(req.params.id)).catch(() => null);
+      }
+
       await retryWithBackoff(() => pb.collection(collectionName).delete(req.params.id));
+
+      if (deletedLicense) {
+        // syncVideoConferencingFromLicense also runs on create/update — the
+        // delete path had no equivalent, so cancelling a license that had
+        // enableVideoConferencing=true left the user permanently able to
+        // start calls even after the license granting that access was gone.
+        syncVideoConferencingFromLicense({ ...deletedLicense, enableVideoConferencing: false }).catch(err => {
+          console.error('[CrudController] Error syncing video conferencing after license deletion:', err.message);
+        });
+      }
 
       logAudit({
         actorId: req.user?.id,
@@ -500,8 +535,24 @@ export function createCrudRouter(collectionName: string) {
       if (collectionName === 'screens') {
         removeScreenSchedule(req.params.id);
       } else if (collectionName === 'playlists' && playlistName) {
-        // Clear schedules on screens if playlist is deleted
-        await syncPlaylistDeletion(playlistName);
+        // Clear both active assignments and scheduled swaps on screens referencing this playlist
+        await syncPlaylistDeletion(playlistName, req.params.id);
+      } else if (collectionName === 'screen_groups') {
+        // Previously screens kept a groupId pointing at a deleted group
+        // forever — group-scoped bulk pushes (notifyScreensInGroup) would
+        // keep resolving them by that dangling id, and any UI resolving
+        // groupId -> group name would show a blank/broken label indefinitely.
+        try {
+          const groupedScreens = await pb.collection('screens').getFullList({
+            filter: pb.filter('groupId = {:groupId}', { groupId: req.params.id }),
+            fields: 'id'
+          });
+          await Promise.all(groupedScreens.map((s: any) =>
+            pb.collection('screens').update(s.id, { groupId: null }).catch(() => {})
+          ));
+        } catch (err: any) {
+          console.error('Error clearing groupId on screens after screen_group deletion:', err.message);
+        }
       }
 
       res.status(204).end();
@@ -598,10 +649,12 @@ async function syncPlaylistBrandingFromUser(playlistRecord: any) {
       ).catch(() => null);
     }
 
-    if (!org) return;
-
-    const logo = isWhiteLabel ? (org.websiteLogo || '') : '';
-    const name = isWhiteLabel ? (org.websiteName || '') : '';
+    // Same fix as syncScreenBrandingFromOrg — an unresolvable org (deleted,
+    // or a renamed/typo'd company field) previously froze whatever branding
+    // was last set instead of falling back to non-white-label.
+    isWhiteLabel = org ? isWhiteLabel : false;
+    const logo = isWhiteLabel ? (org?.websiteLogo || '') : '';
+    const name = isWhiteLabel ? (org?.websiteName || '') : '';
 
     if (
       playlistRecord.whiteLabel !== isWhiteLabel ||

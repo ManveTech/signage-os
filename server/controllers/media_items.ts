@@ -48,6 +48,34 @@ export async function uploadMediaItem(req: any, res: any) {
       return res.status(413).json({ error: `File too large. Maximum allowed size is ${limitMB}MB for ${mimeType?.startsWith('video/') ? 'videos' : 'images'}.` });
     }
 
+    // Enforce the license's storage plan — previously this only capped a
+    // single file's size, so a customer could upload unlimited files
+    // indefinitely regardless of their plan's storageLimit (the dashboard
+    // only ever compared usage to the limit for its own progress-bar
+    // display, never to block an upload). Admins aren't plan-limited.
+    if (!isAdminUser(req.user)) {
+      const uploaderEmail = req.body.uploadedBy;
+      const licensesResult = await pb.collection('licenses').getList(1, 100, {
+        filter: pb.filter('assignedUserEmail = {:email} && status = "active"', { email: uploaderEmail })
+      }).catch(() => ({ items: [] as any[] }));
+
+      const licenseItems: any[] = licensesResult.items;
+      if (licenseItems.length > 0) {
+        const storageLimitBytes = licenseItems.reduce((sum: number, lic: any) => sum + (lic.storageLimit || 0), 0) * 1024 * 1024 * 1024;
+        const existingItems: any[] = await pb.collection('media_items').getFullList({
+          filter: pb.filter('uploadedBy = {:email}', { email: uploaderEmail }),
+          fields: 'fileSizeBytes'
+        }).catch(() => [] as any[]);
+        const currentUsageBytes = existingItems.reduce((sum: number, item: any) => sum + (item.fileSizeBytes || 0), 0);
+
+        if (currentUsageBytes + fileBuffer.length > storageLimitBytes) {
+          const limitGB = (storageLimitBytes / (1024 * 1024 * 1024)).toFixed(1);
+          const usedGB = (currentUsageBytes / (1024 * 1024 * 1024)).toFixed(2);
+          return res.status(413).json({ error: `Storage limit reached. Your plan allows ${limitGB}GB and you've already used ${usedGB}GB.` });
+        }
+      }
+    }
+
     // Calculate SHA-256 checksum
     const checksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
@@ -64,7 +92,11 @@ export async function uploadMediaItem(req: any, res: any) {
       console.log(`Uploading ${fileName} (${fileBuffer.length} bytes) to PocketBase local storage...`);
       const formData = new FormData();
 
-      const fields = ['title', 'type', 'duration', 'resolution', 'fileSize', 'fileSizeBytes', 'uploadedBy', 'expiryDate', 'status'];
+      // fileSizeBytes is deliberately NOT copied from req.body here — it's
+      // set below from the real decoded buffer length, since a client-
+      // reported value could understate usage and let the storage-quota
+      // check above be evaded on every subsequent upload.
+      const fields = ['title', 'type', 'duration', 'resolution', 'fileSize', 'uploadedBy', 'expiryDate', 'status'];
       fields.forEach(field => {
         if (req.body[field] !== undefined) formData.append(field, String(req.body[field]));
       });
@@ -79,6 +111,7 @@ export async function uploadMediaItem(req: any, res: any) {
       formData.append('height', String(req.body.height || 0));
       formData.append('mimeType', mimeType);
       formData.append('checksum', checksum);
+      formData.append('fileSizeBytes', String(fileBuffer.length));
 
       const fileBlob = new File([fileBuffer], fileName, { type: mimeType });
       formData.append('file', fileBlob);
@@ -99,9 +132,12 @@ export async function uploadMediaItem(req: any, res: any) {
       checksum: checksum,
       width: req.body.width || 0,
       height: req.body.height || 0,
+      // Real decoded byte length, not the client-reported value — see the
+      // matching comment on the PocketBase-local-storage path above.
+      fileSizeBytes: fileBuffer.length,
     };
 
-    const fields = ['title', 'type', 'duration', 'resolution', 'fileSize', 'fileSizeBytes', 'uploadedBy', 'expiryDate', 'status', 'tags'];
+    const fields = ['title', 'type', 'duration', 'resolution', 'fileSize', 'uploadedBy', 'expiryDate', 'status', 'tags'];
     fields.forEach(field => {
       if (req.body[field] !== undefined) recordData[field] = req.body[field];
     });

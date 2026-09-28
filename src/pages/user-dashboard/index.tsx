@@ -50,10 +50,10 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail={userEmail} />;
     case 'playlists-create': return <CreatePlaylist userEmail={userEmail} onNavigate={navigate} />;
     case 'playlists-scheduler': return <Scheduler userEmail={userEmail} />;
-    case 'reports-overview': return <Reports activeTab="Overview" />;
-    case 'reports-screens': return <Reports activeTab="Screen Reports" />;
-    case 'reports-media': return <Reports activeTab="Media Reports" />;
-    case 'reports-logs': return <Reports activeTab="Device Logs" />;
+    case 'reports-overview': return <Reports activeTab="Overview" userEmail={userEmail} />;
+    case 'reports-screens': return <Reports activeTab="Screen Reports" userEmail={userEmail} />;
+    case 'reports-media': return <Reports activeTab="Media Reports" userEmail={userEmail} />;
+    case 'reports-logs': return <Reports activeTab="Device Logs" userEmail={userEmail} />;
     case 'users': return <Users />;
     case 'license-billing':
     case 'licenses-pool': return <Licenses activeTab="License Pool" userEmail={userEmail} />;
@@ -62,7 +62,9 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'organizations': return <Organizations />;
     case 'video-conferencing': return <VideoConferencing enabled={videoConferencingEnabled} organizationId={organizationId} licenseChecked={licenseChecked} />;
     case 'settings-general': return <Settings activeTab="General" userEmail={userEmail} />;
-    case 'settings-storage': return <Settings activeTab="Storage" userEmail={userEmail} />;
+    // Storage config is an admin/platform concern, never reachable from this
+    // dashboard's own nav — redirect any old link/bookmark to General.
+    case 'settings-storage': return <Settings activeTab="General" userEmail={userEmail} />;
     case 'settings-player': return <Settings activeTab="Player Settings" userEmail={userEmail} />;
     case 'settings-notifications': return <Settings activeTab="Notifications" userEmail={userEmail} />;
     case 'support':
