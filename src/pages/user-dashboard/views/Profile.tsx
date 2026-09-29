@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  User, Lock, Shield, Key, LogOut, Eye, EyeOff, Copy, RefreshCw, 
+import {
+  User, Lock, Shield, Key, LogOut, Eye, EyeOff, Copy, RefreshCw,
   Camera, CheckCircle, CreditCard, Mail, Phone, Image, Globe
 } from 'lucide-react';
 import { pushToDatabase, syncCollection } from '../../../lib/syncHelper';
 import { licensingStore } from '../../../lib/licensingStore';
 import { API_BASE } from '../../../config';
+import { getAuthToken } from '../../../lib/authStorage';
 
 interface Props {
   userEmail?: string;
@@ -59,7 +60,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
   // guess above (namePrefix + ' User') is only ever right by coincidence.
   useEffect(() => {
     const userId = localStorage.getItem('signageos_user_id');
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     if (!userId) return;
 
     fetch(`${API_BASE}/users/${userId}`, {
@@ -151,7 +152,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
     }
 
     const userId = localStorage.getItem('signageos_user_id');
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     if (!userId) {
       showToast('Not signed in — cannot upload avatar.');
       return;
@@ -197,7 +198,7 @@ export default function Profile({ userEmail = 'priya@demo.com' }: Props) {
 
   const handleRemoveAvatar = async () => {
     const userId = localStorage.getItem('signageos_user_id');
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     if (!userId) return;
 
     setIsUploadingAvatar(true);

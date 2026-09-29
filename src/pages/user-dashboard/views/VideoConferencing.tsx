@@ -4,6 +4,7 @@ import { WebRTCHandler, acquireSharedLocalStream } from '../../../utils/webrtcHa
 import { useVideoConferencing } from '../../../hooks/useVideoConferencing';
 import { API_BASE } from '../../../config';
 import CallOverlay, { ChatMessage } from '../../../components/CallOverlay';
+import { getAuthToken } from '../../../lib/authStorage';
 
 type ConferenceMode = 'one-to-one' | 'group' | 'manual-select';
 
@@ -132,7 +133,7 @@ export default function VideoConferencing({ enabled, organizationId, licenseChec
   }, [onScreenRejoined, socket, conferenceId, callTargetIds, micEnabled, localStream]);
 
   const authHeaders = () => {
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   };
 

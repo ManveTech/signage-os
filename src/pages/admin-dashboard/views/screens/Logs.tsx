@@ -6,11 +6,12 @@ import { mediaStore } from '../../../../lib/mediaStore';
 import { toast } from '../../../../components/Toast';
 import CustomSelect from '../../../../components/CustomSelect';
 import ScreenSubNav from '../../../../components/ScreenSubNav';
+import { getAuthToken } from '../../../../lib/authStorage';
 
 // API_BASE is imported from config
 
 function getHeaders() {
-  const token = localStorage.getItem('signageos_token');
+  const token = getAuthToken();
   return {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {})

@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE } from '../../../config';
-import { 
-  User, Lock, Shield, Key, LogOut, Eye, EyeOff, Copy, RefreshCw, 
+import {
+  User, Lock, Shield, Key, LogOut, Eye, EyeOff, Copy, RefreshCw,
   Camera, CheckCircle, CreditCard, Mail, Phone, ShieldAlert
 } from 'lucide-react';
 import { pushToDatabase } from '../../../lib/syncHelper';
+import { getAuthToken } from '../../../lib/authStorage';
+
+// Matches the server's own mask (server/controllers/payments.ts) — a value
+// equal to this is never treated as a real secret, only as "unchanged".
+const RZP_SECRET_MASK = '••••••••••••';
 
 export default function Profile() {
   const [showPass, setShowPass] = useState(false);
@@ -27,9 +32,14 @@ export default function Profile() {
   const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
-  // Razorpay Key & Secret state
-  const [rzpKeyId, setRzpKeyId] = useState(() => localStorage.getItem('signageos_admin_rzp_key') || 'rzp_live_demo83920194');
-  const [rzpKeySecret, setRzpKeySecret] = useState(() => localStorage.getItem('signageos_admin_rzp_secret') || 'sec_live_92019483984');
+  // Razorpay Key & Secret state — the Key ID is safe to cache locally
+  // (Razorpay's own docs treat it as a public identifier), but the secret
+  // must never touch localStorage. It used to be written there in plaintext
+  // on every save (and defaulted to a hardcoded, live-looking fake value
+  // before anything loaded); it now only ever lives in React state, fetched
+  // fresh from the server (already masked there) on each visit.
+  const [rzpKeyId, setRzpKeyId] = useState(() => localStorage.getItem('signageos_admin_rzp_key') || '');
+  const [rzpKeySecret, setRzpKeySecret] = useState('');
   const [showRzpKey, setShowRzpKey] = useState(false);
   const [showRzpSecret, setShowRzpSecret] = useState(false);
 
@@ -45,7 +55,7 @@ export default function Profile() {
   // fix: without it, the fields above never reflect who's really logged in.
   useEffect(() => {
     const userId = localStorage.getItem('signageos_user_id');
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     if (!userId) return;
 
     fetch(`${API_BASE}/users/${userId}`, {
@@ -80,9 +90,14 @@ export default function Profile() {
       });
   }, []);
 
-  // Load Razorpay config on mount
+  // Load Razorpay config on mount. Also scrub any real secret a pre-fix
+  // version of this page may have already written to this browser's
+  // localStorage — the key itself never contained real secret rotation, so
+  // this is a one-time remediation, not an ongoing behavior.
   useEffect(() => {
-    const token = localStorage.getItem('signageos_token');
+    localStorage.removeItem('signageos_admin_rzp_secret');
+
+    const token = getAuthToken();
     fetch(`${API_BASE}/payments/config`, {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -97,10 +112,9 @@ export default function Profile() {
         setRzpKeyId(data.keyId);
         localStorage.setItem('signageos_admin_rzp_key', data.keyId);
       }
-      if (data.keySecret) {
-        setRzpKeySecret(data.keySecret);
-        localStorage.setItem('signageos_admin_rzp_secret', data.keySecret);
-      }
+      // keySecret arrives already masked (or '' if unset) — kept in state
+      // only, never persisted to localStorage.
+      setRzpKeySecret(data.keySecret || '');
     })
     .catch(err => {
       console.warn('Error loading remote Razorpay config:', err);
@@ -127,7 +141,7 @@ export default function Profile() {
     }
 
     const userId = localStorage.getItem('signageos_user_id');
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     if (!userId) {
       showToast('Not signed in — cannot upload avatar.');
       return;
@@ -173,7 +187,7 @@ export default function Profile() {
 
   const handleRemoveAvatar = async () => {
     const userId = localStorage.getItem('signageos_user_id');
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     if (!userId) return;
 
     setIsUploadingAvatar(true);
@@ -231,10 +245,11 @@ export default function Profile() {
 
   const handleSaveRazorpayCredentials = (e: React.FormEvent) => {
     e.preventDefault();
+    // Only the Key ID is safe to cache client-side — the secret is never
+    // written to localStorage, only sent to the server for this one request.
     localStorage.setItem('signageos_admin_rzp_key', rzpKeyId);
-    localStorage.setItem('signageos_admin_rzp_secret', rzpKeySecret);
 
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     fetch(`${API_BASE}/payments/config`, {
       method: 'POST',
       headers: {
@@ -248,6 +263,12 @@ export default function Profile() {
     })
     .then(async res => {
       if (res.ok) {
+        // Drop the raw secret back to the masked placeholder now that it's
+        // saved server-side — nothing here needs to hold the plaintext value
+        // any longer than the request that just sent it.
+        if (rzpKeySecret && rzpKeySecret !== RZP_SECRET_MASK) {
+          setRzpKeySecret(RZP_SECRET_MASK);
+        }
         // Notify sidebar and headers
         window.dispatchEvent(new Event('signageos_admin_profile_updated'));
         showToast('Razorpay credentials updated & saved to server .env!');

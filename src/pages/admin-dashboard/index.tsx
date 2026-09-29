@@ -34,6 +34,7 @@ import { useMobileDetect } from '../../hooks/useMobileDetect';
 import { useCapacitor } from '../../hooks/useCapacitor';
 import { syncAllFromDatabase } from '../../lib/syncHelper';
 import { Lock, X, CheckCircle } from 'lucide-react';
+import { getAuthToken } from '../../lib/authStorage';
 
 function renderView(view: string, navigate: (v: string) => void, adminEmail: string) {
   switch (view) {
@@ -167,7 +168,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
 
     try {
       const userId = localStorage.getItem('signageos_user_id');
-      const token = localStorage.getItem('signageos_token');
+      const token = getAuthToken();
 
       const res = await fetch(`${API_BASE}/users/${userId}`, {
         method: 'PUT',

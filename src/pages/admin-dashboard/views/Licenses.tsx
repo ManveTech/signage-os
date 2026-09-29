@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Key, Plus, Clock, UserPlus, Trash2, Edit2, ShieldAlert, CheckCircle, 
-  XCircle, Receipt, FileText, Send, Building, ShieldCheck, Mail, MapPin, 
+import {
+  Key, Plus, Clock, UserPlus, Trash2, Edit2, ShieldAlert, CheckCircle,
+  XCircle, Receipt, FileText, Send, Building, ShieldCheck, Mail, MapPin,
   Phone, Globe, Image as ImageIcon, CreditCard
 } from 'lucide-react';
 import { API_BASE } from '../../../config';
@@ -9,6 +9,7 @@ import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from
 import { syncCollection } from '../../../lib/syncHelper';
 import { toast } from '../../../components/Toast';
 import CustomSelect from '../../../components/CustomSelect';
+import { getAuthToken } from '../../../lib/authStorage';
 
 type Tab = 'management' | 'payments' | 'expirations' | 'invoices';
 
@@ -100,7 +101,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     
     // Fetch payments history directly from backend webhook payments API
     try {
-      const token = localStorage.getItem('signageos_token');
+      const token = getAuthToken();
       const res = await fetch(`${API_BASE}/payments/history`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });

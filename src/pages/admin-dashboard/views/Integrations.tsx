@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Cloud, Mail, KeyRound, CheckCircle2, XCircle, Loader2, Save, PlugZap } from 'lucide-react';
 import { API_BASE } from '../../../config';
+import { getAuthToken } from '../../../lib/authStorage';
 
 type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google';
 
@@ -89,7 +90,7 @@ export default function Integrations() {
 
   const authHeaders = () => ({
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${localStorage.getItem('signageos_token') || ''}`
+    'Authorization': `Bearer ${getAuthToken() || ''}`
   });
 
   useEffect(() => {

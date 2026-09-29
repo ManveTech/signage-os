@@ -171,6 +171,26 @@ fun PairingSetupScreen(
                             )
                         }
 
+                        if (uiState.pairingCode.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .background(Color.White, RoundedCornerShape(10.dp))
+                                    .padding(6.dp)
+                            ) {
+                                QrCodeImage(
+                                    content = uiState.pairingCode,
+                                    sizePx = 200,
+                                    modifier = Modifier.size(72.dp)
+                                )
+                            }
+                            Text(
+                                text = "Or scan to copy the code",
+                                color = Color(0xFF938F99),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -370,6 +390,26 @@ fun PairingSetupScreen(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
+                            )
+                        }
+
+                        if (uiState.pairingCode.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .background(Color.White, RoundedCornerShape(12.dp))
+                                    .padding(8.dp)
+                            ) {
+                                QrCodeImage(
+                                    content = uiState.pairingCode,
+                                    sizePx = 240,
+                                    modifier = Modifier.size(96.dp)
+                                )
+                            }
+                            Text(
+                                text = "Or scan to copy the code",
+                                color = Color(0xFF938F99),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
                             )
                         }
 

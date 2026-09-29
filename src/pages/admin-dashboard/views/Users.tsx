@@ -3,7 +3,6 @@ import {
   Plus, Search, Edit, Trash2, X, CheckCircle, Mail, Phone, 
   MapPin, Building, Key, Lock, ArrowRight, ArrowLeft 
 } from 'lucide-react';
-import { mockUsers, mockOrganizations } from '../data/mockData';
 import type { User as UserType } from '../types';
 import { licensingStore } from '../../../lib/licensingStore';
 import { pushToDatabase, generatePocketBaseId, generateClientPassword, syncCollection } from '../../../lib/syncHelper';
@@ -12,25 +11,26 @@ import CustomSelect from '../../../components/CustomSelect';
 export default function Users() {
   const [search, setSearch] = useState('');
   
-  // Persistent users list for clients
+  // Persistent users list for clients — seeded from whatever the last real
+  // sync cached, never from demo data, so a fresh/empty deployment shows an
+  // empty table instead of fake clients until the useEffect sync below
+  // replaces it with the server's actual users.
   const [users, setUsers] = useState<UserType[]>(() => {
     const data = localStorage.getItem('signageos_users');
-    if (data) return JSON.parse(data);
-    const initialClients = mockUsers.filter(u => u.role !== 'super_admin');
-    localStorage.setItem('signageos_users', JSON.stringify(initialClients));
-    return initialClients;
+    return data ? JSON.parse(data) : [];
   });
 
   // Track active licenses for assignments
   const [licenses, setLicenses] = useState(() => licensingStore.getLicenses());
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
 
-  // Refresh from server on mount
+  // Refresh from server on mount. Always applies the result, including an
+  // empty array — syncCollection already falls back to cached/local data on
+  // a network failure, so a real empty result here means there genuinely are
+  // no client users yet, not that the fetch failed.
   useEffect(() => {
     syncCollection('users', 'signageos_users').then(serverUsers => {
-      if (serverUsers.length > 0) {
-        setUsers(serverUsers.filter((u: any) => u.role !== 'super_admin' && u.role !== 'admin'));
-      }
+      setUsers(serverUsers.filter((u: any) => u.role !== 'super_admin' && u.role !== 'admin'));
     });
     syncCollection('licenses', 'signageos_licenses').then(() => {
       setLicenses(licensingStore.getLicenses());

@@ -1,7 +1,8 @@
 import { API_BASE } from '../config';
+import { getAuthToken } from './authStorage';
 
 function getHeaders() {
-  const token = localStorage.getItem('signageos_token');
+  const token = getAuthToken();
   return {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {})

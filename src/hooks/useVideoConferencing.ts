@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { BACKEND_URL } from '../config';
+import { getAuthToken } from '../lib/authStorage';
 
 interface ConferenceEventData {
   conferenceId: string;
@@ -22,6 +23,11 @@ export function useVideoConferencing() {
 
   useEffect(() => {
     const socket = io(BACKEND_URL, {
+      // Lets the server verify this socket is really the account it claims
+      // before allowing it into a conference room — see io.use() in
+      // server/index.ts. Screens (Kotlin app) have no such token and still
+      // connect fine; this is only checked for the events that need it.
+      auth: { token: getAuthToken() },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,

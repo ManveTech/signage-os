@@ -26,8 +26,7 @@ async function checkPocketBase(): Promise<HealthStatus> {
       status: 'healthy',
       latency,
       details: {
-        authenticated: pb.authStore.isValid,
-        url: pb.baseUrl
+        authenticated: pb.authStore.isValid
       }
     };
   } catch (error: any) {
@@ -107,11 +106,7 @@ async function checkS3(): Promise<HealthStatus> {
     return {
       service: 's3',
       status: 'healthy',
-      latency,
-      details: {
-        bucket: cfg.bucket,
-        endpoint: cfg.endpoint
-      }
+      latency
     };
   }
   return {

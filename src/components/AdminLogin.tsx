@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { syncAllFromDatabase } from '../lib/syncHelper';
+import { getAuthToken, setAuthToken, clearAuthToken } from '../lib/authStorage';
 
 interface Props {
   initialView?: 'login' | 'forgot' | 'reset' | 'dashboard';
@@ -45,7 +46,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
   const [password, setPassword] = useState('');
   const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [loggedInUser, setLoggedInUser] = useState<{ email: string; role: 'admin' | 'client' } | null>(() => {
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     const storedEmail = localStorage.getItem('signageos_user_email');
     const storedRole = localStorage.getItem('signageos_user_role');
     if (token && storedEmail && storedRole) {
@@ -132,7 +133,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
   // localStorage/session setup afterward.
   const completeLogin = async (data: { token?: string; user: any }) => {
     if (data.token) {
-      localStorage.setItem('signageos_token', data.token);
+      setAuthToken(data.token, keepSignedIn);
       localStorage.setItem('signageos_user_id', data.user.id);
       localStorage.setItem('signageos_user_email', data.user.email);
       localStorage.setItem('signageos_user_role', data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client');
@@ -332,7 +333,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('signageos_token');
+    clearAuthToken();
     localStorage.removeItem('signageos_user_id');
     localStorage.removeItem('signageos_user_email');
     localStorage.removeItem('signageos_user_role');

@@ -123,8 +123,16 @@ export async function getPairingCode(req: any, res: any) {
     let screenRecord;
     if (screens.items.length > 0) {
       const existing = screens.items[0];
-      if (existing.status === 'active' || existing.status === 'online') {
-        // If already active, just return the existing paired record details
+      // Gate on whether the screen is CLAIMED (assignedToUserEmail set), not
+      // on its live status — a claimed screen that's simply offline (powered
+      // off overnight, a network blip) previously still fell through to the
+      // "issue a new code" branch below, handing anyone who knew its
+      // hardwareUuid a valid pairing code for another tenant's screen with
+      // no auth at all. The real app never needs a new code for a screen it
+      // already has a screenId for — it recovers from offline purely via
+      // heartbeat (which matches hardware_uuid, not a pairing code) — so
+      // there's no legitimate case this blocks.
+      if (existing.assignedToUserEmail) {
         return res.status(200).json({
           screenId: existing.id,
           pairingCode: existing.pairing_code || '',
@@ -1219,17 +1227,25 @@ export async function disconnectScreen(req: any, res: any) {
     let screenRecord = null;
 
     if (screenId) {
+      // The TV app only ever calls this endpoint with hardwareUuid (see
+      // SignageRepository.disconnectDevice) — the screenId path exists for
+      // the authenticated dashboard "unpair" action, so it's the one place
+      // here that can and must require a real owner/admin. Without this, a
+      // caller with no credentials at all could unpair any tenant's screen
+      // by screenId — this path is not on the /devices unauthenticated
+      // bypass list, but /screens/disconnect itself is, so `req.user` can
+      // still be undefined here and must not be treated as "allowed".
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ message: 'Authentication required.' });
+      }
       screenRecord = await pb.collection('screens').getOne(screenId).catch(() => null);
       if (!screenRecord) {
         return res.status(404).json({ message: 'Screen not found.' });
       }
-
-      const user = req.user;
-      if (user) {
-        const isSuperAdmin = user.role === 'super_admin' || user.role === 'admin';
-        if (screenRecord.assignedToUserEmail !== user.email && !isSuperAdmin) {
-          return res.status(403).json({ message: 'Unauthorized: You do not own this screen.' });
-        }
+      const isSuperAdmin = user.role === 'super_admin' || user.role === 'admin';
+      if (screenRecord.assignedToUserEmail !== user.email && !isSuperAdmin) {
+        return res.status(403).json({ message: 'Unauthorized: You do not own this screen.' });
       }
     } else if (hardwareUuid) {
       const list = await pb.collection('screens').getList(1, 1, {
@@ -1311,11 +1327,16 @@ export async function disconnectScreen(req: any, res: any) {
       })
     ).catch(err => console.error('Error logging unpairing:', err));
 
+    // The pairing code is deliberately not returned here — neither caller
+    // (the TV app's disconnectDevice, nor the dashboard's unpair action)
+    // reads it from this response, and handing it back is exactly what let
+    // an unauthenticated caller who only knew a hardwareUuid immediately
+    // re-pair the screen as their own in a second request. A real device
+    // fetches its own code separately via getPairingCode when it needs one.
     res.status(200).json({
       message: 'Screen disconnected successfully.',
       id: updatedScreen.id,
-      status: updatedScreen.status,
-      pairingCode: updatedScreen.pairing_code
+      status: updatedScreen.status
     });
   } catch (error: any) {
     console.error('Error disconnecting screen:', error);

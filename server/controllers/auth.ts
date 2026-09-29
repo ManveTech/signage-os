@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import PocketBase from 'pocketbase';
 import { PB_URL, APP_URL } from '../config';
 import { pb, ensurePBAuth } from '../db';
@@ -5,6 +6,7 @@ import { signJwt, verifyJwt } from '../middleware/auth';
 import { sendPasswordResetEmail } from '../email';
 import { logAudit, getClientIp } from '../services/auditLog';
 import { getGoogleOAuthConfig } from '../integrationsStore';
+import { redis, isRedisReady } from '../redis';
 
 export async function login(req: any, res: any) {
   try {
@@ -141,7 +143,8 @@ export async function googleLogin(req: any, res: any) {
     const token = signJwt({
       id: user.id,
       email: user.email,
-      role: user.role || 'client'
+      role: user.role || 'client',
+      exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
     });
 
     const isProduction = process.env.NODE_ENV === 'production';
@@ -332,7 +335,25 @@ export async function resetPassword(req: any, res: any) {
       return res.status(400).json({ message: 'Invalid token parameters.' });
     }
 
-
+    // Reset tokens are otherwise reusable for their whole 15-minute window —
+    // a link that leaked (browser history, an email proxy, a shared inbox)
+    // would let a second person reset the password again even after the
+    // account owner already used it. Claim the token atomically (SET NX) so
+    // only the first redemption succeeds; if Redis is unreachable, fail open
+    // rather than blocking password resets outright, matching how the rest
+    // of the app degrades when Redis is down.
+    if (isRedisReady()) {
+      try {
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const ttlSeconds = Math.max(1, Math.floor(payload.exp - Date.now() / 1000));
+        const claimed = await redis.set(`reset_used:${tokenHash}`, '1', 'EX', ttlSeconds, 'NX');
+        if (claimed === null) {
+          return res.status(400).json({ message: 'This password reset link has already been used.' });
+        }
+      } catch (redisErr) {
+        console.warn('[ResetPassword] Redis single-use check failed, proceeding:', redisErr);
+      }
+    }
 
     // PocketBase user reset
     await ensurePBAuth();

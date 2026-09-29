@@ -5,6 +5,13 @@ import { logAudit, getClientIp } from '../services/auditLog';
 
 const router = express.Router();
 
+// Same reasoning as the media-upload allowlist in controllers/media_items.ts —
+// the mimeType here comes straight from the client's data: URI, and without
+// this check an admin could have an arbitrary Content-Type (e.g. text/html)
+// stamped onto the uploaded object. SVG is excluded for the same reason too:
+// it can carry a <script> that runs if the URL is ever opened directly.
+const ALLOWED_LOGO_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
 async function propagateBrandingToScreens(orgRecord: any) {
   try {
     // 1. Find all users in this organization
@@ -131,7 +138,7 @@ async function handleOrgUpdate(req: any, res: any) {
     let websiteLogoUrl = body.websiteLogo;
     if (websiteLogoUrl && websiteLogoUrl.startsWith('data:')) {
       const match = websiteLogoUrl.match(/^data:([^;]+);base64,(.+)$/);
-      if (match) {
+      if (match && ALLOWED_LOGO_MIME_TYPES.has(match[1])) {
         const mimeType = match[1];
         const base64Data = match[2];
         const buffer = Buffer.from(base64Data, 'base64');

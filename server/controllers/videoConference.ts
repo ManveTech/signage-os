@@ -38,7 +38,7 @@ const VALID_RECORD_ID = /^[a-z0-9]{15}$/;
  * had no such check at all, meaning any authenticated user could control any
  * other tenant's live video call just by knowing its id.
  */
-async function loadOwnedConference(conferenceId: string, user: any): Promise<any> {
+export async function loadOwnedConference(conferenceId: string, user: any): Promise<any> {
   const conference = await pb.collection('video_conferences').getOne(conferenceId);
   if (!isAdminUser(user) && conference.adminUserId !== user?.id) {
     const err: any = new Error('Access denied');

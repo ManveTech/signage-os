@@ -23,9 +23,7 @@ import AllPlaylists from './views/playlists/AllPlaylists';
 import CreatePlaylist from './views/playlists/CreatePlaylist';
 import Scheduler from './views/playlists/Scheduler';
 import Reports from './views/Reports';
-import Users from './views/Users';
 import Licenses from './views/Licenses';
-import Organizations from './views/Organizations';
 import VideoConferencing from './views/VideoConferencing';
 import Settings from './views/Settings';
 import Support from './views/Support';
@@ -33,6 +31,7 @@ import Profile from './views/Profile';
 import { licensingStore, License } from '../../lib/licensingStore';
 import { syncCollection, pushToDatabase } from '../../lib/syncHelper';
 import { X, CheckCircle, Lock, Image } from 'lucide-react';
+import { getAuthToken } from '../../lib/authStorage';
 
 
 function renderView(view: string, navigate: (v: string) => void, userEmail: string, videoConferencingEnabled: boolean, organizationId: string, licenseChecked: boolean) {
@@ -52,12 +51,10 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'reports-screens': return <Reports activeTab="Screen Reports" userEmail={userEmail} />;
     case 'reports-media': return <Reports activeTab="Media Reports" userEmail={userEmail} />;
     case 'reports-logs': return <Reports activeTab="Device Logs" userEmail={userEmail} />;
-    case 'users': return <Users />;
     case 'license-billing':
     case 'licenses-pool': return <Licenses activeTab="License Pool" userEmail={userEmail} />;
     case 'licenses-assign': return <Licenses activeTab="Assign License" userEmail={userEmail} />;
     case 'licenses-history': return <Licenses activeTab="History" userEmail={userEmail} />;
-    case 'organizations': return <Organizations />;
     case 'video-conferencing': return <VideoConferencing enabled={videoConferencingEnabled} organizationId={organizationId} licenseChecked={licenseChecked} />;
     case 'settings-general': return <Settings activeTab="General" userEmail={userEmail} />;
     // Storage config is an admin/platform concern, never reachable from this
@@ -235,7 +232,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
 
     try {
       const userId = localStorage.getItem('signageos_user_id');
-      const token = localStorage.getItem('signageos_token');
+      const token = getAuthToken();
 
       const res = await fetch(`${API_BASE}/users/${userId}`, {
         method: 'PUT',

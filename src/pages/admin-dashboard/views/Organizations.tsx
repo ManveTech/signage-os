@@ -3,7 +3,6 @@ import {
   Plus, Building2, Users, Monitor, HardDrive, ChevronRight, 
   X, CheckCircle, Calendar, Shield, AlertTriangle, MoreVertical, Key 
 } from 'lucide-react';
-import { mockOrganizations } from '../data/mockData';
 import { licensingStore } from '../../../lib/licensingStore';
 import { mediaStore } from '../../../lib/mediaStore';
 import { pushToDatabase, generatePocketBaseId, syncCollection } from '../../../lib/syncHelper';
@@ -30,25 +29,26 @@ const statusColors: Record<OrganizationType['subscriptionStatus'], string> = {
 };
 
 export default function Organizations() {
-  // Load persistent organizations
+  // Load persistent organizations — seeded from the last real sync only, so
+  // a fresh/empty deployment shows an empty state instead of demo orgs until
+  // the useEffect sync below replaces it with the server's actual data.
   const [orgs, setOrgs] = useState<OrganizationType[]>(() => {
     const data = localStorage.getItem('signageos_organizations');
-    if (data) return JSON.parse(data);
-    localStorage.setItem('signageos_organizations', JSON.stringify(mockOrganizations));
-    return mockOrganizations;
+    return data ? JSON.parse(data) : [];
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(orgs[0]?.id || null);
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
   const [isAddOrgOpen, setIsAddOrgOpen] = useState(false);
 
-  // Refresh from server on mount
+  // Refresh from server on mount. Always applies the result, including an
+  // empty array — syncCollection already falls back to cached/local data on
+  // a network failure, so a real empty result here means there genuinely are
+  // no organizations yet, not that the fetch failed.
   useEffect(() => {
     syncCollection('organizations', 'signageos_organizations').then(serverOrgs => {
-      if (serverOrgs.length > 0) {
-        setOrgs(serverOrgs);
-        setSelectedId(prev => prev || serverOrgs[0]?.id || null);
-      }
+      setOrgs(serverOrgs);
+      setSelectedId(prev => prev || serverOrgs[0]?.id || null);
     });
   }, []);
 

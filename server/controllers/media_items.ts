@@ -6,6 +6,19 @@ function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
 }
 
+// SVG is deliberately excluded — unlike raster formats it can carry an
+// embedded <script>, which runs if the file is ever opened directly rather
+// than rendered inside an <img>. Signage media never needs vector graphics.
+const ALLOWED_MEDIA_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+]);
+
 /**
  * Generate a unique R2 object key for a media file.
  * Format: media/<year>/<month>/<uuid>/<filename>
@@ -37,6 +50,15 @@ export async function uploadMediaItem(req: any, res: any) {
     const { fileData, fileName, mimeType } = req.body;
     if (!fileData || !fileName) {
       return res.status(400).json({ error: 'fileData and fileName are required for image/video upload' });
+    }
+
+    // The upload UI only offers image/* and video/*, but mimeType is a
+    // client-reported field — without this check a caller could claim any
+    // type (e.g. text/html) and have it stored and served back with that
+    // same Content-Type from R2/PocketBase, which is what actually makes
+    // spoofed content dangerous to open directly.
+    if (!ALLOWED_MEDIA_MIME_TYPES.has(mimeType)) {
+      return res.status(400).json({ error: `Unsupported file type: ${mimeType || 'unknown'}. Only image and video files are allowed.` });
     }
 
     const fileBuffer = Buffer.from(fileData, 'base64');

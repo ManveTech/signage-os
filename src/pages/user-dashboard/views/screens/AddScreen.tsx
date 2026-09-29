@@ -5,6 +5,7 @@ import { mediaStore } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import { toast } from '../../../../components/Toast';
+import { getAuthToken } from '../../../../lib/authStorage';
 
 const steps = [
   { id: 1, label: 'Hardware Details', icon: <Monitor size={16} /> },
@@ -79,7 +80,7 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
     }
 
     try {
-      const token = localStorage.getItem('signageos_token');
+      const token = getAuthToken();
       const response = await fetch(`${API_BASE}/screens/pair`, {
         method: 'POST',
         headers: {

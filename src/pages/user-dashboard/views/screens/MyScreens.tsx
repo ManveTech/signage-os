@@ -10,6 +10,7 @@ import { mediaStore, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import CustomSelect from '../../../../components/CustomSelect';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
+import { getAuthToken } from '../../../../lib/authStorage';
 import type { Screen } from '../../types';
 
 const groupColorMap: Record<string, { bg: string; text: string; border: string; iconBg: string }> = {
@@ -449,7 +450,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('signageos_token')}`
+        'Authorization': `Bearer ${getAuthToken()}`
       },
       body: JSON.stringify({ playlistId: playlist.id, playlistName: playlist.name })
     }).catch(() => {});

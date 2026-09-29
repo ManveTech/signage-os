@@ -32,8 +32,27 @@ import { ensureRedisRunning, isRedisReady, redis } from './redis';
 import { apiLimiter } from './middleware/rateLimiter';
 import { getActiveConference, setActiveConference, clearActiveConference, clearActiveConferencesForConference } from './videoConferenceState';
 import { createAdapter } from '@socket.io/redis-adapter';
+import { verifyJwt } from './middleware/auth';
+import { loadOwnedConference } from './controllers/videoConference';
 
 const app = express();
+
+// This app is meant to run behind exactly one reverse proxy (Coolify/nginx —
+// see getClientIp()'s comment in services/auditLog.ts, which already assumed
+// this). Without `trust proxy` set, Express ignores X-Forwarded-For and
+// req.ip resolves to the proxy's own address for every request — which is
+// exactly what apiLimiter/authLimiter/uploadLimiter/paymentLimiter key on by
+// default. In production that collapses every distinct user into one shared
+// rate-limit bucket: five failed logins from anyone would lock out the whole
+// app's login for 15 minutes. `1` trusts exactly one hop (the proxy in
+// front), so it reads the real client IP from the proxy's X-Forwarded-For
+// without also trusting a header an internet client could set directly —
+// that only holds if this process is never reachable except through that
+// proxy (true for a Docker-networked Coolify deployment; if it's ever
+// changed to expose this port directly to the internet, this must change
+// too or IP-based limiting becomes spoofable).
+app.set('trust proxy', 1);
+
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, {
   cors: {
@@ -136,7 +155,12 @@ app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // Health check endpoints
 import { healthCheck, readinessCheck, livenessCheck } from './controllers/health';
-app.get('/health', healthCheck);           // Comprehensive health check
+// /health does a real PocketBase query, a Redis ping, and an R2 connection
+// test on every hit — unlike /ready and /live (cheap, and must stay
+// unthrottled since k8s-style probes hit them on a tight per-pod schedule),
+// it's expensive enough to rate-limit against an unauthenticated caller
+// hammering it.
+app.get('/health', apiLimiter, healthCheck);
 app.get('/health/ready', readinessCheck);  // Kubernetes readiness probe
 app.get('/health/live', livenessCheck);    // Kubernetes liveness probe
 
@@ -218,6 +242,23 @@ const conferenceCallerSockets = new Map<string, Set<string>>();
 const CALLER_GONE_GRACE_MS = 15000;
 const pendingCallerGoneCleanup = new Map<string, ReturnType<typeof setTimeout>>();
 
+// Optional handshake auth — TV displays have no JWT (there's no per-device
+// credential today, same as the /devices/* REST bypass list above them), so
+// a connection is never rejected for lacking one. Dashboard/caller clients
+// do send one; when it's present and valid it's attached to the socket so
+// the conference-room-entry handlers below can check real ownership instead
+// of trusting whatever conferenceId a socket happens to send.
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (token) {
+    const payload = verifyJwt(token);
+    if (payload) {
+      (socket.data as any).user = payload;
+    }
+  }
+  next();
+});
+
 // Setup Socket.io event handlers for video conferencing
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Client connected: ${socket.id}`);
@@ -247,9 +288,20 @@ io.on('connection', (socket) => {
   // The caller joins a per-conference room right after creating the conference,
   // so displays have a place to send their answer/ICE candidates back to
   // without needing to know the caller's socket id.
-  socket.on('video:join-conference', (data: any) => {
+  socket.on('video:join-conference', async (data: any) => {
     const conferenceId = typeof data === 'string' ? data : data?.conferenceId;
     if (!conferenceId) return;
+
+    // Without this, any socket — authenticated as a different tenant, or not
+    // authenticated at all — could join another organization's conference
+    // room by conferenceId alone and receive its WebRTC signaling.
+    try {
+      await loadOwnedConference(conferenceId, (socket.data as any).user);
+    } catch {
+      console.warn(`[Socket.io] Socket ${socket.id} denied join for conference ${conferenceId} — not the owner.`);
+      return;
+    }
+
     socket.join(`conference-${conferenceId}`);
     console.log(`[Socket.io] Socket ${socket.id} joined conference-${conferenceId}`);
 
@@ -296,8 +348,20 @@ io.on('connection', (socket) => {
   });
 
   // Handle conference initiation
-  socket.on('video:initiate-conference', (data: any) => {
+  socket.on('video:initiate-conference', async (data: any) => {
     const { conferenceId, targetScreenIds } = data;
+
+    // The REST createConference endpoint already checks the caller owns
+    // targetScreenIds before creating the record — but without this check,
+    // any socket could skip that endpoint entirely and emit this event
+    // directly, ringing an arbitrary screen with a fake incoming call.
+    try {
+      await loadOwnedConference(conferenceId, (socket.data as any).user);
+    } catch {
+      console.warn(`[Socket.io] Socket ${socket.id} denied initiate for conference ${conferenceId} — not the owner.`);
+      return;
+    }
+
     console.log(`[Socket.io] Conference ${conferenceId} initiated for screens:`, targetScreenIds);
 
     targetScreenIds?.forEach((screenId: string) => {

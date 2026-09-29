@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { 
-  Key, CreditCard, Calendar, Receipt, Download, FileText, CheckCircle, 
+import {
+  Key, CreditCard, Calendar, Receipt, Download, FileText, CheckCircle,
   Clock, RefreshCw, Printer, X, ShieldCheck
 } from 'lucide-react';
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
 import { syncCollection } from '../../../lib/syncHelper';
+import { getAuthToken } from '../../../lib/authStorage';
 
 interface Props {
   userEmail: string;
@@ -97,7 +98,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
         setRzpStep('processing');
         setIsRzpOpen(true);
         
-        const token = localStorage.getItem('signageos_token');
+        const token = getAuthToken();
         const res = await fetch('/api/v1/payments/create-order', {
           method: 'POST',
           headers: {
@@ -179,7 +180,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
     if (!payingLicense) return;
     setRzpStep('processing');
 
-    const token = localStorage.getItem('signageos_token');
+    const token = getAuthToken();
     const rzpPaymentId = `pay_${Math.random().toString(36).substring(2, 11)}`;
     const rzpOrderId = `order_${Math.random().toString(36).substring(2, 11)}`;
 
