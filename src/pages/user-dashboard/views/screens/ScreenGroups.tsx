@@ -386,7 +386,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Screen Groups</h1>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">Screen Groups</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage bulk screen assignments and actions</p>
         </div>
         <button onClick={() => setShowNewGroup(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">

@@ -145,7 +145,7 @@ export default function Reports({ activeTab: initTab = 'Overview' }: { activeTab
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Reports</h1>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">Reports</h1>
           <p className="text-sm text-gray-500 mt-0.5">Live analytics computed from your actual fleet</p>
         </div>
       </div>

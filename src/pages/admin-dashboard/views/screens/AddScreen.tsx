@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '../../../../config';
-import { ChevronRight, Monitor, MapPin, LinkIcon, Check, RefreshCw, Building2, Key, CheckCircle, AlertCircle } from 'lucide-react';
+import { ChevronRight, Monitor, MapPin, LinkIcon, Check, RefreshCw, Building2, Key, CheckCircle, AlertCircle, ScanLine } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { licensingStore, License } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import { toast } from '../../../../components/Toast';
 import { getAuthToken } from '../../../../lib/authStorage';
+import QrScannerModal from '../../../../components/QrScannerModal';
 
 const steps = [
   { id: 1, label: 'Hardware Details', icon: <Monitor size={16} /> },
@@ -17,6 +18,7 @@ export default function AddScreen({ mode = 'client', onNavigate, userEmail = 'ad
   const [step, setStep] = useState(1);
   const [isCreated, setIsCreated] = useState(false);
   const [enteredCode, setEnteredCode] = useState('');
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isPaired, setIsPaired] = useState(false);
   const [form, setForm] = useState({
     name: '', orientation: 'landscape', size: '', resolution: '1920x1080', os: 'android', timezone: 'Asia/Kolkata',
@@ -161,7 +163,7 @@ export default function AddScreen({ mode = 'client', onNavigate, userEmail = 'ad
             <p className="text-sm text-gray-500 mb-6">
               Screen <strong>{form.name || 'New Screen'}</strong> created successfully! Please enter the pairing code shown on your display device to complete pairing.
             </p>
-            <div className="mb-6">
+            <div className="mb-6 flex flex-col items-center gap-2">
               <input
                 type="text"
                 maxLength={7}
@@ -170,7 +172,27 @@ export default function AddScreen({ mode = 'client', onNavigate, userEmail = 'ad
                 placeholder="e.g. SO-4920"
                 className="w-full max-w-[200px] px-3.5 py-3 border border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none rounded-xl text-center text-2xl font-mono font-bold tracking-widest text-slate-800"
               />
+              <button
+                type="button"
+                onClick={() => setIsScannerOpen(true)}
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+              >
+                <ScanLine size={14} /> Scan QR instead
+              </button>
             </div>
+
+            {isScannerOpen && (
+              <QrScannerModal
+                title="Scan pairing code"
+                instructions="Point your camera at the QR code on the TV's pairing screen."
+                onClose={() => setIsScannerOpen(false)}
+                onScan={(value) => {
+                  setEnteredCode(value.toUpperCase());
+                  setIsScannerOpen(false);
+                  toast.success('Pairing code scanned!');
+                }}
+              />
+            )}
             <div className="space-y-3">
               <button
                 onClick={handlePairScreen}
@@ -243,7 +265,7 @@ export default function AddScreen({ mode = 'client', onNavigate, userEmail = 'ad
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Add New Screen</h1>
+        <h1 className="display text-2xl sm:text-3xl text-ink-950">Add New Screen</h1>
         <p className="text-sm text-gray-500 mt-0.5">Register a new display device to your network</p>
       </div>
 

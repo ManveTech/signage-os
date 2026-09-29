@@ -298,7 +298,7 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Manage Screens</h1>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">Manage Screens</h1>
           <p className="text-sm text-gray-500 mt-0.5">Monitor, configure and control all registered screens</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

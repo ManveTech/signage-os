@@ -14,6 +14,13 @@ const accentMap: Record<string, string> = {
   warn: 'text-amber-600',
 };
 
+const accentBgMap: Record<string, string> = {
+  neutral: 'bg-gray-100',
+  good: 'bg-emerald-50',
+  bad: 'bg-rose-50',
+  warn: 'bg-amber-50',
+};
+
 const activityIconMap: Record<string, React.ReactNode> = {
   media: <Upload size={13} />,
   playlist: <Edit size={13} />,
@@ -138,20 +145,21 @@ export default function Dashboard({ userEmail = 'admin@demo.com' }: { userEmail?
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Page title */}
       <div>
-        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Welcome back — here's your network at a glance</p>
+        <p className="eyebrow">Command Center</p>
+        <h1 className="display text-2xl sm:text-3xl text-ink-950 mt-0.5">Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-1">Welcome back — here's your network at a glance</p>
       </div>
 
       {/* KPI Cards — a plain number and label, with color reserved for the
           two tiles where it's actually a signal (Online/Offline/Expiring),
           not scattered across every tile for decoration. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4">
+      <div data-tour="kpi-cards" className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 sm:gap-4">
         {kpiCards.map(card => (
           <div
             key={card.label}
-            className="bg-white rounded-2xl border border-gray-100 p-4 transition-colors hover:border-gray-200"
+            className="bg-white rounded-2xl border border-gray-100 p-4 transition-all duration-300 hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5"
           >
-            <div className={`flex items-center gap-1.5 mb-2.5 ${accentMap[card.accent]}`}>
+            <div className={`inline-flex items-center justify-center w-7 h-7 rounded-lg mb-2.5 ${accentBgMap[card.accent]} ${accentMap[card.accent]}`}>
               {card.icon}
             </div>
             <p className="text-2xl font-semibold text-ink-950 tracking-tight">{card.value}</p>

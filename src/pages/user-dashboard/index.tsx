@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../config';
 import { USER_ROUTES, getUserViewFromPath } from '../../lib/routes';
 import MobileDock from '../../components/MobileDock';
+import SectionTransition from '../../components/SectionTransition';
+import { runTour } from '../../lib/tour/runner';
+import { getUserTourSteps } from '../../lib/tour/userTour';
+import { hasSeenTour, markTourSeen } from '../../lib/tour/state';
 import OfflineIndicator from '../../components/OfflineIndicator';
 import PullToRefresh from '../../components/PullToRefresh';
 import { useMobileDetect } from '../../hooks/useMobileDetect';
@@ -75,6 +79,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   const navigate = useNavigate();
   const { isMobile } = useMobileDetect();
   const { isNative } = useCapacitor();
+  const mainRef = useRef<HTMLElement>(null);
 
   // Active view is derived directly from the URL pathname
   const activeView = getUserViewFromPath(location.pathname);
@@ -131,6 +136,23 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     window.addEventListener('app-resumed', handleAppResumed);
     return () => window.removeEventListener('app-resumed', handleAppResumed);
   }, [isNative]);
+
+  // First-run orientation tour — see the matching effect in
+  // admin-dashboard/index.tsx for why this only fires on the dashboard route
+  // and only once per account.
+  useEffect(() => {
+    if (activeView !== 'dashboard') return;
+    if (hasSeenTour('user-dashboard', userEmail)) return;
+    const timer = setTimeout(() => {
+      runTour({
+        steps: getUserTourSteps(),
+        navigate,
+        onFinish: () => markTourSeen('user-dashboard', userEmail)
+      });
+    }, 900);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // First time login states
   const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
@@ -298,8 +320,10 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
 
         {/* Pull to Refresh wrapper for mobile */}
         <PullToRefresh onRefresh={handleRefresh} enabled={isMobile}>
-          <main className="flex-1 overflow-y-auto pb-20 md:pb-4">
-            {renderView(activeView, handleNavigate, userEmail, !!clientLicense?.enableVideoConferencing, clientLicense?.assignedOrgId || '', licenseChecked)}
+          <main ref={mainRef} className="flex-1 overflow-y-auto pb-20 md:pb-4">
+            <SectionTransition viewKey={activeView} scrollRoot={mainRef} className="sg-page">
+              {renderView(activeView, handleNavigate, userEmail, !!clientLicense?.enableVideoConferencing, clientLicense?.assignedOrgId || '', licenseChecked)}
+            </SectionTransition>
           </main>
         </PullToRefresh>
       </div>

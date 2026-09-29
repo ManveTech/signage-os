@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Splash Screen Background Color -->
-    <color name="splash_background">#0EA5E9</color>
+    <!-- Splash Screen Background Color — pure black to match the branded
+         splash.png/splash_icon.png (black + top blue glow + wordmark) so the
+         solid-color edge blends seamlessly with the artwork centered on it. -->
+    <color name="splash_background">#000000</color>
 
     <!-- Status Bar and Navigation Bar Colors -->
     <color name="colorPrimary">#0EA5E9</color>

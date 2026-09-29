@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  MessageSquare, BookOpen, HelpCircle, ChevronDown, ChevronUp, Send, 
-  Plus, CheckCircle, Search, Clock, FileText, ShieldAlert, Image as ImageIcon
+import { useNavigate } from 'react-router-dom';
+import {
+  MessageSquare, BookOpen, HelpCircle, ChevronDown, ChevronUp, Send,
+  Plus, CheckCircle, Search, Clock, FileText, ShieldAlert, Image as ImageIcon, Compass
 } from 'lucide-react';
 import { supportStore, Ticket, FAQ, SupportDoc } from '../../../lib/supportStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import CustomSelect from '../../../components/CustomSelect';
+import { runTour } from '../../../lib/tour/runner';
+import { getUserTourSteps } from '../../../lib/tour/userTour';
+import { markTourSeen } from '../../../lib/tour/state';
 
 type Tab = 'tickets' | 'help';
 
@@ -30,6 +34,15 @@ interface Props {
 
 export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo.com', onNavigate }: Props) {
   const [tab, setTab] = useState<Tab>(activeTab);
+  const navigate = useNavigate();
+
+  const handleTakeTour = () => {
+    runTour({
+      steps: getUserTourSteps(),
+      navigate,
+      onFinish: () => markTourSeen('user-dashboard', userEmail)
+    });
+  };
 
   const handleTabChange = (newTab: Tab) => {
     setTab(newTab);
@@ -132,8 +145,14 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Help & Support</h1>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">Help & Support</h1>
           <p className="text-sm text-gray-500 mt-0.5">Browse support guides or open a ticket with our executive team</p>
+          <button
+            onClick={handleTakeTour}
+            className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 mt-2 cursor-pointer"
+          >
+            <Compass size={14} /> Take the tour
+          </button>
         </div>
         {tab === 'tickets' && !showNewTicket && (
           <button

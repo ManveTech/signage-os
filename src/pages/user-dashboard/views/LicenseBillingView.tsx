@@ -237,7 +237,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
     <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 text-left relative overflow-x-hidden w-full max-w-full">
       {/* Page Title */}
       <div>
-        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">License & Billing</h1>
+        <h1 className="display text-2xl sm:text-3xl text-ink-950">License & Billing</h1>
         <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Manage your software plan, review invoices, and settle outstanding payments</p>
       </div>
 

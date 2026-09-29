@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../config';
 import { ADMIN_ROUTES, getAdminViewFromPath } from '../../lib/routes';
@@ -30,6 +30,10 @@ import Integrations from './views/Integrations';
 import MobileDock from '../../components/MobileDock';
 import OfflineIndicator from '../../components/OfflineIndicator';
 import PullToRefresh from '../../components/PullToRefresh';
+import SectionTransition from '../../components/SectionTransition';
+import { runTour } from '../../lib/tour/runner';
+import { getAdminTourSteps } from '../../lib/tour/adminTour';
+import { hasSeenTour, markTourSeen } from '../../lib/tour/state';
 import { useMobileDetect } from '../../hooks/useMobileDetect';
 import { useCapacitor } from '../../hooks/useCapacitor';
 import { syncAllFromDatabase } from '../../lib/syncHelper';
@@ -84,9 +88,9 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'settings-player': return <Settings activeTab="Player Settings" />;
     case 'settings-notifications': return <Settings activeTab="Notifications" />;
     case 'support':
-    case 'support-issues': return <Support activeTab="issues" onNavigate={navigate} />;
-    case 'support-faq': return <Support activeTab="faq" onNavigate={navigate} />;
-    case 'support-docs': return <Support activeTab="docs" onNavigate={navigate} />;
+    case 'support-issues': return <Support activeTab="issues" onNavigate={navigate} userEmail={adminEmail} />;
+    case 'support-faq': return <Support activeTab="faq" onNavigate={navigate} userEmail={adminEmail} />;
+    case 'support-docs': return <Support activeTab="docs" onNavigate={navigate} userEmail={adminEmail} />;
     case 'profile': return <Profile />;
     default: return <Dashboard />;
   }
@@ -97,6 +101,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
   const navigate = useNavigate();
   const { isMobile } = useMobileDetect();
   const { isNative, isAndroid } = useCapacitor();
+  const mainRef = useRef<HTMLElement>(null);
 
   // Active view is derived directly from the URL pathname
   const activeView = getAdminViewFromPath(location.pathname);
@@ -143,6 +148,24 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
     window.addEventListener('app-resumed', handleAppResumed);
     return () => window.removeEventListener('app-resumed', handleAppResumed);
   }, [isNative]);
+
+  // First-run orientation tour. Only on the dashboard route (not e.g. deep in
+  // Settings after a refresh) and only once per account — replayable anytime
+  // from Support's "Take the tour" button. The delay lets the dashboard's own
+  // first paint and KPI fetch settle before the tour measures anything.
+  useEffect(() => {
+    if (activeView !== 'dashboard') return;
+    if (hasSeenTour('admin-dashboard', userEmail)) return;
+    const timer = setTimeout(() => {
+      runTour({
+        steps: getAdminTourSteps(),
+        navigate,
+        onFinish: () => markTourSeen('admin-dashboard', userEmail)
+      });
+    }, 900);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // First time login states
   const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
@@ -232,8 +255,10 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
 
         {/* Pull to Refresh wrapper for mobile */}
         <PullToRefresh onRefresh={handleRefresh} enabled={isMobile}>
-          <main className="flex-1 overflow-y-auto pb-20 md:pb-4">
-            {renderView(activeView, handleNavigate, userEmail)}
+          <main ref={mainRef} className="flex-1 overflow-y-auto pb-20 md:pb-4">
+            <SectionTransition viewKey={activeView} scrollRoot={mainRef} className="sg-page">
+              {renderView(activeView, handleNavigate, userEmail)}
+            </SectionTransition>
           </main>
         </PullToRefresh>
       </div>

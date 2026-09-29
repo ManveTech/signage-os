@@ -152,6 +152,7 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
           .map(section => (
           <div key={section.id}>
             <button
+              data-tour={`sidebar-${section.id}`}
               onClick={() => {
                 if (collapsed) {
                   onToggle();

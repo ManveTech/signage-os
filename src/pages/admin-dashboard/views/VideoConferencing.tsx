@@ -486,7 +486,7 @@ export default function VideoConferencing() {
     <div className="p-4 sm:p-6">
       <div className="max-w-6xl mx-auto space-y-6">
         <div>
-          <h1 className="text-xl font-semibold text-ink-950 tracking-tight mb-1">Video Conferencing</h1>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950 mb-1">Video Conferencing</h1>
           <p className="text-gray-600">Manage live video calls with TVs and handle camera streams</p>
         </div>
 

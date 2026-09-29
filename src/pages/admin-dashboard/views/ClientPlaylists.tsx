@@ -338,7 +338,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
           {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Client Playlists</h1>
+              <h1 className="display text-2xl sm:text-3xl text-ink-950">Client Playlists</h1>
               <p className="text-sm text-gray-500 mt-0.5">Manage digital playlists created by or assigned to client screens</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -571,7 +571,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
               <ArrowLeft size={16} />
             </button>
             <div>
-              <h1 className="text-xl font-semibold text-ink-950 tracking-tight">{mode === 'create' ? 'Create Client Playlist' : 'Edit Playlist Profile'}</h1>
+              <h1 className="display text-2xl sm:text-3xl text-ink-950">{mode === 'create' ? 'Create Client Playlist' : 'Edit Playlist Profile'}</h1>
               <p className="text-sm text-gray-500 mt-0.5">Customize display layouts, transitions, and media slide sequences</p>
             </div>
           </div>

@@ -157,14 +157,15 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 text-left">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Welcome back — manage your screens and licenses at a glance</p>
+        <p className="eyebrow">Your Network</p>
+        <h1 className="display text-2xl sm:text-3xl text-ink-950 mt-0.5">Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-1">Welcome back — manage your screens and licenses at a glance</p>
       </div>
 
       {/* Main KPI Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div data-tour="kpi-cards" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Screen Network & Playbacks */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-colors hover:border-slate-300">
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-all duration-300 hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
               <Monitor size={20} />
@@ -190,7 +191,7 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
         </div>
 
         {/* License Profile */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-colors hover:border-slate-300">
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-all duration-300 hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
               <Key size={20} />
@@ -216,7 +217,7 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
         </div>
 
         {/* Storage Vault Stats */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-colors hover:border-slate-300">
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-all duration-300 hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
               <HardDrive size={20} />
@@ -242,7 +243,7 @@ export default function Dashboard({ userEmail = 'priya@demo.com' }: { userEmail?
         </div>
 
         {/* Diagnostics & Warnings */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-colors hover:border-slate-300">
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-5 flex flex-col justify-between transition-all duration-300 hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5">
           <div className="flex justify-between items-start">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
               <Cpu size={20} />

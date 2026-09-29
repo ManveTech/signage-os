@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { stopActiveTour } from '../lib/tour/active';
 
 export function useCapacitor() {
   const [isNative, setIsNative] = useState(false);
@@ -40,6 +41,12 @@ export function useCapacitor() {
       if (Capacitor.getPlatform() === 'android' && CapacitorApp) {
         if (typeof CapacitorApp.addListener === 'function') {
           CapacitorApp.addListener('backButton', ({ canGoBack }: any) => {
+            // A guided tour (lib/tour/runner.ts) owns the screen while it's
+            // running — back should close it, not navigate the page or exit
+            // the app underneath it. active.ts has no dependency on the tour
+            // engine itself (driver.js), so importing it here doesn't pull
+            // that into every page's bundle.
+            if (stopActiveTour()) return;
             if (!canGoBack && typeof CapacitorApp.exitApp === 'function') {
               CapacitorApp.exitApp();
             } else {

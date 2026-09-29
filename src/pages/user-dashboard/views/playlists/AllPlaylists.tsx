@@ -88,7 +88,7 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Signage Playlists</h1>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">Signage Playlists</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage and organize layout broadcasting for your screens</p>
         </div>
         <button

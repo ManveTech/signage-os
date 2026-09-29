@@ -87,6 +87,17 @@
 }
 
 @layer utilities {
+  /* A small uppercase label above a page/section title (e.g. "Command
+     Center" above "Dashboard") and the title itself in the display serif —
+     the same editorial pairing used on the login page, so top-level headers
+     across the dashboard read as one system instead of a plain bold label. */
+  .eyebrow {
+    @apply font-sans text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-500;
+  }
+  .display {
+    @apply font-display font-normal leading-[1.05] tracking-tight;
+  }
+
   @keyframes marquee {
     0% { transform: translateX(0); }
     100% { transform: translateX(-50%); }
@@ -443,5 +454,44 @@
   * {
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
+  }
+}
+
+/*
+ * Dashboard motion (SectionTransition.tsx / lib/useScrollReveal.ts).
+ *
+ * One rule governs both: nothing may be left on an element once its
+ * animation ends. An element with a leftover transform (or filter) becomes
+ * the containing block for every position: fixed descendant inside it, so a
+ * dropdown or modal rendered inside a card that still carried a transform
+ * would be positioned against that card instead of the viewport. Hence
+ * element.animate() with fill 'backwards' in useScrollReveal, and
+ * framer-motion values in SectionTransition that return fully to rest.
+ */
+
+/* Waiting to be scrolled to — only ever set by useScrollReveal, which
+   removes it the same frame it starts the animation, and on unmount, so
+   nothing can be left invisible if the page goes away mid-scroll. */
+.sg-reveal-pending {
+  opacity: 0;
+}
+
+/* A press you can feel — the difference between a control and a picture of
+   one. :active only, so nothing is left on the element afterward. */
+.sg-page :is(button, a):not(:disabled):active {
+  transform: scale(0.97);
+}
+/* Listed in full: this rule outranks Tailwind's transition-colors, so naming
+   only transform here would switch off every button's own hover fade. */
+.sg-page :is(button, a) {
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 150ms ease, background-color 150ms ease, border-color 150ms ease,
+    opacity 150ms ease, box-shadow 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sg-page :is(button, a):not(:disabled):active {
+    transform: none;
   }
 }

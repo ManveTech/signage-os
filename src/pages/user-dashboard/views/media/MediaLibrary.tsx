@@ -249,7 +249,7 @@ export default function MediaLibrary({ userEmail }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Media Bucket</h1>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">Media Bucket</h1>
           <p className="text-sm text-gray-500 mt-0.5">Add and store media files for your display screens</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

@@ -7,11 +7,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 
 /** Renders [content] as a black-on-white QR bitmap, [sizePx] square. */
 private fun encodeQrBitmap(content: String, sizePx: Int): Bitmap {
-    val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx)
+    // ZXing's default quiet zone is 4 modules — generous enough that a short
+    // 6-character code renders as a small QR pattern floating in a mostly-
+    // white square, which is what actually made the "big white box, small
+    // code" look, not the padding around it in Compose. 1 module is still a
+    // safely scannable margin, just not a wasteful one.
+    val hints = mapOf(EncodeHintType.MARGIN to 1)
+    val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565)
     for (x in 0 until sizePx) {
         for (y in 0 until sizePx) {

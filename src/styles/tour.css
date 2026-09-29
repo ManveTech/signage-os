@@ -1,0 +1,163 @@
+/*
+ * driver.js, wearing this product's own clothes instead of its default plain
+ * white tooltip with blue links.
+ *
+ * Scoped to .sg-tour (the popoverClass set in lib/tour/runner.ts) so nothing
+ * here can leak into anything else. No positioning rules here — driver (and
+ * lib/tour/runner.ts's own collision-avoidance) computes that and must be
+ * left alone.
+ */
+
+.driver-popover.sg-tour {
+  background-color: #ffffff;
+  color: var(--color-ink-950);
+  border: 1px solid rgb(243 244 246);
+  border-radius: 16px;
+  box-shadow: 0 24px 48px -12px rgba(11, 13, 20, 0.24);
+  max-width: 340px;
+  padding: 20px;
+  /* The runner moves the popover off the element it's describing once driver
+     has placed it, and again if the page scrolls under it — see
+     keepPopoverClear in lib/tour/runner.ts. Without this transition those
+     corrections land as a jump; with it they read as the popover settling
+     into place. */
+  transition: top 0.15s ease, left 0.15s ease;
+}
+
+.driver-popover.sg-tour .driver-popover-title {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.25;
+  color: var(--color-ink-950);
+  margin-bottom: 6px;
+}
+
+.driver-popover.sg-tour .driver-popover-description {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: rgba(11, 13, 20, 0.62);
+}
+
+.driver-popover.sg-tour .driver-popover-arrow {
+  border-width: 8px;
+}
+.driver-popover.sg-tour .driver-popover-arrow-side-top { border-top-color: #ffffff; }
+.driver-popover.sg-tour .driver-popover-arrow-side-bottom { border-bottom-color: #ffffff; }
+.driver-popover.sg-tour .driver-popover-arrow-side-left { border-left-color: #ffffff; }
+.driver-popover.sg-tour .driver-popover-arrow-side-right { border-right-color: #ffffff; }
+
+.driver-popover.sg-tour .driver-popover-footer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgb(243 244 246);
+  align-items: center;
+}
+
+.driver-popover.sg-tour .driver-popover-progress-text {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(11, 13, 20, 0.38);
+}
+
+.driver-popover.sg-tour .driver-popover-navigation-btns button {
+  background-color: transparent;
+  border: 1px solid rgb(229 231 235);
+  border-radius: 10px;
+  color: rgba(11, 13, 20, 0.65);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 7px 13px;
+  text-shadow: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.driver-popover.sg-tour .driver-popover-navigation-btns button:hover {
+  background-color: rgb(249 250 251);
+  color: var(--color-ink-950);
+}
+
+/* The forward button carries the tour, so it's the one that looks like a
+   button. Last-child rather than a class, since driver names both the same. */
+.driver-popover.sg-tour .driver-popover-navigation-btns button:last-child {
+  background-color: var(--color-brand-500);
+  border-color: var(--color-brand-500);
+  color: #ffffff;
+}
+
+.driver-popover.sg-tour .driver-popover-navigation-btns button:last-child:hover {
+  background-color: var(--color-brand-600);
+  border-color: var(--color-brand-600);
+}
+
+.driver-popover.sg-tour .driver-popover-navigation-btns button:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.driver-popover.sg-tour .driver-popover-close-btn {
+  color: rgba(11, 13, 20, 0.32);
+  font-size: 22px;
+  line-height: 1;
+  top: 10px;
+  right: 12px;
+  transition: color 0.15s ease;
+}
+
+.driver-popover.sg-tour .driver-popover-close-btn:hover {
+  color: var(--color-ink-950);
+}
+
+/*
+ * No z-index rules here, deliberately.
+ *
+ * driver punches a hole in an SVG overlay rather than lifting the highlighted
+ * element above it, so the element shows through where it already is. The
+ * popover is already at a very high z-index from the library's own
+ * stylesheet — overriding that with something lower only invites a modal to
+ * paint over the tour.
+ */
+
+/*
+ * While the tour is moving between steps.
+ *
+ * Preparing a step can navigate, wait for a route to mount, and switch a tab —
+ * the popover can't be redrawn until it knows where it's going. Without this,
+ * pressing Next does nothing for a moment, which reads as broken rather than
+ * working. Pointer events stay on so the close button is still reachable.
+ */
+.driver-popover.sg-tour.sg-tour-busy {
+  opacity: 0.72;
+  transition: opacity 0.12s ease;
+}
+.driver-popover.sg-tour.sg-tour-busy .driver-popover-navigation-btns button {
+  opacity: 0.5;
+}
+
+/*
+ * And the words themselves go, not just the card.
+ *
+ * driver rewrites the popover's contents at the END of its move, so mid-move
+ * the card still describes the previous step. Hiding the text for the length
+ * of the move means the card is briefly empty instead of briefly wrong — see
+ * popoverShows in lib/tour/runner.ts, which holds this state until the
+ * popover reports the step it's actually on.
+ */
+.driver-popover.sg-tour.sg-tour-busy .driver-popover-title,
+.driver-popover.sg-tour.sg-tour-busy .driver-popover-description,
+.driver-popover.sg-tour.sg-tour-busy .driver-popover-progress-text {
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+@media (max-width: 640px) {
+  .driver-popover.sg-tour {
+    max-width: calc(100vw - 32px);
+    padding: 16px;
+  }
+  .driver-popover.sg-tour .driver-popover-title {
+    font-size: 17px;
+  }
+}

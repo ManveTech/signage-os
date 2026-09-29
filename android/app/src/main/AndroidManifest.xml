@@ -56,6 +56,14 @@
     <!-- Optional: For keeping screen awake during signage display -->
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
 
+    <!-- QR scanning for device pairing (QrScannerModal.tsx, getUserMedia) —
+         required is false since this is a management-console app that may
+         also run on camera-less hardware; the scanner falls back to manual
+         entry when access is denied or unavailable. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
     <!-- TV-specific features (since LEANBACK_LAUNCHER is declared) -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   LayoutDashboard, MonitorPlay, Tv, Key, Menu, X, LogOut,
   Film, Users, Building2, BarChart3, Settings as SettingsIcon,
@@ -61,6 +62,7 @@ const USER_MORE_ITEMS: SheetItem[] = [
 ];
 
 export default function MobileDock({ activeView, onNavigate, onLogout, role = 'admin' }: MobileDockProps) {
+  const reduce = useReducedMotion();
   const [activePopover, setActivePopover] = useState<string | null>(null);
   const [popoverStep, setPopoverStep] = useState<'choose_scope' | 'show_subsections'>('choose_scope');
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -452,23 +454,34 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
           const isPopoverOpen = activePopover === tab.id;
 
           return (
-            <button
+            <motion.button
               key={tab.id}
+              data-tour={`dock-${tab.id}`}
               onClick={() => handleTabClick(tab.id)}
               aria-label={tab.label}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[58px] transition-all cursor-pointer relative ${
+              whileTap={reduce ? undefined : { scale: 0.93 }}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[58px] transition-colors cursor-pointer relative ${
                 isActive || isPopoverOpen ? 'text-blue-600 font-bold' : 'text-slate-400 font-medium'
               }`}
             >
+              {/* Shared layoutId — rather than each tab mounting/unmounting its
+                  own indicator (an instant pop with nothing to animate
+                  between), framer-motion tracks this element across which
+                  tab renders it and slides it there, the way a native tab
+                  bar's indicator moves. */}
               {(isActive || isPopoverOpen) && (
-                <span className="absolute top-0 w-8 h-1 bg-blue-600 rounded-b-full transition-all" />
+                <motion.span
+                  layoutId="mobiledock-indicator"
+                  className="absolute top-0 w-8 h-1 bg-blue-600 rounded-b-full"
+                  transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 35 }}
+                />
               )}
-              
+
               <div className={`p-1 rounded-xl transition-transform ${isPopoverOpen || (tab.isMore && sheetOpen) ? 'scale-110' : ''}`}>
                 <Icon size={21} strokeWidth={isActive || isPopoverOpen ? 2.5 : 2} />
               </div>
               <span className="text-[10px] tracking-tight leading-none">{tab.label}</span>
-            </button>
+            </motion.button>
           );
         })}
       </nav>

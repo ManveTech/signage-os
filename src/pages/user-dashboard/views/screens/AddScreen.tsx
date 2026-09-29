@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '../../../../config';
-import { ChevronRight, Monitor, MapPin, LinkIcon, Check, RefreshCw, Building2, Key, CheckCircle, AlertCircle } from 'lucide-react';
+import { ChevronRight, Monitor, MapPin, LinkIcon, Check, RefreshCw, Building2, Key, CheckCircle, AlertCircle, ScanLine } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import { toast } from '../../../../components/Toast';
 import { getAuthToken } from '../../../../lib/authStorage';
+import QrScannerModal from '../../../../components/QrScannerModal';
 
 const steps = [
   { id: 1, label: 'Hardware Details', icon: <Monitor size={16} /> },
@@ -21,6 +22,7 @@ interface AddScreenProps {
 export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: AddScreenProps) {
   const [step, setStep] = useState(1);
   const [inputPairingCode, setInputPairingCode] = useState('');
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   
   const [groups, setGroups] = useState<any[]>(() => {
     const data = localStorage.getItem('signageos_groups');
@@ -126,7 +128,7 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Add New Screen</h1>
+        <h1 className="display text-2xl sm:text-3xl text-ink-950">Add New Screen</h1>
         <p className="text-sm text-gray-500 mt-0.5">Register a new display device to your signage network</p>
       </div>
 
@@ -322,21 +324,43 @@ export default function AddScreen({ userEmail = 'priya@demo.com', onNavigate }: 
               <p className="text-xs text-gray-500 mb-4">Enter the pairing code shown on your TV display below to pair the screen</p>
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                  <input
-                    value={inputPairingCode}
-                    onChange={e => setInputPairingCode(e.target.value.toUpperCase())}
-                    placeholder="e.g. SG-1234"
-                    className="px-4 py-3 border-2 border-blue-200 rounded-xl text-center text-xl font-bold tracking-widest text-blue-700 font-mono focus:border-blue-500 outline-none w-full sm:w-48 bg-white uppercase"
-                    maxLength={7}
-                  />
+                  <div className="flex flex-col items-center gap-2 w-full sm:w-auto">
+                    <input
+                      value={inputPairingCode}
+                      onChange={e => setInputPairingCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. SG-1234"
+                      className="px-4 py-3 border-2 border-blue-200 rounded-xl text-center text-xl font-bold tracking-widest text-blue-700 font-mono focus:border-blue-500 outline-none w-full sm:w-48 bg-white uppercase"
+                      maxLength={7}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsScannerOpen(true)}
+                      className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer w-full sm:w-48"
+                    >
+                      <ScanLine size={14} /> Scan QR instead
+                    </button>
+                  </div>
                   <div className="text-xs text-gray-600 space-y-1">
                     <p>1. Open the Bluestar Signage Player app on your TV</p>
-                    <p>2. Locate the 6-character pairing code shown on the screen</p>
-                    <p>3. Type the pairing code in the field on the left</p>
+                    <p>2. Locate the 6-character pairing code (or its QR) shown on the screen</p>
+                    <p>3. Type the code, or tap "Scan QR instead" to use your camera</p>
                   </div>
                 </div>
               </div>
             </div>
+
+            {isScannerOpen && (
+              <QrScannerModal
+                title="Scan pairing code"
+                instructions="Point your camera at the QR code on the TV's pairing screen."
+                onClose={() => setIsScannerOpen(false)}
+                onScan={(value) => {
+                  setInputPairingCode(value.toUpperCase());
+                  setIsScannerOpen(false);
+                  toast.success('Pairing code scanned!');
+                }}
+              />
+            )}
           </div>
         )}
 

@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  MessageSquare, BookOpen, HelpCircle, ChevronDown, ChevronUp, Send, 
-  Plus, Trash2, ShieldAlert, CheckCircle, Search, Clock, FileText, Image as ImageIcon, X
+import { useNavigate } from 'react-router-dom';
+import {
+  MessageSquare, BookOpen, HelpCircle, ChevronDown, ChevronUp, Send,
+  Plus, Trash2, ShieldAlert, CheckCircle, Search, Clock, FileText, Image as ImageIcon, X, Compass
 } from 'lucide-react';
 import { supportStore, Ticket, FAQ, SupportDoc } from '../../../lib/supportStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import CustomSelect from '../../../components/CustomSelect';
+import { runTour } from '../../../lib/tour/runner';
+import { getAdminTourSteps } from '../../../lib/tour/adminTour';
+import { markTourSeen } from '../../../lib/tour/state';
 
 type Tab = 'issues' | 'faq' | 'docs';
 
@@ -25,10 +29,20 @@ const priorityColors: Record<Ticket['priority'], string> = {
 interface Props {
   activeTab?: Tab;
   onNavigate?: (view: string) => void;
+  userEmail?: string;
 }
 
-export default function Support({ activeTab = 'issues', onNavigate }: Props) {
+export default function Support({ activeTab = 'issues', onNavigate, userEmail = 'admin@demo.com' }: Props) {
   const [tab, setTab] = useState<Tab>(activeTab);
+  const navigate = useNavigate();
+
+  const handleTakeTour = () => {
+    runTour({
+      steps: getAdminTourSteps(),
+      navigate,
+      onFinish: () => markTourSeen('admin-dashboard', userEmail)
+    });
+  };
 
   const handleTabChange = (newTab: Tab) => {
     setTab(newTab);
@@ -175,6 +189,12 @@ export default function Support({ activeTab = 'issues', onNavigate }: Props) {
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold text-ink-950 tracking-tight">Client Helpdesk & Support</h1>
           <p className="text-xs text-slate-500 font-semibold mt-1">Manage raised issues, edit FAQs, and draft helper documentation guides</p>
+          <button
+            onClick={handleTakeTour}
+            className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 mt-2 cursor-pointer"
+          >
+            <Compass size={14} /> Take the tour
+          </button>
         </div>
         {tab === 'faq' && (
           <button

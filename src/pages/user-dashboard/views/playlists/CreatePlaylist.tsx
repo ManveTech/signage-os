@@ -742,7 +742,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
       {/* Header */}
       <div>
-        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Create Dynamic Playlist</h1>
+        <h1 className="display text-2xl sm:text-3xl text-ink-950">Create Dynamic Playlist</h1>
         <p className="text-sm text-gray-500 mt-0.5">Upload media, arrange the sequence, and configure how each slide plays.</p>
       </div>
 
@@ -1522,11 +1522,19 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                   )}
                                       {/* Render Widget Overlay (Clean, Elegant Modern Cards) */}
                   {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (() => {
+                    // Both this card and the RSS ticker below are independently
+                    // toggleable and both can claim the bottom of the screen —
+                    // a bottom-left/bottom-right widget sitting at bottom-5 (20px)
+                    // overlapped the ticker's own bottom-0..32px band whenever
+                    // both were enabled at once. Reserve the ticker's height
+                    // plus a gap so the widget sits above it instead.
+                    const tickerActive = isWidgetActive('rss');
+                    const bottomOffset = tickerActive ? 'bottom-12' : 'bottom-5';
                     const positionClasses = {
                       'top-left': 'top-5 left-5',
                       'top-right': 'top-5 right-5',
-                      'bottom-left': 'bottom-5 left-5',
-                      'bottom-right': 'bottom-5 right-5',
+                      'bottom-left': `${bottomOffset} left-5`,
+                      'bottom-right': `${bottomOffset} right-5`,
                     }[playlistWidgetPlacement];
 
                     return (
@@ -1676,8 +1684,9 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                     );
                   })()}
 
-                  {/* Volume overlay indicator */}
-                  <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl text-[10px] font-bold border border-slate-200/80 text-slate-800 shadow-sm">
+                  {/* Volume overlay indicator — same bottom band as the RSS
+                      ticker, so it needs the same clearance when both are on. */}
+                  <div className={`absolute ${isWidgetActive('rss') ? 'bottom-12' : 'bottom-5'} left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl text-[10px] font-bold border border-slate-200/80 text-slate-800 shadow-sm`}>
                     <Volume2 size={12} className="text-slate-500" />
                     <span>Vol: {playlistVolume}%</span>
                   </div>

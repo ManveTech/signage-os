@@ -220,7 +220,7 @@ export default function Integrations() {
       </div>
 
       <div>
-        <h1 className="text-xl font-semibold text-ink-950 tracking-tight">Integrations</h1>
+        <h1 className="display text-2xl sm:text-3xl text-ink-950">Integrations</h1>
         <p className="text-sm text-gray-500 mt-0.5">Configure Cloudflare R2 storage, SMTP email, and Google OAuth from here — changes take effect immediately, no server restart needed.</p>
       </div>
 

@@ -40,7 +40,7 @@ export default function LicenseDecoder() {
     <div className="p-6 space-y-6 max-w-4xl">
       {/* Title */}
       <div>
-        <h1 className="text-xl font-semibold text-ink-950 tracking-tight flex items-center gap-2">
+        <h1 className="display text-2xl sm:text-3xl text-ink-950 flex items-center gap-2">
           <Shield className="text-blue-600" size={24} /> License Code Decoder
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">

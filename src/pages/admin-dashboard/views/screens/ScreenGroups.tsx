@@ -428,7 +428,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-ink-950 tracking-tight">
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">
             {mode === 'my' ? 'My Screen Groups' : 'Client Screen Groups'}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
