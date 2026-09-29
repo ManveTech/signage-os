@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Calendar, Clock, AlertTriangle, Monitor, Play, Trash, Check, X, CheckCircle } from 'lucide-react';
+import { Plus, Calendar, Clock, AlertTriangle, AlertCircle, Info, Monitor, Play, Trash, Check, X, CheckCircle } from 'lucide-react';
 import { mediaStore, Playlist, Screen } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import CustomSelect from '../../../../components/CustomSelect';
@@ -138,7 +138,7 @@ export default function Scheduler({ userEmail = 'priya@demo.com', isAdmin = fals
           <div key={toast.id} className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white animate-fade-in ${
             toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
           }`}>
-            <CheckCircle size={15} />
+            {toast.type === 'success' ? <CheckCircle size={15} /> : toast.type === 'error' ? <AlertCircle size={15} /> : <Info size={15} />}
             {toast.message}
           </div>
         ))}

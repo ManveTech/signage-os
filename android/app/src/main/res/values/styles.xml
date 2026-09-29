@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Base application theme. -->
     <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
@@ -9,10 +9,25 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!-- Applied by the OS the instant the native splash dismisses (see
+         postSplashScreenTheme below) — this is what's actually on screen for
+         the moment between that swap and the WebView's first real paint, so
+         it has to match BootScreen.tsx (black), not the app's overall white,
+         or that gap shows as a white flash before the black boot screen ever
+         gets a chance to render. useCapacitor.ts transitions everything to
+         white once BootScreen hands off. android:statusBarColor/
+         navigationBarColor only take effect pre-Android 15 — from 15 onward
+         every app is forced edge-to-edge and those two are silently ignored;
+         what shows through the now-transparent bars is android:windowBackground
+         instead, which is why SgWindowPlugin exists to set that at runtime. -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:statusBarColor">@color/splash_background</item>
+        <item name="android:navigationBarColor">@color/splash_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
     </style>
 
     <!-- Splash Screen Theme with proper background -->

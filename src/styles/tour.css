@@ -98,16 +98,29 @@
 }
 
 .driver-popover.sg-tour .driver-popover-close-btn {
-  color: rgba(11, 13, 20, 0.32);
-  font-size: 22px;
-  line-height: 1;
+  /* A background circle rather than relying on glyph color alone against
+     whatever's behind it — driver.js's own default is a faint "×" with no
+     backdrop, easy to lose track of against a busy or dark stage.
+     text-align/line-height center the glyph rather than flex — something
+     upstream (Tailwind's preflight reset) wins the cascade on `display` for
+     this button, so flex centering silently never applied. */
+  display: block;
+  text-align: center;
+  color: rgba(11, 13, 20, 0.55);
+  background-color: rgba(11, 13, 20, 0.06);
+  border-radius: 999px;
+  width: 26px;
+  height: 26px;
+  font-size: 18px;
+  line-height: 26px;
   top: 10px;
-  right: 12px;
-  transition: color 0.15s ease;
+  right: 10px;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .driver-popover.sg-tour .driver-popover-close-btn:hover {
   color: var(--color-ink-950);
+  background-color: rgba(11, 13, 20, 0.1);
 }
 
 /*

@@ -185,7 +185,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold text-ink-950 tracking-tight">Client Helpdesk & Support</h1>
           <p className="text-xs text-slate-500 font-semibold mt-1">Manage raised issues, edit FAQs, and draft helper documentation guides</p>
@@ -229,7 +229,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
                 className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:border-blue-400 focus:bg-white transition-colors"
               />
             </div>
-            <CustomSelect 
+            <CustomSelect
               value={statusFilter}
               onChange={val => setStatusFilter(val)}
               options={[
@@ -239,6 +239,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
                 { value: 'resolved', label: 'Resolved' },
                 { value: 'closed', label: 'Closed' }
               ]}
+              className="max-w-[200px] shrink-0"
               buttonClassName="px-4 py-2 text-xs font-bold min-h-[38px] min-w-[130px]"
             />
           </div>

@@ -294,17 +294,26 @@
     min-width: 44px;
   }
 
-  /* Input fields mobile optimization */
+  /* Input fields mobile optimization — font-size only. The blanket
+     `padding: ... !important` this used to carry clobbered every input's own
+     padding (pl-9 for a leading search icon, pr-10 for a trailing
+     show/hide-password button, etc.) with a flat value on all four sides,
+     which is what put the icon on top of the placeholder text in every
+     search bar. min-height above already guarantees the touch target. */
   input,
   select,
   textarea {
     font-size: 16px !important; /* Prevents zoom on iOS */
-    padding: 0.625rem 0.875rem !important;
   }
 
-  /* Tables horizontal scroll optimization */
+  /* Tables horizontal scroll optimization — font-size only. The 600px
+     min-width this used to force meant every table-only view (one with no
+     separate mobile card layout, e.g. Reports.tsx's Media Reports tab) was
+     guaranteed to overflow and scroll horizontally on any phone-width
+     screen, which is the opposite of "mobile friendly". Views that need a
+     table's shape on mobile provide their own hidden md:block / md:hidden
+     pair instead of relying on this to just barely fit. */
   table {
-    min-width: 600px;
     font-size: 13px !important;
   }
 

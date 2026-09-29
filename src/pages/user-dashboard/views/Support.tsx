@@ -143,7 +143,7 @@ export default function Support({ activeTab = 'tickets', userEmail = 'priya@demo
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="display text-2xl sm:text-3xl text-ink-950">Help & Support</h1>
           <p className="text-sm text-gray-500 mt-0.5">Browse support guides or open a ticket with our executive team</p>

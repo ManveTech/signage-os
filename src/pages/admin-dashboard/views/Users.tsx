@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { 
-  Plus, Search, Edit, Trash2, X, CheckCircle, Mail, Phone, 
-  MapPin, Building, Key, Lock, ArrowRight, ArrowLeft 
+import {
+  Plus, Search, Edit, Trash2, X, CheckCircle, AlertCircle, Mail, Phone,
+  MapPin, Building, Key, Lock, ArrowRight, ArrowLeft
 } from 'lucide-react';
 import type { User as UserType } from '../types';
 import { licensingStore } from '../../../lib/licensingStore';
@@ -22,7 +22,7 @@ export default function Users() {
 
   // Track active licenses for assignments
   const [licenses, setLicenses] = useState(() => licensingStore.getLicenses());
-  const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
+  const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
 
   // Refresh from server on mount. Always applies the result, including an
   // empty array — syncCollection already falls back to cached/local data on
@@ -68,9 +68,9 @@ export default function Users() {
   const [editOrg, setEditOrg] = useState('');
   const [editSelectedLicenseId, setEditSelectedLicenseId] = useState('');
 
-  const addToast = (message: string) => {
+  const addToast = (message: string, type: 'success' | 'error' = 'success') => {
     const id = Date.now();
-    setToasts(p => [...p, { id, message }]);
+    setToasts(p => [...p, { id, message, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
   };
 
@@ -94,17 +94,17 @@ export default function Users() {
   const handleNextStep = () => {
     if (step === 1) {
       if (!clientName.trim() || !clientEmail.trim() || !clientPhone.trim()) {
-        addToast("Please fill in Name, Email, and Phone number.");
+        addToast("Please fill in Name, Email, and Phone number.", 'error');
         return;
       }
       setStep(2);
     } else if (step === 2) {
       if (!orgName.trim()) {
-        addToast("Please enter an Organization name.");
+        addToast("Please enter an Organization name.", 'error');
         return;
       }
       if (!selectedLicenseId) {
-        addToast("Assigning a license is mandatory. Please select a license from the pool.");
+        addToast("Assigning a license is mandatory. Please select a license from the pool.", 'error');
         return;
       }
       // Auto-generate password upon entering step 3 if empty
@@ -155,7 +155,7 @@ export default function Users() {
             errMsg = errorText;
           }
         }
-        addToast(`Failed to onboard client: ${errMsg}`);
+        addToast(`Failed to onboard client: ${errMsg}`, 'error');
         setIsOnboarding(false);
         return;
       }
@@ -176,7 +176,7 @@ export default function Users() {
       resetForm();
     } catch (error: any) {
       console.error('Error in onboard flow:', error);
-      addToast(`An unexpected error occurred: ${error.message || error}`);
+      addToast(`An unexpected error occurred: ${error.message || error}`, 'error');
       setIsOnboarding(false);
     }
   };
@@ -186,7 +186,7 @@ export default function Users() {
 
     const result = await pushToDatabase('users', userId, null, 'DELETE');
     if (!result.ok) {
-      addToast(`Failed to remove "${userName}". ${(result as any).error || 'Please try again.'}`);
+      addToast(`Failed to remove "${userName}". ${(result as any).error || 'Please try again.'}`, 'error');
       return;
     }
 
@@ -223,13 +223,13 @@ export default function Users() {
   const handleEditNextStep = () => {
     if (editStep === 1) {
       if (!editName.trim() || !editPhone.trim()) {
-        addToast("Please fill in Name and Phone number.");
+        addToast("Please fill in Name and Phone number.", 'error');
         return;
       }
       setEditStep(2);
     } else if (editStep === 2) {
       if (!editOrg.trim()) {
-        addToast("Please enter an Organization name.");
+        addToast("Please enter an Organization name.", 'error');
         return;
       }
       setEditStep(3);
@@ -243,7 +243,7 @@ export default function Users() {
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     if (!editName.trim() || !editPhone.trim() || !editOrg.trim()) {
-      addToast("Please fill out all required fields.");
+      addToast("Please fill out all required fields.", 'error');
       return;
     }
 
@@ -261,7 +261,7 @@ export default function Users() {
 
     const result = await pushToDatabase('users', editingUser.id, updatedUserForSave, 'PUT');
     if (!result.ok) {
-      addToast(`Failed to update client details. ${(result as any).error || 'Please try again.'}`);
+      addToast(`Failed to update client details. ${(result as any).error || 'Please try again.'}`, 'error');
       return;
     }
 
@@ -335,38 +335,48 @@ export default function Users() {
 
   return (
     <div className="p-6 space-y-5 text-left">
-      {/* Toast Alert */}
-      <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+      {/* Toast Alert — z-[60], above the z-50 add/edit-client modals, so a
+          validation error triggered from inside an open modal (e.g. Next
+          without filling details) doesn't render behind it. */}
+      <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white bg-slate-900 border border-slate-700 animate-slideIn">
-            <CheckCircle size={16} className="text-emerald-400" />
+            {t.type === 'error' ? (
+              <AlertCircle size={16} className="text-red-400 shrink-0" />
+            ) : (
+              <CheckCircle size={16} className="text-emerald-400 shrink-0" />
+            )}
             <span>{t.message}</span>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="space-y-3">
         <div>
           <h1 className="display text-2xl sm:text-3xl text-ink-950">Clients</h1>
           <p className="text-sm text-gray-500 mt-0.5">{users.length} clients registered in the system</p>
         </div>
-        <button 
-          onClick={() => { resetForm(); setIsAddClientOpen(true); }}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
-        >
-          <Plus size={16} /> Add Client
-        </button>
-      </div>
 
-      {/* Search Filter */}
-      <div className="relative max-w-sm">
-        <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
-        <input 
-          value={search} 
-          onChange={e => setSearch(e.target.value)} 
-          placeholder="Search clients by name, email, or organization..." 
-          className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400" 
-        />
+        {/* Search + Add Client, side by side — the title's subtitle is long
+            enough that squeezing the button in beside it wraps to its own
+            line anyway, so the button pairs with the search bar instead. */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search clients by name, email, or organization..."
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+            />
+          </div>
+          <button
+            onClick={() => { resetForm(); setIsAddClientOpen(true); }}
+            className="shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+          >
+            <Plus size={16} /> Add Client
+          </button>
+        </div>
       </div>
 
       {/* Clients Table (desktop) */}

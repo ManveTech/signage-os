@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Search, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Trash,
+  Search, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit, Trash,
   Monitor, X, Check, CheckCircle, Power, Download, Settings,
   Building2, User, MoreVertical, Filter, Activity, Pause, Eraser, Lock, FolderMinus
 } from 'lucide-react';
@@ -283,13 +283,13 @@ export default function ManageScreens({ userEmail = 'priya@demo.com' }: { userEm
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
-      {/* Toasts */}
-      <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+      {/* Toasts — z-[60], above the z-50 edit/delete modals below */}
+      <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
         {toasts.map(toast => (
           <div key={toast.id} className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white ${
             toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'info' ? 'bg-blue-500' : 'bg-red-500'
           }`}>
-            <CheckCircle size={15} />
+            {toast.type === 'success' ? <CheckCircle size={15} /> : toast.type === 'info' ? <Info size={15} /> : <AlertCircle size={15} />}
             {toast.message}
           </div>
         ))}

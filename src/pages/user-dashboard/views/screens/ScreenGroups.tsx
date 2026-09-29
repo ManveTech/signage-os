@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser } from 'lucide-react';
+import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, AlertCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import { licensingStore } from '../../../../lib/licensingStore';
@@ -27,7 +27,7 @@ const colorMap: Record<string, { bg: string; text: string; border: string; icon:
 
 const LIBRARIES = ['Retail Assets', 'Airport Media', 'F&B Collection', 'Corporate Branding', 'General Content'];
 
-type Toast = { id: number; message: string };
+type Toast = { id: number; message: string; type: 'success' | 'error' };
 
 const emptyGroup = (): Omit<ScreenGroup, 'id'> => ({ name: '', desc: '', color: 'blue', playlist: '', library: '', schedulePlaylist: '', scheduleDate: '', scheduleTime: '', volume: 80, clear_cache: false, force_sync: false });
 
@@ -176,9 +176,9 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
     addToast(`Playlist schedule updated for "${schedulePlaylistTo.name}"`);
   };
 
-  const addToast = (message: string) => {
+  const addToast = (message: string, type: Toast['type'] = 'success') => {
     const id = Date.now();
-    setToasts(p => [...p, { id, message }]);
+    setToasts(p => [...p, { id, message, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3000);
   };
 
@@ -318,7 +318,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
   const handleBulkRestartPlaylist = (group: ScreenGroup) => {
     const groupScreens = screensInGroup(group.id);
     if (groupScreens.length === 0) {
-      addToast(`No screens in group "${group.name}"`);
+      addToast(`No screens in group "${group.name}"`, 'error');
       return;
     }
     const updatedScreens = screens.map(s => {
@@ -337,7 +337,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
   const handleBulkClearCache = (group: ScreenGroup) => {
     const groupScreens = screensInGroup(group.id);
     if (groupScreens.length === 0) {
-      addToast(`No screens in group "${group.name}"`);
+      addToast(`No screens in group "${group.name}"`, 'error');
       return;
     }
     const updatedScreens = screens.map(s => {
@@ -356,7 +356,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
   const handleBulkForceSync = (group: ScreenGroup) => {
     const groupScreens = screensInGroup(group.id);
     if (groupScreens.length === 0) {
-      addToast(`No screens in group "${group.name}"`);
+      addToast(`No screens in group "${group.name}"`, 'error');
       return;
     }
     const updatedScreens = screens.map(s => {
@@ -375,11 +375,11 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       <ScreenSubNav activeTab="groups" onNavigate={onNavigate} role="user" />
-      {/* Toasts */}
-      <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+      {/* Toasts — z-[60], above the z-50 group/assign modals below */}
+      <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
         {toasts.map(t => (
-          <div key={t.id} className="flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white bg-emerald-500">
-            <CheckCircle size={16} />{t.message}
+          <div key={t.id} className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white ${t.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}>
+            {t.type === 'error' ? <AlertCircle size={16} /> : <CheckCircle size={16} />}{t.message}
           </div>
         ))}
       </div>

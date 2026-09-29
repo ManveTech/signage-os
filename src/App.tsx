@@ -1,8 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import AdminLogin from './components/AdminLogin';
 import DisplayClient from './pages/display/DisplayClient';
 import { ToastContainer } from './components/Toast';
+import BootScreen from './components/BootScreen';
+
+// Read synchronously so the very first render already knows whether to show
+// the boot screen — waiting on an effect would let one frame of bare content
+// flash through before it mounts.
+const isNativeApp = Capacitor.isNativePlatform();
 
 // Clear old localStorage demo data once on startup to avoid cached mock records
 if (!localStorage.getItem('signageos_cleared_demo_v2')) {
@@ -27,8 +34,11 @@ if (!localStorage.getItem('signageos_cleared_demo_v2')) {
 }
 
 export default function App() {
+  const [booting, setBooting] = useState(isNativeApp);
+
   return (
     <div className="relative w-full min-h-screen bg-slate-950 font-sans text-slate-900 selection:bg-accent selection:text-primary">
+      {booting && <BootScreen onDone={() => setBooting(false)} />}
       <Routes>
         <Route path="/login" element={<AdminLogin initialView="login" />} />
         <Route path="/forgot-password" element={<AdminLogin initialView="forgot" />} />

@@ -6,9 +6,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        // Before super.onCreate, which is when Capacitor loads its plugins.
+        registerPlugin(SgWindowPlugin.class);
 
-        // Register any custom plugins here if needed in the future
-        // Example: registerPlugin(MyCustomPlugin.class);
+        super.onCreate(savedInstanceState);
     }
 }

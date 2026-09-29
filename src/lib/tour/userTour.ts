@@ -6,6 +6,12 @@ import { USER_ROUTES } from '../routes';
  * The client-user orientation tour. See adminTour.ts for why sections that
  * only expand (My Screens, My Channel, Support) carry no `route` — there's
  * no standalone page for the section itself, just its children.
+ *
+ * Support and Profile have no dock tab of their own on mobile — they live
+ * inside the dock's "More" sheet instead, so those steps fall back to
+ * `dock-more`: without it, `firstVisible` found nothing on the app's
+ * mobile-width WebView and the runner silently skipped the step, so the
+ * app's tour was quietly missing steps the website's had.
  */
 export function getUserTourSteps(): TourStep[] {
   return [
@@ -40,7 +46,7 @@ export function getUserTourSteps(): TourStep[] {
       }
     },
     {
-      element: firstVisible('[data-tour="sidebar-support"]'),
+      element: firstVisible('[data-tour="sidebar-support"]', '[data-tour="dock-more"]'),
       popover: {
         title: 'Support',
         description: 'Raise a ticket or browse the help center if you ever get stuck.'
@@ -48,7 +54,7 @@ export function getUserTourSteps(): TourStep[] {
     },
     {
       route: USER_ROUTES['profile'],
-      element: firstVisible('[data-tour="sidebar-profile"]'),
+      element: firstVisible('[data-tour="sidebar-profile"]', '[data-tour="dock-more"]'),
       popover: {
         title: 'Your Profile',
         description: 'Account details and security settings live here. That\'s the tour — you\'re all set.'

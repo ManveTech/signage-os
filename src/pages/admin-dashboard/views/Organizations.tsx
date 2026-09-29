@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Plus, Building2, Users, Monitor, HardDrive, ChevronRight, 
-  X, CheckCircle, Calendar, Shield, AlertTriangle, MoreVertical, Key 
+  Plus, Building2, Users, Monitor, HardDrive, ChevronRight,
+  X, CheckCircle, AlertCircle, Calendar, Shield, AlertTriangle, MoreVertical, Key
 } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
 import { mediaStore } from '../../../lib/mediaStore';
@@ -38,7 +38,7 @@ export default function Organizations() {
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(orgs[0]?.id || null);
-  const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
+  const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
   const [isAddOrgOpen, setIsAddOrgOpen] = useState(false);
 
   // Refresh from server on mount. Always applies the result, including an
@@ -62,16 +62,16 @@ export default function Organizations() {
   const [renewalDate, setRenewalDate] = useState('');
   const [customDomainInput, setCustomDomainInput] = useState('');
 
-  const addToast = (message: string) => {
+  const addToast = (message: string, type: 'success' | 'error' = 'success') => {
     const id = Date.now();
-    setToasts(p => [...p, { id, message }]);
+    setToasts(p => [...p, { id, message, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3000);
   };
 
   const handleCreateOrg = (e: React.FormEvent) => {
     e.preventDefault();
     if (!orgName.trim() || !adminName.trim() || !adminEmail.trim()) {
-      addToast("Please fill in all required fields.");
+      addToast("Please fill in all required fields.", 'error');
       return;
     }
 
@@ -288,25 +288,29 @@ export default function Organizations() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 text-left">
-      {/* Toast Alert */}
-      <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+      {/* Toast Alert — z-[60], above the z-50 add-organization modal */}
+      <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white bg-slate-900 border border-slate-700 animate-slideIn">
-            <CheckCircle size={16} className="text-emerald-400" />
+            {t.type === 'error' ? (
+              <AlertCircle size={16} className="text-red-400 shrink-0" />
+            ) : (
+              <CheckCircle size={16} className="text-emerald-400 shrink-0" />
+            )}
             <span>{t.message}</span>
           </div>
         ))}
       </div>
 
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="display text-2xl sm:text-3xl text-ink-950">Organizations</h1>
           <p className="text-sm text-gray-500 mt-0.5">Multi-tenant client organization directory and quotas</p>
         </div>
         <button
           onClick={() => setIsAddOrgOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+          className="shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
         >
           <Plus size={16} /> Add Organization
         </button>

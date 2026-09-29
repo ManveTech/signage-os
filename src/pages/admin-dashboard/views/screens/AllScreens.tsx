@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus, Lock } from 'lucide-react';
+import { Search, Plus, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus, Lock } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import CustomSelect from '../../../../components/CustomSelect';
@@ -64,7 +64,7 @@ const groupColorMap: Record<string, { bg: string; text: string; border: string }
   slate:   { bg: 'bg-slate-50',   text: 'text-slate-700',   border: 'border-slate-100' },
 };
 
-type Toast = { id: number; message: string; type: 'success' | 'info' };
+type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' };
 
 export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }: { onNavigate: (v: string) => void; userEmail?: string }) {
   const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens());
@@ -222,7 +222,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
       if (res.ok) {
         addToast(`Cache purge command sent to "${screen.name}"`, 'success');
       } else {
-        addToast(`Failed to send cache purge command`, 'info');
+        addToast(`Failed to send cache purge command`, 'error');
       }
     });
   };
@@ -248,13 +248,13 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
   return (
     <div className="p-4 md:p-8 space-y-6">
       <ScreenSubNav activeTab="screens" onNavigate={onNavigate} role="admin" />
-      {/* Toasts */}
-      <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+      {/* Toasts — z-[60], above the z-50 edit/delete modals below */}
+      <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
         {toasts.map(toast => (
           <div key={toast.id} className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white ${
-            toast.type === 'success' ? 'bg-emerald-500' : 'bg-blue-500'
+            toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
           }`}>
-            <CheckCircle size={16} />
+            {toast.type === 'success' ? <CheckCircle size={16} /> : toast.type === 'error' ? <AlertCircle size={16} /> : <Info size={16} />}
             {toast.message}
           </div>
         ))}

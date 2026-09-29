@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { stopActiveTour } from '../lib/tour/active';
+import { setNativeBarColor } from '../lib/nativeWindow';
 
 export function useCapacitor() {
   const [isNative, setIsNative] = useState(false);
@@ -23,19 +24,18 @@ export function useCapacitor() {
       if (!Capacitor.isNativePlatform()) return;
 
       const plugins = (Capacitor as any).Plugins || {};
-      const { SplashScreen, StatusBar, Keyboard, App: CapacitorApp } = plugins;
+      const { SplashScreen, Keyboard, App: CapacitorApp } = plugins;
 
       // Hide splash screen after app is ready
       if (SplashScreen && typeof SplashScreen.hide === 'function') {
         await SplashScreen.hide({ fadeOutDuration: 300 });
       }
 
-      // Configure status bar
-      if (Capacitor.getPlatform() === 'android' && StatusBar) {
-        if (typeof StatusBar.setBackgroundColor === 'function') {
-          await StatusBar.setBackgroundColor({ color: '#ffffff' });
-        }
-      }
+      // Configure the status/nav bars — white to match the login/dashboard
+      // screens, which is what's on screen almost the entire time the app is
+      // open. BootScreen briefly overrides this to black for its own
+      // duration and restores it on the way out.
+      await setNativeBarColor('#ffffff', 'LIGHT');
 
       // Handle hardware back button on Android
       if (Capacitor.getPlatform() === 'android' && CapacitorApp) {

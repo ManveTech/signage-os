@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import {
   LayoutDashboard, MonitorPlay, Tv, Key, Menu, X, LogOut,
   Film, Users, Building2, BarChart3, Settings as SettingsIcon,
-  User, ScanLine, Plus, Clock, FileText,
+  User, ScanLine, Plus, Clock, FileText, Plug,
   CreditCard, ShieldAlert, ChevronRight, HelpCircle, Layers,
   Monitor, CalendarDays, Upload, ArrowLeft
 } from 'lucide-react';
@@ -46,6 +46,7 @@ const PRIMARY_TABS: PrimaryTab[] = [
 const ADMIN_MORE_ITEMS: SheetItem[] = [
   { id: 'users', label: 'Clients / Users', icon: Users },
   { id: 'organizations', label: 'Organizations', icon: Building2 },
+  { id: 'integrations', label: 'Integrations', icon: Plug },
   { id: 'reports-overview', label: 'Reports', icon: BarChart3 },
   { id: 'settings-general', label: 'Settings', icon: SettingsIcon },
   { id: 'support-issues', label: 'Ongoing Issues', icon: ShieldAlert },

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { API_BASE } from '../../../../config';
 import {
-  Search, Plus, Wifi, WifiOff, AlertTriangle, RefreshCw, Trash2, Edit,
+  Search, Plus, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit,
   Clock, Monitor, X, Check, CheckCircle, MapPin,
   Grid3X3, List, Pause, Eraser, Lock, Trash,
   Calendar, Link, ListVideo, FolderMinus
@@ -445,13 +445,13 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5" onClick={() => openMenu && setOpenMenu(null)}>
-      {/* Toasts */}
-      <div className="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">
+      {/* Toasts — z-[60], above the z-50 edit/delete/schedule modals below */}
+      <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
         {toasts.map(toast => (
           <div key={toast.id} className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white animate-fade-in ${
             toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
           }`}>
-            <CheckCircle size={15} />
+            {toast.type === 'success' ? <CheckCircle size={15} /> : toast.type === 'error' ? <AlertCircle size={15} /> : <Info size={15} />}
             {toast.message}
           </div>
         ))}

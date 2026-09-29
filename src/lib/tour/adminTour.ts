@@ -16,6 +16,12 @@ import { ADMIN_ROUTES } from '../routes';
  *
  * `firstVisible` falls back from the desktop sidebar entry to the mobile
  * dock tab, so the same step works on both layouts without a second copy.
+ *
+ * A few sections (Client Screens, Users, Support, Profile) have no dock tab
+ * of their own on mobile — they live inside the dock's "More" sheet instead.
+ * Those steps fall back to `dock-more`: without it, `firstVisible` found
+ * nothing on the app's mobile-width WebView and the runner silently skipped
+ * the step, so the app's tour was quietly missing a third of the website's.
  */
 export function getAdminTourSteps(): TourStep[] {
   return [
@@ -35,7 +41,7 @@ export function getAdminTourSteps(): TourStep[] {
       }
     },
     {
-      element: firstVisible('[data-tour="sidebar-screens"]'),
+      element: firstVisible('[data-tour="sidebar-screens"]', '[data-tour="dock-screens"]'),
       popover: {
         title: 'Client Screens',
         description: 'Every screen across every client organization — oversight, troubleshooting, and bulk actions in one place.'
@@ -57,14 +63,14 @@ export function getAdminTourSteps(): TourStep[] {
     },
     {
       route: ADMIN_ROUTES['users'],
-      element: firstVisible('[data-tour="sidebar-users"]'),
+      element: firstVisible('[data-tour="sidebar-users"]', '[data-tour="dock-more"]'),
       popover: {
         title: 'Clients & Users',
         description: 'Onboard a new client, assign them a license, and manage their account from here.'
       }
     },
     {
-      element: firstVisible('[data-tour="sidebar-support"]'),
+      element: firstVisible('[data-tour="sidebar-support"]', '[data-tour="dock-more"]'),
       popover: {
         title: 'Support',
         description: 'Track ongoing issues, maintain your FAQ, and manage support documentation your clients see.'
@@ -72,7 +78,7 @@ export function getAdminTourSteps(): TourStep[] {
     },
     {
       route: ADMIN_ROUTES['profile'],
-      element: firstVisible('[data-tour="sidebar-profile"]'),
+      element: firstVisible('[data-tour="sidebar-profile"]', '[data-tour="dock-more"]'),
       popover: {
         title: 'Your Profile',
         description: 'Account details, security, and (if you\'re a super admin) platform-wide integrations like payments and email — all here. That\'s the tour — you\'re all set.'

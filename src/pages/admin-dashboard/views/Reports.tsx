@@ -267,31 +267,49 @@ export default function Reports({ activeTab: initTab = 'Overview' }: { activeTab
             {media.length === 0 ? (
               <p className="text-xs text-gray-400">No media uploaded yet.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      {['Title', 'Type', 'Size', 'Uploaded By', 'Created', 'Status'].map(h => (
-                        <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {media.map(m => (
-                      <tr key={m.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-3 py-2.5 text-sm font-medium text-gray-900">{m.title}</td>
-                        <td className="px-3 py-2.5 text-sm text-gray-600 capitalize">{m.type}</td>
-                        <td className="px-3 py-2.5 text-sm text-gray-600">{formatBytes(m.fileSizeBytes)}</td>
-                        <td className="px-3 py-2.5 text-sm text-gray-500">{m.uploadedBy}</td>
-                        <td className="px-3 py-2.5 text-sm text-gray-500">{m.createdDate}</td>
-                        <td className="px-3 py-2.5">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.status === 'active' ? 'bg-emerald-50 text-emerald-700' : m.status === 'expired' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{m.status}</span>
-                        </td>
+              <>
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        {['Title', 'Type', 'Size', 'Uploaded By', 'Created', 'Status'].map(h => (
+                          <th key={h} className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {media.map(m => (
+                        <tr key={m.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-3 py-2.5 text-sm font-medium text-gray-900">{m.title}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-600 capitalize">{m.type}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-600">{formatBytes(m.fileSizeBytes)}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-500">{m.uploadedBy}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-500">{m.createdDate}</td>
+                          <td className="px-3 py-2.5">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.status === 'active' ? 'bg-emerald-50 text-emerald-700' : m.status === 'expired' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{m.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile card list — the table above forced a fixed 6-column
+                    width no phone screen can fit, which is what put a
+                    horizontal scrollbar on this tab. */}
+                <div className="md:hidden divide-y divide-gray-50">
+                  {media.map(m => (
+                    <div key={m.id} className="py-3 flex flex-col gap-1.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-medium text-gray-900 truncate">{m.title}</p>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${m.status === 'active' ? 'bg-emerald-50 text-emerald-700' : m.status === 'expired' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{m.status}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 capitalize">{m.type} · {formatBytes(m.fileSizeBytes)}</p>
+                      <p className="text-[11px] text-gray-400">{m.uploadedBy} · {m.createdDate}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

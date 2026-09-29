@@ -86,14 +86,14 @@ export default function AllPlaylists({ onNavigate, userEmail }: Props) {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="display text-2xl sm:text-3xl text-ink-950">Signage Playlists</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage and organize layout broadcasting for your screens</p>
         </div>
         <button
           onClick={() => onNavigate('playlists-create')}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+          className="shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
         >
           <Plus size={14} /> Create Playlist
         </button>
