@@ -662,7 +662,8 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
           if (mins < 60) return `${mins} min ago`;
           const hours = Math.floor(mins / 60);
           if (hours < 24) return `${hours} h ago`;
-          return `${Math.floor(hours / 24)} days ago`;
+          const days = Math.floor(hours / 24);
+          return `${days} day${days === 1 ? '' : 's'} ago`;
         })();
         return (
           <ScreenDetailsSheet

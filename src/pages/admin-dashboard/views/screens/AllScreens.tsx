@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus, Lock } from 'lucide-react';
+import { Search, Plus, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus, Lock, Play, Unlink, Tv, RotateCcw } from 'lucide-react';
+import ScreenDetailsSheet from '../../../../components/screens/ScreenDetailsSheet';
+import ScreenCard from '../../../../components/screens/ScreenCard';
+import PairTvDialog from '../../../../components/screens/PairTvDialog';
+import ConfirmDialog from '../../../../components/screens/ConfirmDialog';
+import { lastSeenText } from '../../../../components/screens/screenStatus';
+import { pingScreen, unlinkScreen, pairTvToScreen } from '../../../../lib/screenActions';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import CustomSelect from '../../../../components/CustomSelect';
@@ -39,6 +45,11 @@ const renderStatusBadge = (screenOrStatus: any) => {
       label = 'Pairing';
       bg = 'bg-blue-500/10 text-blue-700 border-blue-500/20';
       dot = <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>;
+      break;
+    case 'unlinked':
+      label = 'Not linked';
+      bg = 'bg-slate-500/10 text-slate-500 border-slate-500/20';
+      dot = <span className="h-2 w-2 rounded-full bg-slate-400"></span>;
       break;
     case 'suspended':
       label = 'Suspended';
@@ -140,6 +151,21 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [detailsScreenId, setDetailsScreenId] = useState<string | null>(null);
+  const [unlinkTarget, setUnlinkTarget] = useState<Screen | null>(null);
+  const [pairTarget, setPairTarget] = useState<Screen | null>(null);
+  // TVs that asked for a pairing code but were never added to anyone's
+  // account. They aren't screens yet, so they live in their own view instead
+  // of padding out the list and its counts.
+  const isWaitingToPair = (s: Screen) => s.status === 'pairing' && !s.assignedToUserEmail;
+  const [showPairing, setShowPairing] = useState(false);
+  const waitingCount = screens.filter(isWaitingToPair).length;
+  const realScreenCount = screens.length - waitingCount;
+  const statusCount = (key: 'online' | 'offline' | 'warning') => screens.filter(s => {
+    if (isWaitingToPair(s)) return false;
+    const eff = getEffectiveStatus(s);
+    return key === 'online' ? (eff === 'online' || eff === 'active') : eff === key;
+  }).length;
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev =>
@@ -155,8 +181,16 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
     }
   };
   const filtered = screens.filter(s => {
-    const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || s.status === statusFilter;
+    if (showPairing !== isWaitingToPair(s)) return false;
+    if (showPairing) {
+      const q = search.toLowerCase();
+      return !q || (s.name || '').toLowerCase().includes(q) || ((s as any).pairing_code || '').toLowerCase().includes(q);
+    }
+    const matchSearch = (s.name || '').toLowerCase().includes(search.toLowerCase()) || (s.location || '').toLowerCase().includes(search.toLowerCase());
+    // Same (heartbeat-aware) status the chips count by — the filter used the
+    // raw stored status, so its results didn't match the numbers shown.
+    const eff = getEffectiveStatus(s);
+    const matchStatus = statusFilter === 'all' || (statusFilter === 'online' ? (eff === 'online' || eff === 'active') : eff === statusFilter);
     const matchGroup = groupFilter === 'all' ? true : (groupFilter === 'none' ? !s.groupId : s.groupId === groupFilter);
     const matchOrg = orgFilter === 'all' || getScreenOrgName(s) === orgFilter;
     return matchSearch && matchStatus && matchGroup && matchOrg;
@@ -195,22 +229,89 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
     addToast(`Successfully removed ${count} screen(s)`);
   };
 
-  const handleRestart = (screen: Screen) => {
-    addToast(`Restart signal sent to "${screen.name}"`, 'info');
-  };
-
-  const handleStopPlayback = (screen: Screen) => {
-    const updatedScreen = {
-      ...screen,
-      playlist: 'None',
-      playlistId: ''
-    };
+  const updateLocalScreen = (id: string, patch: Partial<Screen>) => {
     const allScreens = mediaStore.getScreens();
-    const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+    const updatedAll = allScreens.map(s => s.id === id ? { ...s, ...patch } as Screen : s);
     mediaStore.saveScreens(updatedAll);
     setScreens(updatedAll);
-    pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
-    addToast(`Playback stopped for "${screen.name}"`);
+  };
+
+  // Restart from the first slide. (This used to only show a toast — it never
+  // actually told the TV anything.)
+  const handleRestart = (screen: Screen) => {
+    pushToDatabase('screens', screen.id, { restart_playlist: true }, 'PUT').then(res => {
+      if (res.ok) addToast(`"${screen.name}" is restarting its playlist`, 'success');
+      else addToast(`Couldn't restart "${screen.name}"`, 'error');
+    });
+  };
+
+  const handleSync = (screen: Screen) => {
+    pushToDatabase('screens', screen.id, { force_sync: true }, 'PUT').then(res => {
+      if (res.ok) addToast(`Sync signal sent to "${screen.name}"`, 'success');
+      else addToast(`Failed to send sync signal`, 'error');
+    });
+  };
+
+  // Pause keeps the playlist assigned; the TV shows a paused screen until resumed.
+  const handleTogglePause = (screen: Screen) => {
+    const paused = !screen.paused;
+    updateLocalScreen(screen.id, { paused });
+    pushToDatabase('screens', screen.id, { paused }, 'PUT').then(res => {
+      if (res.ok) {
+        addToast(paused ? `Playback paused on "${screen.name}"` : `Playback resumed on "${screen.name}"`, 'success');
+      } else {
+        updateLocalScreen(screen.id, { paused: !paused });
+        addToast(`Couldn't ${paused ? 'pause' : 'resume'} "${screen.name}"`, 'error');
+      }
+    });
+  };
+
+  const handleCheckStatus = async (screen: Screen) => {
+    addToast(`Checking "${screen.name}"…`, 'info');
+    try {
+      const result = await pingScreen(screen.id);
+      if (result.unlinked) {
+        addToast(`"${screen.name}" has no TV linked`, 'info');
+      } else if (result.online) {
+        updateLocalScreen(screen.id, { status: 'online', lastHeartbeat: new Date().toISOString() });
+        addToast(
+          result.viaHeartbeat
+            ? `"${screen.name}" is online (update the TV app for live checks)`
+            : `"${screen.name}" is online — replied in ${result.latencyMs} ms`,
+          'success'
+        );
+      } else {
+        updateLocalScreen(screen.id, { status: 'offline' });
+        addToast(`"${screen.name}" didn't respond — marked offline`, 'error');
+      }
+    } catch (e: any) {
+      addToast(e?.message || `Couldn't check "${screen.name}"`, 'error');
+    }
+  };
+
+  const handleUnlink = async (screen: Screen) => {
+    try {
+      await unlinkScreen(screen.id);
+      updateLocalScreen(screen.id, { status: 'unlinked', paused: false });
+      addToast(`TV unlinked from "${screen.name}". Pair a TV to use this screen again.`, 'success');
+    } catch (e: any) {
+      addToast(e?.message || `Couldn't unlink "${screen.name}"`, 'error');
+    } finally {
+      setUnlinkTarget(null);
+    }
+  };
+
+  const handlePairTv = async (screen: Screen, code: string) => {
+    const updated = await pairTvToScreen(screen.id, code);
+    updateLocalScreen(screen.id, { status: (updated?.status || 'online') as Screen['status'], lastHeartbeat: new Date().toISOString() });
+    setPairTarget(null);
+    addToast(`TV paired to "${screen.name}"`, 'success');
+  };
+
+  const handleRemoveFromGroup = (screen: Screen) => {
+    updateLocalScreen(screen.id, { groupId: '' } as Partial<Screen>);
+    pushToDatabase('screens', screen.id, { groupId: '' }, 'PUT');
+    addToast(`"${screen.name}" removed from group`);
   };
 
   const handleClearCache = (screen: Screen) => {
@@ -263,7 +364,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="display text-2xl sm:text-3xl text-ink-950">All Screens</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{screens.length} total screens registered</p>
+          <p className="text-sm text-gray-500 mt-0.5">{realScreenCount} screen{realScreenCount === 1 ? '' : 's'}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {filtered.length > 0 && (
@@ -298,311 +399,339 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search screens, locations..."
-            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400 bg-white"
-          />
-        </div>
-        <div className="flex gap-2 flex-wrap items-center">
-          <CustomSelect
-            value={groupFilter}
-            onChange={val => setGroupFilter(val)}
-            options={[
-              { value: 'all', label: 'All Groups' },
-              { value: 'none', label: 'No Group' },
-              ...groups.map(g => ({ value: g.id, label: g.name }))
-            ]}
-            buttonClassName="text-xs py-2 px-3 min-w-[130px]"
-          />
-          <CustomSelect
-            value={orgFilter}
-            onChange={val => setOrgFilter(val)}
-            options={[
-              { value: 'all', label: 'All Organizations' },
-              ...Array.from(new Set<string>(organizations.map((o: any) => o.name as string)))
-                .filter((name: string) => Boolean(name && name !== 'x'))
-                .map((orgName: string) => ({ value: orgName, label: orgName }))
-            ]}
-            buttonClassName="text-xs py-2 px-3 min-w-[150px]"
-          />
-          {(['all', 'online', 'offline', 'warning'] as const).map(f => (
-            <button key={f} onClick={() => setStatusFilter(f)} className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors capitalize ${
-              statusFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-            }`}>{f}</button>
-          ))}
-        </div>
+      {/* Search */}
+      <div className="relative">
+        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          value={search}
+          onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+          placeholder="Search screens"
+          className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
+        />
       </div>
 
-      {/* Stats bar */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Online', count: screens.filter(s => getEffectiveStatus(s) === 'online' || getEffectiveStatus(s) === 'active').length, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Offline', count: screens.filter(s => getEffectiveStatus(s) === 'offline').length, color: 'text-red-600', bg: 'bg-red-50' },
-          { label: 'Warning', count: screens.filter(s => getEffectiveStatus(s) === 'warning').length, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-        ].map(s => (
-          <div key={s.label} className={`${s.bg} rounded-lg px-4 py-2.5 flex items-center justify-between`}>
-            <span className="text-xs font-medium text-gray-700">{s.label}</span>
-            <span className={`text-lg font-bold ${s.color}`}>{s.count}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                {isSelectionMode && (
-                  <th className="px-4 py-3 w-10">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.length === filtered.length && filtered.length > 0}
-                      onChange={selectAll}
-                      className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
-                    />
-                  </th>
-                )}
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Screen</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Group</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Playlist</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Location</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Organization</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {paginatedRecords.map(screen => {
-                const isSelected = selectedIds.includes(screen.id);
-                return (
-                  <tr key={screen.id} className={`hover:bg-gray-50 transition-colors group ${isSelected ? 'bg-blue-50/70 hover:bg-blue-50/70' : ''}`} onClick={() => isSelectionMode && toggleSelect(screen.id)}>
-                    {isSelectionMode && (
-                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelect(screen.id)}
-                          className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
-                        />
-                      </td>
-                    )}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                          {screen.thumbnail ? (
-                            <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-                              <Monitor size={16} />
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{screen.name}</p>
-                          {screen.playerVersion && (
-                            <p className="text-xs text-gray-400">v{screen.playerVersion}</p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {renderStatusBadge(screen)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {screen.groupId ? (() => {
-                        const gp = groups.find(g => g.id === screen.groupId);
-                        const c = gp ? (groupColorMap[gp.color] ?? groupColorMap.blue) : groupColorMap.blue;
-                        return gp ? (
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${c.bg} ${c.text} ${c.border}`}>
-                            {gp.name}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400 italic">None</span>
-                        );
-                      })() : (
-                        <span className="text-xs text-gray-400 italic">None</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-sm ${screen.playlist === 'Normal' ? 'text-gray-400 italic' : 'text-gray-700'}`}>
-                        {screen.groupId ? (() => {
-                          const gp = groups.find(g => g.id === screen.groupId);
-                          return gp ? `${gp.playlist} (Inherited)` : screen.playlist;
-                        })() : screen.playlist}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 max-w-[160px] truncate">{screen.location}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 max-w-[160px] truncate">
-                      {getScreenOrgName(screen)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1 transition-opacity">
-                        <button onClick={() => setEditScreen({ ...screen })} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit size={14} /></button>
-                        <button onClick={() => handleRestart(screen)} className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors" title="Restart"><RefreshCw size={14} /></button>
-                        <button onClick={() => handleStopPlayback(screen)} className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Stop Playback"><Pause size={14} /></button>
-                        <button onClick={() => handleClearCache(screen)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Clear Device Cache"><Eraser size={14} /></button>
-                        {screen.groupId && (
-                          <button
-                            onClick={() => {
-                              const updatedScreen = { ...screen, groupId: '' };
-                              const allScreens = mediaStore.getScreens();
-                              const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
-                              mediaStore.saveScreens(updatedAll);
-                              setScreens(updatedAll);
-                              pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
-                              addToast(`"${screen.name}" removed from group`);
-                            }}
-                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                            title="Remove from group"
-                          >
-                            <FolderMinus size={14} />
-                          </button>
-                        )}
-                        <button onClick={() => setDeleteScreen(screen)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {/* Unclaimed TVs showing a pairing code — kept out of the main list. */}
+      {showPairing ? (
+        <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-100 rounded-xl px-3.5 py-2.5">
+          <span className="text-xs text-blue-800">
+            <span className="font-semibold">{waitingCount} TV{waitingCount === 1 ? '' : 's'} waiting to pair.</span> These show a code on screen but haven't been added to any account.
+          </span>
+          <button
+            onClick={() => { setShowPairing(false); setCurrentPage(1); setSelectedIds([]); }}
+            className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-800"
+          >
+            Back to screens
+          </button>
         </div>
+      ) : waitingCount > 0 ? (
+        <button
+          onClick={() => { setShowPairing(true); setCurrentPage(1); setSelectedIds([]); }}
+          className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700"
+        >
+          <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full" />
+          {waitingCount} TV{waitingCount === 1 ? '' : 's'} waiting to pair
+          <span aria-hidden>→</span>
+        </button>
+      ) : null}
 
-        {/* Mobile card list */}
-        <div className="md:hidden divide-y divide-gray-100">
-          {paginatedRecords.map(screen => {
-            const isSelected = selectedIds.includes(screen.id);
-            const group = screen.groupId ? groups.find(g => g.id === screen.groupId) : null;
-            const groupColor = group ? (groupColorMap[group.color] ?? groupColorMap.blue) : null;
+      {!showPairing && (
+        <>
+        {/* Status chips double as the counts; tap the active one again to clear it. */}
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          {([
+            { key: 'online', label: 'Online', count: statusCount('online'), dot: 'bg-emerald-500' },
+            { key: 'offline', label: 'Offline', count: statusCount('offline'), dot: 'bg-rose-500' },
+            { key: 'warning', label: 'Warning', count: statusCount('warning'), dot: 'bg-amber-500' },
+          ] as const).map(chip => {
+            const active = statusFilter === chip.key;
             return (
-              <div
-                key={screen.id}
-                className={`p-4 flex flex-col gap-3 ${isSelected ? 'bg-blue-50/70' : ''}`}
-                onClick={() => isSelectionMode && toggleSelect(screen.id)}
+              <button
+                key={chip.key}
+                onClick={() => { setStatusFilter(active ? 'all' : chip.key); setCurrentPage(1); }}
+                aria-pressed={active}
+                className={`flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-semibold rounded-full border transition-colors whitespace-nowrap ${
+                  active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {isSelectionMode && (
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelect(screen.id)}
-                        onClick={e => e.stopPropagation()}
-                        className="w-4 h-4 rounded accent-blue-600 cursor-pointer flex-shrink-0"
-                      />
-                    )}
-                    <div className="w-12 h-8 rounded overflow-hidden flex-shrink-0 bg-gray-100">
-                      {screen.thumbnail ? (
-                        <img src={screen.thumbnail} alt={screen.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-                          <Monitor size={16} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{screen.name}</p>
-                      {screen.playerVersion && (
-                        <p className="text-xs text-gray-400">v{screen.playerVersion}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">{renderStatusBadge(screen)}</div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-3 border-t border-gray-100">
-                  <div>
-                    <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Group</p>
-                    {group ? (
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 mt-0.5 rounded-full text-[10px] font-medium border ${groupColor!.bg} ${groupColor!.text} ${groupColor!.border}`}>
-                        {group.name}
-                      </span>
-                    ) : (
-                      <p className="text-gray-400 italic mt-0.5">None</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Playlist</p>
-                    <p className={`mt-0.5 truncate ${screen.playlist === 'Normal' ? 'text-gray-400 italic' : 'text-gray-700 font-medium'}`}>
-                      {group ? `${group.playlist} (Inherited)` : screen.playlist}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Location</p>
-                    <p className="text-gray-600 font-medium mt-0.5 truncate">{screen.location}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Organization</p>
-                    <p className="text-gray-600 font-medium mt-0.5 truncate">{getScreenOrgName(screen)}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-1 flex-wrap pt-1" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => setEditScreen({ ...screen })} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><Edit size={14} /></button>
-                  <button onClick={() => handleRestart(screen)} className="p-2 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors" title="Restart"><RefreshCw size={14} /></button>
-                  <button onClick={() => handleStopPlayback(screen)} className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Stop Playback"><Pause size={14} /></button>
-                  <button onClick={() => handleClearCache(screen)} className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Clear Device Cache"><Eraser size={14} /></button>
-                  {screen.groupId && (
-                    <button
-                      onClick={() => {
-                        const updatedScreen = { ...screen, groupId: '' };
-                        const allScreens = mediaStore.getScreens();
-                        const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
-                        mediaStore.saveScreens(updatedAll);
-                        setScreens(updatedAll);
-                        pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
-                        addToast(`"${screen.name}" removed from group`);
-                      }}
-                      className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                      title="Remove from group"
-                    >
-                      <FolderMinus size={14} />
-                    </button>
-                  )}
-                  <button onClick={() => setDeleteScreen(screen)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
-                </div>
-              </div>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-white' : chip.dot}`} />
+                {chip.label}
+                <span className={`min-w-[20px] px-1.5 py-0.5 rounded-full text-[10px] leading-none ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                  {chip.count}
+                </span>
+              </button>
             );
           })}
         </div>
 
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-white">
-            <span className="text-xs text-gray-500 font-medium">
-              Showing {((activePage - 1) * recordsPerPage) + 1} to {Math.min(activePage * recordsPerPage, filtered.length)} of {filtered.length} screens
-            </span>
-            <div className="flex gap-2">
-              <button
-                disabled={activePage === 1}
-                onClick={() => setCurrentPage(activePage - 1)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
-              >
-                Previous
-              </button>
-              <button
-                disabled={activePage === totalPages}
-                onClick={() => setCurrentPage(activePage + 1)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
-              >
-                Next
-              </button>
-            </div>
+        {/* Group / organization filters */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+          <div className="sm:w-52">
+            <CustomSelect
+              value={groupFilter}
+              onChange={val => { setGroupFilter(val); setCurrentPage(1); }}
+              options={[
+                { value: 'all', label: 'All Groups' },
+                { value: 'none', label: 'No Group' },
+                ...groups.map(g => ({ value: g.id, label: g.name }))
+              ]}
+              buttonClassName="text-xs py-2 px-3 sm:min-w-[140px]"
+            />
           </div>
-        )}
-        {filtered.length === 0 && (
-          <div className="py-16 text-center">
-            <Monitor size={32} className="mx-auto text-gray-300 mb-2" />
-            <p className="text-sm text-gray-500">No screens found</p>
+          <div className="sm:w-52">
+            <CustomSelect
+              value={orgFilter}
+              onChange={val => { setOrgFilter(val); setCurrentPage(1); }}
+              options={[
+                { value: 'all', label: 'All Organizations' },
+                ...Array.from(new Set<string>(organizations.map((o: any) => o.name as string)))
+                  .filter((name: string) => Boolean(name && name !== 'x'))
+                  .map((orgName: string) => ({ value: orgName, label: orgName }))
+              ]}
+              buttonClassName="text-xs py-2 px-3 sm:min-w-[160px]"
+            />
           </div>
-        )}
+        </div>
+        </>
+      )}
+
+      {isSelectionMode && filtered.length > 0 && (
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>{selectedIds.length} selected</span>
+          <button onClick={selectAll} className="font-semibold text-blue-600">
+            {selectedIds.length === filtered.length ? 'Clear selection' : `Select all ${filtered.length}`}
+          </button>
+        </div>
+      )}
+
+      {/* Screens — compact cards; tapping one opens its details sheet. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {paginatedRecords.map(screen => {
+          const status = getEffectiveStatus(screen);
+          const group = screen.groupId ? groups.find(g => g.id === screen.groupId) : null;
+          const playing = group ? (group.playlist || 'Normal') : (screen.playlist && screen.playlist !== 'None' ? screen.playlist : '');
+          return (
+            <ScreenCard
+              key={screen.id}
+              screen={screen}
+              status={status}
+              playing={playing}
+              groupName={group?.name}
+              footnote={isWaitingToPair(screen) ? undefined : getScreenOrgName(screen)}
+              selectionMode={isSelectionMode}
+              selected={selectedIds.includes(screen.id)}
+              onClick={() => (isSelectionMode ? toggleSelect(screen.id) : setDetailsScreenId(screen.id))}
+            />
+          );
+        })}
       </div>
+
+      {filtered.length === 0 && (
+        <div className="py-16 text-center bg-white rounded-2xl border border-gray-100">
+          <Monitor size={32} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-sm text-gray-500">No screens found</p>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-gray-500 font-medium">
+            {((activePage - 1) * recordsPerPage) + 1}–{Math.min(activePage * recordsPerPage, filtered.length)} of {filtered.length}
+          </span>
+          <div className="flex gap-2">
+            <button
+              disabled={activePage === 1}
+              onClick={() => setCurrentPage(activePage - 1)}
+              className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold bg-white hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+            >
+              Previous
+            </button>
+            <button
+              disabled={activePage === totalPages}
+              onClick={() => setCurrentPage(activePage + 1)}
+              className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold bg-white hover:bg-gray-50 disabled:opacity-50 cursor-pointer"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(() => {
+        const screen = detailsScreenId ? screens.find(s => s.id === detailsScreenId) : null;
+        if (!screen) return null;
+        const status = getEffectiveStatus(screen);
+        const group = screen.groupId ? groups.find(g => g.id === screen.groupId) : null;
+        const playlistLabel = group ? (group.playlist || 'Normal') : (screen.playlist && screen.playlist !== 'None' ? screen.playlist : 'None');
+        const unlinked = status === 'unlinked';
+        const waitingDevice = isWaitingToPair(screen);
+        const pairingCode = (screen as any).pairing_code as string | undefined;
+        const removeAction = {
+          key: 'delete',
+          label: 'Remove screen',
+          description: unlinked ? 'Delete this screen and its settings' : 'Unpair the TV and delete this screen',
+          icon: <Trash2 size={17} />,
+          tone: 'danger' as const,
+          onClick: () => setDeleteScreen(screen)
+        };
+        const editAction = {
+          key: 'edit',
+          label: 'Edit details',
+          description: 'Name, location, group and settings',
+          icon: <Edit size={17} />,
+          onClick: () => setEditScreen({ ...screen })
+        };
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setDetailsScreenId(null)}
+            title={screen.name}
+            subtitle={screen.location && screen.location !== 'Not Specified' ? screen.location : undefined}
+            badge={renderStatusBadge(screen)}
+            hero={screen.thumbnail ? (
+              <div className="aspect-video rounded-2xl bg-cover bg-center bg-ink-950" style={{ backgroundImage: `url(${screen.thumbnail})` }} />
+            ) : undefined}
+            details={waitingDevice ? [
+              { label: 'Pairing code', value: pairingCode ? <span className="font-mono">{pairingCode}</span> : '—' },
+              { label: 'Code expires', value: (screen as any).pairing_code_expires ? new Date((screen as any).pairing_code_expires).toLocaleString() : '—' },
+              { label: 'First seen', value: (screen as any).created ? new Date((screen as any).created).toLocaleDateString() : '—' },
+            ] : [
+              { label: group ? 'Playlist (from group)' : 'Playlist', value: playlistLabel },
+              ...(screen.paused ? [{ label: 'Playback', value: <span className="text-amber-700">Paused</span> }] : []),
+              { label: 'TV', value: unlinked ? <span className="text-slate-500">Not linked</span> : (status === 'online' || status === 'active' ? 'Online now' : `Last seen ${lastSeenText(screen.lastHeartbeat)}`) },
+              ...(group ? [{ label: 'Group', value: group.name }] : []),
+              { label: 'Organization', value: getScreenOrgName(screen) || '—' },
+              ...(screen.playerVersion ? [{ label: 'Player version', value: `v${screen.playerVersion}` }] : []),
+            ]}
+            groups={waitingDevice ? [
+              {
+                title: 'TV',
+                actions: [{
+                  key: 'add',
+                  label: 'Add this TV as a screen',
+                  description: pairingCode ? `Use code ${pairingCode} on the Add Screen page` : 'Open Add Screen and enter the code shown on the TV',
+                  icon: <Plus size={17} />,
+                  onClick: () => onNavigate('screens-add-client')
+                }]
+              },
+              {
+                title: 'Danger zone',
+                actions: [{
+                  key: 'delete',
+                  label: 'Remove this device',
+                  description: 'Deletes the waiting record — if the TV is still on, it shows a new code',
+                  icon: <Trash2 size={17} />,
+                  tone: 'danger' as const,
+                  onClick: () => setDeleteScreen(screen)
+                }]
+              }
+            ] : unlinked ? [
+              {
+                title: 'TV',
+                actions: [{
+                  key: 'pair',
+                  label: 'Pair a TV',
+                  description: 'Enter the code shown on the TV — keeps this screen\'s settings',
+                  icon: <Tv size={17} />,
+                  onClick: () => setPairTarget(screen)
+                }]
+              },
+              { title: 'Settings', actions: [editAction] },
+              { title: 'Danger zone', actions: [removeAction] }
+            ] : [
+              {
+                title: 'Content',
+                actions: [
+                  {
+                    key: 'restart',
+                    label: 'Restart playlist',
+                    description: 'Play again from the first slide',
+                    icon: <RotateCcw size={17} />,
+                    onClick: () => handleRestart(screen)
+                  },
+                  {
+                    key: 'sync',
+                    label: 'Sync now',
+                    description: 'Re-download content; keeps playing meanwhile',
+                    icon: <RefreshCw size={17} />,
+                    onClick: () => handleSync(screen)
+                  }
+                ]
+              },
+              {
+                title: 'Device',
+                actions: [
+                  {
+                    key: 'ping',
+                    label: 'Check status',
+                    description: 'Ask the TV if it\'s online right now and update its status',
+                    icon: <Activity size={17} />,
+                    onClick: () => handleCheckStatus(screen)
+                  },
+                  {
+                    key: 'pause',
+                    label: screen.paused ? 'Resume playback' : 'Pause playback',
+                    description: screen.paused ? 'Continue playing its playlist' : 'Show a paused screen; the playlist stays assigned',
+                    icon: screen.paused ? <Play size={17} /> : <Pause size={17} />,
+                    onClick: () => handleTogglePause(screen)
+                  },
+                  {
+                    key: 'cache',
+                    label: 'Clear cache',
+                    description: 'Delete all downloaded media on the TV and download it again — blank until done',
+                    icon: <Eraser size={17} />,
+                    onClick: () => handleClearCache(screen)
+                  },
+                  editAction
+                ]
+              },
+              {
+                title: 'Danger zone',
+                actions: [
+                  {
+                    key: 'unlink',
+                    label: 'Unlink TV',
+                    description: 'Disconnect the TV but keep this screen to pair again later',
+                    icon: <Unlink size={17} />,
+                    tone: 'danger' as const,
+                    onClick: () => setUnlinkTarget(screen)
+                  },
+                  ...(group ? [{
+                    key: 'ungroup',
+                    label: 'Remove from group',
+                    description: `Stop following "${group.name}"`,
+                    icon: <FolderMinus size={17} />,
+                    tone: 'danger' as const,
+                    onClick: () => handleRemoveFromGroup(screen)
+                  }] : []),
+                  removeAction
+                ]
+              }
+            ]}
+          />
+        );
+      })()}
+
+      {unlinkTarget && (
+        <ConfirmDialog
+          title={`Unlink the TV from "${unlinkTarget.name}"?`}
+          body={<>
+            <p>The TV stops playing and goes back to its pairing screen.</p>
+            <p>This screen stays in the account with its name, location, group and playlist. Use “Pair a TV” to connect a TV to it again.</p>
+          </>}
+          confirmLabel="Unlink TV"
+          tone="danger"
+          onCancel={() => setUnlinkTarget(null)}
+          onConfirm={() => handleUnlink(unlinkTarget)}
+        />
+      )}
+
+      {pairTarget && (
+        <PairTvDialog
+          screenName={pairTarget.name}
+          onClose={() => setPairTarget(null)}
+          onSubmit={code => handlePairTv(pairTarget, code)}
+        />
+      )}
 
       {/* Edit Modal */}
       {editScreen && (
