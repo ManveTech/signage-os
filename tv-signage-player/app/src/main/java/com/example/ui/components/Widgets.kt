@@ -1,5 +1,23 @@
 package com.example.ui.components
 
+import androidx.compose.runtime.LaunchedEffect
+
+import androidx.compose.runtime.remember
+
+import androidx.compose.runtime.mutableStateOf
+
+import androidx.compose.runtime.setValue
+
+import androidx.compose.runtime.getValue
+
+import androidx.compose.ui.draw.alpha
+
+import androidx.compose.ui.graphics.graphicsLayer
+
+import androidx.compose.ui.layout.onSizeChanged
+
+import androidx.compose.ui.draw.clipToBounds
+
 import androidx.compose.ui.res.painterResource
 
 import androidx.compose.foundation.Image
@@ -438,23 +456,71 @@ fun RssTickerWidget(tickerText: String) {
             )
         }
         Spacer(modifier = Modifier.width(12.dp))
-        Text(
+        ScrollingTickerText(
             text = displayText,
             color = textColor,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+/**
+ * Classic news-ticker scroll: the text enters from the right edge, runs off
+ * the left, and repeats — always, at a constant speed, however long or short
+ * it is. (basicMarquee, used before, only scrolls when the text overflows its
+ * width, so a short headline just sat there static.)
+ */
+@Composable
+private fun ScrollingTickerText(
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    speed: androidx.compose.ui.unit.Dp = 70.dp
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var containerWidth by remember { mutableStateOf(0) }
+    var textWidth by remember { mutableStateOf(0) }
+    val offsetX = remember { androidx.compose.animation.core.Animatable(0f) }
+
+    LaunchedEffect(text, containerWidth, textWidth) {
+        if (containerWidth == 0 || textWidth == 0) return@LaunchedEffect
+        val pxPerSecond = with(density) { speed.toPx() }
+        val distance = (containerWidth + textWidth).toFloat()
+        val durationMs = (distance / pxPerSecond * 1000f).toInt().coerceAtLeast(1000)
+        while (isActive) {
+            offsetX.snapTo(containerWidth.toFloat())
+            offsetX.animateTo(
+                targetValue = -textWidth.toFloat(),
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = durationMs,
+                    easing = androidx.compose.animation.core.LinearEasing
+                )
+            )
+        }
+    }
+
+    Box(
+        contentAlignment = Alignment.CenterStart,
+        modifier = modifier
+            .clipToBounds()
+            .onSizeChanged { containerWidth = it.width }
+    ) {
+        Text(
+            text = text,
+            color = color,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            // weight(1f) must come before basicMarquee — it constrains the Text
-            // to the row's remaining width so the marquee can correctly detect
-            // that the content overflows and needs to scroll. Without a fixed
-            // width constraint here, basicMarquee can fail to trigger at all or
-            // scroll inconsistently depending on how wide the ticker text is.
+            softWrap = false,
             modifier = Modifier
-                .weight(1f)
-                .basicMarquee(
-                    iterations = Int.MAX_VALUE,
-                    velocity = 45.dp
-                )
+                // Measure at the text's full natural width, not squeezed to
+                // the visible strip, so it scrolls instead of being cut off.
+                .wrapContentWidth(align = Alignment.Start, unbounded = true)
+                .onSizeChanged { textWidth = it.width }
+                // Read in the layer, so each frame only redraws — no recomposition.
+                .graphicsLayer { translationX = offsetX.value }
+                // Hidden until measured, so it doesn't flash at the left edge.
+                .alpha(if (textWidth == 0 || containerWidth == 0) 0f else 1f)
         )
     }
 }

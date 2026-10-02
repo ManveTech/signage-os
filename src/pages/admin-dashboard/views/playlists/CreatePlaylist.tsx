@@ -681,7 +681,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         mediaIds: playlistItems.map(item => item.mediaId),
         allowCustomOrientation: allowCustomOrientation,
         orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
-        widgetType: playlistWidgetType,
+        // '' rather than undefined when every widget is switched off —
+        // undefined is dropped when the record is sent to the server, so the
+        // old widgets were never cleared and came back on the next load.
+        widgetType: playlistWidgetType || '',
         widgetPlacement: playlistWidgetPlacement,
         widgetLink: finalWidgetLink,
         transition: playlistTransition,
@@ -702,7 +705,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         assignedScreenIds: [],
         allowCustomOrientation: allowCustomOrientation,
         orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
-        widgetType: playlistWidgetType,
+        // '' rather than undefined when every widget is switched off —
+        // undefined is dropped when the record is sent to the server, so the
+        // old widgets were never cleared and came back on the next load.
+        widgetType: playlistWidgetType || '',
         widgetPlacement: playlistWidgetPlacement,
         widgetLink: finalWidgetLink,
         transition: playlistTransition,

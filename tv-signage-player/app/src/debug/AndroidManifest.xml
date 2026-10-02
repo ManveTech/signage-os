@@ -9,5 +9,10 @@
             android:exported="true"
             android:screenOrientation="landscape"
             android:theme="@style/Theme.MyApplication" />
+        <activity
+            android:name="com.example.debug.TickerPreviewActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.MyApplication" />
     </application>
 </manifest>
