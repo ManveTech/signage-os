@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -121,12 +122,10 @@ fun SignagePlayerApp(
         }
     }
 
-    val allAssetsDownloaded = remember(uiState.playlist) {
-        uiState.playlist.all { asset ->
-            asset.mediaType.equals("youtube", ignoreCase = true) ||
-            (!asset.localPath.isNullOrEmpty() && File(asset.localPath).exists())
-        }
-    }
+    // Something is playable (the full playlist, the previous one while a new
+    // one downloads, or the files that did arrive). Only when nothing at all
+    // is playable does the full-screen download progress take over.
+    val hasPlayableContent = uiState.playbackPlaylist.isNotEmpty()
 
     LaunchedEffect(uiState.status, uiState.playlist, uiState.playlistOrientation) {
         val isPlaying = (uiState.status == "active" || uiState.status == "online" || uiState.status == "offline") && uiState.playlist.isNotEmpty()
@@ -153,29 +152,34 @@ fun SignagePlayerApp(
             // resumes automatically the instant the call ends and callState
             // returns to Idle.
             VideoCallScreen(callManager = viewModel.videoCallManager)
-        } else if (uiState.showSplash) {
-            AppSplashScreen(uiState = uiState)
-        } else {
+        } else if (!uiState.showSplash) {
             when (uiState.status) {
                 "active", "online", "offline" -> {
+                    // Portrait playlist on a display that is still landscape
+                    // (the TV ignored requestedOrientation): rotate everything
+                    // ourselves. If the OS did switch to portrait, the window
+                    // is already taller than wide and nothing is rotated.
+                    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                    val rotateForPortrait = uiState.playlistOrientation == "vertical" &&
+                        configuration.screenWidthDp > configuration.screenHeightDp
                     Box(modifier = Modifier.fillMaxSize()) {
-                        Box(modifier = Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.fillMaxSize().then(if (rotateForPortrait) Modifier.rotatedToPortrait() else Modifier)) {
                             if (uiState.playlist.isEmpty()) {
                                 StandbyScreen(
                                     uiState = uiState,
                                     onOpenAdmin = {}
                                 )
-                            } else if (!allAssetsDownloaded) {
+                            } else if (!hasPlayableContent) {
                                 DownloadProgressScreen(
                                     uiState = uiState,
                                     onTriggerDownloads = { viewModel.triggerPendingDownloads() },
                                     onOpenAdmin = {}
                                 )
                             } else {
-                                val playlistKey = uiState.playlist.joinToString(",") { "${it.id}_${it.duration}_${it.localPath}" }
+                                val playlistKey = uiState.playbackPlaylist.joinToString(",") { "${it.id}_${it.duration}_${it.localPath}" }
                                 key(playlistKey) {
                                     PlaybackLoopScreen(
-                                        playlist = uiState.playlist,
+                                        playlist = uiState.playbackPlaylist,
                                         currentIndex = uiState.currentAssetIndex,
                                         orientation = uiState.playlistOrientation,
                                         playlistLoop = uiState.playlistLoop,
@@ -302,7 +306,17 @@ fun SignagePlayerApp(
             }
         }
 
-        if (uiState.isDownloading && allAssetsDownloaded) {
+        // Splash sits on top and fades out (250ms, same as the phone app's
+        // BootScreen) over the real content instead of cutting to it.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = uiState.showSplash && callState is CallState.Idle,
+            enter = androidx.compose.animation.EnterTransition.None,
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250))
+        ) {
+            AppSplashScreen(uiState = uiState, onLogoStarted = { viewModel.onSplashLogoStarted() })
+        }
+
+        if (uiState.isDownloading && hasPlayableContent && callState is CallState.Idle && !uiState.showSplash) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -352,6 +366,24 @@ fun SignagePlayerApp(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Lays the content out in portrait (width and height swapped) and turns it
+ * 90° so it fills a landscape display mounted on its side. Matches Android's
+ * own default portrait rotation on landscape-native devices (ROTATION_270:
+ * the TV is turned 90° clockwise, so content is drawn turned 90° counter-
+ * clockwise to appear upright).
+ */
+internal fun Modifier.rotatedToPortrait(): Modifier = this.layout { measurable, constraints ->
+    val width = constraints.maxWidth
+    val height = constraints.maxHeight
+    val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(height, width))
+    layout(width, height) {
+        placeable.placeWithLayer(x = (width - height) / 2, y = (height - width) / 2) {
+            rotationZ = -90f
         }
     }
 }

@@ -110,11 +110,11 @@ fun PlaybackLoopScreen(
         sharedExoPlayer.volume = volumePercent / 100f
     }
 
-    // Orientation is handled by Android itself: MainActivity sets
-    // requestedOrientation = PORTRAIT for a vertical playlist, and the OS turns
-    // the whole app — media, widgets, video — together. No in-app rotation
-    // here: an earlier software rotate(90f) squashed content into a square and
-    // left the widget overlays landscape.
+    // Orientation: for a vertical playlist MainActivity asks Android for
+    // portrait, and — since most TV boxes ignore that and stay landscape —
+    // also rotates the whole content area itself (media + widgets together,
+    // with width/height swapped so nothing is squashed). Video then has to
+    // render into a TextureView, because a SurfaceView ignores that rotation.
 
     // TEMPORARY EXPERIMENT — see ScreenSizeExperiment.kt for how to undo.
     // Intermittent and mismatched-axis on purpose: a constant, uniform
@@ -158,6 +158,7 @@ fun PlaybackLoopScreen(
         if (isVideo) {
             LocalVideoRenderer(
                 asset = activeAsset,
+                useTextureSurface = orientation == "vertical",
                 sharedExoPlayer = sharedExoPlayer,
                 currentIndex = currentIndex,
                 // A single-video playlist has nowhere else to advance to —
@@ -324,7 +325,8 @@ fun LocalVideoRenderer(
     asset: PlaylistAsset,
     sharedExoPlayer: ExoPlayer,
     currentIndex: Int = 0,
-    loopSingleVideo: Boolean = false
+    loopSingleVideo: Boolean = false,
+    useTextureSurface: Boolean = false
 ) {
     val videoSource = if (!asset.localPath.isNullOrEmpty() && File(asset.localPath).exists()) {
         File(asset.localPath)
@@ -368,7 +370,12 @@ fun LocalVideoRenderer(
 
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
+            val view = if (useTextureSurface) {
+                android.view.LayoutInflater.from(ctx).inflate(com.example.R.layout.player_view_texture, null) as PlayerView
+            } else {
+                PlayerView(ctx)
+            }
+            view.apply {
                 player = sharedExoPlayer
                 useController = false
                 resizeMode = when (asset.objectFit) {

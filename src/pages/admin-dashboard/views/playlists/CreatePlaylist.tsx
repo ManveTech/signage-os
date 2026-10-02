@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import MediaThumb from '../../../../components/media/MediaThumb';
+import LiveClock from '../../../../components/media/LiveClock';
 import { 
   Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, 
   Play, Pause, ChevronLeft, ChevronRight, ChevronDown, QrCode, Sun, Eye, 
@@ -151,7 +153,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [previewTime, setPreviewTime] = useState(new Date());
   const [simulatedItems, setSimulatedItems] = useState<PlaylistItem[]>([]);
 
   // Toast Alerts
@@ -339,12 +340,6 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
-
-  // Clock ticks for digital clock widget in simulator
-  useEffect(() => {
-    const timer = setInterval(() => setPreviewTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Automatic slideshow playback transition in simulator
   useEffect(() => {
@@ -920,11 +915,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 </button>
 
                 <div className="w-full aspect-video rounded-lg overflow-hidden bg-gray-200 border border-slate-100 relative">
-                  {asset.type === 'video' || asset.thumbnail?.toLowerCase().includes('.mp4') || asset.thumbnail?.toLowerCase().includes('.webm') || asset.thumbnail?.toLowerCase().includes('.mov') || asset.thumbnail?.toLowerCase().includes('video/') ? (
-                    <video src={asset.thumbnail || asset.fileUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
-                  ) : (
-                    <img src={asset.thumbnail} alt={asset.title} className="w-full h-full object-cover" />
-                  )}
+                  <MediaThumb src={asset.thumbnail || asset.fileUrl} type={asset.type} alt={asset.title} width={320} />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold text-slate-800 truncate" title={asset.title}>{asset.title}</p>
@@ -1030,7 +1021,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
                           {/* Thumbnail & Title Details */}
                           <div className="w-16 h-12 sm:w-20 sm:h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-slate-200 relative">
-                            <img src={media.thumbnail} alt={media.title} className="w-full h-full object-cover" />
+                            <MediaThumb src={media.thumbnail} type={media.type} alt={media.title} width={160} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-bold text-slate-800 truncate" title={media.title}>{media.title}</p>
@@ -1127,7 +1118,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                                 {secondMedia ? (
                                   <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded border border-slate-200 overflow-hidden flex-shrink-0 bg-gray-50">
-                                      <img src={secondMedia.thumbnail} className="w-full h-full object-cover" alt="secondary" />
+                                      <MediaThumb src={secondMedia.thumbnail} type={secondMedia.type} alt="secondary" width={80} />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <p className="text-[10px] font-bold text-slate-800 truncate">{secondMedia.title}</p>
@@ -1212,46 +1203,35 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 />
               </div>
 
-              {/* Display orientation with Enable Toggle Switch */}
+              {/* Screen orientation. This used to be a separate "Enable custom
+                  orientation" switch plus a Landscape/Portrait picker that still looked
+                  selectable while the switch was off — picking Portrait without also
+                  flipping the switch silently saved the playlist as landscape. One
+                  control now sets both. */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold">Enable Custom Orientation</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAllowCustomOrientation(prev => {
-                        const next = !prev;
-                        if (!next) setPlaylistOrientation('horizontal');
-                        return next;
-                      });
-                    }}
-                    style={{ width: '36px', height: '20px', minWidth: '36px', minHeight: '20px', padding: '2px' }}
-                    className={`flex items-center rounded-full cursor-pointer transition-colors shrink-0 ${allowCustomOrientation ? 'bg-blue-600' : 'bg-slate-300'}`}
-                  >
-                    <div 
-                      style={{ width: '16px', height: '16px' }}
-                      className={`bg-white rounded-full shadow-xs transition-transform ${allowCustomOrientation ? 'translate-x-4' : 'translate-x-0'}`} 
-                    />
-                  </button>
-                </div>
-                
-                <div className={`flex border rounded-xl overflow-hidden font-bold min-h-[42px] transition-all shadow-xs ${allowCustomOrientation ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
-                  <button
-                    type="button"
-                    disabled={!allowCustomOrientation}
-                    onClick={() => setPlaylistOrientation('horizontal')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-xs whitespace-nowrap transition-colors ${playlistOrientation === 'horizontal' ? 'bg-blue-600 text-white font-bold' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <span>Landscape</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!allowCustomOrientation}
-                    onClick={() => setPlaylistOrientation('vertical')}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-[11px] sm:text-xs whitespace-nowrap transition-colors ${playlistOrientation === 'vertical' ? 'bg-blue-600 text-white font-bold' : 'text-gray-500 hover:bg-gray-100'} ${!allowCustomOrientation ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <span>Portrait</span>
-                  </button>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold">Screen Orientation</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { value: 'horizontal' as const, label: 'Landscape', box: 'w-6 h-4' },
+                    { value: 'vertical' as const, label: 'Portrait', box: 'w-4 h-6' }
+                  ]).map(opt => {
+                    const selected = (allowCustomOrientation ? playlistOrientation : 'horizontal') === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setPlaylistOrientation(opt.value);
+                          setAllowCustomOrientation(opt.value === 'vertical');
+                        }}
+                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${selected ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        <span className={`${opt.box} rounded-[3px] border-2 ${selected ? 'border-blue-600' : 'border-slate-400'}`} />
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1494,7 +1474,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
               })()}
             </div>
 
-            <div className="flex flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100 w-full">
+            <div className="hidden md:flex flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100 w-full">
               <button 
                 type="button"
                 onClick={openPreview}
@@ -1516,6 +1496,38 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
         </div>
 
+      </div>
+
+      {/* Mobile: Preview/Save stay in reach instead of sitting at the very
+          bottom of a long form, with a hint saying what's still missing. */}
+      <div className="md:hidden h-24" aria-hidden />
+      <div
+        className="md:hidden fixed left-0 right-0 z-[200] bg-white/95 backdrop-blur border-t border-slate-200 px-4 pt-2.5 pb-2.5"
+        style={{ bottom: 'calc(64px + env(safe-area-inset-bottom))' }}
+      >
+        {(playlistItems.length === 0 || !playlistName.trim()) && (
+          <p className="text-[11px] text-slate-500 mb-1.5 text-center">
+            {playlistItems.length === 0 ? 'Add at least one slide' : 'Give the playlist a name'} to save
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={openPreview}
+            disabled={playlistItems.length === 0}
+            className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-40"
+          >
+            <Eye size={15} /> Preview
+          </button>
+          <button
+            type="button"
+            onClick={handleSavePlaylist}
+            disabled={!playlistName.trim() || playlistItems.length === 0}
+            className="flex-[1.4] py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-40"
+          >
+            <Save size={15} /> Save playlist
+          </button>
+        </div>
       </div>
 
       {/* ================= FULLSCREEN SIMULATION PREVIEW MODAL ================= */}
@@ -1690,7 +1702,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                               {playlistWidgetLink || 'Lobby Clock'}
                             </span>
                             <div className="text-base font-mono font-bold text-slate-800 mt-1">
-                              {previewTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                              <LiveClock />
                             </div>
                           </div>
                         )}

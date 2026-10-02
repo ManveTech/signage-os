@@ -40,7 +40,7 @@ import { getAuthToken } from '../../lib/authStorage';
 
 function renderView(view: string, navigate: (v: string) => void, userEmail: string, videoConferencingEnabled: boolean, organizationId: string, licenseChecked: boolean) {
   switch (view) {
-    case 'dashboard': return <Dashboard userEmail={userEmail} />;
+    case 'dashboard': return <Dashboard userEmail={userEmail} onNavigate={navigate} />;
     case 'my-screens-list': return <MyScreens onNavigate={navigate} userEmail={userEmail} />;
     case 'screens-all': return <AllScreens onNavigate={navigate} userEmail={userEmail} />;
     case 'screens-add': return <AddScreen userEmail={userEmail} onNavigate={navigate} />;
@@ -70,7 +70,7 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'support-tickets': return <Support activeTab="tickets" userEmail={userEmail} onNavigate={navigate} />;
     case 'support-help': return <Support activeTab="help" userEmail={userEmail} onNavigate={navigate} />;
     case 'profile': return <Profile userEmail={userEmail} />;
-    default: return <Dashboard userEmail={userEmail} />;
+    default: return <Dashboard userEmail={userEmail} onNavigate={navigate} />;
   }
 }
 
@@ -115,7 +115,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   // Pull to refresh handler
   const handleRefresh = async () => {
     try {
-      await syncAllFromDatabase();
+      await syncAllFromDatabase({ force: true });
       checkLicense();
       console.log('Data synced successfully');
     } catch (error) {
@@ -128,7 +128,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     if (!isNative) return;
 
     const handleAppResumed = () => {
-      syncAllFromDatabase().then(() => {
+      syncAllFromDatabase({ force: true }).then(() => {
         checkLicense();
       }).catch(console.error);
     };

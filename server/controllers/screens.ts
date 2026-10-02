@@ -663,9 +663,21 @@ export async function getScreenStatusForDevice(req: any, res: any) {
       return res.status(400).json({ message: 'screenId is required.' });
     }
 
-    const screenRecord = await pb.collection('screens').getOne(screenId).catch(() => null);
-    if (!screenRecord) {
-      return res.status(404).json({ message: 'Screen not found.' });
+    // Only a genuine PocketBase 404 means the screen was deleted. Anything
+    // else (PocketBase restarting, admin token expired, network blip) used
+    // to be reported as 404 too — and the TV treats 404 as "I was removed",
+    // unpairing itself and wiping its cache, so one backend hiccup could
+    // blank the whole fleet. `unpaired: true` is the explicit signal the TV
+    // now requires before it unpairs; a bare 404/503 from a proxy never has it.
+    let screenRecord: any;
+    try {
+      screenRecord = await pb.collection('screens').getOne(screenId);
+    } catch (err: any) {
+      if (err?.status === 404) {
+        return res.status(404).json({ message: 'Screen not found.', unpaired: true });
+      }
+      console.error(`[DeviceSync] Could not load screen ${screenId}:`, err?.message);
+      return res.status(503).json({ message: 'Screen status temporarily unavailable.' });
     }
 
     // This endpoint is unauthenticated — without this check, any caller who
@@ -675,7 +687,8 @@ export async function getScreenStatusForDevice(req: any, res: any) {
     // are rejected. Older builds that don't send it yet are let through
     // unverified during rollout — drop that fallback once the fleet updates.
     if (hardwareUuid && screenRecord.hardware_uuid && screenRecord.hardware_uuid !== hardwareUuid) {
-      return res.status(403).json({ message: 'hardwareUuid does not match this screen.' });
+      // This screen slot now belongs to a different physical device.
+      return res.status(403).json({ message: 'hardwareUuid does not match this screen.', unpaired: true });
     }
 
     return res.status(200).json(screenRecord);

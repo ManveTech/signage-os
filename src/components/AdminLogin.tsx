@@ -146,7 +146,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     }
 
     try {
-      await syncAllFromDatabase();
+      await syncAllFromDatabase({ force: true });
     } catch (syncErr) {
       console.error('Initial sync error:', syncErr);
     }

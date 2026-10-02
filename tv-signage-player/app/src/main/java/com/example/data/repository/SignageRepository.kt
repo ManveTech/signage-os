@@ -36,6 +36,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.security.MessageDigest
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.flow.MutableStateFlow
+import android.os.SystemClock
 
 data class DownloadState(
     val isDownloading: Boolean = false,
@@ -82,6 +85,26 @@ class SignageRepository(private val context: Context) {
     val assetsFlow: Flow<List<PlaylistAsset>> = assetDao.getAllAssetsFlow()
     val downloadStateFlow = kotlinx.coroutines.flow.MutableStateFlow(DownloadState())
     val commandFlow = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 64)
+
+    // elapsedRealtime() at which the most recently *finished* download run
+    // started. The ViewModel compares this with when the playlist last
+    // changed to know whether a download pass over the new playlist has
+    // completed (successfully or not) — until then it keeps showing the old
+    // content instead of switching to a half-downloaded new playlist.
+    val downloadRunCompletedFlow = MutableStateFlow(0L)
+
+    // Bumped by clearDeviceAssets() so a download run in progress notices its
+    // files were wiped out from under it and restarts instead of finishing
+    // with renames that fail.
+    @Volatile private var cacheGeneration = 0
+
+    // syncScreenStatus() is triggered from several places at once (poll loop,
+    // socket push, SSE events). Running it concurrently let two passes both
+    // act on the same force_sync/clear_cache flag before either cleared it —
+    // e.g. wiping the cache a second time mid-download. Only one pass runs at
+    // a time; a request arriving during a pass schedules one more pass after it.
+    private val syncMutex = Mutex()
+    @Volatile private var resyncRequested = false
 
     init {
         // Log cache initialization details
@@ -149,7 +172,41 @@ class SignageRepository(private val context: Context) {
         }
     }
 
-    suspend fun syncScreenStatus(): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun syncScreenStatus(): Result<Unit> {
+        if (!syncMutex.tryLock()) {
+            resyncRequested = true
+            return Result.success(Unit)
+        }
+        try {
+            var result: Result<Unit>
+            do {
+                resyncRequested = false
+                result = syncScreenStatusOnce()
+            } while (resyncRequested)
+            return result
+        } finally {
+            syncMutex.unlock()
+        }
+    }
+
+    // Clears a one-shot command flag (clear_cache / force_sync /
+    // restart_playlist) on the server BEFORE acting on it. If the clear
+    // fails, the command is skipped this time rather than executed on every
+    // sync forever (a stuck force_sync used to wipe and re-download the
+    // whole cache every minute).
+    private suspend fun clearCommandFlag(config: ScreenConfig, flag: String): Boolean {
+        return try {
+            val patchUrl = "${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}"
+            apiService.updateScreenRecord(patchUrl, mapOf(flag to false, "hardwareUuid" to config.hardwareUuid))
+            true
+        } catch (e: Exception) {
+            Log.e("SignageRepository", "Failed to clear $flag flag on server; skipping command this time", e)
+            logErrorToServer("Command Flag Clear Failure", "$flag: ${e.message ?: "Unknown error"}")
+            false
+        }
+    }
+
+    private suspend fun syncScreenStatusOnce(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val initialConfig = getOrCreateConfig()
             if (initialConfig.screenId.isEmpty()) {
@@ -236,47 +293,28 @@ class SignageRepository(private val context: Context) {
                 startDownloadingPendingAssets()
             }
 
-            // Check if clear_cache command was sent from backend
-            if (response.clear_cache == true) {
+            // clear_cache: an explicit "wipe everything" — the screen goes blank
+            // and re-downloads from scratch.
+            if (response.clear_cache == true && clearCommandFlag(currentConfig, "clear_cache")) {
                 Log.d("SignageRepository", "Clear cache command received. Clearing device assets.")
                 clearDeviceAssets()
-                
-                // Clear the command flag on backend
-                try {
-                    val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
-                    apiService.updateScreenRecord(patchUrl, mapOf("clear_cache" to false, "hardwareUuid" to currentConfig.hardwareUuid))
-                } catch (e: Exception) {
-                    Log.e("SignageRepository", "Failed to clear clear_cache flag on server", e)
-                }
             }
 
-            // Check if force_sync command was sent from backend
-            if (response.force_sync == true) {
-                Log.d("SignageRepository", "Force sync command received. Purging local cache and restarting playlist.")
-                clearDeviceAssets()
+            // force_sync (the dashboard's "Sync" button): re-fetch the playlist
+            // and re-download every file, but keep playing the current files
+            // while that happens. It used to wipe the cache first, which left
+            // the screen on "Downloading media" for the whole re-download (and
+            // forever if any one file then failed).
+            var forceRedownload = false
+            if (response.force_sync == true && clearCommandFlag(currentConfig, "force_sync")) {
+                Log.d("SignageRepository", "Force sync command received. Re-downloading all assets in the background.")
+                forceRedownload = true
                 commandFlow.emit("restart_playlist")
-                
-                // Clear the command flag on backend
-                try {
-                    val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
-                    apiService.updateScreenRecord(patchUrl, mapOf("force_sync" to false, "hardwareUuid" to currentConfig.hardwareUuid))
-                } catch (e: Exception) {
-                    Log.e("SignageRepository", "Failed to clear force_sync flag on server", e)
-                }
             }
 
-            // Check if restart_playlist command was sent from backend
-            if (response.restart_playlist == true) {
+            if (response.restart_playlist == true && clearCommandFlag(currentConfig, "restart_playlist")) {
                 Log.d("SignageRepository", "Restart playlist command received. Restarting loop playlist from start.")
                 commandFlow.emit("restart_playlist")
-                
-                // Clear the command flag on backend
-                try {
-                    val patchUrl = "${currentConfig.pocketbaseUrl}/api/collections/screens/records/${currentConfig.screenId}"
-                    apiService.updateScreenRecord(patchUrl, mapOf("restart_playlist" to false, "hardwareUuid" to currentConfig.hardwareUuid))
-                } catch (e: Exception) {
-                    Log.e("SignageRepository", "Failed to clear restart_playlist flag on server", e)
-                }
             }
 
             var activePlaylistId = response.playlistId ?: response.playlist
@@ -296,6 +334,9 @@ class SignageRepository(private val context: Context) {
             if (response.status == "active" || response.status == "online") {
                 if (!activePlaylistId.isNullOrEmpty()) {
                     syncPlaylist(currentConfig.pocketbaseUrl, activePlaylistId)
+                    if (forceRedownload) {
+                        startDownloadingPendingAssets(forceAll = true)
+                    }
                 } else {
                     // Clear playlist assets since none assigned
                     if (assetDao.getAllAssets().isNotEmpty()) {
@@ -314,8 +355,15 @@ class SignageRepository(private val context: Context) {
 
             Result.success(Unit)
         } catch (e: retrofit2.HttpException) {
-            if (e.code() == 404 || e.code() == 403) {
-                Log.d("SignageRepository", "Screen record not found/deleted (404/403). Unpairing device and purging cache.")
+            // Only unpair when the server explicitly says this device no longer
+            // owns a screen (`"unpaired":true` in the body). A bare 404/403 can
+            // come from a reverse proxy mid-deploy or a backend hiccup, and
+            // treating that as "deleted" used to wipe and unpair every TV at once.
+            val errorBody = try { e.response()?.errorBody()?.string() } catch (_: Exception) { null }
+            val serverSaysUnpaired = (e.code() == 404 || e.code() == 403) &&
+                errorBody?.replace(" ", "")?.contains("\"unpaired\":true") == true
+            if (serverSaysUnpaired) {
+                Log.d("SignageRepository", "Server reports this screen was deleted/reassigned. Unpairing device and purging cache.")
                 val currentConfig = getOrCreateConfig()
                 val unassignedConfig = currentConfig.copy(
                     screenId = "",
@@ -343,6 +391,7 @@ class SignageRepository(private val context: Context) {
 
     // Direct helper to clear the local cached files and playlist database assets without unpairing
     suspend fun clearDeviceAssets() = withContext(Dispatchers.IO) {
+        cacheGeneration++
         try {
             val cacheDir = File(context.filesDir, "signage_cache")
             if (cacheDir.exists()) {
@@ -788,14 +837,22 @@ class SignageRepository(private val context: Context) {
             }
 
             if (newAssets.isNotEmpty()) {
-                // Apply shuffle if the playlist settings say so
+                val currentAssetsList = assetDao.getAllAssets()
+                // Shuffle only when the set of slides actually changed. Re-shuffling
+                // on every sync made every poll look like a brand-new playlist, which
+                // restarted playback from the first slide each time.
                 val finalAssets = if (response.shuffle == true) {
-                    newAssets.shuffled()
+                    val sameSlides = currentAssetsList.map { it.id }.sorted() == newAssets.map { it.id }.sorted()
+                    if (sameSlides) {
+                        val byId = newAssets.associateBy { it.id }
+                        currentAssetsList.mapNotNull { byId[it.id] }
+                    } else {
+                        newAssets.shuffled()
+                    }
                 } else {
                     newAssets
                 }.mapIndexed { index, asset -> asset.copy(sortOrder = index) }
 
-                val currentAssetsList = assetDao.getAllAssets()
                 val mergedAssets = finalAssets
 
                 val hasChanged = currentAssetsList.size != mergedAssets.size ||
@@ -826,7 +883,9 @@ class SignageRepository(private val context: Context) {
                     // teardown/rebuild) even though nothing was actually
                     // meant to go blank here.
                     assetDao.replaceAllAssets(mergedAssets)
-                    cleanupOrphanCacheFiles()
+                    // No orphan cleanup here: the previous playlist's files keep
+                    // playing until the new ones are downloaded. The download
+                    // loop cleans up once it has finished.
                 } else if (wasWhiteLabelLogoMissing) {
                     startDownloadingPendingAssets()
                 }
@@ -845,24 +904,108 @@ class SignageRepository(private val context: Context) {
     }
 
     private var downloadJob: kotlinx.coroutines.Job? = null
+    private var downloadRerunRequested = false
+    private var downloadForceAllRequested = false
 
-    fun startDownloadingPendingAssets() {
+    private class DownloadAbortedException : Exception("Cache was cleared during download")
+
+    /**
+     * Starts the background downloader, or — if it is already running — asks it
+     * to do one more pass when the current one finishes.
+     *
+     * This used to cancel the running job and start a new one. Cancelling a
+     * coroutine does not interrupt a blocking OkHttp read, so the "cancelled"
+     * job kept downloading next to the new one, both writing the same .tmp
+     * files and deleting each other's work. Files then failed their checksum
+     * or rename and never got a local path — leaving the screen stuck on
+     * "Downloading media" (e.g. after pressing Sync in the dashboard).
+     */
+    fun startDownloadingPendingAssets(forceAll: Boolean = false) {
         synchronized(this) {
+            if (forceAll) downloadForceAllRequested = true
             if (downloadJob?.isActive == true) {
-                Log.d("SignageRepository", "Cancelling previous download job and starting a new one.")
-                downloadJob?.cancel()
+                downloadRerunRequested = true
+                return
             }
+            downloadRerunRequested = false
             downloadJob = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    downloadPendingAssetsInternal()
-                } catch (e: Exception) {
-                    Log.e("SignageRepository", "Error running background download job", e)
-                }
+                runDownloadLoop()
             }
         }
     }
 
-    private suspend fun downloadPendingAssetsInternal() = withContext(Dispatchers.IO) {
+    private suspend fun runDownloadLoop() {
+        var failureRetries = 0
+        while (true) {
+            val forceAll = synchronized(this) {
+                val f = downloadForceAllRequested
+                downloadForceAllRequested = false
+                f
+            }
+            val startedAt = SystemClock.elapsedRealtime()
+            var failures = 0
+            var aborted = false
+            try {
+                failures = downloadPendingAssetsInternal(forceAll)
+            } catch (e: DownloadAbortedException) {
+                Log.d("SignageRepository", "Download run aborted (cache cleared); starting over.")
+                aborted = true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("SignageRepository", "Error running background download job", e)
+                failures = 1
+            }
+
+            if (aborted) {
+                downloadStateFlow.value = DownloadState(isDownloading = false)
+                continue
+            }
+
+            downloadRunCompletedFlow.value = startedAt
+
+            val rerunPending = synchronized(this) { downloadRerunRequested || downloadForceAllRequested }
+            if (!rerunPending) {
+                // Give the player a moment to switch off the outgoing
+                // playlist before its files are deleted.
+                delay(3000)
+                if (!synchronized(this) { downloadRerunRequested || downloadForceAllRequested }) {
+                    cleanupOrphanCacheFiles()
+                }
+            }
+
+            if (synchronized(this) { downloadRerunRequested.also { downloadRerunRequested = false } || downloadForceAllRequested }) {
+                failureRetries = 0
+                continue
+            }
+
+            if (failures > 0 && failureRetries < 5) {
+                // Retry failed files with backoff (30s, 60s, ... 150s), waking
+                // early if new work is requested in the meantime.
+                failureRetries++
+                val waitUntil = SystemClock.elapsedRealtime() + 30_000L * failureRetries
+                while (SystemClock.elapsedRealtime() < waitUntil &&
+                    !synchronized(this) { downloadRerunRequested || downloadForceAllRequested }) {
+                    delay(1000)
+                }
+                synchronized(this) { downloadRerunRequested = false }
+                continue
+            }
+
+            synchronized(this) {
+                if (!downloadRerunRequested && !downloadForceAllRequested) {
+                    downloadJob = null
+                    return
+                }
+                downloadRerunRequested = false
+            }
+        }
+    }
+
+    /** One download pass. Returns the number of files that failed. */
+    private suspend fun downloadPendingAssetsInternal(forceAll: Boolean = false): Int = withContext(Dispatchers.IO) {
+        val generation = cacheGeneration
+        var failures = 0
         val config = getOrCreateConfig()
         val cacheDir = File(context.filesDir, "signage_cache")
 
@@ -877,12 +1020,12 @@ class SignageRepository(private val context: Context) {
         val assets = assetDao.getAllAssets()
         val pending = assets.filter {
             (it.mediaType.equals("image", ignoreCase = true) || it.mediaType.equals("video", ignoreCase = true)) &&
-            (it.localPath.isNullOrEmpty() || !File(it.localPath).exists())
+            (forceAll || it.localPath.isNullOrEmpty() || !File(it.localPath).exists())
         }
-        
+
         if (pending.isEmpty() && !logoNeedsDownload) {
             downloadStateFlow.value = DownloadState(isDownloading = false)
-            return@withContext
+            return@withContext 0
         }
 
         // Reset download state and clear errors at start of loop
@@ -917,6 +1060,7 @@ class SignageRepository(private val context: Context) {
                 configDao.saveConfig(updated)
                 Log.d("SignageRepository", "Whitelabel logo cached at: $localPath")
             } else {
+                failures++
                 downloadStateFlow.value = downloadStateFlow.value.copy(
                     errorMessage = "Failed to download brand logo"
                 )
@@ -926,13 +1070,14 @@ class SignageRepository(private val context: Context) {
         if (pending.isEmpty()) {
             val currentError = downloadStateFlow.value.errorMessage
             downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = currentError)
-            return@withContext
+            return@withContext failures
         }
 
         val totalToDownload = pending.size
         val startIndex = 0
 
         pending.forEachIndexed { index, asset ->
+            if (generation != cacheGeneration) throw DownloadAbortedException()
             val tStart = System.currentTimeMillis()
             Log.d("DownloadMetrics", "--------------------------------------------------")
             Log.d("DownloadMetrics", "Download Started (${index + 1}/$totalToDownload): ${asset.filename} (${asset.url})")
@@ -1016,6 +1161,7 @@ class SignageRepository(private val context: Context) {
                                 var lastProgressMs = 0L
 
                                 while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                                    if (generation != cacheGeneration) throw DownloadAbortedException()
                                     outputStream.write(buffer, 0, bytesRead)
                                     totalBytesRead += bytesRead
 
@@ -1081,10 +1227,13 @@ class SignageRepository(private val context: Context) {
                     )
                 }
             } catch (e: Exception) {
-                Log.e("SignageRepository", "Failed to download asset: ${asset.url}", e)
                 if (tmpFile.exists()) {
                     tmpFile.delete()
                 }
+                if (e is DownloadAbortedException || e is kotlinx.coroutines.CancellationException) throw e
+                if (generation != cacheGeneration) throw DownloadAbortedException()
+                failures++
+                Log.e("SignageRepository", "Failed to download asset: ${asset.url}", e)
                 downloadStateFlow.value = DownloadState(
                     isDownloading = true,
                     totalFiles = totalToDownload,
@@ -1096,9 +1245,9 @@ class SignageRepository(private val context: Context) {
                 sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
             }
         }
-        cleanupOrphanCacheFiles()
         val currentError = downloadStateFlow.value.errorMessage
-        downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = currentError)
+        downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = if (failures > 0) currentError else null)
+        failures
     }
 
     private fun calculateSHA256(file: File): String {
@@ -1289,6 +1438,7 @@ class SignageRepository(private val context: Context) {
 
     // Direct helper to clear the cache for testing configurations
     suspend fun clearCache() = withContext(Dispatchers.IO) {
+        cacheGeneration++
         try {
             val cacheDir = File(context.filesDir, "signage_cache")
             if (cacheDir.exists()) {

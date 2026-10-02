@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { thumbnailUrl } from '../../../components/media/MediaThumb';
 import { 
   Plus, Monitor, Film, Calendar, Trash2, Edit3, ArrowLeft, Play, Pause, 
   Tv, CheckSquare, Square, FolderOpen, Save, Clock, ChevronRight, User, Filter, AlertTriangle, Building2, CheckCircle, Trash
@@ -697,7 +698,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                       return (
                         <div key={index} className="flex items-center gap-3 p-3 bg-slate-50/60 hover:bg-slate-50 border border-slate-200 rounded-xl transition-all group">
                           <span className="text-[10px] font-bold text-slate-400 w-5 shrink-0 text-center">#{index + 1}</span>
-                          <img src={media.thumbnail} alt={media.title} className="w-12 h-8 rounded-lg object-cover shrink-0 border border-slate-200" />
+                          <img src={thumbnailUrl(media.thumbnail, 96)} alt={media.title} loading="lazy" decoding="async" className="w-12 h-8 rounded-lg object-cover shrink-0 border border-slate-200" />
                           
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-slate-800 truncate">{media.title}</p>
@@ -887,7 +888,7 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
                         }`}>
                           {isSelected && <Plus size={10} className="stroke-[3]" />}
                         </div>
-                        <img src={m.thumbnail} alt={m.title} className="w-12 h-8 rounded-lg object-cover shrink-0 border border-slate-200" />
+                        <img src={thumbnailUrl(m.thumbnail, 96)} alt={m.title} loading="lazy" decoding="async" className="w-12 h-8 rounded-lg object-cover shrink-0 border border-slate-200" />
                         <div className="flex-1 min-w-0">
                           <p className="text-[11px] font-bold text-slate-800 truncate">{m.title}</p>
                           <p className="text-[9px] text-slate-400 capitalize">{m.type} · {m.duration}s</p>

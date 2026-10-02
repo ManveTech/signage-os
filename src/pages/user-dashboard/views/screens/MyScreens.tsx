@@ -660,7 +660,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                 {/* Visual Preview — the live screenshot (or a plain
                     placeholder) filling the card, not a decorative
                     monitor-on-a-stand illustration around it. */}
-                <div className="relative h-40 overflow-hidden rounded-t-3xl bg-ink-950">
+                <div className={`relative ${screen.thumbnail ? 'h-32' : 'h-20'} sm:h-40 overflow-hidden rounded-t-3xl bg-ink-950`}>
                   {screen.thumbnail ? (
                     <div
                       className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-[1.03]"
@@ -672,7 +672,8 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                     </div>
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-ink-950/0 to-ink-950/0" />
-                  {screen.playlist !== 'None' && (
+                  {/* Only claim it's playing when the screen is actually online. */}
+                  {screen.playlist && screen.playlist !== 'None' && (screen.status === 'online' || screen.status === 'active') && (
                     <span className="absolute bottom-2.5 left-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 backdrop-blur-sm text-[9px] text-white/80 font-semibold uppercase tracking-wide">
                       <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
                       Playing

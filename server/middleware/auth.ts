@@ -111,11 +111,24 @@ export async function enforceLicense(req: any, res: any, next: any) {
       return next();
     }
 
+    // An expired/unpaid account must still be able to see its own license
+    // and billing data and actually pay — previously this blocked /payments
+    // (and the /licenses read the paywall itself depends on), so the only
+    // customers who needed to renew were exactly the ones who couldn't.
+    // Reads stay open (the dashboard shows the paywall over them); writes
+    // other than payments and the user's own profile/password are blocked.
+    const path: string = req.path || '';
+    const isPaymentRoute = path === '/payments' || path.startsWith('/payments/');
+    const isOwnUserRecord = !!req.user?.id && (path === `/users/${req.user.id}` || path === `/users/${req.user.id}/avatar`);
+    if (req.method === 'GET' || isPaymentRoute || isOwnUserRecord) {
+      return next();
+    }
+
     const userEmail = req.user.email;
 
     // Fetch user's assigned license from PocketBase
     const licenses = await pb.collection('licenses').getFullList({
-      filter: `assignedUserEmail = "${userEmail}"`,
+      filter: pb.filter('assignedUserEmail = {:email}', { email: userEmail }),
       sort: '-created'
     });
 

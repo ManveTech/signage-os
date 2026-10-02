@@ -31,6 +31,15 @@ const breadcrumbMap: Record<string, string[]> = {
   'settings-notifications': ['Settings', 'Notifications'],
   support: ['Support'],
   profile: ['Profile'],
+  'my-screens-list': ['Screens', 'My Screens'],
+  'screens-manage': ['Screens', 'Manage'],
+  'media-layout': ['Media', 'Layout'],
+  'license-billing': ['License & Billing'],
+  'licenses': ['License & Billing'],
+  'license': ['License & Billing'],
+  'video-conferencing': ['Video Conferencing'],
+  'support-tickets': ['Support', 'Tickets'],
+  'support-help': ['Support', 'Help'],
 };
 
 type Props = { 

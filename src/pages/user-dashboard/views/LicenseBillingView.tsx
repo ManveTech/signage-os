@@ -6,6 +6,7 @@ import {
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import { getAuthToken } from '../../../lib/authStorage';
+import { API_BASE } from '../../../config';
 
 interface Props {
   userEmail: string;
@@ -21,8 +22,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
 
   // Razorpay Checkout states
   const [isRzpOpen, setIsRzpOpen] = useState(false);
-  const [rzpStep, setRzpStep] = useState<'methods' | 'processing' | 'success'>('methods');
-  const [selectedMethod, setSelectedMethod] = useState('');
+  const [rzpStep, setRzpStep] = useState<'processing' | 'success'>('processing');
   const [payingLicense, setPayingLicense] = useState<License | null>(null);
 
   // Invoice view states
@@ -87,149 +87,126 @@ export default function LicenseBillingView({ userEmail }: Props) {
   const clientInvoices = invoices.filter(i => i.clientEmail === userEmail);
   const clientUserName = getClientName();
 
-  const triggerRazorpay = async (lic: License) => {
-    setPayingLicense(lic);
-    setSelectedMethod('');
-
-    const hasRealRzp = typeof (window as any).Razorpay !== 'undefined';
-    
-    if (hasRealRzp) {
-      try {
-        setRzpStep('processing');
-        setIsRzpOpen(true);
-        
-        const token = getAuthToken();
-        const res = await fetch('/api/v1/payments/create-order', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ licenseId: lic.id })
-        });
-
-        if (!res.ok) throw new Error('Order creation failed');
-        const orderData = await res.json();
-
-        const options = {
-          key: orderData.razorpayKeyId || 'rzp_live_demo83920194',
-          amount: orderData.amount,
-          currency: orderData.currency || 'INR',
-          name: 'SignageOS Technologies',
-          description: `License Reactivation for ${lic.name}`,
-          order_id: orderData.orderId,
-          handler: async function (response: any) {
-            setRzpStep('processing');
-            try {
-              const verifyRes = await fetch('/api/v1/payments/verify', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                  razorpayPaymentId: response.razorpay_payment_id,
-                  razorpayOrderId: response.razorpay_order_id,
-                  razorpaySignature: response.razorpay_signature,
-                  licenseId: lic.id
-                })
-              });
-
-              if (verifyRes.ok) {
-                setRzpStep('success');
-                setTimeout(() => {
-                  setIsRzpOpen(false);
-                  loadData();
-                }, 1500);
-              } else {
-                alert('Payment verification failed.');
-                setIsRzpOpen(false);
-              }
-            } catch (err) {
-              console.error(err);
-              alert('Network error verifying payment.');
-              setIsRzpOpen(false);
-            }
-          },
-          prefill: { email: userEmail },
-          theme: { color: '#0EA5E9' },
-          modal: {
-            ondismiss: function() {
-              setIsRzpOpen(false);
-            }
-          }
-        };
-
-        const rzp = new (window as any).Razorpay(options);
-        setIsRzpOpen(false); // Hide the processing layout
-        rzp.open();
-      } catch (err) {
-        console.error('Real Razorpay initialization failed, falling back:', err);
-        // Fallback to simulated UI
-        setRzpStep('methods');
-        setIsRzpOpen(true);
+  // Razorpay's checkout script (and the analytics it pulls in) used to load
+  // in index.html on every app launch, for every user — it's only needed
+  // here, at the moment someone pays.
+  const loadRazorpayCheckout = (): Promise<void> => {
+    if (typeof (window as any).Razorpay !== 'undefined') return Promise.resolve();
+    return new Promise(resolve => {
+      const existing = document.querySelector<HTMLScriptElement>('script[data-razorpay-checkout]');
+      const script = existing || document.createElement('script');
+      script.addEventListener('load', () => resolve());
+      script.addEventListener('error', () => resolve());
+      if (!existing) {
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        script.dataset.razorpayCheckout = 'true';
+        document.head.appendChild(script);
       }
-    } else {
-      // Fallback directly to simulated UI
-      setRzpStep('methods');
-      setIsRzpOpen(true);
-    }
+      setTimeout(resolve, 10000);
+    });
   };
 
-  const handleRzpPayment = async () => {
-    if (!payingLicense) return;
+  // Real Razorpay Checkout only. There used to be a "simulated" fallback here
+  // (shown whenever checkout.js failed to load — e.g. an ad-blocker) that
+  // told the server the payment succeeded without any money changing hands.
+  // If the gateway can't load, the customer now gets an error instead.
+  const paymentFailed = (message: string) => {
+    setIsRzpOpen(false);
+    setPayingLicense(null);
+    alert(message);
+  };
+
+  const triggerRazorpay = async (lic: License) => {
+    // Show progress right away — the gateway script may take a moment to load.
+    setPayingLicense(lic);
     setRzpStep('processing');
+    setIsRzpOpen(true);
+
+    await loadRazorpayCheckout();
+    if (typeof (window as any).Razorpay === 'undefined') {
+      paymentFailed('The payment gateway could not be loaded. Please check your internet connection, disable any ad-blocker for this site, and try again.');
+      return;
+    }
 
     const token = getAuthToken();
-    const rzpPaymentId = `pay_${Math.random().toString(36).substring(2, 11)}`;
-    const rzpOrderId = `order_${Math.random().toString(36).substring(2, 11)}`;
+    const authHeaders = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+
+    let orderData: any;
+    try {
+      const res = await fetch(`${API_BASE}/payments/create-order`, {
+        method: 'POST',
+        headers: authHeaders,
+        credentials: 'include',
+        body: JSON.stringify({ licenseId: lic.id })
+      });
+      orderData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(orderData.message || 'Could not start the payment.');
+    } catch (err: any) {
+      console.error('Order creation failed:', err);
+      paymentFailed(err.message || 'Could not start the payment. Please try again.');
+      return;
+    }
+
+    const options = {
+      key: orderData.razorpayKeyId,
+      amount: orderData.amount,
+      currency: orderData.currency || 'INR',
+      name: 'SignageOS Technologies',
+      description: `License Reactivation for ${lic.name}`,
+      order_id: orderData.orderId,
+      handler: async function (response: any) {
+        setRzpStep('processing');
+        setIsRzpOpen(true);
+        try {
+          const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
+            method: 'POST',
+            headers: authHeaders,
+            credentials: 'include',
+            body: JSON.stringify({
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpaySignature: response.razorpay_signature,
+              licenseId: lic.id
+            })
+          });
+
+          if (verifyRes.ok) {
+            setRzpStep('success');
+            setTimeout(() => {
+              setIsRzpOpen(false);
+              loadData();
+            }, 1500);
+          } else {
+            const errData = await verifyRes.json().catch(() => ({}));
+            paymentFailed(errData.message || 'Payment verification failed. If money was deducted, it will be reconciled automatically — please contact support if your license is not updated shortly.');
+            loadData();
+          }
+        } catch (err) {
+          console.error(err);
+          paymentFailed('Network error while verifying payment. If money was deducted, your license will be updated automatically once the payment is confirmed.');
+        }
+      },
+      prefill: { email: userEmail },
+      theme: { color: '#0EA5E9' },
+      modal: {
+        ondismiss: function () {
+          setIsRzpOpen(false);
+          setPayingLicense(null);
+        }
+      }
+    };
 
     try {
-      // Settle on backend server as well
-      const verifyRes = await fetch('/api/v1/payments/verify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          razorpayPaymentId: rzpPaymentId,
-          razorpayOrderId: rzpOrderId,
-          razorpaySignature: 'simulated_sig',
-          licenseId: payingLicense.id
-        })
-      });
-
-      if (verifyRes.ok) {
-        setRzpStep('success');
-
-        // The server's /payments/verify call above already extended the
-        // license's expiry (from its actual prior expiry, not from today)
-        // and created the payment + invoice records. Previously this also
-        // wrote its own guess at the new expiry (today + duration, silently
-        // discarding any days the customer had already paid for and not yet
-        // used) and a second payment record with the SAME razorpayPaymentId
-        // — both real writes to the backend, not just local UI state,
-        // permanently duplicating/corrupting billing data on every payment.
-        // loadData() below already re-syncs the real, server-authoritative
-        // license/payment/invoice state, so there's nothing to do here but
-        // wait for it.
-        setTimeout(() => {
-          setIsRzpOpen(false);
-          loadData();
-        }, 1500);
-      } else {
-        alert('Simulated payment database sync failed.');
-        setIsRzpOpen(false);
-      }
+      const rzp = new (window as any).Razorpay(options);
+      setIsRzpOpen(false); // Razorpay's own checkout takes over from here
+      rzp.open();
     } catch (err) {
-      console.error(err);
-      // Even if network fails, allow visual mock completion to avoid getting stuck
-      setRzpStep('success');
-      setTimeout(() => {
-        setIsRzpOpen(false);
-        loadData();
-      }, 1500);
+      console.error('Razorpay initialization failed:', err);
+      paymentFailed('The payment gateway could not be opened. Please try again.');
     }
   };
 
@@ -526,7 +503,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
         </div>
       </div>
 
-      {/* RAZORPAY MODAL POPUP (Simulated) */}
+      {/* Payment status overlay (processing / success) around the real Razorpay Checkout */}
       {isRzpOpen && payingLicense && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="w-full max-w-sm bg-slate-900 text-white rounded-2xl overflow-hidden shadow-2xl border border-slate-700 animate-scaleIn select-none">
@@ -550,62 +527,6 @@ export default function LicenseBillingView({ userEmail }: Props) {
             </div>
 
             {/* Razorpay Body */}
-            {rzpStep === 'methods' && (
-              <div className="p-5 space-y-4">
-                <div className="text-center py-2 bg-slate-800/40 rounded-xl border border-slate-800">
-                  <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Total Payable Amount</p>
-                  <p className="text-2xl font-bold mt-0.5 text-blue-400">₹{(payingLicense.price * 1.18).toLocaleString()}</p>
-                  <p className="text-[8.5px] text-slate-400">Includes 18% GST (₹{(payingLicense.price * 0.18).toLocaleString()})</p>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold block">Select Payment Method</p>
-                  
-                  <button 
-                    onClick={() => setSelectedMethod('upi')}
-                    className={`w-full p-3 rounded-xl border text-left transition-colors flex items-center justify-between cursor-pointer ${
-                      selectedMethod === 'upi' ? 'bg-blue-600/10 border-blue-500' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'
-                    }`}
-                  >
-                    <div>
-                      <p className="text-xs font-bold text-slate-100">UPI — Paytm / Google Pay</p>
-                      <p className="text-[9px] text-slate-400 mt-0.5">Pay instantly via QR code or phone number</p>
-                    </div>
-                    <span className="w-3.5 h-3.5 rounded-full border border-slate-400 flex items-center justify-center">
-                      {selectedMethod === 'upi' && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />}
-                    </span>
-                  </button>
-
-                  <button 
-                    onClick={() => setSelectedMethod('card')}
-                    className={`w-full p-3 rounded-xl border text-left transition-colors flex items-center justify-between cursor-pointer ${
-                      selectedMethod === 'card' ? 'bg-blue-600/10 border-blue-500' : 'bg-slate-800/50 border-slate-700 hover:bg-slate-800'
-                    }`}
-                  >
-                    <div>
-                      <p className="text-xs font-bold text-slate-100">Credit / Debit Card</p>
-                      <p className="text-[9px] text-slate-400 mt-0.5">Visa, Mastercard, RuPay, Maestro</p>
-                    </div>
-                    <span className="w-3.5 h-3.5 rounded-full border border-slate-400 flex items-center justify-center">
-                      {selectedMethod === 'card' && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />}
-                    </span>
-                  </button>
-                </div>
-
-                <button 
-                  disabled={!selectedMethod}
-                  onClick={handleRzpPayment}
-                  className={`w-full py-3 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
-                    selectedMethod 
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20' 
-                      : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-                  }`}
-                >
-                  Pay Securely via Razorpay
-                </button>
-              </div>
-            )}
-
             {rzpStep === 'processing' && (
               <div className="p-8 text-center space-y-4">
                 <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />

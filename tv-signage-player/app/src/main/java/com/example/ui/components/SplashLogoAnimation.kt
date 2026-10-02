@@ -13,7 +13,16 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
@@ -26,7 +35,6 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -57,12 +65,60 @@ private const val TEXT_LEFT = 0.31f
 private val EaseOutQuint: Easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 private val GlowBlue = Color(0xFF2F8CFF)
 
+private class SplashLayers(
+    val icon: ImageBitmap,
+    val wordmark: ImageBitmap,
+    val digitech: ImageBitmap,
+    val tagline: ImageBitmap
+)
+
+/**
+ * @param onReady fires once the layers are decoded and the reveal actually
+ *   starts (or immediately if they can't be loaded) — same contract as the
+ *   web version's onReady, used to time the splash's dismissal.
+ */
 @Composable
-fun SplashLogoAnimation(modifier: Modifier = Modifier) {
-    // One clock for the whole sequence, so every layer's timing is relative
-    // to the same start and can never drift apart.
-    val clock = remember { Animatable(0f) }
+fun SplashLogoAnimation(modifier: Modifier = Modifier, onReady: () -> Unit = {}) {
+    val context = LocalContext.current
+
+    // Decode every layer off the main thread before starting, like the web
+    // version does. This used to decode the PNGs on the main thread during
+    // the first composition and start the 1s clock right away — on a slow TV
+    // box the decode alone took longer than the whole animation, so the
+    // reveal finished before its first frame was drawn and the splash showed
+    // only the final, static logo.
+    var layers by remember { mutableStateOf<SplashLayers?>(null) }
     LaunchedEffect(Unit) {
+        layers = withContext(Dispatchers.IO) {
+            try {
+                fun load(id: Int): ImageBitmap {
+                    val bmp = android.graphics.BitmapFactory.decodeResource(context.resources, id)
+                        ?: throw IllegalStateException("Could not decode splash layer $id")
+                    bmp.prepareToDraw()
+                    return bmp.asImageBitmap()
+                }
+                SplashLayers(
+                    icon = load(R.drawable.splash_logo_icon),
+                    wordmark = load(R.drawable.splash_logo_wordmark),
+                    digitech = load(R.drawable.splash_logo_digitech),
+                    tagline = load(R.drawable.splash_logo_tagline)
+                )
+            } catch (e: Throwable) {
+                android.util.Log.e("SplashLogoAnimation", "Failed to load splash layers", e)
+                null
+            }
+        }
+        if (layers == null) onReady()
+    }
+
+    // One clock for the whole sequence, so every layer's timing is relative
+    // to the same start and can never drift apart. Starts only after the
+    // layers have been composed and a frame has gone out with them.
+    val clock = remember { Animatable(0f) }
+    LaunchedEffect(layers) {
+        if (layers == null) return@LaunchedEffect
+        withFrameNanos { }
+        onReady()
         clock.animateTo(
             SPLASH_LOGO_DURATION_MS.toFloat(),
             tween(SPLASH_LOGO_DURATION_MS, easing = LinearEasing)
@@ -115,77 +171,80 @@ fun SplashLogoAnimation(modifier: Modifier = Modifier) {
             .aspectRatio(CANVAS_ASPECT)
             .semantics { contentDescription = "BlueStar DigiTech" }
     ) {
-        val iconTransform = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                translationX = size.width * ICON_CENTRING_SHIFT * (1f - slide)
-                val s = 1.08f - 0.08f * iconIn
-                scaleX = s
-                scaleY = s
-                alpha = iconIn
+        val l = layers
+        if (l != null) {
+            val iconTransform = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationX = size.width * ICON_CENTRING_SHIFT * (1f - slide)
+                    val s = 1.08f - 0.08f * iconIn
+                    scaleX = s
+                    scaleY = s
+                    alpha = iconIn
+                }
+
+            // Glow: a blurred, blue-tinted copy of the icon behind it. Modifier.blur
+            // is a no-op before Android 12, where this would just be a hard blue
+            // silhouette — so older devices skip the glow rather than show that.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && glow > 0f) {
+                Image(
+                    bitmap = l.icon,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    colorFilter = ColorFilter.tint(GlowBlue),
+                    modifier = iconTransform
+                        .blur(18.dp)
+                        .graphicsLayer { alpha = glow * 0.9f }
+                )
             }
 
-        // Glow: a blurred, blue-tinted copy of the icon behind it. Modifier.blur
-        // is a no-op before Android 12, where this would just be a hard blue
-        // silhouette — so older devices skip the glow rather than show that.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && glow > 0f) {
             Image(
-                painter = painterResource(R.drawable.splash_logo_icon),
+                bitmap = l.icon,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                colorFilter = ColorFilter.tint(GlowBlue),
-                modifier = iconTransform
-                    .blur(18.dp)
-                    .graphicsLayer { alpha = glow * 0.9f }
+                modifier = iconTransform.then(sheenModifier)
+            )
+
+            Image(
+                bitmap = l.wordmark,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawWithContent {
+                        clipRect(
+                            left = size.width * TEXT_LEFT,
+                            right = size.width * (TEXT_LEFT + (1f - TEXT_LEFT) * wipe)
+                        ) {
+                            this@drawWithContent.drawContent()
+                        }
+                    }
+                    .then(sheenModifier)
+            )
+
+            Image(
+                bitmap = l.digitech,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = digitechIn
+                        translationY = size.height * 0.02f * (1f - digitechIn)
+                    }
+            )
+
+            Image(
+                bitmap = l.tagline,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = taglineIn
+                        translationY = size.height * 0.02f * (1f - taglineIn)
+                    }
             )
         }
-
-        Image(
-            painter = painterResource(R.drawable.splash_logo_icon),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = iconTransform.then(sheenModifier)
-        )
-
-        Image(
-            painter = painterResource(R.drawable.splash_logo_wordmark),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxSize()
-                .drawWithContent {
-                    clipRect(
-                        left = size.width * TEXT_LEFT,
-                        right = size.width * (TEXT_LEFT + (1f - TEXT_LEFT) * wipe)
-                    ) {
-                        this@drawWithContent.drawContent()
-                    }
-                }
-                .then(sheenModifier)
-        )
-
-        Image(
-            painter = painterResource(R.drawable.splash_logo_digitech),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    alpha = digitechIn
-                    translationY = size.height * 0.02f * (1f - digitechIn)
-                }
-        )
-
-        Image(
-            painter = painterResource(R.drawable.splash_logo_tagline),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    alpha = taglineIn
-                    translationY = size.height * 0.02f * (1f - taglineIn)
-                }
-        )
     }
 }

@@ -28,7 +28,13 @@ data class SignageUiState(
     val serverUrl: String = com.example.AppConfig.SERVER_URL,
     val pocketbaseUrl: String = com.example.AppConfig.POCKETBASE_URL,
     val lastSyncedAt: Long = 0L,
+    // The assigned playlist, exactly as synced (some files may still be downloading).
     val playlist: List<PlaylistAsset> = emptyList(),
+    // What is actually on screen: the assigned playlist once its files are
+    // downloaded, the previous playlist while a new one is still downloading,
+    // or the downloaded subset if some files can't be fetched.
+    // currentAssetIndex indexes into THIS list.
+    val playbackPlaylist: List<PlaylistAsset> = emptyList(),
     val currentAssetIndex: Int = 0,
     val isSyncing: Boolean = false,
     val showAdminOverlay: Boolean = false,
@@ -80,6 +86,13 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
     private var syncJob: Job? = null
     private var heartbeatJob: Job? = null
     private var assetRotationJob: Job? = null
+
+    // elapsedRealtime() of the last structural change to the assigned
+    // playlist; see refreshPlayback().
+    private var playlistChangedAt = 0L
+
+    // elapsedRealtime() at which the splash logo reveal started playing.
+    @Volatile private var splashLogoStartedAt = 0L
 
     init {
         // Collect repository commands
@@ -171,24 +184,23 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     it.mediaType.equals("image", ignoreCase = true) ||
                     it.mediaType.equals("video", ignoreCase = true)
                 }
-                val oldPlaylist = _uiState.value.playlist
-                val structurallyEqual = isPlaylistStructurallyEqual(oldPlaylist, filteredAssets)
-                val downloadsJustFinished = !areAllAssetsDownloaded(oldPlaylist) && areAllAssetsDownloaded(filteredAssets)
+                val structurallyChanged = !isPlaylistStructurallyEqual(_uiState.value.playlist, filteredAssets)
+                if (structurallyChanged) {
+                    playlistChangedAt = android.os.SystemClock.elapsedRealtime()
+                }
+                _uiState.update { it.copy(playlist = filteredAssets) }
+                if (structurallyChanged) {
+                    repository.startDownloadingPendingAssets()
+                }
+                refreshPlayback()
+            }
+        }
 
-                _uiState.update { 
-                    it.copy(
-                        playlist = filteredAssets,
-                        currentAssetIndex = if (!structurallyEqual || downloadsJustFinished) 0 else it.currentAssetIndex
-                    )
-                }
-                if (!structurallyEqual || downloadsJustFinished) {
-                    restartAssetRotation(force = true)
-                    if (!structurallyEqual) {
-                        repository.startDownloadingPendingAssets()
-                    }
-                } else {
-                    restartAssetRotation(force = false)
-                }
+        // A download pass finishing can change what should be on screen (e.g.
+        // switch from the previous playlist to whatever of the new one arrived).
+        viewModelScope.launch {
+            repository.downloadRunCompletedFlow.collect {
+                refreshPlayback()
             }
         }
 
@@ -266,16 +278,27 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        // Smart splash dismissal — wait for the whitelabel logo to be cached before
-        // dismissing the splash (up to 6 seconds max), then fall through regardless.
+        // Splash dismissal, timed like the phone app's BootScreen: wait for the
+        // logo reveal to actually start (its layers decoded — capped so a stuck
+        // decode can never trap the screen here), let it play to the end plus
+        // a short beat, then additionally wait (up to a few seconds) for a
+        // white-label logo to be cached so branding doesn't pop in late.
         viewModelScope.launch {
-            delay(1000) // minimum splash visibility
-            val maxWaitMs = 5000L
+            val bootStart = android.os.SystemClock.elapsedRealtime()
+            while (splashLogoStartedAt == 0L && android.os.SystemClock.elapsedRealtime() - bootStart < 2500) {
+                delay(50)
+            }
+            val logoStart = if (splashLogoStartedAt != 0L) splashLogoStartedAt else android.os.SystemClock.elapsedRealtime()
+            val revealDoneAt = logoStart + com.example.ui.components.SPLASH_LOGO_DURATION_MS + 150
+            while (android.os.SystemClock.elapsedRealtime() < revealDoneAt) {
+                delay(50)
+            }
+
+            val maxWaitMs = 4000L
             val startTime = System.currentTimeMillis()
             while (System.currentTimeMillis() - startTime < maxWaitMs) {
                 val state = _uiState.value
                 if (state.isConfigLoaded) {
-                    // Once config is loaded from the database, evaluate the whitelabel logo condition
                     if (!state.isWhiteLabel || !state.whiteLabelLogoPath.isNullOrEmpty()) {
                         break
                     }
@@ -283,6 +306,13 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 delay(200)
             }
             _uiState.update { it.copy(showSplash = false) }
+        }
+    }
+
+    /** Called by the splash once its logo reveal has actually started playing. */
+    fun onSplashLogoStarted() {
+        if (splashLogoStartedAt == 0L) {
+            splashLogoStartedAt = android.os.SystemClock.elapsedRealtime()
         }
     }
 
@@ -355,7 +385,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 try {
                     val state = _uiState.value
                     if (state.status == "active" || state.status == "online" || state.status == "offline") {
-                        val currentAsset = state.playlist.getOrNull(state.currentAssetIndex)
+                        val currentAsset = state.playbackPlaylist.getOrNull(state.currentAssetIndex)
                         repository.sendDiagnosticsHeartbeat(currentAsset?.filename)
                     }
                 } catch (e: Exception) {
@@ -370,12 +400,40 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun areAllAssetsDownloaded(playlist: List<com.example.data.database.PlaylistAsset>): Boolean {
-        if (playlist.isEmpty()) return false
-        return playlist.all { asset ->
-            asset.mediaType.equals("youtube", ignoreCase = true) ||
-            (!asset.localPath.isNullOrEmpty() && java.io.File(asset.localPath).exists())
+    private fun isAssetReady(asset: PlaylistAsset): Boolean =
+        !asset.localPath.isNullOrEmpty() && java.io.File(asset.localPath).exists()
+
+    /**
+     * Decides what plays. Previously nothing played until EVERY file in the
+     * assigned playlist was downloaded — one missing/broken file kept the
+     * screen on "Downloading media" forever, and assigning a new playlist
+     * blanked the screen until all of it arrived.
+     */
+    private fun refreshPlayback() {
+        val state = _uiState.value
+        val assigned = state.playlist
+        val ready = assigned.filter { isAssetReady(it) }
+        val current = state.playbackPlaylist
+        val downloadPassDone = repository.downloadRunCompletedFlow.value >= playlistChangedAt
+
+        val next = when {
+            assigned.isEmpty() -> emptyList()
+            // Everything is here: play the assigned playlist.
+            ready.size == assigned.size -> assigned
+            // New playlist still downloading: keep showing what was already playing.
+            !downloadPassDone && current.isNotEmpty() && current.all { isAssetReady(it) } -> current
+            // Otherwise play whatever has arrived (empty -> download screen).
+            else -> ready
         }
+
+        val changed = !isPlaylistStructurallyEqual(current, next)
+        _uiState.update {
+            it.copy(
+                playbackPlaylist = next,
+                currentAssetIndex = if (changed) 0 else it.currentAssetIndex.coerceIn(0, (next.size - 1).coerceAtLeast(0))
+            )
+        }
+        restartAssetRotation(force = changed)
     }
 
     private fun isPlaylistStructurallyEqual(list1: List<PlaylistAsset>, list2: List<PlaylistAsset>): Boolean {
@@ -395,11 +453,8 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         assetRotationJob?.cancel()
-        val playlist = _uiState.value.playlist
+        val playlist = _uiState.value.playbackPlaylist
         if (playlist.isEmpty() || (_uiState.value.status != "active" && _uiState.value.status != "online" && _uiState.value.status != "offline")) {
-            return
-        }
-        if (!areAllAssetsDownloaded(playlist)) {
             return
         }
 
@@ -407,7 +462,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             while (isActive) {
                 // Always read live state to avoid stale snapshot
                 val state = _uiState.value
-                val livePlaylist = state.playlist
+                val livePlaylist = state.playbackPlaylist
                 val currentIndex = state.currentAssetIndex
 
                 if (livePlaylist.isEmpty()) break
@@ -434,7 +489,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     // completion would have triggered.
                     delay(VIDEO_WATCHDOG_TIMEOUT_MS)
                     _uiState.update { s ->
-                        val livePl = s.playlist
+                        val livePl = s.playbackPlaylist
                         // Only force it if we're still stuck on the exact
                         // asset we started waiting on — if the player's own
                         // callback already advanced (or a sync/restart
@@ -452,7 +507,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
 
                 // Advance to next, wrapping around (always loop)
                 _uiState.update { s ->
-                    val livePl = s.playlist
+                    val livePl = s.playbackPlaylist
                     if (livePl.isEmpty()) return@update s
                     val nextIndex = (s.currentAssetIndex + 1) % livePl.size
                     s.copy(currentAssetIndex = nextIndex)
@@ -462,7 +517,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun advanceToNextAsset() {
-        val playlist = _uiState.value.playlist
+        val playlist = _uiState.value.playbackPlaylist
         if (playlist.isNotEmpty()) {
             _uiState.update {
                 val nextIndex = (it.currentAssetIndex + 1) % playlist.size

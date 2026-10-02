@@ -16,6 +16,20 @@ function getHeaders() {
  * @param baseDelay Initial delay in milliseconds
  * @returns Result of the function or throws after all retries exhausted
  */
+class HttpError extends Error {
+  status: number;
+  constructor(status: number, statusText: string) {
+    super(`HTTP ${status}: ${statusText}`);
+    this.status = status;
+  }
+}
+
+/**
+ * Retry a function with exponential backoff — but only for failures a retry
+ * can fix (network errors, 5xx). A 401/403/404/429 used to be retried three
+ * more times too, which on a launch that loads ~15 collections turned one
+ * expired session into 60 requests and tripped the server's rate limiter.
+ */
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
@@ -28,6 +42,8 @@ async function retryWithBackoff<T>(
       return await fn();
     } catch (error: any) {
       lastError = error;
+      const retryable = !(error instanceof HttpError) || error.status >= 500;
+      if (!retryable) break;
 
       if (attempt < maxRetries) {
         const delay = baseDelay * Math.pow(2, attempt);
@@ -69,7 +85,7 @@ export type PushResult =
   | { ok: true; status: number; data: any }
   | { ok: false; status: number; error: string };
 
-export async function syncAllFromDatabase() {
+export async function syncAllFromDatabase(options: { force?: boolean } = {}) {
   const collections = [
     { path: 'users', key: 'signageos_users' },
     { path: 'screens', key: 'signageos_screens' },
@@ -88,35 +104,25 @@ export async function syncAllFromDatabase() {
 
   const errors: { collection: string; error: string }[] = [];
 
-  // Sync collections in parallel with retry logic
+  // Admin-only collections always 403 for a client account — skip them
+  // instead of requesting (and logging a failure for) each one on every launch.
+  const isAdmin = localStorage.getItem('signageos_user_role') === 'admin';
+  const ADMIN_ONLY = new Set(['users', 'leads', 'payments']);
+
   await Promise.all(
-    collections.map(async (col) => {
-      try {
-        await retryWithBackoff(async () => {
-          const res = await fetch(`${API_BASE}/${col.path}`, {
-            headers: getHeaders()
-          });
-
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-          }
-
-          const data = await res.json();
-          if (col.key === 'signageos_media') {
-            setMemoryMedia(data);
-          } else {
-            localStorage.setItem(col.key, JSON.stringify(data));
-          }
-        });
-      } catch (err: any) {
-        const errorMsg = err?.message || 'Unknown error';
-        console.error(`Failed to sync collection ${col.path} after retries:`, errorMsg);
-        errors.push({ collection: col.path, error: errorMsg });
-      }
-    })
+    collections
+      .filter(col => isAdmin || !ADMIN_ONLY.has(col.path))
+      .map(async (col) => {
+        try {
+          await fetchCollection(col.path, col.key, !!options.force);
+        } catch (err: any) {
+          const errorMsg = err?.message || 'Unknown error';
+          console.error(`Failed to sync collection ${col.path}:`, errorMsg);
+          errors.push({ collection: col.path, error: errorMsg });
+        }
+      })
   );
 
-  // Return errors for caller to handle
   if (errors.length > 0) {
     console.warn(`Sync completed with ${errors.length} error(s):`, errors);
   }
@@ -124,37 +130,91 @@ export async function syncAllFromDatabase() {
   return { success: errors.length === 0, errors };
 }
 
-// Sync a single collection from server and update localStorage / in-memory cache
-export async function syncCollection(collectionPath: string, localStorageKey: string): Promise<any[]> {
+// Every screen syncs the collections it needs when it opens, on top of the
+// full sync at login — so moving between tabs re-downloaded the same
+// collections over and over (and several at once on the dashboard). A
+// request already in flight is shared, and data fetched in the last few
+// seconds is reused; pull-to-refresh passes force to bypass both.
+const FRESH_MS = 20_000;
+const inFlight = new Map<string, Promise<any[]>>();
+const lastSyncedAt = new Map<string, number>();
+
+function readCache(localStorageKey: string): any[] {
+  if (localStorageKey === 'signageos_media') return memoryMedia;
   try {
+    const stored = localStorage.getItem(localStorageKey);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCollection(collectionPath: string, localStorageKey: string, force = false): Promise<any[]> {
+  const cacheKey = `${collectionPath}|${localStorageKey}`;
+  if (!force) {
+    const pending = inFlight.get(cacheKey);
+    if (pending) return pending;
+    const at = lastSyncedAt.get(cacheKey);
+    if (at && Date.now() - at < FRESH_MS) return readCache(localStorageKey);
+  }
+
+  const request = (async () => {
     const data = await retryWithBackoff(async () => {
-      const res = await fetch(`${API_BASE}/${collectionPath}`, {
-        headers: getHeaders()
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
+      const res = await fetch(`${API_BASE}/${collectionPath}`, { headers: getHeaders() });
+      if (!res.ok) throw new HttpError(res.status, res.statusText);
       return await res.json();
     });
-
     if (localStorageKey === 'signageos_media') {
       setMemoryMedia(data);
     } else {
       localStorage.setItem(localStorageKey, JSON.stringify(data));
     }
+    lastSyncedAt.set(cacheKey, Date.now());
     return data;
-  } catch (err: any) {
-    console.error(`Failed to sync collection ${collectionPath} after retries:`, err.message);
-  }
+  })();
 
-  // Fallback: return from memory or localStorage
-  if (localStorageKey === 'signageos_media') {
-    return memoryMedia;
+  inFlight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    inFlight.delete(cacheKey);
   }
-  const stored = localStorage.getItem(localStorageKey);
-  return stored ? JSON.parse(stored) : [];
+}
+
+// Many screens save with their own fetch() calls rather than pushToDatabase,
+// so the reuse window above could otherwise hand back pre-save data right
+// after a save. Any write to the API clears it — reads after a write always
+// go to the server.
+if (typeof window !== 'undefined' && !(window as any).__sgWriteAwareFetch) {
+  (window as any).__sgWriteAwareFetch = true;
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    const response = await originalFetch(input, init);
+    if (method !== 'GET' && method !== 'HEAD') {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.startsWith(API_BASE) || url.startsWith('/api/')) lastSyncedAt.clear();
+    }
+    return response;
+  };
+}
+
+/** Call after writing to a collection so the next read fetches fresh data. */
+export function invalidateCollection(collectionPath: string): void {
+  for (const key of Array.from(lastSyncedAt.keys())) {
+    if (key.startsWith(`${collectionPath}|`)) lastSyncedAt.delete(key);
+  }
+}
+
+// Sync a single collection from server and update localStorage / in-memory cache
+export async function syncCollection(collectionPath: string, localStorageKey: string, options: { force?: boolean } = {}): Promise<any[]> {
+  try {
+    return await fetchCollection(collectionPath, localStorageKey, !!options.force);
+  } catch (err: any) {
+    console.error(`Failed to sync collection ${collectionPath}:`, err.message);
+  }
+  // Fallback: return from memory or localStorage
+  return readCache(localStorageKey);
 }
 
 // Fetch a specific user record by ID from server
@@ -166,7 +226,7 @@ export async function fetchUserById(userId: string): Promise<any | null> {
       });
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        throw new HttpError(res.status, res.statusText);
       }
 
       return await res.json();
@@ -201,6 +261,7 @@ export async function pushToDatabase(collectionPath: string, id: string, data: a
       return { ok: false, status: res.status, error: errorText };
     }
 
+    invalidateCollection(collectionPath);
     const responseData = method !== 'DELETE' ? await res.json() : null;
     return { ok: true, status: res.status, data: responseData };
   } catch (err: any) {

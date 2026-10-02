@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import MediaThumb from '../../../../components/media/MediaThumb';
 import { Search, Upload, Film, Image, Layout, Youtube, AlignLeft, Plus, Trash2, Trash, HardDrive, Clock, Tag, CheckCircle, Play, X } from 'lucide-react';
 import { mediaStore, MediaItem } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
@@ -388,15 +389,9 @@ export default function MediaLibrary({ userEmail }: Props) {
               ) : (
                 <>
                   {media.type === 'video' && (media.fileUrl?.toLowerCase().includes('.mp4') || media.thumbnail?.toLowerCase().includes('.mp4') || media.fileUrl?.toLowerCase().includes('.mov') || media.thumbnail?.toLowerCase().includes('.mov') || media.fileUrl?.toLowerCase().includes('.webm') || media.thumbnail?.toLowerCase().includes('.webm') || media.fileUrl?.toLowerCase().includes('video/') || media.thumbnail?.toLowerCase().includes('video/')) ? (
-                    <video
-                      src={media.fileUrl || media.thumbnail}
-                      className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300"
-                      muted
-                      playsInline
-                      preload="metadata"
-                    />
+                    <MediaThumb src={media.fileUrl || media.thumbnail} type="video" alt={media.title} width={480} />
                   ) : (
-                    <img src={media.thumbnail} alt={media.title} className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300 animate-fadeIn" />
+                    <MediaThumb src={media.thumbnail} type="image" alt={media.title} width={480} />
                   )}
                   
                   {/* Play button overlay for video or youtube */}

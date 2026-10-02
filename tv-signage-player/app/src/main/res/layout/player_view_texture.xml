@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PlayerView backed by a TextureView instead of the default SurfaceView.
+     A SurfaceView is composited separately from the rest of the UI and ignores
+     Compose transforms, so it can't be rotated with the portrait-playlist
+     rotation in MainActivity. Only used for vertical playlists. -->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:use_controller="false" />

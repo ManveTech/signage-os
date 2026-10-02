@@ -44,6 +44,11 @@ export function useScrollReveal(
     // be revealed later when scrolled to.
     if (document.documentElement.classList.contains('sg-touring')) return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    // Not on phones/touch screens: content hidden until scrolled to, then
+    // faded in, reads as the app lagging behind your finger — and the
+    // page-wide MutationObserver/IntersectionObserver work it needs is
+    // exactly the cost a phone WebView can least afford mid-scroll.
+    if (window.matchMedia?.('(pointer: coarse), (max-width: 767px)').matches) return;
 
     const seen = new WeakSet<Element>();
     const startedAt = new WeakMap<Element, number>();

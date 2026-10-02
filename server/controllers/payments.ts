@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { updateEnvFile } from '../utils/env';
 import { logAudit, getClientIp } from '../services/auditLog';
 import { RAZORPAY_WEBHOOK_SECRET, RAZORPAY_KEY_ID } from '../config';
+import { isRedisReady, acquireLock, releaseLock } from '../redis';
 
 // Placeholder used only when no real key is configured — deliberately not
 // shaped like a real Razorpay key id (the old fallback, 'rzp_live_...', could
@@ -12,7 +13,7 @@ import { RAZORPAY_WEBHOOK_SECRET, RAZORPAY_KEY_ID } from '../config';
 const UNCONFIGURED_KEY_ID_PLACEHOLDER = 'razorpay_not_configured';
 
 function getRazorpayInstance() {
-  const keyId = RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER;
+  const keyId = process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER;
   const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
   if (!keySecret) {
     return null;
@@ -29,7 +30,7 @@ export async function getRazorpayConfig(req: any, res: any) {
       return res.status(403).json({ message: 'Access denied.' });
     }
     res.status(200).json({
-      keyId: RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER,
+      keyId: process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER,
       keySecret: process.env.RAZORPAY_KEY_SECRET ? '••••••••••••' : ''
     });
   } catch (error: any) {
@@ -80,58 +81,102 @@ export async function createOrder(req: any, res: any) {
       return res.status(400).json({ message: 'License ID is required.' });
     }
 
-    let amount = 5000;
-    try {
-      const license = await pb.collection('licenses').getOne(licenseId);
-      const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
-      if (!isAdmin && license.assignedUserEmail !== req.user?.email) {
-        return res.status(403).json({ message: 'This license does not belong to you.' });
-      }
-      // `|| 5000` previously treated a legitimate free/comped license
-      // (price: 0) as "no price set," silently charging the 5000 default
-      // instead of actually letting them through for free.
-      amount = typeof license.price === 'number' ? license.price : 5000;
-    } catch (e) {
-      console.log('Using default amount for Order creation');
-    }
-
-    const totalAmount = amount;
     const rzp = getRazorpayInstance();
-
-    if (rzp) {
-      console.log(`Creating real Razorpay order for license: ${licenseId}, amount: ${totalAmount}`);
-      const order = await rzp.orders.create({
-        amount: totalAmount * 100, // paise
-        currency: 'INR',
-        receipt: `rcpt_${licenseId.substring(0, 10)}`,
-        // Lets both the /verify endpoint and the webhook identify exactly
-        // which license this order was for — without this, the webhook had
-        // to guess by looking up "some license assigned to this email,"
-        // which picks the wrong one for any user with more than one license.
-        notes: { licenseId }
-      });
-
-      return res.status(200).json({
-        orderId: order.id,
-        amount: order.amount,
-        currency: 'INR',
-        razorpayKeyId: RAZORPAY_KEY_ID
-      });
+    if (!rzp) {
+      // There used to be a "demo mode" here that handed back a fake order id
+      // when no secret was configured — and the matching verify step accepted
+      // a fake signature, so licenses could be extended without any payment.
+      return res.status(503).json({ message: 'Online payments are not configured. Please contact support to renew.' });
     }
 
-    // Fallback/Demo mode
-    console.log(`Razorpay Secret not set, generating simulated order for license: ${licenseId}`);
-    const orderId = `order_${Math.random().toString(36).substring(2, 12).toUpperCase()}`;
+    const license = await pb.collection('licenses').getOne(licenseId).catch(() => null);
+    if (!license) {
+      return res.status(404).json({ message: 'License not found.' });
+    }
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin && license.assignedUserEmail !== req.user?.email) {
+      return res.status(403).json({ message: 'This license does not belong to you.' });
+    }
 
-    res.status(200).json({
-      orderId,
-      amount: totalAmount * 100,
+    const amount = typeof license.price === 'number' ? license.price : 0;
+    // Razorpay rejects orders below ₹1 — a free/comped license has nothing to
+    // pay for online and must be renewed by an admin instead.
+    if (!(amount >= 1)) {
+      return res.status(400).json({ message: 'This license has no price set. Please contact support to renew.' });
+    }
+
+    console.log(`Creating Razorpay order for license: ${licenseId}, amount: ${amount}`);
+    const order = await rzp.orders.create({
+      amount: Math.round(amount * 100), // paise
       currency: 'INR',
-      razorpayKeyId: RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER
+      receipt: `rcpt_${licenseId.substring(0, 10)}`,
+      // Ties the order to exactly one license. /verify refuses to apply a
+      // payment to any other license, and the webhook uses it to find the
+      // license to renew.
+      notes: { licenseId }
+    });
+
+    return res.status(200).json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: 'INR',
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID
     });
   } catch (error: any) {
     console.error('Error creating payment order:', error);
     res.status(500).json({ message: error.message || 'Error creating order' });
+  }
+}
+
+// Serializes processing of a single Razorpay payment id. /verify (from the
+// customer's browser) and the webhook (from Razorpay) both fire for the same
+// payment within seconds of each other, and the "already processed?" check
+// below is a read-then-write — without this, both could pass the check and
+// extend the license twice.
+const inFlightPayments = new Map<string, Promise<'processed' | 'already'>>();
+
+async function processPaymentOnce(licenseId: string, paymentId: string, orderId: string, chargedAmount?: number): Promise<'processed' | 'already'> {
+  const existing = inFlightPayments.get(paymentId);
+  if (existing) {
+    await existing.catch(() => {});
+    return 'already';
+  }
+
+  const run = (async (): Promise<'processed' | 'already'> => {
+    // Cross-instance guard (when Redis is up). If another instance holds the
+    // lock, wait for it to record the payment rather than racing it.
+    const lockResource = `payment:${paymentId}`;
+    let lockToken: string | null = null;
+    if (isRedisReady()) {
+      lockToken = await acquireLock(lockResource, 30000);
+      if (!lockToken) {
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          const done = await pb.collection('payments').getFirstListItem(
+            pb.filter('razorpayPaymentId = {:id}', { id: paymentId })
+          ).catch(() => null);
+          if (done) return 'already';
+        }
+        throw new Error('This payment is still being processed. Please refresh in a moment.');
+      }
+    }
+    try {
+      const alreadyUsed = await pb.collection('payments').getFirstListItem(
+        pb.filter('razorpayPaymentId = {:id}', { id: paymentId })
+      ).catch(() => null);
+      if (alreadyUsed) return 'already';
+      await verifyAndProcessPayment(licenseId, paymentId, orderId, chargedAmount);
+      return 'processed';
+    } finally {
+      if (lockToken) await releaseLock(lockResource, lockToken);
+    }
+  })();
+
+  inFlightPayments.set(paymentId, run);
+  try {
+    return await run;
+  } finally {
+    inFlightPayments.delete(paymentId);
   }
 }
 
@@ -193,15 +238,20 @@ export async function verifyPayment(req: any, res: any) {
   try {
     await ensurePBAuth();
     const { razorpayPaymentId, razorpayOrderId, razorpaySignature, licenseId } = req.body;
-    if (!razorpayPaymentId || !razorpayOrderId || !licenseId) {
+    if (!razorpayPaymentId || !razorpayOrderId || !razorpaySignature || !licenseId) {
       return res.status(400).json({ message: 'Missing payment details or License ID.' });
     }
 
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const rzp = getRazorpayInstance();
+    if (!keySecret || !rzp) {
+      // No secret means no way to prove a payment happened — never fall back
+      // to trusting the client (the old 'simulated_sig' / demo-mode path).
+      return res.status(503).json({ message: 'Online payments are not configured.' });
+    }
+
     // A valid signature only proves *a* payment happened — it says nothing
-    // about which license it was for. Without this check, anyone could take
-    // one real (or, in demo mode with no secret configured, entirely
-    // fabricated) payment proof and activate any license by id, not just
-    // their own.
+    // about which license it was for.
     const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
     if (!isAdmin) {
       const license = await pb.collection('licenses').getOne(licenseId).catch(() => null);
@@ -210,55 +260,46 @@ export async function verifyPayment(req: any, res: any) {
       }
     }
 
-    // Reject replay: the same payment proof must not activate a license more
-    // than once (whether reused for the same license repeatedly or, worse,
-    // pointed at a different licenseId each time).
-    const alreadyUsed = await pb.collection('payments').getFirstListItem(
-      pb.filter('razorpayPaymentId = {:id}', { id: razorpayPaymentId })
-    ).catch(() => null);
-    if (alreadyUsed) {
-      return res.status(409).json({ message: 'This payment has already been processed.' });
+    // Razorpay signs `${order_id}|${payment_id}` with the key secret.
+    const generatedSig = crypto.createHmac('sha256', keySecret)
+      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+      .digest('hex');
+    const sigBuf = Buffer.from(String(razorpaySignature));
+    const expectedSigBuf = Buffer.from(generatedSig);
+    if (sigBuf.length !== expectedSigBuf.length || !crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
+      console.error('Razorpay signature verification failed!');
+      return res.status(400).json({ message: 'Invalid payment signature.' });
     }
 
-    // Verify cryptographic signature if secret is set
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    if (keySecret) {
-      console.log('Verifying Razorpay signature cryptographically...');
-      const hmac = crypto.createHmac('sha256', keySecret);
-      hmac.update(`${razorpayOrderId}|${razorpayPaymentId}`);
-      const generatedSig = hmac.digest('hex');
-
-      const sigBuf = Buffer.from(razorpaySignature);
-      const expectedSigBuf = Buffer.from(generatedSig);
-      let isSignatureValid = false;
-      if (sigBuf.length === expectedSigBuf.length && crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
-        isSignatureValid = true;
-      }
-
-      if (!isSignatureValid && razorpaySignature !== 'simulated_sig') {
-        console.error('Razorpay signature verification failed!');
-        return res.status(400).json({ message: 'Invalid payment signature.' });
-      }
-      console.log('Razorpay signature verified successfully.');
-    } else {
-      console.log('Razorpay Secret not configured, bypassing signature verification (demo mode).');
+    // The order is what ties the payment to a license (createOrder stamps
+    // notes.licenseId) and records what was actually charged. Without this
+    // check, paying for a cheap license and submitting that payment against
+    // an expensive license's id would renew the expensive one.
+    let order: any;
+    try {
+      order = await rzp.orders.fetch(razorpayOrderId);
+    } catch (fetchErr: any) {
+      console.warn('Could not fetch Razorpay order during verify:', fetchErr.message);
+      return res.status(502).json({ message: 'Could not confirm the payment with Razorpay right now. If the payment went through, your license will be updated automatically shortly.' });
     }
-
-    // Fetch the real order from Razorpay to record what was actually
-    // charged — the license's current `price` field can drift from that if
-    // it's edited between order creation and payment capture.
-    let chargedAmount: number | undefined;
-    const rzp = getRazorpayInstance();
-    if (rzp) {
-      try {
-        const order = await rzp.orders.fetch(razorpayOrderId);
-        chargedAmount = Number(order.amount) / 100;
-      } catch (fetchErr: any) {
-        console.warn('Could not fetch Razorpay order for amount verification, falling back to license price:', fetchErr.message);
-      }
+    if (order?.notes?.licenseId !== licenseId) {
+      console.error(`Payment ${razorpayPaymentId} is for order ${razorpayOrderId} (license ${order?.notes?.licenseId}), not license ${licenseId}.`);
+      return res.status(400).json({ message: 'This payment was made for a different license.' });
     }
+    const chargedAmount = Number(order.amount) / 100;
 
-    await verifyAndProcessPayment(licenseId, razorpayPaymentId, razorpayOrderId, chargedAmount);
+    const result = await processPaymentOnce(licenseId, razorpayPaymentId, razorpayOrderId, chargedAmount);
+    if (result === 'already') {
+      // Usually the webhook got there first. Fine as long as it was applied
+      // to this same license.
+      const existing = await pb.collection('payments').getFirstListItem(
+        pb.filter('razorpayPaymentId = {:id}', { id: razorpayPaymentId })
+      ).catch(() => null);
+      if (existing && existing.licenseId !== licenseId) {
+        return res.status(409).json({ message: 'This payment has already been used for a different license.' });
+      }
+      return res.status(200).json({ status: 'success', message: 'Payment already applied. License active.' });
+    }
 
     logAudit({
       actorId: req.user?.id,
@@ -372,7 +413,7 @@ export async function handleWebhook(req: any, res: any) {
 
       if (event === 'order.paid' || event === 'payment.captured') {
         if (matchingLicense) {
-          await verifyAndProcessPayment(matchingLicense.id, paymentId, orderId, amountRupees || undefined);
+          await processPaymentOnce(matchingLicense.id, paymentId, orderId, amountRupees || undefined);
           logAudit({
             actorEmail: email,
             action: 'payment.verified_via_webhook',

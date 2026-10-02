@@ -42,7 +42,7 @@ import { getAuthToken } from '../../lib/authStorage';
 
 function renderView(view: string, navigate: (v: string) => void, adminEmail: string) {
   switch (view) {
-    case 'dashboard': return <Dashboard userEmail={adminEmail} />;
+    case 'dashboard': return <Dashboard userEmail={adminEmail} onNavigate={navigate} />;
     case 'client-screens': return <AllScreens onNavigate={navigate} userEmail={adminEmail} />;
 
     // My Channel
@@ -92,7 +92,7 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'support-faq': return <Support activeTab="faq" onNavigate={navigate} userEmail={adminEmail} />;
     case 'support-docs': return <Support activeTab="docs" onNavigate={navigate} userEmail={adminEmail} />;
     case 'profile': return <Profile />;
-    default: return <Dashboard />;
+    default: return <Dashboard userEmail={adminEmail} onNavigate={navigate} />;
   }
 }
 
@@ -130,7 +130,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
   // Pull to refresh handler
   const handleRefresh = async () => {
     try {
-      await syncAllFromDatabase();
+      await syncAllFromDatabase({ force: true });
       console.log('Data synced successfully');
     } catch (error) {
       console.error('Sync failed:', error);
@@ -142,7 +142,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
     if (!isNative) return;
 
     const handleAppResumed = () => {
-      syncAllFromDatabase().catch(console.error);
+      syncAllFromDatabase({ force: true }).catch(console.error);
     };
 
     window.addEventListener('app-resumed', handleAppResumed);

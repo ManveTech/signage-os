@@ -43,7 +43,7 @@ private val GlowCyan = Color(0xFF5EEAD4)
 private val GlowViolet = Color(0xFFA78BFA)
 
 @Composable
-fun AppSplashScreen(uiState: SignageUiState) {
+fun AppSplashScreen(uiState: SignageUiState, onLogoStarted: () -> Unit = {}) {
     val brandName = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
         uiState.whiteLabelName
     } else {
@@ -53,8 +53,13 @@ fun AppSplashScreen(uiState: SignageUiState) {
     // Staggered reveal: brand -> accent rule draws in -> version -> loading
     // bar. The default logo runs its own ~2.9s reveal, so the rest waits for
     // it to mostly finish rather than crowding in underneath it.
+    // The rest of the sequence is timed from when the logo reveal actually
+    // starts (its layers decoded), not from first composition.
+    var logoStarted by remember { mutableStateOf(brandName != null) }
     var stage by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(logoStarted) {
+        if (!logoStarted) return@LaunchedEffect
+        onLogoStarted()
         stage = 1
         kotlinx.coroutines.delay(if (brandName == null) SPLASH_LOGO_DURATION_MS - 450L else 450L)
         stage = 2
@@ -126,7 +131,10 @@ fun AppSplashScreen(uiState: SignageUiState) {
                     letterSpacing = 0.2.sp
                 )
             } else {
-                SplashLogoAnimation(modifier = Modifier.width(400.dp))
+                SplashLogoAnimation(
+                    modifier = Modifier.width(400.dp),
+                    onReady = { logoStarted = true }
+                )
             }
 
             Spacer(modifier = Modifier.height(22.dp))
