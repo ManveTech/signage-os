@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Monitor, AlertTriangle, Film, List, Key, Clock, Upload, Edit, Plus, ChevronRight,
-  CheckCircle2, WifiOff, HardDrive
+  CheckCircle2, WifiOff, HardDrive, Users
 } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
 import { mediaStore } from '../../../lib/mediaStore';
@@ -68,13 +68,22 @@ export default function Dashboard({
   const media = mediaStore.getMedia();
   const playlists = mediaStore.getPlaylists();
 
-  const totalScreens = screens.length;
-  const myScreens = screens.filter(s => s.assignedToUserEmail === userEmail).length;
-  const onlineScreens = screens.filter(s => s.status === 'online' || s.status === 'active').length;
-  const offlineScreens = screens.filter(s => s.status === 'offline').length;
-  const pairingScreens = screens.filter(s => s.status === 'pairing').length;
-  const expiring = licenses.filter(l => l.status === 'active' && daysLeft(l.expiryDate) < 15);
+  // "Waiting to pair" records are TVs showing a pairing code that nobody has
+  // claimed — not part of anyone's network. Counting them in the total made
+  // a healthy network read as e.g. "1 of 95 online".
+  const isOnline = (s: { status: string }) => s.status === 'online' || s.status === 'active';
+  const pairedScreens = screens.filter(s => s.status !== 'pairing' && s.status !== 'unlinked' && !!s.assignedToUserEmail);
+  const notLinked = screens.filter(s => s.status === 'unlinked').length;
+  const unpairedDevices = screens.length - pairedScreens.length;
+  const mine = pairedScreens.filter(s => s.assignedToUserEmail === userEmail);
+  const clients = pairedScreens.filter(s => s.assignedToUserEmail !== userEmail);
+  const clientAccounts = new Set(clients.map(s => s.assignedToUserEmail)).size;
+
+  const totalScreens = pairedScreens.length;
+  const onlineScreens = pairedScreens.filter(isOnline).length;
+  const offlineScreens = pairedScreens.filter(s => s.status === 'offline').length;
   const onlinePct = totalScreens > 0 ? Math.round((onlineScreens / totalScreens) * 100) : 0;
+  const expiring = licenses.filter(l => l.status === 'active' && daysLeft(l.expiryDate) < 15);
 
   const attention: Attention[] = [
     ...screens
@@ -123,7 +132,7 @@ export default function Dashboard({
     { label: 'Media files', value: media.length, icon: <Film size={15} />, target: 'media-library' },
     { label: 'Playlists', value: playlists.length, icon: <List size={15} />, target: 'playlists-all' },
     { label: 'Licenses', value: licenses.length, icon: <Key size={15} />, target: 'licenses-management' },
-    { label: 'My screens', value: myScreens, icon: <Monitor size={15} />, target: 'my-screens-list' },
+    { label: 'Clients', value: new Set(licenses.map(l => l.assignedUserEmail).filter(Boolean)).size, icon: <Users size={15} />, target: 'users' },
   ];
 
   const quickActions = [
@@ -134,19 +143,44 @@ export default function Dashboard({
 
   const healthTone = totalScreens === 0 ? 'idle' : offlineScreens === 0 ? 'good' : offlineScreens / totalScreens > 0.25 ? 'bad' : 'warn';
 
+  const splitRow = (label: string, list: typeof pairedScreens, target: string, sub?: string) => {
+    const on = list.filter(isOnline).length;
+    const off = list.filter(s => s.status === 'offline').length;
+    return (
+      <button
+        type="button"
+        onClick={() => onNavigate(target)}
+        className="w-full flex items-center gap-3 py-2.5 text-left hover:bg-gray-50 -mx-2 px-2 rounded-lg transition-colors"
+      >
+        <span className="w-20 shrink-0">
+          <span className="block text-sm font-medium text-gray-900">{label}</span>
+          {sub && <span className="block text-[11px] text-gray-400">{sub}</span>}
+        </span>
+        <span className="flex-1 min-w-0 text-xs text-gray-500 truncate">
+          <span className="font-semibold text-gray-900">{list.length}</span> screen{list.length === 1 ? '' : 's'}
+        </span>
+        <span className="flex items-center gap-2 text-xs shrink-0">
+          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{on}</span>
+          <span className={`flex items-center gap-1 ${off > 0 ? 'text-rose-600 font-semibold' : 'text-gray-600'}`}><span className="w-1.5 h-1.5 rounded-full bg-rose-500" />{off}</span>
+        </span>
+        <ChevronRight size={15} className="text-gray-300 shrink-0" />
+      </button>
+    );
+  };
+
   const healthCard = (
-    <button
-      type="button"
-      onClick={() => onNavigate('screens-all')}
-      className="w-full text-left bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 hover:border-gray-200 transition-colors"
-    >
+    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
           <Monitor size={14} /> Screens
         </div>
-        <span className="flex items-center gap-0.5 text-xs font-semibold text-blue-600">
+        <button
+          type="button"
+          onClick={() => onNavigate('screens-all')}
+          className="flex items-center gap-0.5 text-xs font-semibold text-blue-600 hover:text-blue-700"
+        >
           View all <ChevronRight size={14} />
-        </span>
+        </button>
       </div>
 
       <div className="mt-3 flex items-baseline gap-2">
@@ -154,21 +188,31 @@ export default function Dashboard({
         <span className="text-sm text-gray-500">of {totalScreens} online</span>
       </div>
 
-      <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden flex">
+      <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
         <div
           className={`h-full transition-all duration-500 ${healthTone === 'bad' ? 'bg-rose-500' : healthTone === 'warn' ? 'bg-amber-500' : 'bg-emerald-500'}`}
           style={{ width: `${onlinePct}%` }}
         />
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-        <span className="flex items-center gap-1.5 text-gray-600"><span className="w-2 h-2 rounded-full bg-emerald-500" />{onlineScreens} online</span>
-        <span className={`flex items-center gap-1.5 ${offlineScreens > 0 ? 'text-rose-600 font-semibold' : 'text-gray-600'}`}><span className="w-2 h-2 rounded-full bg-rose-500" />{offlineScreens} offline</span>
-        {pairingScreens > 0 && (
-          <span className="flex items-center gap-1.5 text-gray-600"><span className="w-2 h-2 rounded-full bg-gray-300" />{pairingScreens} waiting to pair</span>
-        )}
+      <div className="mt-3 pt-1 border-t border-gray-50 divide-y divide-gray-50">
+        {splitRow('Mine', mine, 'my-screens-list')}
+        {splitRow('Clients', clients, 'client-screens', `${clientAccounts} account${clientAccounts === 1 ? '' : 's'}`)}
       </div>
-    </button>
+
+      {notLinked > 0 && (
+        <p className="mt-2 text-xs text-gray-400">{notLinked} screen{notLinked === 1 ? '' : 's'} waiting for a TV (unlinked)</p>
+      )}
+      {unpairedDevices - notLinked > 0 && (
+        <button
+          type="button"
+          onClick={() => onNavigate('screens-all')}
+          className="mt-2 text-xs text-gray-400 hover:text-gray-600"
+        >
+          + {unpairedDevices - notLinked} device{unpairedDevices - notLinked === 1 ? '' : 's'} showing a pairing code (not yet added)
+        </button>
+      )}
+    </div>
   );
 
   const quickActionsSection = (
@@ -180,9 +224,9 @@ export default function Dashboard({
             key={a.label}
             type="button"
             onClick={() => onNavigate(a.target)}
-            className="flex flex-col lg:flex-row items-center gap-1.5 lg:gap-3 bg-white border border-gray-100 rounded-2xl px-2 py-3 lg:px-4 hover:border-blue-200 hover:bg-blue-50/40 transition-colors"
+            className="flex flex-col lg:flex-row items-center gap-1.5 lg:gap-3 bg-white border border-gray-100 rounded-2xl px-2 py-3 lg:px-3 lg:py-2.5 hover:border-blue-200 hover:bg-blue-50/40 transition-colors"
           >
-            <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">{a.icon}</span>
+            <span className="w-9 h-9 lg:w-8 lg:h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">{a.icon}</span>
             <span className="text-xs lg:text-sm font-semibold text-gray-800 text-center">{a.label}</span>
           </button>
         ))}
@@ -299,15 +343,27 @@ export default function Dashboard({
         <p className="text-sm text-gray-500 mt-0.5">Your network at a glance</p>
       </div>
 
-      {/* One grid, explicitly placed: phones stack it in priority order
-          (health, quick actions, alerts, overview, activity); desktop puts
-          the actions and overview in a side column. */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 items-start">
-        <div className="lg:col-span-2 lg:row-start-1">{healthCard}</div>
-        <div className="lg:col-start-3 lg:row-start-1">{quickActionsSection}</div>
-        {attentionSection && <div className="lg:col-span-2 lg:row-start-2">{attentionSection}</div>}
-        <div className="lg:col-start-3 lg:row-start-2 lg:row-span-2">{overviewSection}</div>
-        <div className="lg:col-span-2 lg:row-start-3">{activitySection}</div>
+      {/* Phones: one stack in priority order. */}
+      <div className="lg:hidden space-y-4">
+        {healthCard}
+        {quickActionsSection}
+        {attentionSection}
+        {overviewSection}
+        {activitySection}
+      </div>
+
+      {/* Desktop: two independent columns. (A shared grid made each row as
+          tall as its tallest cell, leaving a gap under the screens card.) */}
+      <div className="hidden lg:flex gap-5 items-start">
+        <div className="flex-1 min-w-0 space-y-5">
+          {healthCard}
+          {attentionSection}
+          {activitySection}
+        </div>
+        <div className="w-80 shrink-0 space-y-5">
+          {quickActionsSection}
+          {overviewSection}
+        </div>
       </div>
     </div>
   );

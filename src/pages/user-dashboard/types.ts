@@ -8,7 +8,9 @@ export type NavItem = {
 export type Screen = {
   id: string;
   name: string;
-  status: 'online' | 'offline' | 'warning' | 'active' | 'suspended' | 'pairing';
+  status: 'online' | 'offline' | 'warning' | 'active' | 'suspended' | 'pairing' | 'unlinked';
+  /** Playback paused from the dashboard (the playlist stays assigned). */
+  paused?: boolean;
   playlist: string;
   playlistId?: string;
   location: string;

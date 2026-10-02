@@ -691,6 +691,12 @@ export async function getScreenStatusForDevice(req: any, res: any) {
       return res.status(403).json({ message: 'hardwareUuid does not match this screen.', unpaired: true });
     }
 
+    // The owner unlinked this TV (Unlink TV) — the slot is kept for re-pairing,
+    // but no device owns it until then.
+    if (screenRecord.status === 'unlinked') {
+      return res.status(403).json({ message: 'This TV was unlinked from the screen.', unpaired: true });
+    }
+
     return res.status(200).json(screenRecord);
   } catch (error: any) {
     console.error('Error fetching screen status for device:', error);
@@ -760,6 +766,12 @@ export async function recordHeartbeat(req: any, res: any) {
         transitionStatus = 'UNKNOWN_DEVICE';
         console.warn(`[Heartbeat] Rejected: hardwareUuid mismatch for screen ${screenRecord.id} (request hardwareUuid=${hardwareUuid}, record hardware_uuid=${screenRecord.hardware_uuid}).`);
         return res.status(403).json({ message: 'hardwareUuid does not match this screen.' });
+      }
+
+      if (screenRecord.status === 'unlinked') {
+        screenId = screenRecord.id;
+        transitionStatus = 'UNKNOWN_DEVICE';
+        return res.status(403).json({ message: 'This TV was unlinked from the screen.', unpaired: true });
       }
 
       screenId = screenRecord.id;
@@ -942,9 +954,15 @@ export async function reconnectScreen(req: any, res: any) {
 
     // Verify ownership or super admin permissions
     const clientEmail = req.user?.email;
-    const isSuperAdmin = req.user?.role === 'super_admin';
-    if (existingScreen.assignedToUserEmail !== clientEmail && !isSuperAdmin) {
+    const isAdmin = req.user?.role === 'super_admin' || req.user?.role === 'admin';
+    if (existingScreen.assignedToUserEmail !== clientEmail && !isAdmin) {
       return res.status(403).json({ message: 'Unauthorized: You do not own this screen.' });
+    }
+
+    // The code must belong to a TV that's waiting to be added, not to a
+    // screen someone already owns.
+    if (pairingScreen.id !== existingScreen.id && pairingScreen.assignedToUserEmail) {
+      return res.status(400).json({ message: 'That code belongs to a screen that is already in use.' });
     }
 
     // Enforce exclusivity: check if another device is already connected to this screen slot
@@ -966,6 +984,21 @@ export async function reconnectScreen(req: any, res: any) {
     if (pairingScreen.id !== existingScreen.id) {
       await pb.collection('screens').delete(pairingScreen.id);
     }
+
+    if (isRedisReady()) {
+      await redis.pipeline()
+        .del(`cache:screen:${existingScreen.id}`)
+        .del(`cache:screen_uuid:${existingScreen.id}`)
+        .del(`cache:screen_uuid:${pairingScreen.hardware_uuid || ''}`)
+        .del(`cache:screen:${pairingScreen.id}`)
+        .exec();
+    }
+    // The TV is still connected under its temporary pairing record's room —
+    // nudge it to re-sync now: it learns that record is gone, asks for its
+    // pairing info by hardware id, and is handed this screen.
+    notifyScreenConfigChanged(pairingScreen.id);
+    notifyScreenConfigChanged(existingScreen.id);
+    syncScreenBrandingFromOrg(updatedScreen).catch(() => {});
 
     // 5. Log the reconnect event to screen_logs
     pb.collection('screen_logs').create(
@@ -1135,47 +1168,7 @@ export async function reportOffline(req: any, res: any) {
           .exec();
       }
 
-      // Distributed lock (when Redis is available) — this and a concurrent
-      // checkDeviceStatuses sweep or recordHeartbeat call for the same
-      // screen, possibly on a different instance, must exclude each other.
-      await withScreenLock(screenId, async () => {
-        const latestScreen = await retryWithBackoff(() => pb.collection('screens').getOne(screenId));
-
-        if (latestScreen.status === 'online' || latestScreen.status === 'active') {
-          let additionalUptime = 0;
-          let additionalLoops = 0;
-          const sessionEnd = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : Date.now();
-          if (latestScreen.onlineSince) {
-            const onlineTime = new Date(latestScreen.onlineSince).getTime();
-            if (onlineTime > 0 && sessionEnd > onlineTime) {
-              additionalUptime = Math.floor((sessionEnd - onlineTime) / 1000);
-              const playlistLength = await getScreenPlaylistLength(latestScreen);
-              additionalLoops = Math.floor(additionalUptime / playlistLength);
-            }
-          }
-          const updatedCumulativeUptime = (latestScreen.cumulativeUptime || 0) + additionalUptime;
-          const updatedCumulativeLoops = (latestScreen.cumulativeLoops || 0) + additionalLoops;
-
-          await retryWithBackoff(() => pb.collection('screens').update(latestScreen.id, {
-            status: 'offline',
-            cumulativeUptime: updatedCumulativeUptime,
-            cumulativeLoops: updatedCumulativeLoops,
-            onlineSince: ""
-          }));
-
-          retryWithBackoff(async () => pb.collection('screen_logs').create(
-            await buildScreenLog(latestScreen, {
-              event: 'Screen went offline',
-              type: 'offline',
-              detail: reason || 'App was closed by the user.',
-              totalUptime: updatedCumulativeUptime,
-              loopsPlayed: updatedCumulativeLoops
-            })
-          )).catch(err => console.error('Error logging screen offline:', err));
-
-          console.log(`Screen "${latestScreen.name}" (${latestScreen.id}) marked offline immediately. Reason: ${reason || 'App closed'}`);
-        }
-      });
+      await markScreenOffline(screenId, reason || 'App was closed by the user.');
     }
 
     res.status(204).end();
@@ -1183,6 +1176,240 @@ export async function reportOffline(req: any, res: any) {
     console.error('Error recording screen offline:', error);
     await logServerError(screenRecord?.id || 'system', 'System', '', 'Report offline error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error recording screen offline' });
+  }
+}
+
+/**
+ * Moves a screen to offline right now: folds the current online session into
+ * cumulativeUptime/cumulativeLoops, clears Redis presence, writes the
+ * "went offline" log. Shared by the device's own offline report and the
+ * dashboard's live status check. No-op if it isn't currently online.
+ */
+export async function markScreenOffline(screenId: string, detail: string): Promise<boolean> {
+  let changed = false;
+  if (isRedisReady()) {
+    const current = await pb.collection('screens').getOne(screenId).catch(() => null);
+    await redis.pipeline()
+      .del(`presence:screen:${screenId}`)
+      .zrem('presence:active_screens', screenId)
+      .del(`heartbeat:screen:${screenId}`)
+      .del(`cache:screen:${screenId}`)
+      .del(`cache:screen_uuid:${screenId}`)
+      .del(`cache:screen_uuid:${current?.hardware_uuid || ''}`)
+      .exec();
+  }
+  await withScreenLock(screenId, async () => {
+    const latestScreen = await retryWithBackoff(() => pb.collection('screens').getOne(screenId));
+    if (latestScreen.status !== 'online' && latestScreen.status !== 'active') return;
+
+    let additionalUptime = 0;
+    let additionalLoops = 0;
+    const sessionEnd = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : Date.now();
+    if (latestScreen.onlineSince) {
+      const onlineTime = new Date(latestScreen.onlineSince).getTime();
+      if (onlineTime > 0 && sessionEnd > onlineTime) {
+        additionalUptime = Math.floor((sessionEnd - onlineTime) / 1000);
+        const playlistLength = await getScreenPlaylistLength(latestScreen);
+        additionalLoops = Math.floor(additionalUptime / playlistLength);
+      }
+    }
+    const updatedCumulativeUptime = (latestScreen.cumulativeUptime || 0) + additionalUptime;
+    const updatedCumulativeLoops = (latestScreen.cumulativeLoops || 0) + additionalLoops;
+
+    await retryWithBackoff(() => pb.collection('screens').update(latestScreen.id, {
+      status: 'offline',
+      cumulativeUptime: updatedCumulativeUptime,
+      cumulativeLoops: updatedCumulativeLoops,
+      onlineSince: ""
+    }));
+    changed = true;
+
+    retryWithBackoff(async () => pb.collection('screen_logs').create(
+      await buildScreenLog(latestScreen, {
+        event: 'Screen went offline',
+        type: 'offline',
+        detail,
+        totalUptime: updatedCumulativeUptime,
+        loopsPlayed: updatedCumulativeLoops
+      })
+    )).catch(err => console.error('Error logging screen offline:', err));
+
+    console.log(`Screen "${latestScreen.name}" (${latestScreen.id}) marked offline. Reason: ${detail}`);
+  });
+  return changed;
+}
+
+/** Marks a screen online right now (it just proved it's alive), mirroring a heartbeat's transition. */
+async function markScreenOnline(screenId: string, detail: string): Promise<void> {
+  const now = Date.now();
+  if (isRedisReady()) {
+    await redis.pipeline()
+      .set(`presence:screen:${screenId}`, 'online', 'EX', 180)
+      .zadd('presence:active_screens', now, screenId)
+      .del(`cache:screen:${screenId}`)
+      .del(`cache:screen_uuid:${screenId}`)
+      .exec();
+  }
+  await withScreenLock(screenId, async () => {
+    const latest = await retryWithBackoff(() => pb.collection('screens').getOne(screenId));
+    const wasOffline = latest.status !== 'online' && latest.status !== 'active';
+    const update: Record<string, any> = { lastHeartbeat: new Date(now).toISOString() };
+    if (wasOffline) update.status = 'online';
+    if (wasOffline || !latest.onlineSince) update.onlineSince = new Date(now).toISOString();
+    await retryWithBackoff(() => pb.collection('screens').update(screenId, update));
+    if (wasOffline) {
+      const metrics = await getLiveScreenMetrics({ ...latest, ...update });
+      pb.collection('screen_logs').create(
+        await buildScreenLog(latest, {
+          event: 'Screen came online',
+          type: 'online',
+          detail,
+          totalUptime: metrics.totalUptime,
+          loopsPlayed: metrics.loopsPlayed
+        })
+      ).catch(err => console.error('Error logging screen online:', err));
+    }
+  });
+}
+
+async function loadOwnedScreen(req: any, res: any): Promise<any | null> {
+  const screenId = req.params.screenId;
+  const screen = await pb.collection('screens').getOne(screenId).catch(() => null);
+  if (!screen) {
+    res.status(404).json({ message: 'Screen not found.' });
+    return null;
+  }
+  const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+  if (!isAdmin && screen.assignedToUserEmail !== req.user?.email) {
+    res.status(403).json({ message: 'Access denied.' });
+    return null;
+  }
+  return screen;
+}
+
+/**
+ * Dashboard "Check status": asks the TV over its live socket to answer
+ * within a few seconds, and updates the stored status to match — useful when
+ * the dashboard shows offline but the TV looks fine (or vice versa) and a
+ * reload doesn't settle it.
+ */
+export async function pingScreen(req: any, res: any) {
+  try {
+    const screen = await loadOwnedScreen(req, res);
+    if (!screen) return;
+
+    if (screen.status === 'unlinked' || !screen.hardware_uuid) {
+      return res.status(200).json({ online: false, unlinked: true, message: 'No TV is linked to this screen.' });
+    }
+
+    const io = (global as any).io;
+    const started = Date.now();
+    let reply: any = null;
+    // Only wait for an answer if the TV actually has a live connection —
+    // otherwise there's nobody to answer and the check can finish at once.
+    const connected = io ? (await io.in(`screen-${screen.id}`).fetchSockets().catch(() => [])).length > 0 : false;
+    if (io && connected) {
+      try {
+        const replies: any[] = await io.timeout(5000).to(`screen-${screen.id}`).emitWithAck('screen:ping', { at: started });
+        reply = replies.find(r => r && r.ok) || null;
+      } catch {
+        reply = null; // no answer within the timeout
+      }
+    }
+
+    if (reply) {
+      await markScreenOnline(screen.id, 'Responded to a status check from the dashboard.');
+      return res.status(200).json({
+        online: true,
+        latencyMs: Date.now() - started,
+        device: reply,
+        checkedAt: new Date().toISOString()
+      });
+    }
+
+    // No live answer. A TV on an older app build never answers pings but may
+    // still be heartbeating — don't mark that one offline.
+    const lastHb = screen.lastHeartbeat ? new Date(screen.lastHeartbeat).getTime() : 0;
+    const presence = isRedisReady() ? await redis.exists(`presence:screen:${screen.id}`) : 0;
+    if (presence || (lastHb && Date.now() - lastHb < 90 * 1000)) {
+      return res.status(200).json({
+        online: true,
+        viaHeartbeat: true,
+        message: 'The TV is sending heartbeats but its app version does not answer live checks. Update the TV app for live checks.',
+        checkedAt: new Date().toISOString()
+      });
+    }
+
+    await markScreenOffline(screen.id, 'Did not respond to a status check from the dashboard.');
+    return res.status(200).json({
+      online: false,
+      lastSeen: screen.lastHeartbeat || null,
+      checkedAt: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Error pinging screen:', error);
+    res.status(500).json({ message: error.message || 'Error checking screen status' });
+  }
+}
+
+/**
+ * Detaches the physical TV from a screen but keeps the screen (name,
+ * location, group, playlist, schedule) in the owner's account as "unlinked",
+ * ready for a TV to be paired to it again via /screens/reconnect. The TV
+ * itself drops back to its pairing-code screen.
+ */
+export async function unlinkScreen(req: any, res: any) {
+  try {
+    const screen = await loadOwnedScreen(req, res);
+    if (!screen) return;
+    if (screen.status === 'unlinked' && !screen.hardware_uuid) {
+      return res.status(200).json(screen);
+    }
+
+    // Close out the online session's uptime first, like any offline transition.
+    await markScreenOffline(screen.id, 'TV unlinked from the dashboard.');
+
+    const oldUuid = screen.hardware_uuid || '';
+    const updated = await withScreenLock(screen.id, async () =>
+      pb.collection('screens').update(screen.id, {
+        status: 'unlinked',
+        hardware_uuid: '',
+        pairing_code: '',
+        pairing_code_expires: '',
+        onlineSince: '',
+        paused: false
+      })
+    );
+
+    if (isRedisReady()) {
+      await redis.pipeline()
+        .del(`presence:screen:${screen.id}`)
+        .zrem('presence:active_screens', screen.id)
+        .del(`heartbeat:screen:${screen.id}`)
+        .del(`cache:screen:${screen.id}`)
+        .del(`cache:screen_uuid:${screen.id}`)
+        .del(`cache:screen_uuid:${oldUuid}`)
+        .exec();
+    }
+
+    // The TV re-syncs immediately, is told it no longer owns this screen, and
+    // shows a fresh pairing code.
+    notifyScreenConfigChanged(screen.id);
+
+    pb.collection('screen_logs').create(
+      await buildScreenLog(screen, {
+        event: 'TV unlinked',
+        type: 'offline',
+        detail: 'The TV was unlinked from the dashboard. The screen is kept and can be paired to a TV again.',
+        totalUptime: updated.cumulativeUptime || 0,
+        loopsPlayed: updated.cumulativeLoops || 0
+      })
+    ).catch(err => console.error('Error logging unlink:', err));
+
+    res.status(200).json(updated);
+  } catch (error: any) {
+    console.error('Error unlinking screen:', error);
+    res.status(500).json({ message: error.message || 'Error unlinking screen' });
   }
 }
 

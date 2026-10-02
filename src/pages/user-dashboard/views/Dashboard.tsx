@@ -91,7 +91,10 @@ export default function Dashboard({
   }, [userEmail]);
 
   const userLicense = licensingStore.getLicenses().find(l => l.assignedUserEmail === userEmail);
-  const myScreens = mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail);
+  const ownedScreens = mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail);
+  // Unlinked screens have no TV attached — keep them out of the online/offline health numbers.
+  const myScreens = ownedScreens.filter(s => s.status !== 'unlinked');
+  const notLinked = ownedScreens.length - myScreens.length;
   const myPlaylists = mediaStore.getPlaylists().filter(p => p.createdBy === userEmail);
   const myMedia = mediaStore.getMedia().filter(m => m.uploadedBy === userEmail);
   const unpaidInvoice = licensingStore.getInvoices()
@@ -189,6 +192,9 @@ export default function Dashboard({
         {pairingScreens > 0 && (
           <span className="flex items-center gap-1.5 text-gray-600"><span className="w-2 h-2 rounded-full bg-gray-300" />{pairingScreens} waiting to pair</span>
         )}
+        {notLinked > 0 && (
+          <span className="flex items-center gap-1.5 text-gray-600"><span className="w-2 h-2 rounded-full bg-slate-300" />{notLinked} not linked</span>
+        )}
       </div>
     </button>
   );
@@ -277,9 +283,9 @@ export default function Dashboard({
           <div className="mt-4 space-y-3">
             <Meter
               label="Screens"
-              used={myScreens.length}
+              used={ownedScreens.length}
               total={deviceLimit}
-              display={deviceLimit > 0 ? `${myScreens.length} of ${deviceLimit}` : `${myScreens.length}`}
+              display={deviceLimit > 0 ? `${ownedScreens.length} of ${deviceLimit}` : `${ownedScreens.length}`}
             />
             <Meter
               label="Storage"

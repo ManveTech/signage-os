@@ -4,8 +4,12 @@ import {
   Search, Plus, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit,
   Clock, Monitor, X, Check, CheckCircle, MapPin,
   Grid3X3, List, Pause, Eraser, Lock, Trash,
-  Calendar, Link, ListVideo, FolderMinus
+  Calendar, Link, ListVideo, FolderMinus, ChevronRight, Play, Activity, Unlink, Tv
 } from 'lucide-react';
+import ScreenDetailsSheet from '../../../../components/screens/ScreenDetailsSheet';
+import PairTvDialog from '../../../../components/screens/PairTvDialog';
+import ConfirmDialog from '../../../../components/screens/ConfirmDialog';
+import { pingScreen, unlinkScreen, pairTvToScreen } from '../../../../lib/screenActions';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import CustomSelect from '../../../../components/CustomSelect';
@@ -63,6 +67,14 @@ const getStatusColors = (status: string) => {
         badgeBg: 'bg-blue-500/10',
         glowColor: 'rgba(59, 130, 246, 0.2)',
         label: 'Pairing'
+      };
+    case 'unlinked':
+      return {
+        borderColor: '#94A3B8', // slate-400
+        textColor: 'text-slate-500',
+        badgeBg: 'bg-slate-500/10',
+        glowColor: 'rgba(148, 163, 184, 0.2)',
+        label: 'Not linked'
       };
     case 'suspended':
       return {
@@ -165,6 +177,10 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
   const [editScreen, setEditScreen] = useState<Screen | null>(null);
+  // Screen whose details sheet is open (tapping a card opens it).
+  const [detailsScreenId, setDetailsScreenId] = useState<string | null>(null);
+  const [unlinkTarget, setUnlinkTarget] = useState<Screen | null>(null);
+  const [pairTarget, setPairTarget] = useState<Screen | null>(null);
   const [deleteScreen, setDeleteScreen] = useState<Screen | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -250,58 +266,6 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     return matchSearch && matchStatus;
   });
 
-  const getScreenStorageInfo = (screen: Screen) => {
-    let playlistName = 'Normal';
-    if (screen.groupId) {
-      const gp = groups.find(g => g.id === screen.groupId);
-      if (gp) {
-        playlistName = gp.playlist || 'Normal';
-      }
-    } else {
-      playlistName = screen.playlist || 'Normal';
-    }
-
-    const allPlaylists = mediaStore.getPlaylists();
-    let playlist = allPlaylists.find(p => p.name === playlistName && p.createdBy === screen.assignedToUserEmail);
-    if (!playlist && screen.playlistId) {
-      playlist = allPlaylists.find(p => p.id === screen.playlistId);
-    }
-    if (!playlist) {
-      playlist = allPlaylists.find(p => p.name === playlistName);
-    }
-
-    const mediaIds = playlist?.mediaIds || [];
-    let totalSizeBytes = 0;
-    mediaIds.forEach(id => {
-      const item = mediaList.find(m => m.id === id);
-      if (item) {
-        totalSizeBytes += item.fileSizeBytes || 0;
-      }
-    });
-
-    const myLicense = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
-    const limitGb = myLicense?.storageLimit || 5;
-    const limitBytes = limitGb * 1024 * 1024 * 1024;
-    const percentage = limitBytes > 0 ? (totalSizeBytes / limitBytes) * 100 : 0;
-
-    let friendlySize = '0 Bytes';
-    if (totalSizeBytes > 0) {
-      const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(totalSizeBytes) / Math.log(k));
-      friendlySize = parseFloat((totalSizeBytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    }
-
-    return {
-      usedBytes: totalSizeBytes,
-      friendlySize,
-      limitGb,
-      percentage: Math.min(percentage, 100)
-    };
-  };
-
-
-
   const addToast = (message: string, type: Toast['type'] = 'success') => {
     const id = Date.now();
     setToasts(p => [...p, { id, message, type }]);
@@ -344,19 +308,70 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     });
   };
 
-  const handleStopPlayback = (screen: Screen) => {
-    setOpenMenu(null);
-    const updatedScreen = {
-      ...screen,
-      playlist: 'None',
-      playlistId: ''
-    };
+  const updateLocalScreen = (id: string, patch: Partial<Screen>) => {
     const allScreens = mediaStore.getScreens();
-    const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
+    const updatedAll = allScreens.map(s => s.id === id ? { ...s, ...patch } as Screen : s);
     mediaStore.saveScreens(updatedAll);
     setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
-    pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
-    addToast(`Playback stopped for "${screen.name}"`);
+  };
+
+  // Pause keeps the playlist assigned — the TV shows a "paused" screen until
+  // resumed. (The old "Stop playback" cleared the playlist, so there was
+  // nothing to resume.)
+  const handleTogglePause = (screen: Screen) => {
+    setOpenMenu(null);
+    const paused = !screen.paused;
+    updateLocalScreen(screen.id, { paused });
+    pushToDatabase('screens', screen.id, { paused }, 'PUT').then(res => {
+      if (res.ok) {
+        addToast(paused ? `Playback paused on "${screen.name}"` : `Playback resumed on "${screen.name}"`, 'success');
+      } else {
+        updateLocalScreen(screen.id, { paused: !paused });
+        addToast(`Couldn't ${paused ? 'pause' : 'resume'} "${screen.name}"`, 'error');
+      }
+    });
+  };
+
+  const handleCheckStatus = async (screen: Screen) => {
+    addToast(`Checking "${screen.name}"…`, 'info');
+    try {
+      const result = await pingScreen(screen.id);
+      if (result.unlinked) {
+        addToast(`"${screen.name}" has no TV linked`, 'info');
+      } else if (result.online) {
+        updateLocalScreen(screen.id, { status: 'online', lastHeartbeat: new Date().toISOString() });
+        addToast(
+          result.viaHeartbeat
+            ? `"${screen.name}" is online (update the TV app for live checks)`
+            : `"${screen.name}" is online — replied in ${result.latencyMs} ms`,
+          'success'
+        );
+      } else {
+        updateLocalScreen(screen.id, { status: 'offline' });
+        addToast(`"${screen.name}" didn't respond — marked offline`, 'error');
+      }
+    } catch (e: any) {
+      addToast(e?.message || `Couldn't check "${screen.name}"`, 'error');
+    }
+  };
+
+  const handleUnlink = async (screen: Screen) => {
+    try {
+      await unlinkScreen(screen.id);
+      updateLocalScreen(screen.id, { status: 'unlinked', paused: false });
+      addToast(`TV unlinked from "${screen.name}". Pair a TV to use this screen again.`, 'success');
+    } catch (e: any) {
+      addToast(e?.message || `Couldn't unlink "${screen.name}"`, 'error');
+    } finally {
+      setUnlinkTarget(null);
+    }
+  };
+
+  const handlePairTv = async (screen: Screen, code: string) => {
+    const updated = await pairTvToScreen(screen.id, code);
+    updateLocalScreen(screen.id, { status: (updated?.status || 'online') as Screen['status'], lastHeartbeat: new Date().toISOString() });
+    setPairTarget(null);
+    addToast(`TV paired to "${screen.name}"`, 'success');
   };
 
   const handleClearCache = (screen: Screen) => {
@@ -501,290 +516,372 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {stats.map(s => (
-          <div key={s.label} className={`${s.bg} border ${s.border} rounded-xl px-4 py-3 flex items-center justify-between`}>
-            <span className="text-xs font-medium text-gray-600">{s.label}</span>
-            <span className={`text-2xl font-bold ${s.color}`}>{s.count}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+      {/* Search + view toggle. The search box used to sit in a column with
+          items-start, so on phones it shrank to its content width and cut
+          off its own placeholder; the icon was also pinned to the top of a
+          44px-tall input. */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-0">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name or location..."
-            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400 bg-white"
+            placeholder="Search screens"
+            className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
           />
         </div>
-        <div className="flex items-center gap-2">
-          {(['all', 'online', 'offline', 'warning'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => setStatusFilter(f)}
-              className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors capitalize ${
-                statusFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-          <div className="flex border border-gray-200 rounded-lg overflow-hidden">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-2 transition-colors ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 hover:text-gray-600'}`}
-            >
-              <Grid3X3 size={14} />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 transition-colors ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 hover:text-gray-600'}`}
-            >
-              <List size={14} />
-            </button>
-          </div>
+        <div className="flex h-11 shrink-0 border border-gray-200 rounded-xl overflow-hidden bg-white">
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`w-11 flex items-center justify-center transition-colors ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+            title="Grid view"
+            aria-label="Grid view"
+          >
+            <Grid3X3 size={16} />
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`w-11 flex items-center justify-center transition-colors ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+            title="List view"
+            aria-label="List view"
+          >
+            <List size={16} />
+          </button>
         </div>
       </div>
 
-      {/* Grid View */}
+      {/* Status filters double as the counts — replaces four large stat tiles
+          that repeated the same numbers above a second row of filter chips. */}
+      {/* No "All" chip: tapping the active filter again clears it. */}
+      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        {([
+          { key: 'online', label: 'Online', count: stats[1].count, dot: 'bg-emerald-500' },
+          { key: 'offline', label: 'Offline', count: stats[2].count, dot: 'bg-rose-500' },
+          { key: 'warning', label: 'Warning', count: stats[3].count, dot: 'bg-amber-500' },
+        ] as const).map(chip => {
+          const active = statusFilter === chip.key;
+          return (
+            <button
+              key={chip.key}
+              onClick={() => setStatusFilter(active ? 'all' : chip.key)}
+              aria-pressed={active}
+              className={`flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-semibold rounded-full border transition-colors whitespace-nowrap ${
+                active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-white' : chip.dot}`} />
+              {chip.label}
+              <span className={`min-w-[20px] px-1.5 py-0.5 rounded-full text-[10px] leading-none ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                {chip.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Grid View — compact cards; tapping one opens its details sheet. */}
       {viewMode === 'grid' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {filtered.map(screen => {
-            const info = getStatusColors(screen.status);
-            const isHovered = hoveredScreen === screen.id;
-            const shadowStyle = isHovered ? { 
-              boxShadow: `0 12px 30px -8px ${info.glowColor}, 0 8px 16px -8px ${info.glowColor}`,
-              borderColor: info.borderColor,
-              transform: 'translateY(-4px)'
-            } : {};
+            const status = getEffectiveStatus(screen);
+            const info = getStatusColors(status);
+            const isLive = status === 'online' || status === 'active';
+            const group = screen.groupId ? groups.find(g => g.id === screen.groupId) : null;
+            const playing = group ? (group.playlist || 'Normal') : (screen.playlist && screen.playlist !== 'None' ? screen.playlist : '');
+            const selected = selectedIds.includes(screen.id);
             return (
-              <div 
-                key={screen.id} 
-                className="bg-white rounded-3xl border border-slate-100 transition-all duration-300 group flex flex-col justify-between hover:border-slate-200 relative"
-                style={shadowStyle}
-                onMouseEnter={() => setHoveredScreen(screen.id)}
-                onMouseLeave={() => { if (openMenu !== screen.id) setHoveredScreen(null); }}
+              <button
+                key={screen.id}
+                type="button"
+                onClick={() => (isSelectionMode ? toggleSelect(screen.id) : setDetailsScreenId(screen.id))}
+                className={`w-full text-left bg-white rounded-2xl border p-3 flex items-center gap-3 transition-colors cursor-pointer ${
+                  selected ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100 hover:border-slate-200 hover:shadow-sm'
+                }`}
               >
                 {isSelectionMode && (
-                  <div 
-                    className="absolute inset-0 bg-slate-900/[0.02] hover:bg-slate-900/[0.05] z-40 rounded-3xl cursor-pointer flex items-start p-3"
-                    onClick={() => toggleSelect(screen.id)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(screen.id)}
-                      onChange={() => {}}
-                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm"
-                    />
-                  </div>
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => {}}
+                    className="w-5 h-5 rounded border-slate-300 text-blue-600 shrink-0 pointer-events-none"
+                  />
                 )}
-
-                {/* Status badge */}
-                {!isSelectionMode && (
-                  <div className="absolute top-3 left-3 z-30">
-                    {renderStatusBadge(screen)}
-                  </div>
-                )}
-
-                {/* 3-dot menu removed */}
-
-                {/* Visual Preview — the live screenshot (or a plain
-                    placeholder) filling the card, not a decorative
-                    monitor-on-a-stand illustration around it. */}
-                <div className={`relative ${screen.thumbnail ? 'h-32' : 'h-20'} sm:h-40 overflow-hidden rounded-t-3xl bg-ink-950`}>
+                <span className="relative w-14 h-14 rounded-xl overflow-hidden bg-ink-950 shrink-0 flex items-center justify-center">
                   {screen.thumbnail ? (
-                    <div
-                      className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-[1.03]"
-                      style={{ backgroundImage: `url(${screen.thumbnail})` }}
-                    />
+                    <span className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${screen.thumbnail})` }} />
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Monitor size={26} className="text-white/15" />
-                    </div>
+                    <Monitor size={20} className="text-white/25" />
                   )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 via-ink-950/0 to-ink-950/0" />
-                  {/* Only claim it's playing when the screen is actually online. */}
-                  {screen.playlist && screen.playlist !== 'None' && (screen.status === 'online' || screen.status === 'active') && (
-                    <span className="absolute bottom-2.5 left-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 backdrop-blur-sm text-[9px] text-white/80 font-semibold uppercase tracking-wide">
-                      <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
-                      Playing
-                    </span>
-                  )}
-                </div>
-
-                {/* Details Section */}
-                <div className="p-4 space-y-3">
-                  {/* Screen Title & Info */}
-                  <div className="space-y-1">
-                    <h3 className="text-sm font-bold text-slate-800 truncate leading-snug group-hover:text-blue-600 transition-colors duration-200">
-                      {screen.name}
-                    </h3>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold">
-                      <MapPin size={11} className="shrink-0" />
-                      <span className="truncate">{screen.location}</span>
-                    </div>
-                  </div>
-
-                  {/* Storage Progress Bar */}
-                  {(() => {
-                    const storageInfo = getScreenStorageInfo(screen);
-                    return (
-                      <div className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <div className="flex justify-between text-[9.5px] font-bold text-slate-400 uppercase tracking-wide">
-                          <span>Signage Storage</span>
-                          <span>{storageInfo.friendlySize} / {storageInfo.limitGb} GB</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              storageInfo.percentage > 85 ? 'bg-rose-500' : storageInfo.percentage > 60 ? 'bg-amber-500' : 'bg-emerald-500'
-                            }`}
-                            style={{ width: `${storageInfo.percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-
-
-
-                  {/* Group / Playlist Section */}
-                  {screen.groupId ? (() => {
-                    const gp = groups.find(g => g.id === screen.groupId);
-                    const c = gp ? (groupColorMap[gp.color] ?? groupColorMap.blue) : groupColorMap.blue;
-                    return (
-                      <div className={`p-2.5 rounded-xl border ${c.bg} ${c.border} ${c.text} text-[10.5px] space-y-1 relative group/group-badge`}>
-                        <div className="font-bold flex items-center gap-1">
-                          <span className={`w-2 h-2 rounded-full ${c.iconBg}`} />
-                          Group: {gp?.name}
-                        </div>
-                        <div className="opacity-90 font-medium">Inherited Playlist: <span className="underline font-bold">{gp?.playlist || 'Normal'}</span></div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveScreenFromGroup(screen);
-                          }}
-                          className="absolute top-2 right-2 px-1.5 py-0.5 text-[9px] bg-red-100 hover:bg-red-200 text-red-700 border border-red-200 rounded cursor-pointer font-bold opacity-0 group-hover/group-badge:opacity-100 transition-opacity flex items-center gap-0.5"
-                          title="Remove from group"
-                        >
-                          Remove Group
-                        </button>
-                      </div>
-                    );
-                  })() : (
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Active Loop Playlist</label>
-                      <div className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5">
-                        {screen.playlist || 'Normal'}
-                      </div>
-                      {screen.schedulePlaylist && (
-                        <div className="mt-1.5 flex items-center gap-1.5 text-[9.5px] text-amber-700 bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-500/20 font-bold">
-                          <Clock size={10} className="text-amber-500" />
-                          <span className="truncate">Next Scheduled: {screen.schedulePlaylist} ({screen.scheduleDate})</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Action Buttons Row — always visible */}
-                  <div className="flex flex-wrap items-center gap-1 pt-2 border-t border-slate-100">
-                    <button
-                      onClick={() => setEditScreen({ ...screen })}
-                      className="p-1 text-blue-600 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-200/50 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                      data-tooltip="Edit Screen"
-                    >
-                      <Edit size={13} />
-                    </button>
-                    <button
-                      onClick={() => handleSync(screen)}
-                      className="p-1 text-yellow-600 bg-yellow-50 hover:bg-yellow-100 border border-yellow-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                      data-tooltip="Sync Device"
-                    >
-                      <RefreshCw size={13} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAssignScreen(screen);
-                        setAssignSearch('');
-                        setAssignHighlight(0);
-                        setTimeout(() => assignInputRef.current?.focus(), 50);
-                      }}
-                      className="p-1 text-teal-600 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                      data-tooltip="Assign Playlist"
-                    >
-                      <ListVideo size={13} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setScheduleEnabled(!!screen.schedulePlaylist);
-                        setScheduleScreen({ ...screen,
-                          schedulePlaylist: screen.schedulePlaylist || userPlaylists[0]?.name || '',
-                          scheduleDate: screen.scheduleDate || new Date().toISOString().split('T')[0],
-                          scheduleTime: screen.scheduleTime || '12:00'
-                        });
-                      }}
-                      className="p-1 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                      data-tooltip="Schedule Playlist"
-                    >
-                      <Calendar size={13} />
-                    </button>
-                    <button
-                      onClick={() => handleStopPlayback(screen)}
-                      className={`p-1 rounded-lg transition-colors cursor-pointer border tooltip-trigger ${
-                        screen.groupId
-                          ? 'text-gray-400 bg-gray-50 border-gray-100 cursor-not-allowed opacity-50'
-                          : 'text-orange-600 bg-orange-50 hover:bg-orange-100 border-orange-100'
-                      }`}
-                      data-tooltip="Stop Playback"
-                      disabled={!!screen.groupId}
-                    >
-                      <Pause size={13} />
-                    </button>
-                    <button
-                      onClick={() => handleClearCache(screen)}
-                      className="p-1 text-purple-600 bg-purple-50 hover:bg-purple-100 border border-purple-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                      data-tooltip="Clear Cache"
-                    >
-                      <Eraser size={13} />
-                    </button>
-                    {screen.groupId && (
-                      <button
-                        onClick={() => handleRemoveScreenFromGroup(screen)}
-                        className="p-1 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                        data-tooltip="Remove from group"
-                      >
-                        <FolderMinus size={13} />
-                      </button>
+                  <span
+                    className="absolute bottom-1 right-1 w-2.5 h-2.5 rounded-full ring-2 ring-ink-950"
+                    style={{ backgroundColor: info.borderColor }}
+                  />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold text-slate-900 truncate">{screen.name}</span>
+                  <span className="flex items-center gap-1 text-xs text-slate-500 mt-0.5 min-w-0">
+                    <span className={`font-semibold ${info.textColor}`}>{info.label}</span>
+                    {screen.location && screen.location !== 'Not Specified' && (
+                      <span className="truncate">· {screen.location}</span>
                     )}
-                    <button
-                      onClick={() => setDeleteScreen(screen)}
-                      className="p-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors cursor-pointer tooltip-trigger"
-                      data-tooltip="Remove Screen"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-
-                  {/* Footer Stats: Organization & Version */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[10px] font-semibold text-slate-400">
-                    <span className="truncate max-w-[140px]">{getScreenOrgName(screen)}</span>
-                    {screen.playerVersion && (
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-[9px]">
-                        v{screen.playerVersion}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs mt-1 min-w-0">
+                    {status === 'unlinked' ? (
+                      <span className="text-blue-600 font-medium">Tap to pair a TV</span>
+                    ) : screen.paused ? (
+                      <span className="truncate text-amber-700 font-medium">❚❚ Paused{playing ? ` · ${playing}` : ''}</span>
+                    ) : playing ? (
+                      <span className={`truncate ${isLive ? 'text-slate-700' : 'text-slate-400'}`}>
+                        {isLive ? '▶ ' : ''}{playing}
                       </span>
+                    ) : (
+                      <span className="text-slate-400">No playlist</span>
                     )}
-                  </div>
-                </div>
-              </div>
+                    {group && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold truncate max-w-[90px]">{group.name}</span>
+                    )}
+                  </span>
+                </span>
+                {!isSelectionMode && <ChevronRight size={18} className="text-slate-300 shrink-0" />}
+              </button>
             );
           })}
         </div>
+      )}
+
+      {(() => {
+        const screen = detailsScreenId ? screens.find(s => s.id === detailsScreenId) : null;
+        if (!screen) return null;
+        const status = getEffectiveStatus(screen);
+        const group = screen.groupId ? groups.find(g => g.id === screen.groupId) : null;
+        const lastSeen = (() => {
+          const t = screen.lastHeartbeat ? new Date(screen.lastHeartbeat).getTime() : NaN;
+          if (!Number.isFinite(t)) return screen.lastHeartbeat || '—';
+          const mins = Math.floor((Date.now() - t) / 60000);
+          if (mins < 1) return 'Just now';
+          if (mins < 60) return `${mins} min ago`;
+          const hours = Math.floor(mins / 60);
+          if (hours < 24) return `${hours} h ago`;
+          return `${Math.floor(hours / 24)} days ago`;
+        })();
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setDetailsScreenId(null)}
+            title={screen.name}
+            subtitle={screen.location && screen.location !== 'Not Specified' ? <span className="flex items-center gap-1"><MapPin size={13} />{screen.location}</span> : undefined}
+            badge={renderStatusBadge(screen)}
+            hero={screen.thumbnail ? (
+              <div className="aspect-video rounded-2xl bg-cover bg-center bg-ink-950" style={{ backgroundImage: `url(${screen.thumbnail})` }} />
+            ) : undefined}
+            details={[
+              { label: group ? 'Playlist (from group)' : 'Playlist', value: group ? (group.playlist || 'Normal') : (screen.playlist && screen.playlist !== 'None' ? screen.playlist : 'None') },
+              ...(screen.schedulePlaylist ? [{ label: 'Next scheduled', value: `${screen.schedulePlaylist} · ${screen.scheduleDate || ''} ${screen.scheduleTime || ''}`.trim() }] : []),
+              ...(screen.paused ? [{ label: 'Playback', value: <span className="text-amber-700">Paused</span> }] : []),
+              { label: 'TV', value: status === 'unlinked' ? <span className="text-slate-500">Not linked</span> : (status === 'online' || status === 'active' ? 'Online now' : `Last seen ${lastSeen}`) },
+              ...(group ? [{ label: 'Group', value: group.name }] : []),
+              { label: 'Organization', value: getScreenOrgName(screen) || '—' },
+              ...(screen.playerVersion ? [{ label: 'Player version', value: `v${screen.playerVersion}` }] : []),
+            ]}
+            groups={status === 'unlinked' ? [
+              {
+                title: 'TV',
+                actions: [
+                  {
+                    key: 'pair',
+                    label: 'Pair a TV',
+                    description: 'Enter the code shown on the TV — keeps this screen\'s settings',
+                    icon: <Tv size={17} />,
+                    onClick: () => setPairTarget(screen)
+                  }
+                ]
+              },
+              {
+                title: 'Content',
+                actions: [
+                  {
+                    key: 'assign',
+                    label: 'Change playlist',
+                    description: 'Choose what this screen plays',
+                    icon: <ListVideo size={17} />,
+                    disabled: !!group,
+                    disabledReason: 'Set by its group — change the group\'s playlist instead',
+                    onClick: () => {
+                      setAssignScreen(screen);
+                      setAssignSearch('');
+                      setAssignHighlight(0);
+                      setTimeout(() => assignInputRef.current?.focus(), 50);
+                    }
+                  },
+                  {
+                    key: 'schedule',
+                    label: screen.schedulePlaylist ? 'Edit schedule' : 'Schedule a playlist',
+                    description: 'Switch to another playlist at a set time',
+                    icon: <Calendar size={17} />,
+                    onClick: () => {
+                      setScheduleEnabled(!!screen.schedulePlaylist);
+                      setScheduleScreen({ ...screen,
+                        schedulePlaylist: screen.schedulePlaylist || userPlaylists[0]?.name || '',
+                        scheduleDate: screen.scheduleDate || new Date().toISOString().split('T')[0],
+                        scheduleTime: screen.scheduleTime || '12:00'
+                      });
+                    }
+                  }
+                ]
+              },
+              {
+                title: 'Settings',
+                actions: [
+                  {
+                    key: 'edit',
+                    label: 'Edit details',
+                    description: 'Name, location and settings',
+                    icon: <Edit size={17} />,
+                    onClick: () => setEditScreen({ ...screen })
+                  }
+                ]
+              },
+              {
+                title: 'Danger zone',
+                actions: [
+                  {
+                    key: 'delete',
+                    label: 'Remove screen',
+                    description: 'Delete this screen and its settings',
+                    icon: <Trash2 size={17} />,
+                    tone: 'danger' as const,
+                    onClick: () => setDeleteScreen(screen)
+                  }
+                ]
+              }
+            ] : [
+              {
+                title: 'Content',
+                actions: [
+                  {
+                    key: 'assign',
+                    label: 'Change playlist',
+                    description: 'Choose what this screen plays',
+                    icon: <ListVideo size={17} />,
+                    disabled: !!group,
+                    disabledReason: 'Set by its group — change the group\'s playlist instead',
+                    onClick: () => {
+                      setAssignScreen(screen);
+                      setAssignSearch('');
+                      setAssignHighlight(0);
+                      setTimeout(() => assignInputRef.current?.focus(), 50);
+                    }
+                  },
+                  {
+                    key: 'schedule',
+                    label: screen.schedulePlaylist ? 'Edit schedule' : 'Schedule a playlist',
+                    description: 'Switch to another playlist at a set time',
+                    icon: <Calendar size={17} />,
+                    onClick: () => {
+                      setScheduleEnabled(!!screen.schedulePlaylist);
+                      setScheduleScreen({ ...screen,
+                        schedulePlaylist: screen.schedulePlaylist || userPlaylists[0]?.name || '',
+                        scheduleDate: screen.scheduleDate || new Date().toISOString().split('T')[0],
+                        scheduleTime: screen.scheduleTime || '12:00'
+                      });
+                    }
+                  },
+                  {
+                    key: 'sync',
+                    label: 'Sync now',
+                    description: 'Re-download content; keeps playing meanwhile',
+                    icon: <RefreshCw size={17} />,
+                    onClick: () => handleSync(screen)
+                  }
+                ]
+              },
+              {
+                title: 'Device',
+                actions: [
+                  {
+                    key: 'ping',
+                    label: 'Check status',
+                    description: 'Ask the TV if it\'s online right now and update its status',
+                    icon: <Activity size={17} />,
+                    onClick: () => handleCheckStatus(screen)
+                  },
+                  {
+                    key: 'pause',
+                    label: screen.paused ? 'Resume playback' : 'Pause playback',
+                    description: screen.paused ? 'Continue playing its playlist' : 'Show a paused screen; the playlist stays assigned',
+                    icon: screen.paused ? <Play size={17} /> : <Pause size={17} />,
+                    onClick: () => handleTogglePause(screen)
+                  },
+                  {
+                    key: 'cache',
+                    label: 'Clear cache',
+                    description: 'Delete all downloaded media on the TV and download it again — blank until done',
+                    icon: <Eraser size={17} />,
+                    onClick: () => handleClearCache(screen)
+                  },
+                  {
+                    key: 'edit',
+                    label: 'Edit details',
+                    description: 'Name, location and settings',
+                    icon: <Edit size={17} />,
+                    onClick: () => setEditScreen({ ...screen })
+                  }
+                ]
+              },
+              {
+                title: 'Danger zone',
+                actions: [
+                  {
+                    key: 'unlink',
+                    label: 'Unlink TV',
+                    description: 'Disconnect the TV but keep this screen to pair again later',
+                    icon: <Unlink size={17} />,
+                    tone: 'danger' as const,
+                    onClick: () => setUnlinkTarget(screen)
+                  },
+                  ...(group ? [{
+                    key: 'ungroup',
+                    label: 'Remove from group',
+                    description: `Stop following "${group.name}"`,
+                    icon: <FolderMinus size={17} />,
+                    tone: 'danger' as const,
+                    onClick: () => handleRemoveScreenFromGroup(screen)
+                  }] : []),
+                  {
+                    key: 'delete',
+                    label: 'Remove screen',
+                    description: 'Unpair the TV and delete this screen',
+                    icon: <Trash2 size={17} />,
+                    tone: 'danger' as const,
+                    onClick: () => setDeleteScreen(screen)
+                  }
+                ]
+              }
+            ]}
+          />
+        );
+      })()}
+
+      {unlinkTarget && (
+        <ConfirmDialog
+          title={`Unlink the TV from "${unlinkTarget.name}"?`}
+          body={<>
+            <p>The TV stops playing and goes back to its pairing screen.</p>
+            <p>This screen stays in your account with its name, location, group and playlist. Use “Pair a TV” to connect a TV to it again.</p>
+          </>}
+          confirmLabel="Unlink TV"
+          tone="danger"
+          onCancel={() => setUnlinkTarget(null)}
+          onConfirm={() => handleUnlink(unlinkTarget)}
+        />
+      )}
+
+      {pairTarget && (
+        <PairTvDialog
+          screenName={pairTarget.name}
+          onClose={() => setPairTarget(null)}
+          onSubmit={code => handlePairTv(pairTarget, code)}
+        />
       )}
 
       {/* List View */}
@@ -909,16 +1006,11 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                             <Calendar size={13} />
                           </button>
                           <button
-                            onClick={() => handleStopPlayback(screen)}
-                            className={`p-1 rounded-lg transition-colors cursor-pointer border ${
-                              screen.groupId
-                                ? 'text-gray-400 bg-gray-50 border-gray-100 cursor-not-allowed opacity-50'
-                                : 'text-orange-600 bg-orange-50 hover:bg-orange-100 border-orange-100'
-                            }`}
-                            title="Stop Playback"
-                            disabled={!!screen.groupId}
+                            onClick={() => handleTogglePause(screen)}
+                            className="p-1 rounded-lg transition-colors cursor-pointer border text-orange-600 bg-orange-50 hover:bg-orange-100 border-orange-100"
+                            title={screen.paused ? 'Resume playback' : 'Pause playback'}
                           >
-                            <Pause size={13} />
+                            {screen.paused ? <Play size={13} /> : <Pause size={13} />}
                           </button>
                           <button
                             onClick={() => handleClearCache(screen)}

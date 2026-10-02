@@ -100,6 +100,12 @@ class VideoCallManager(private val context: Context) {
     // of what the caller configured.
     private var pendingRemoteVolume: Double = 1.0
 
+    /**
+     * Supplies what this TV reports when the dashboard runs "Check status"
+     * (set by the ViewModel, which knows the playback state).
+     */
+    @Volatile var statusReporter: (() -> JSONObject)? = null
+
     /** Connects the signaling socket and registers this screen as a call target. */
     fun start(serverUrl: String, screenId: String) {
         if (socket != null && registeredScreenId == screenId) return
@@ -126,6 +132,20 @@ class VideoCallManager(private val context: Context) {
             newSocket.on("screen:config-changed") {
                 Log.d(TAG, "Received screen:config-changed push, signaling immediate re-sync")
                 _configChanged.tryEmit(Unit)
+            }
+            // Dashboard "Check status": answer the server's ping right away so it
+            // can confirm this TV is alive and update its status.
+            newSocket.on("screen:ping") { args ->
+                val ack = args.lastOrNull() as? io.socket.client.Ack ?: return@on
+                val payload = try {
+                    statusReporter?.invoke() ?: JSONObject()
+                } catch (e: Exception) {
+                    JSONObject()
+                }
+                payload.put("ok", true)
+                payload.put("appVersion", com.example.BuildConfig.VERSION_NAME)
+                payload.put("respondedAt", System.currentTimeMillis())
+                ack.call(payload)
             }
             newSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
                 Log.w(TAG, "Socket connect error: ${args.firstOrNull()}")

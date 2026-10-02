@@ -64,6 +64,8 @@ data class SignageUiState(
     val whiteLabelLogoPath: String? = null,
     val whiteLabelName: String? = null,
     val isConfigLoaded: Boolean = false,
+    // Paused from the dashboard — show the paused screen, keep the playlist.
+    val paused: Boolean = false,
     val cameraMountEnabled: Boolean = false
 )
 
@@ -103,6 +105,28 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update { it.copy(currentAssetIndex = 0) }
                     restartAssetRotation(force = true)
                 }
+            }
+        }
+
+        // Pause/resume from the dashboard.
+        viewModelScope.launch {
+            repository.pausedFlow.collect { paused ->
+                _uiState.update { it.copy(paused = paused) }
+                restartAssetRotation(force = true)
+            }
+        }
+
+        // What this TV reports back to the dashboard's "Check status".
+        videoCallManager.statusReporter = {
+            val s = _uiState.value
+            org.json.JSONObject().apply {
+                put("status", s.status)
+                put("paused", s.paused)
+                put("playing", !s.paused && s.playbackPlaylist.isNotEmpty())
+                put("currentAsset", s.playbackPlaylist.getOrNull(s.currentAssetIndex)?.filename ?: "")
+                put("assetsReady", s.playbackPlaylist.size)
+                put("assetsTotal", s.playlist.size)
+                put("downloading", s.isDownloading)
             }
         }
 
@@ -454,7 +478,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
         assetRotationJob?.cancel()
         val playlist = _uiState.value.playbackPlaylist
-        if (playlist.isEmpty() || (_uiState.value.status != "active" && _uiState.value.status != "online" && _uiState.value.status != "offline")) {
+        if (playlist.isEmpty() || _uiState.value.paused || (_uiState.value.status != "active" && _uiState.value.status != "online" && _uiState.value.status != "offline")) {
             return
         }
 

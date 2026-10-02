@@ -226,7 +226,9 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
 
     const statusField = sFields.find((f: any) => f.name === 'status');
     if (statusField && statusField.type === 'select') {
-      const requiredValues = ['online', 'offline', 'warning', 'active', 'suspended', 'pairing'];
+      // 'unlinked': a screen slot the owner kept after detaching its TV
+      // (Unlink TV) — waiting for a TV to be paired to it again.
+      const requiredValues = ['online', 'offline', 'warning', 'active', 'suspended', 'pairing', 'unlinked'];
       for (const val of requiredValues) {
         if (!statusField.values.includes(val)) {
           statusField.values.push(val);
@@ -390,6 +392,23 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       });
       screensUpdated = true;
       console.log('Programmatically added cameraMountEnabled field to screens collection');
+    }
+
+    // Pause/resume playback without losing the screen's playlist assignment
+    // (the old "Stop playback" cleared the assignment, so nothing could be resumed).
+    if (!sFields.some((f: any) => f.name === 'paused')) {
+      sFields.push({
+        id: 'boolscreenpaused',
+        name: 'paused',
+        type: 'bool',
+        required: false,
+        system: false,
+        help: 'Playback paused from the dashboard; the TV shows a paused screen until resumed',
+        hidden: false,
+        presentable: false
+      });
+      screensUpdated = true;
+      console.log('Programmatically added paused field to screens collection');
     }
 
     // This previously forced listRule/viewRule/updateRule to "" (fully public)

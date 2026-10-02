@@ -50,7 +50,8 @@ data class PocketBaseScreenResponse(
     val whiteLabel: Boolean? = null,
     val websiteLogo: String? = null,
     val websiteName: String? = null,
-    val cameraMountEnabled: Boolean? = null
+    val cameraMountEnabled: Boolean? = null,
+    val paused: Boolean? = null
 )
 
 @JsonClass(generateAdapter = true)

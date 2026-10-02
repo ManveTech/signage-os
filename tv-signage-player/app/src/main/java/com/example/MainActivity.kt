@@ -164,7 +164,9 @@ fun SignagePlayerApp(
                         configuration.screenWidthDp > configuration.screenHeightDp
                     Box(modifier = Modifier.fillMaxSize()) {
                         Box(modifier = Modifier.fillMaxSize().then(if (rotateForPortrait) Modifier.rotatedToPortrait() else Modifier)) {
-                            if (uiState.playlist.isEmpty()) {
+                            if (uiState.paused) {
+                                PausedScreen(uiState = uiState)
+                            } else if (uiState.playlist.isEmpty()) {
                                 StandbyScreen(
                                     uiState = uiState,
                                     onOpenAdmin = {}
@@ -316,7 +318,7 @@ fun SignagePlayerApp(
             AppSplashScreen(uiState = uiState, onLogoStarted = { viewModel.onSplashLogoStarted() })
         }
 
-        if (uiState.isDownloading && hasPlayableContent && callState is CallState.Idle && !uiState.showSplash) {
+        if (uiState.isDownloading && hasPlayableContent && !uiState.paused && callState is CallState.Idle && !uiState.showSplash) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

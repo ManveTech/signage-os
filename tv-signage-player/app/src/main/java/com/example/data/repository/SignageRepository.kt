@@ -93,6 +93,22 @@ class SignageRepository(private val context: Context) {
     // content instead of switching to a half-downloaded new playlist.
     val downloadRunCompletedFlow = MutableStateFlow(0L)
 
+    // Kept in SharedPreferences rather than the Room ScreenConfig table on
+    // purpose: the database uses fallbackToDestructiveMigration, so adding a
+    // column there would wipe the table (and the device's identity) on the
+    // next app update.
+    private val prefs = context.getSharedPreferences("signage_device", Context.MODE_PRIVATE)
+
+    /** Playback paused from the dashboard; the player shows a paused screen until resumed. */
+    val pausedFlow = MutableStateFlow(prefs.getBoolean("paused", false))
+
+    private fun setPaused(paused: Boolean) {
+        if (pausedFlow.value != paused) {
+            pausedFlow.value = paused
+            prefs.edit().putBoolean("paused", paused).apply()
+        }
+    }
+
     // Bumped by clearDeviceAssets() so a download run in progress notices its
     // files were wiped out from under it and restarts instead of finishing
     // with renames that fail.
@@ -117,10 +133,20 @@ class SignageRepository(private val context: Context) {
     suspend fun getOrCreateConfig(): ScreenConfig = withContext(Dispatchers.IO) {
         var config = configDao.getConfig()
         if (config == null) {
-            val randomUuid = UUID.randomUUID().toString()
-            config = ScreenConfig(hardwareUuid = randomUuid)
+            // Reuse the device id from SharedPreferences if there is one. The
+            // Room database is destructively migrated on schema changes, which
+            // used to generate a brand-new id after such an app update — the
+            // server then saw a different TV, and the screen dropped back to
+            // pairing.
+            val savedUuid = prefs.getString("hardware_uuid", null)
+            val uuid = savedUuid ?: UUID.randomUUID().toString()
+            config = ScreenConfig(hardwareUuid = uuid)
             configDao.saveConfig(config)
+            prefs.edit().putString("hardware_uuid", uuid).apply()
         } else {
+            if (prefs.getString("hardware_uuid", null) != config.hardwareUuid) {
+                prefs.edit().putString("hardware_uuid", config.hardwareUuid).apply()
+            }
             // Force override stored URLs to use AppConfig hardcoded constants
             if (config.serverUrl != com.example.AppConfig.SERVER_URL || config.pocketbaseUrl != com.example.AppConfig.POCKETBASE_URL) {
                 config = config.copy(
@@ -236,8 +262,8 @@ class SignageRepository(private val context: Context) {
                     !File(currentConfig.whiteLabelLogoPath).exists()
             )
 
-            // If screen status on backend is pairing
-            if (response.status == "pairing") {
+            // If screen status on backend is pairing (or the owner unlinked this TV)
+            if (response.status == "pairing" || response.status == "unlinked") {
                 if (currentConfig.status != "pairing") {
                     Log.d("SignageRepository", "Screen status reset to pairing on backend. Unpairing device.")
                     val unassignedConfig = currentConfig.copy(
@@ -247,6 +273,7 @@ class SignageRepository(private val context: Context) {
                     )
                     configDao.saveConfig(unassignedConfig)
                     clearDeviceAssets()
+                    setPaused(false)
                     return@withContext Result.success(Unit)
                 } else {
                     // Device is currently in pairing mode waiting for user to pair.
@@ -287,6 +314,7 @@ class SignageRepository(private val context: Context) {
                 lastSyncedAt = System.currentTimeMillis()
             )
             configDao.saveConfig(updatedConfig)
+            setPaused(response.paused == true)
 
             // Trigger asset download if whitelabel logo is missing or changed
             if (isWhiteLabelNow && wasWhiteLabelLogoMissing && logoUrlNow.isNotEmpty()) {
@@ -372,6 +400,7 @@ class SignageRepository(private val context: Context) {
                 )
                 configDao.saveConfig(unassignedConfig)
                 clearDeviceAssets()
+                setPaused(false)
             }
             Log.e("SignageRepository", "HTTP error syncing screen status with backend", e)
             logErrorToServer("Sync Status HTTP Error", "HTTP ${e.code()}: ${e.message()}")
