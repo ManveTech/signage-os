@@ -3,6 +3,7 @@ import { Search, Upload, Film, Image, Layout, Youtube, AlignLeft, Plus, Trash2, 
 import { mediaStore, MediaItem } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { toast } from '../../../../components/Toast';
+import { maxUploadBytesFor, MAX_IMAGE_UPLOAD_BYTES, MAX_VIDEO_UPLOAD_BYTES } from '../../../../lib/uploadLimits';
 
 const typeIcons: Record<string, React.ReactNode> = {
   video: <Film size={13} />,
@@ -97,11 +98,11 @@ export default function MediaLibrary({ userEmail }: Props) {
       return;
     }
 
-    // Validate file sizes (under 5MB for images, 50MB for videos)
+    // Validate file sizes (limits in lib/uploadLimits.ts)
     for (const file of filesArray) {
       const isVideo = file.type.startsWith('video/');
-      const limitBytes = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
-      const limitMb = isVideo ? 50 : 5;
+      const limitBytes = maxUploadBytesFor(isVideo);
+      const limitMb = limitBytes / (1024 * 1024);
       if (file.size > limitBytes) {
         toast.error(`Upload cancelled: The file "${file.name}" is larger than ${limitMb}MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). All uploaded ${isVideo ? 'video' : 'image'} files must be under ${limitMb}MB.`);
         return;
@@ -603,7 +604,7 @@ export default function MediaLibrary({ userEmail }: Props) {
                   required
                   disabled={totalFilesToUpload > 0}
                 />
-                <p className="text-[9px] text-gray-400 mt-1">Select one or more images or videos. Images must be under 5MB, videos must be under 50MB.</p>
+                <p className="text-[9px] text-gray-400 mt-1">Select one or more images or videos. Images must be under {MAX_IMAGE_UPLOAD_BYTES / (1024 * 1024)}MB, videos must be under {MAX_VIDEO_UPLOAD_BYTES / (1024 * 1024)}MB.</p>
               </div>
 
               {filesArray.length <= 1 && (

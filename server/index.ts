@@ -34,6 +34,7 @@ import { getActiveConference, setActiveConference, clearActiveConference, clearA
 import { createAdapter } from '@socket.io/redis-adapter';
 import { verifyJwt } from './middleware/auth';
 import { loadOwnedConference } from './controllers/videoConference';
+import { MEDIA_UPLOAD_BODY_LIMIT_BYTES } from './uploadLimits';
 
 const app = express();
 
@@ -129,16 +130,27 @@ app.use(cookieParser());
 app.use('/api', apiLimiter);
 
 // Global Middleware
-// 100 MB limit covers all normal API payloads including large base64 media uploads.
+// 100 MB limit covers all normal API payloads; media uploads get their own
+// larger limit (see mediaUploadJsonParser below).
 // The verify callback stashes the exact raw bytes on req.rawBody — needed to
 // cryptographically verify the Razorpay webhook signature, which is computed
 // over the raw request body, not the re-serialized parsed object.
-app.use(express.json({
+const defaultJsonParser = express.json({
   limit: '100mb',
   verify: (req: any, _res, buf) => {
     req.rawBody = buf;
   }
-}));
+});
+// Media uploads (base64 in JSON) can be far larger than any other request —
+// they get their own parser with a higher limit, scoped to that one route,
+// instead of raising the limit for every endpoint.
+const mediaUploadJsonParser = express.json({ limit: MEDIA_UPLOAD_BODY_LIMIT_BYTES });
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/api/v1/media_items') {
+    return mediaUploadJsonParser(req, res, next);
+  }
+  return defaultJsonParser(req, res, next);
+});
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // Handle JSON body-parser syntax errors gracefully

@@ -25,10 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
@@ -36,11 +33,11 @@ import com.example.ui.SignageUiState
 
 // This project's own website theme (src/index.css: --color-ink-*, --color-brand-*,
 // --color-glow-*) — not a borrowed palette, so the TV app's first screen actually
-// matches the CMS it pairs with. No logo yet, so the wordmark carries the brand;
-// "Blue"/"Star" are split to echo the two-tone treatment in the real logo mark.
+// matches the CMS it pairs with. The animated BlueStar DigiTech logo reveal
+// (SplashLogoAnimation) only shows for the default brand — a white-labeled
+// player shows the customer's own name as plain text instead, never this logo.
 private val Ink950 = Color(0xFF0B0D14)
 private val Ink900 = Color(0xFF12141F)
-private val Brand400 = Color(0xFF6B8AFF)
 private val Brand500 = Color(0xFF4A6CF7)
 private val GlowCyan = Color(0xFF5EEAD4)
 private val GlowViolet = Color(0xFFA78BFA)
@@ -50,16 +47,16 @@ fun AppSplashScreen(uiState: SignageUiState) {
     val brandName = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
         uiState.whiteLabelName
     } else {
-        null // null signals the default two-tone "BlueStar" wordmark below
+        null // null signals the default animated BlueStar DigiTech logo below
     }
 
-    // Staggered reveal: wordmark -> accent rule draws in -> tagline -> loading
-    // bar. Nothing to scale in (no logo), so the wordmark itself carries the
-    // entrance instead of just appearing.
+    // Staggered reveal: brand -> accent rule draws in -> version -> loading
+    // bar. The default logo runs its own ~2.9s reveal, so the rest waits for
+    // it to mostly finish rather than crowding in underneath it.
     var stage by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
         stage = 1
-        kotlinx.coroutines.delay(450)
+        kotlinx.coroutines.delay(if (brandName == null) SPLASH_LOGO_DURATION_MS - 450L else 450L)
         stage = 2
         kotlinx.coroutines.delay(250)
         stage = 3
@@ -115,33 +112,24 @@ fun AppSplashScreen(uiState: SignageUiState) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
-                .offset(y = wordmarkOffset.value.dp)
-                .alpha(wordmarkAlpha.value)
+                .offset(y = if (brandName == null) 0.dp else wordmarkOffset.value.dp)
+                // The logo animation handles its own entrance; fading the
+                // whole column on top of it would dim the opening glow.
+                .alpha(if (brandName == null) 1f else wordmarkAlpha.value)
         ) {
-            Text(
-                text = brandName?.let {
-                    buildAnnotatedString { append(it) }
-                } ?: buildAnnotatedString {
-                    withStyle(SpanStyle(color = Color(0xFFE7EBF5))) { append("Blue") }
-                    withStyle(SpanStyle(color = Brand400)) { append("Star") }
-                },
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.2.sp
-            )
-
-            if (brandName == null) {
-                Spacer(modifier = Modifier.height(4.dp))
+            if (brandName != null) {
                 Text(
-                    text = "OS",
-                    color = Color(0xFF7C8598),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 6.sp
+                    text = brandName,
+                    color = Color(0xFFE7EBF5),
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.2.sp
                 )
+            } else {
+                SplashLogoAnimation(modifier = Modifier.width(400.dp))
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
             Box(
                 modifier = Modifier

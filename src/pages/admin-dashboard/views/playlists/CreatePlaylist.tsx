@@ -11,6 +11,7 @@ import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
 import { toast } from '../../../../components/Toast';
 import CustomSelect from '../../../../components/CustomSelect';
+import { maxUploadBytesFor, MAX_IMAGE_UPLOAD_BYTES, MAX_VIDEO_UPLOAD_BYTES } from '../../../../lib/uploadLimits';
 
 type PlaylistItem = {
   id: string;
@@ -503,8 +504,8 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   const uploadSingleFile = (file: File): Promise<void> => {
     return new Promise<void>((resolve, reject) => {
       const isVideo = file.type.startsWith('video/');
-      const maxFileBytes = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
-      const limitMb = isVideo ? 50 : 5;
+      const maxFileBytes = maxUploadBytesFor(isVideo);
+      const limitMb = maxFileBytes / (1024 * 1024);
 
       if (file.size > maxFileBytes) {
         reject(new Error(`"${file.name}" is larger than ${limitMb}MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). All uploaded ${isVideo ? 'video' : 'image'} files must be under ${limitMb}MB.`));
@@ -881,7 +882,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
           >
             <Upload size={18} className="text-blue-500 mx-auto mb-1.5" />
             <p className="text-[10.5px] font-bold text-slate-700">Drag files here or click to browse</p>
-            <p className="text-[9px] text-gray-400 mt-0.5">Enforces license storage limit ({storageLimitGb} GB). Limits: 5MB image, 50MB video</p>
+            <p className="text-[9px] text-gray-400 mt-0.5">Enforces license storage limit ({storageLimitGb} GB). Limits: {MAX_IMAGE_UPLOAD_BYTES / (1024 * 1024)}MB image, {MAX_VIDEO_UPLOAD_BYTES / (1024 * 1024)}MB video</p>
           </div>
 
           {/* Asset Scroll Area */}

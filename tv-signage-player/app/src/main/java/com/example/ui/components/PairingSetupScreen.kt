@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.content.Context
 import android.content.res.Configuration
 import android.os.StatFs
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.SignageUiState
@@ -36,7 +38,7 @@ fun getAvailableStorageGb(context: Context): String {
     }
 }
 
-// Black-and-white pairing screen, blue glow top-left fading to black — no
+// Black-and-white pairing screen, blue glow top-center fading to black — no
 // numbered walkthrough, just the code and the way to use it, the way a
 // streaming box's TV sign-in screen does it.
 private val PairBlack = Color(0xFF000000)
@@ -51,23 +53,27 @@ private fun formatCodeForDisplay(code: String): String {
 }
 
 @Composable
-private fun TopGlowBackground(content: @Composable BoxScope.() -> Unit) {
+internal fun TopGlowBackground(content: @Composable BoxScope.() -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(PairBlack)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(PairBlue.copy(alpha = 0.35f), Color.Transparent),
-                        center = Offset.Zero,
-                        radius = 1100f
-                    )
+        // Anchored to top-CENTER (not top-left) — matches the reference TV
+        // sign-in screen and the same fade used in the app's own boot screen
+        // (BootScreen.tsx: radial-gradient(... at 50% -10%)). Drawn in a
+        // Canvas rather than a plain .background(brush) modifier because the
+        // gradient's center needs the composable's actual pixel size, which
+        // only DrawScope provides — a bare Offset can't express "50% across."
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(PairBlue.copy(alpha = 0.35f), Color.Transparent),
+                    center = Offset(size.width / 2f, 0f),
+                    radius = size.width * 0.7f
                 )
-        )
+            )
+        }
         content()
     }
 }
@@ -87,6 +93,16 @@ fun PairingSetupScreen(
         uiState.whiteLabelName
     } else {
         "Bluestar OS"
+    }
+
+    // The CMS a customer logs into to actually complete pairing is a
+    // separate product from this player (brandName above, "Bluestar OS")
+    // — a white-label customer's own name applies to both, but the
+    // non-white-label default names the CMS specifically, not the player.
+    val cmsName = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
+        uiState.whiteLabelName
+    } else {
+        "BlueStar DigiTech"
     }
 
     if (isLandscape) {
@@ -118,10 +134,19 @@ fun PairingSetupScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(modifier = Modifier.height(44.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "Sign in to your $cmsName dashboard to pair this display",
+                        color = PairMuted,
+                        fontSize = 15.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(34.dp))
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(64.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(64.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.Top
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -216,7 +241,17 @@ fun PairingSetupScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(modifier = Modifier.height(40.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Sign in to your $cmsName dashboard to pair this display",
+                        color = PairMuted,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 260.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(28.dp))
 
                     if (uiState.pairingCode.isNotEmpty()) {
                         Box(

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import logoImg from '../../../assets/BS-main-Logo.png';
+import logoImg from '../../../assets/bluestar-icon.png';
 import {
   LayoutDashboard, Monitor, Film, List, BarChart2, Users, Key, Building2,
   Settings, HelpCircle, User, ChevronDown, ChevronRight, Search, LogOut,
@@ -166,12 +166,12 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
         <div className="flex items-center justify-between px-4 h-16 border-b border-gray-100 flex-shrink-0">
           {!collapsed && (
             <div className="flex items-center gap-2">
-              <img src={logoImg} className="w-10 h-10 object-contain shrink-0" alt="SignageOS Logo" />
+              <img src={logoImg} className="w-10 h-10 object-contain shrink-0" alt="BlueStar DigiTech" />
               <span className="font-bold text-gray-900 text-sm">SignageOS</span>
             </div>
           )}
           {collapsed && (
-            <img src={logoImg} className="w-9 h-9 object-contain shrink-0 mx-auto" alt="SignageOS Logo" />
+            <img src={logoImg} className="w-9 h-9 object-contain shrink-0 mx-auto" alt="BlueStar DigiTech" />
           )}
           {!collapsed && (
             <button onClick={onToggle} className="text-gray-400 hover:text-gray-600 p-1 rounded">

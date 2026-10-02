@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { setNativeBarColor } from '../lib/nativeWindow';
+import { holdBarsForBoot } from '../lib/nativeWindow';
+import SplashLogoAnimation, { SPLASH_LOGO_DURATION_MS } from './SplashLogoAnimation';
+
+// Let the logo reveal finish and sit for a beat before fading out.
+const BOOT_SCREEN_MS = SPLASH_LOGO_DURATION_MS + 150;
 
 /**
  * Bridges the gap between the native Android splash (which Android 12+
@@ -11,25 +15,42 @@ import { setNativeBarColor } from '../lib/nativeWindow';
  */
 export default function BootScreen({ onDone }: { onDone: () => void }) {
   const [visible, setVisible] = useState(true);
+  const releaseBars = useRef<() => void>(() => {});
+
+  // Starts when the logo reveal actually begins (its images decoded), not on
+  // mount — with a cap so a stuck decode can never trap the app on this screen.
+  const [logoStarted, setLogoStarted] = useState(false);
+  useEffect(() => {
+    const cap = setTimeout(() => setLogoStarted(true), 400);
+    return () => clearTimeout(cap);
+  }, []);
+
+  useEffect(() => {
+    // Black page background held by index.html (html.native-boot) until now.
+    return () => document.documentElement.classList.remove('native-boot');
+  }, []);
 
   useEffect(() => {
     // The bars are white the rest of the time (useCapacitor.ts), which would
-    // sit as a mismatched pale strip over this screen's black — flip them to
-    // match for as long as this is on screen, then hand back right as the
+    // sit as a mismatched pale strip over this screen's black — hold them
+    // black for as long as this is on screen (even against the dashboard
+    // mounting underneath and asking for white), then hand back right as the
     // fade-out (revealing the white screen underneath) begins, not after it
     // finishes, so the two don't visibly race each other.
-    const restore = () => setNativeBarColor('#ffffff', 'LIGHT');
-    setNativeBarColor('#000000', 'DARK'); // light icons for the black bar
-
-    const timer = setTimeout(() => {
-      restore();
-      setVisible(false);
-    }, 900);
-    return () => {
-      clearTimeout(timer);
-      restore();
-    };
+    const release = holdBarsForBoot();
+    releaseBars.current = release;
+    return release;
   }, []);
+
+  useEffect(() => {
+    if (!logoStarted) return;
+    const timer = setTimeout(() => {
+      releaseBars.current();
+      document.documentElement.classList.remove('native-boot');
+      setVisible(false);
+    }, BOOT_SCREEN_MS);
+    return () => clearTimeout(timer);
+  }, [logoStarted]);
 
   return (
     <AnimatePresence onExitComplete={onDone}>
@@ -37,19 +58,11 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
         <motion.div
           key="boot-screen"
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.35, ease: 'easeInOut' }}
+          transition={{ duration: 0.25, ease: 'easeInOut' }}
           className="fixed inset-0 z-[999] flex items-center justify-center bg-black"
         >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_140%_70%_at_50%_-10%,rgba(47,107,255,0.35),transparent_60%)]" />
-          <div className="relative flex flex-col items-center">
-            <p className="text-[34px] font-bold tracking-tight">
-              <span className="text-[#E7EBF5]">Blue</span>
-              <span className="text-[#2F6BFF]">Star</span>
-            </p>
-            <p className="mt-2 text-[11px] font-semibold tracking-[0.35em] text-[#8A8A8E]">
-              DIGITECH
-            </p>
-          </div>
+          <SplashLogoAnimation className="relative w-[min(78vw,420px)]" onReady={() => setLogoStarted(true)} />
         </motion.div>
       )}
     </AnimatePresence>

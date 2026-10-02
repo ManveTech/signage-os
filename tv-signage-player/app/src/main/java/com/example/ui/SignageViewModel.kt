@@ -37,6 +37,11 @@ data class SignageUiState(
     val isDownloading: Boolean = false,
     val downloadProgressMessage: String = "",
     val downloadProgressFraction: Float = 0f,
+    // Raw figures behind downloadProgressMessage, so the sync screen can lay
+    // them out itself instead of parsing the one-line message string.
+    val downloadCurrentFile: String = "",
+    val downloadCurrentBytes: Long = 0L,
+    val downloadCurrentTotalBytes: Long = 0L,
     val showSplash: Boolean = true,
     // Playlist playback settings
     val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
@@ -230,6 +235,9 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                         isDownloading = downloadState.isDownloading,
                         downloadProgressMessage = progressMessage,
                         downloadProgressFraction = overallProgress,
+                        downloadCurrentFile = if (downloadState.isDownloading) downloadState.currentFileName else "",
+                        downloadCurrentBytes = downloadState.downloadedBytes,
+                        downloadCurrentTotalBytes = downloadState.totalFileBytes,
                         errorMessage = downloadState.errorMessage
                     )
                 }

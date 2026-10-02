@@ -14,6 +14,43 @@ import { Capacitor } from '@capacitor/core';
  */
 export async function setNativeBarColor(color: string, style: 'LIGHT' | 'DARK'): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return;
+  // The boot screen owns the bars while it's up — the dashboard mounts
+  // underneath it at the same time and asks for white on startup, which
+  // would otherwise paint white strips over the black splash. Remember the
+  // latest request and apply it once the boot screen lets go.
+  if (bootHold) {
+    pendingAfterBoot = { color, style };
+    return;
+  }
+  await applyBarColor(color, style);
+}
+
+let bootHold = false;
+let pendingAfterBoot: { color: string; style: 'LIGHT' | 'DARK' } | null = null;
+
+/**
+ * Locks the bars to black for the boot screen. Returns a release function
+ * (safe to call more than once) that unlocks them and applies whatever color
+ * was requested in the meantime — white by default, matching the app.
+ */
+export function holdBarsForBoot(): () => void {
+  bootHold = true;
+  pendingAfterBoot = null;
+  if (Capacitor.getPlatform() === 'android') {
+    void applyBarColor('#000000', 'DARK'); // light icons for the black bar
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    bootHold = false;
+    const next = pendingAfterBoot ?? { color: '#ffffff', style: 'LIGHT' as const };
+    pendingAfterBoot = null;
+    void setNativeBarColor(next.color, next.style);
+  };
+}
+
+async function applyBarColor(color: string, style: 'LIGHT' | 'DARK'): Promise<void> {
 
   const plugins = (Capacitor as any).Plugins || {};
   const { StatusBar, SgWindow } = plugins;

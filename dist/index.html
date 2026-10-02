@@ -4,12 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SignageOS Technologies</title>
-    <script type="module" crossorigin src="/assets/index-Ch1Zuxbi.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-W_1Qgu3O.css">
+    <!-- Native app only: keep the page black from the very first paint until
+         BootScreen hands off (it removes this class), so the white body
+         background never flashes between the native splash and the boot
+         animation. Capacitor's bridge is injected before this runs. -->
+    <script>
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+        document.documentElement.classList.add('native-boot');
+      }
+    </script>
+    <style>
+      html.native-boot, html.native-boot body { background: #000 !important; }
+    </style>
+    <script type="module" crossorigin src="/assets/index-CmZeqqUE.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CALtgMt4.css">
   </head>
   <body>
     <div id="root"></div>
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
   </body>
 </html>
 

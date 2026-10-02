@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE } from '../config';
 import AdminDashboard from '../pages/admin-dashboard';
 import UserDashboard from '../pages/user-dashboard';
-import logoImg from '../assets/BS-main-Logo.png';
+import logoImg from '../assets/bluestar-logo-on-light.png';
 import {
   Mail,
   Lock,
@@ -398,10 +398,10 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
         <div className="absolute -bottom-32 -left-24 w-[28rem] h-[28rem] rounded-full bg-brand-500/[0.16] blur-[130px] animate-floatSlow" />
         <div className="grain-overlay" />
 
-        <div className="relative flex items-center gap-2.5">
-          <img src={branding.logoUrl || logoImg} className="w-9 h-9 object-contain shrink-0 rounded-lg" alt={`${branding.companyName} Logo`} />
-          <span className="text-white font-semibold text-sm tracking-tight">{branding.companyName}</span>
-        </div>
+        {/* Keeps the headline block where it was — justify-between still
+            expects three slots even with the brand row gone (it's shown on
+            the white side now instead). */}
+        <span aria-hidden />
 
         <div className="relative max-w-md">
           <p className="text-brand-400 text-[11px] font-bold uppercase tracking-[0.24em] mb-5">Signage Platform</p>
@@ -434,20 +434,37 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       <div className="flex-1 relative flex items-center justify-center px-6 py-14 sm:px-10">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(50%_35%_at_85%_0%,rgba(74,108,247,0.05),transparent_60%)]" />
 
+        {/* Desktop-only corner brand mark — the same logo shows inline above
+            the form on mobile instead, since there's no separate corner to
+            put it in on a narrow screen. */}
+        <div className="hidden lg:block absolute top-10 right-10">
+          {branding.logoUrl ? (
+            <img src={branding.logoUrl} className="w-9 h-9 object-contain shrink-0 rounded-lg" alt={`${branding.companyName} Logo`} />
+          ) : (
+            <img src={logoImg} className="h-14 w-auto object-contain" alt="BlueStar DigiTech" />
+          )}
+        </div>
+
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
           className="relative z-10 w-full max-w-[380px]"
         >
-          {/* Mobile-only brand row — the left panel is hidden below lg */}
-          <div className="flex lg:hidden items-center gap-2.5 mb-10">
-            <img src={branding.logoUrl || logoImg} className="w-9 h-9 object-contain shrink-0 rounded-lg" alt={`${branding.companyName} Logo`} />
-            <div>
-              <p className="text-ink-950 font-semibold text-sm tracking-tight leading-none">{branding.companyName}</p>
-              <p className="text-ink-950/35 text-[9px] font-bold tracking-[0.22em] uppercase mt-1">Signage Platform</p>
+          {/* Mobile-only brand row — desktop shows the same logo in the
+              corner instead (see above), since this column is centered and
+              a corner mark isn't meaningful at that width. */}
+          {branding.logoUrl ? (
+            <div className="flex lg:hidden items-center gap-2.5 mb-10">
+              <img src={branding.logoUrl} className="w-9 h-9 object-contain shrink-0 rounded-lg" alt={`${branding.companyName} Logo`} />
+              <div>
+                <p className="text-ink-950 font-semibold text-sm tracking-tight leading-none">{branding.companyName}</p>
+                <p className="text-ink-950/35 text-[9px] font-bold tracking-[0.22em] uppercase mt-1">Signage Platform</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <img src={logoImg} className="h-16 w-auto object-contain mb-8 lg:hidden" alt="BlueStar DigiTech" />
+          )}
 
           <AnimatePresence mode="wait">
             <motion.div

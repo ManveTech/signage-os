@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import logoImg from '../assets/BS-main-Logo.png';
+import logoImg from '../assets/bluestar-icon.png';
 import { Phone, ArrowUpRight, Menu, X, Landmark, Compass, Hammer, Shield, Home, Layers } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -96,7 +96,7 @@ export default function Navbar({ onOpenQuote, view = 'home', setView }: NavbarPr
             className="flex items-center gap-1.5 group cursor-pointer"
             id="navbar-brand-link"
           >
-            <img src={logoImg} className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0 group-hover:rotate-6 transition-transform duration-300" alt="SignageOS Logo" />
+            <img src={logoImg} className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0 group-hover:rotate-6 transition-transform duration-300" alt="BlueStar DigiTech" />
             <div className="flex flex-col">
               <span className="text-white text-base sm:text-lg font-bold tracking-tighter leading-none">SIGNAGEOS</span>
               <span className="text-[8px] sm:text-[9px] text-accent tracking-widest font-bold uppercase text-left">TECHNOLOGIES</span>

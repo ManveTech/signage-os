@@ -7,6 +7,7 @@ import { mediaStore, Playlist, MediaItem, Screen } from '../../../lib/mediaStore
 import { licensingStore, License } from '../../../lib/licensingStore';
 import { toast } from '../../../components/Toast';
 import CustomSelect from '../../../components/CustomSelect';
+import { maxUploadBytesFor } from '../../../lib/uploadLimits';
 
 const scheduleColors: Record<string, string> = {
   Running: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -207,8 +208,9 @@ export default function ClientPlaylists({ onNavigate, userEmail = 'admin@demo.co
   const handleQuickUploadMedia = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadTitle || !selectedClientEmail) return;
-    if (uploadSizeMb > 5) {
-      toast.warning("All uploaded files must be under 5MB.");
+    const maxMb = maxUploadBytesFor(uploadType === 'video') / (1024 * 1024);
+    if (uploadSizeMb > maxMb) {
+      toast.warning(`Uploaded ${uploadType === 'video' ? 'videos' : 'images'} must be under ${maxMb}MB.`);
       return;
     }
 

@@ -1,6 +1,7 @@
 import { pb, ensurePBAuth } from '../db';
 import { uploadToR2, deleteFromR2, getKeyFromUrl, isR2Enabled } from '../r2';
 import crypto from 'crypto';
+import { MAX_VIDEO_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES } from '../uploadLimits';
 
 function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
@@ -63,8 +64,8 @@ export async function uploadMediaItem(req: any, res: any) {
 
     const fileBuffer = Buffer.from(fileData, 'base64');
 
-    // Validate file size (50 MB max for video, 5 MB for images)
-    const maxBytes = mimeType?.startsWith('video/') ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+    // Validate file size (limits in server/uploadLimits.ts)
+    const maxBytes = mimeType?.startsWith('video/') ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
     if (fileBuffer.length > maxBytes) {
       const limitMB = maxBytes / (1024 * 1024);
       return res.status(413).json({ error: `File too large. Maximum allowed size is ${limitMB}MB for ${mimeType?.startsWith('video/') ? 'videos' : 'images'}.` });

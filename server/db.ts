@@ -1,4 +1,5 @@
 import PocketBase from 'pocketbase';
+import { MAX_VIDEO_UPLOAD_BYTES } from './uploadLimits';
 import { 
   PB_URL, 
   PB_ADMIN_EMAIL, 
@@ -528,6 +529,16 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       });
       mediaUpdated = true;
       console.log('Programmatically added file field to media_items collection');
+    }
+
+    // PocketBase treats maxSize 0 as its small built-in default (~5 MB), which
+    // would reject uploads well under our own limits whenever files go to
+    // PocketBase local storage instead of R2. Keep it at the video limit.
+    const fileField = mFields.find((f: any) => f.name === 'file' && f.type === 'file');
+    if (fileField && (fileField.maxSize || 0) < MAX_VIDEO_UPLOAD_BYTES) {
+      fileField.maxSize = MAX_VIDEO_UPLOAD_BYTES;
+      mediaUpdated = true;
+      console.log(`Raised media_items.file maxSize to ${MAX_VIDEO_UPLOAD_BYTES} bytes`);
     }
 
     // fileUrl stores the direct R2/S3 URL when using external storage

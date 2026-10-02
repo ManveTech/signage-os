@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: previews the sync screen with sample data, without
+     pairing a screen first. Launch SyncScreenPreviewActivity via adb am start,
+     passing string extra "state" = downloading or paused. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.example.debug.SyncScreenPreviewActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.MyApplication" />
+    </application>
+</manifest>

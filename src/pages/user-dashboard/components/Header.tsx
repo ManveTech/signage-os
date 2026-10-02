@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Search, ChevronDown, User, LogOut, Home, Settings, Play, Film, HelpCircle, Users, Activity, Menu, ShieldCheck
 } from 'lucide-react';
-import logoImg from '../../../assets/BS-main-Logo.png';
+import logoImg from '../../../assets/bluestar-icon.png';
 import { mediaStore } from '../../../lib/mediaStore';
 
 const breadcrumbMap: Record<string, string[]> = {
