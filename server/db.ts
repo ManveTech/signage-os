@@ -394,6 +394,27 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('Programmatically added cameraMountEnabled field to screens collection');
     }
 
+    // Physical details captured when a screen is added (Add Screen flow).
+    for (const [fieldName, fieldId, help] of [
+      ['orientation', 'txtscreenorient', 'How the display is mounted: landscape or portrait'],
+      ['screenSize', 'txtscreensize', 'Physical screen size, e.g. 55"']
+    ] as const) {
+      if (!sFields.some((f: any) => f.name === fieldName)) {
+        sFields.push({
+          id: fieldId,
+          name: fieldName,
+          type: 'text',
+          required: false,
+          system: false,
+          help,
+          hidden: false,
+          presentable: false
+        });
+        screensUpdated = true;
+        console.log(`Programmatically added ${fieldName} field to screens collection`);
+      }
+    }
+
     // Pause/resume playback without losing the screen's playlist assignment
     // (the old "Stop playback" cleared the assignment, so nothing could be resumed).
     if (!sFields.some((f: any) => f.name === 'paused')) {

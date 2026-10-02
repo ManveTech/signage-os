@@ -364,7 +364,17 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="display text-2xl sm:text-3xl text-ink-950">All Screens</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{realScreenCount} screen{realScreenCount === 1 ? '' : 's'}</p>
+          <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+            <span>{realScreenCount} screen{realScreenCount === 1 ? '' : 's'}</span>
+            {waitingCount > 0 && !showPairing && (
+              <button
+                onClick={() => { setShowPairing(true); setCurrentPage(1); setSelectedIds([]); }}
+                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
+              >
+                · {waitingCount} waiting to pair <span aria-hidden>→</span>
+              </button>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {filtered.length > 0 && (
@@ -423,19 +433,10 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
             Back to screens
           </button>
         </div>
-      ) : waitingCount > 0 ? (
-        <button
-          onClick={() => { setShowPairing(true); setCurrentPage(1); setSelectedIds([]); }}
-          className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700"
-        >
-          <span className="h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent rounded-full" />
-          {waitingCount} TV{waitingCount === 1 ? '' : 's'} waiting to pair
-          <span aria-hidden>→</span>
-        </button>
       ) : null}
 
       {!showPairing && (
-        <>
+        <div className="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-3">
         {/* Status chips double as the counts; tap the active one again to clear it. */}
         <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
           {([
@@ -491,7 +492,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
             />
           </div>
         </div>
-        </>
+        </div>
       )}
 
       {isSelectionMode && filtered.length > 0 && (

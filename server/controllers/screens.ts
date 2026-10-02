@@ -187,13 +187,20 @@ export async function getPairingCode(req: any, res: any) {
 
 export async function pairScreen(req: any, res: any) {
   try {
-    const { pairingCode, name, location, groupId, assignedToUserEmail, playlist } = req.body;
+    const { pairingCode, name, location, groupId, assignedToUserEmail, playlist, orientation, screenSize } = req.body;
     if (!pairingCode || !name) {
       return res.status(400).json({ message: 'Pairing code and name are required.' });
     }
 
-    const clientEmail = req.user?.email || assignedToUserEmail || 'priya@demo.com';
     const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    // Admins add screens on a client's behalf — the screen belongs to the
+    // client they picked. (This used to always use the caller's own email, so
+    // every screen an admin added "for a client" was actually assigned to the
+    // admin.) Non-admins can only ever add screens for themselves.
+    const clientEmail = isAdmin && assignedToUserEmail ? String(assignedToUserEmail).toLowerCase().trim() : req.user?.email;
+    if (!clientEmail) {
+      return res.status(400).json({ message: 'Could not determine who this screen belongs to.' });
+    }
 
     let license = null;
 
@@ -233,11 +240,16 @@ export async function pairScreen(req: any, res: any) {
         license = licensesResult.items[0];
       }
     } else {
-      // Mock an unlimited system license for admin users
-      license = {
-        id: 'system_admin_bypass',
-        whiteLabel: true
-      };
+      // Admin adding for a client: attach the client's own license (so
+      // white-label/plan details apply) without enforcing the slot limit.
+      // Admin adding for themselves: the unlimited system license.
+      license = { id: 'system_admin_bypass', whiteLabel: true };
+      if (clientEmail !== req.user?.email) {
+        const clientLicenses = await pb.collection('licenses').getList(1, 100, {
+          filter: pb.filter('assignedUserEmail = {:clientEmail} && status = "active"', { clientEmail })
+        }).catch(() => ({ items: [] as any[] }));
+        if (clientLicenses.items.length > 0) license = clientLicenses.items[0];
+      }
     }
 
     // 2. Locate screen record by pairing code
@@ -272,6 +284,8 @@ export async function pairScreen(req: any, res: any) {
       groupId: groupId || null,
       playlist: playlist || '', // playlist ID
       playlistId: playlist || '',
+      ...(orientation === 'landscape' || orientation === 'portrait' ? { orientation } : {}),
+      ...(typeof screenSize === 'string' && screenSize.length <= 16 ? { screenSize } : {}),
       onlineSince: new Date().toISOString(),
       lastHeartbeat: new Date().toISOString()
     });

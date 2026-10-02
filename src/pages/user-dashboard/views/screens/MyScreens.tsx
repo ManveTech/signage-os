@@ -600,49 +600,51 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
 
       {/* Status filters double as the counts — replaces four large stat tiles
           that repeated the same numbers above a second row of filter chips. */}
-      {/* No "All" chip: tapping the active filter again clears it. */}
-      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
-        {([
-          { key: 'online', label: 'Online', count: stats[1].count, dot: 'bg-emerald-500' },
-          { key: 'offline', label: 'Offline', count: stats[2].count, dot: 'bg-rose-500' },
-          { key: 'warning', label: 'Warning', count: stats[3].count, dot: 'bg-amber-500' },
-        ] as const).map(chip => {
-          const active = statusFilter === chip.key;
-          return (
-            <button
-              key={chip.key}
-              onClick={() => setStatusFilter(active ? 'all' : chip.key)}
-              aria-pressed={active}
-              className={`flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-semibold rounded-full border transition-colors whitespace-nowrap ${
-                active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-white' : chip.dot}`} />
-              {chip.label}
-              <span className={`min-w-[20px] px-1.5 py-0.5 rounded-full text-[10px] leading-none ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                {chip.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex justify-end -mt-1">
-            <CustomSelect
-              value={groupFilter}
-              onChange={val => setGroupFilter(val)}
-              options={[
-                { value: 'all', label: 'All Groups' },
-                { value: 'none', label: 'No Group' },
-                ...(() => {
-                  const myLicense = licenses.find(l => l.assignedUserEmail === userEmail);
-                  const myOrgId = myLicense?.assignedOrgId;
-                  const filteredGroups = myOrgId ? groups.filter(g => g.orgId === myOrgId) : groups;
-                  return filteredGroups.map(g => ({ value: g.id, label: g.name }));
-                })()
-              ]}
-              buttonClassName="text-xs py-2 px-3 min-w-[120px] rounded-full"
-            />
+      <div className="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-3">
+        {/* No "All" chip: tapping the active filter again clears it. */}
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          {([
+            { key: 'online', label: 'Online', count: stats[1].count, dot: 'bg-emerald-500' },
+            { key: 'offline', label: 'Offline', count: stats[2].count, dot: 'bg-rose-500' },
+            { key: 'warning', label: 'Warning', count: stats[3].count, dot: 'bg-amber-500' },
+          ] as const).map(chip => {
+            const active = statusFilter === chip.key;
+            return (
+              <button
+                key={chip.key}
+                onClick={() => setStatusFilter(active ? 'all' : chip.key)}
+                aria-pressed={active}
+                className={`flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-semibold rounded-full border transition-colors whitespace-nowrap ${
+                  active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-white' : chip.dot}`} />
+                {chip.label}
+                <span className={`min-w-[20px] px-1.5 py-0.5 rounded-full text-[10px] leading-none ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                  {chip.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
+        <div className="flex justify-end sm:shrink-0">
+              <CustomSelect
+                value={groupFilter}
+                onChange={val => setGroupFilter(val)}
+                options={[
+                  { value: 'all', label: 'All Groups' },
+                  { value: 'none', label: 'No Group' },
+                  ...(() => {
+                    const myLicense = licenses.find(l => l.assignedUserEmail === userEmail);
+                    const myOrgId = myLicense?.assignedOrgId;
+                    const filteredGroups = myOrgId ? groups.filter(g => g.orgId === myOrgId) : groups;
+                    return filteredGroups.map(g => ({ value: g.id, label: g.name }));
+                  })()
+                ]}
+                buttonClassName="text-xs py-2 px-3 min-w-[120px] rounded-full"
+              />
+          </div>
+      </div>
 
       {/* Grid View — compact cards; tapping one opens its details sheet. */}
       {viewMode === 'grid' && (
