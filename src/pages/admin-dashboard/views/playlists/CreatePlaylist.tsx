@@ -192,6 +192,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       setPlaylistName(play.name);
       setPlaylistDesc(play.slides ? '' : 'Loaded from older layout');
       setPlaylistOrientation(play.orientation || 'horizontal');
+      // The toggle itself isn't stored (PocketBase has no field for it) — only
+      // orientation is. Without this it always reopened switched off, and the
+      // next save silently wrote 'horizontal' back over a vertical playlist.
+      setAllowCustomOrientation(play.allowCustomOrientation ?? play.orientation === 'vertical');
       setPlaylistTransition(play.transition || 'fade');
       setPlaylistShuffle(play.shuffle || false);
       setPlaylistLoop(play.loop !== undefined ? play.loop : true);
@@ -994,8 +998,8 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                       }`}
                     >
                       {/* Left Block: Reorder & Media Details */}
-                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center lg:col-span-6 min-w-0 w-full">
-                        <div className="flex gap-3 items-center min-w-0 w-full sm:w-auto sm:flex-1">
+                      <div className="flex items-center lg:col-span-6 min-w-0 w-full">
+                        <div className="flex gap-3 items-center min-w-0 w-full">
                           {/* Reorder Navigator */}
                           <div className="flex flex-col gap-1 items-center justify-center flex-shrink-0">
                             <div className="text-gray-400 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-gray-100">
@@ -1029,13 +1033,13 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                                 {media.type === 'image' && 'Image'}
                                 {media.type !== 'image' && media.type}
                               </span>
-                              <span className="text-[9.5px] text-gray-400 font-semibold">{media.fileSize}</span>
+                              <span className="text-[9.5px] text-gray-400 font-semibold whitespace-nowrap">{media.fileSize}</span>
                             </div>
-                          </div>
-                        </div>
 
-                        {/* Duration input */}
-                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 sm:py-0.5 w-full sm:w-fit flex-shrink-0">
+                        {/* Duration input — sits under the name/badge rather than
+                            beside them: side by side in half a row, this fixed-width
+                            box squeezed the name to "I…" and slid over the badge. */}
+                        <div className="mt-2 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 w-fit">
                           <Clock size={12} className="text-blue-500 flex-shrink-0" />
                           <span className="text-[10px] text-gray-600 font-bold whitespace-nowrap">Play time:</span>
                           <input
@@ -1046,6 +1050,8 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                             className="w-10 border border-slate-200 rounded bg-white px-1 py-0.5 text-xs text-center font-bold outline-none focus:border-blue-500 text-gray-800"
                           />
                           <span className="text-[9.5px] text-slate-400 font-bold uppercase">sec</span>
+                        </div>
+                          </div>
                         </div>
                       </div>
 

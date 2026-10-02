@@ -1,9 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE } from '../config';
-import AdminDashboard from '../pages/admin-dashboard';
-import UserDashboard from '../pages/user-dashboard';
+// The dashboards are most of the app's code — loaded on demand (and
+// prefetched right after first paint, below) so startup only has to parse
+// the small login/boot shell, not ~2 MB of JavaScript, before anything shows.
+const loadAdminDashboard = () => import('../pages/admin-dashboard');
+const loadUserDashboard = () => import('../pages/user-dashboard');
+const AdminDashboard = lazy(loadAdminDashboard);
+const UserDashboard = lazy(loadUserDashboard);
 import logoImg from '../assets/bluestar-logo-on-light.png';
 import {
   Mail,
@@ -341,25 +346,39 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     navigate('/login');
   };
 
+  // Warm both dashboard chunks in the background once the shell is up, so by
+  // the time the boot animation ends (or the user signs in) they're ready.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      loadAdminDashboard().catch(() => {});
+      loadUserDashboard().catch(() => {});
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
   // If successfully logged in, render the premium admin dashboard panel
   if (loggedInUser) {
     if (loggedInUser.role === 'admin') {
       return (
-        <AdminDashboard
-          onLogout={handleLogout}
-          userEmail={loggedInUser.email}
-          onSwitchToClient={() => {
-            localStorage.setItem('signageos_user_role', 'client');
-            setLoggedInUser({ email: 'priya@demo.com', role: 'client' });
-          }}
-        />
+        <Suspense fallback={<DashboardLoading />}>
+          <AdminDashboard
+            onLogout={handleLogout}
+            userEmail={loggedInUser.email}
+            onSwitchToClient={() => {
+              localStorage.setItem('signageos_user_role', 'client');
+              setLoggedInUser({ email: 'priya@demo.com', role: 'client' });
+            }}
+          />
+        </Suspense>
       );
     } else {
       return (
-        <UserDashboard
-          onLogout={handleLogout}
-          userEmail={loggedInUser.email}
-        />
+        <Suspense fallback={<DashboardLoading />}>
+          <UserDashboard
+            onLogout={handleLogout}
+            userEmail={loggedInUser.email}
+          />
+        </Suspense>
       );
     }
   }
@@ -701,6 +720,15 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
           </p>
         </motion.div>
       </div>
+    </div>
+  );
+}
+
+/** Shown only for the brief moment a dashboard chunk is still arriving. */
+function DashboardLoading() {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-white">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
     </div>
   );
 }

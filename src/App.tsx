@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import AdminLogin from './components/AdminLogin';
-import DisplayClient from './pages/display/DisplayClient';
+const DisplayClient = lazy(() => import('./pages/display/DisplayClient'));
 import { ToastContainer } from './components/Toast';
 import BootScreen from './components/BootScreen';
 
@@ -43,7 +43,7 @@ export default function App() {
         <Route path="/login" element={<AdminLogin initialView="login" />} />
         <Route path="/forgot-password" element={<AdminLogin initialView="forgot" />} />
         <Route path="/reset-password" element={<AdminLogin initialView="reset" />} />
-        <Route path="/display" element={<DisplayClient />} />
+        <Route path="/display" element={<Suspense fallback={null}><DisplayClient /></Suspense>} />
         <Route path="/admin/*" element={<AdminLogin initialView="dashboard" />} />
         <Route path="/*" element={<AdminLogin initialView="dashboard" />} />
       </Routes>

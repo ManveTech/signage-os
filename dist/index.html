@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SignageOS Technologies</title>
+    <!-- Fonts load in the background (display=swap) instead of blocking first
+         paint; system fonts show until they arrive, or if offline. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Instrument+Serif:ital@0;1&family=Outfit:wght@300;400;500;600;700&display=swap" />
     <!-- Native app only: keep the page black from the very first paint until
          BootScreen hands off (it removes this class), so the white body
          background never flashes between the native splash and the boot
@@ -16,8 +22,8 @@
     <style>
       html.native-boot, html.native-boot body { background: #000 !important; }
     </style>
-    <script type="module" crossorigin src="/assets/index-CmZeqqUE.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CALtgMt4.css">
+    <script type="module" crossorigin src="/assets/index-B8VQXfyz.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-gndblVGt.css">
   </head>
   <body>
     <div id="root"></div>

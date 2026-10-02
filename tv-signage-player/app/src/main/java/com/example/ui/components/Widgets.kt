@@ -1,5 +1,9 @@
 package com.example.ui.components
 
+import androidx.compose.ui.res.painterResource
+
+import androidx.compose.foundation.Image
+
 import androidx.annotation.OptIn
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -65,20 +69,14 @@ fun SignageLogo(
             contentScale = ContentScale.Fit
         )
     } else {
-        // Default Bluestar Logo
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = modifier
-                .size(size)
-                .background(Color(0xFF2563EB), RoundedCornerShape(cornerRadius))
-        ) {
-            Text(
-                text = "SO",
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Black
-            )
-        }
+        // Default brand: the real BlueStar DigiTech kiosk "B" mark (it used to
+        // be a placeholder blue box reading "SO").
+        Image(
+            painter = painterResource(com.example.R.drawable.bluestar_icon),
+            contentDescription = "BlueStar DigiTech",
+            contentScale = ContentScale.Fit,
+            modifier = modifier.size(size)
+        )
     }
 }
 
