@@ -468,3 +468,32 @@ export async function sendBillingReminderEmail(opts: BillingReminderOptions): Pr
 
 /** Same layout as the billing reminder — used for other account notices (e.g. screen offline alerts). */
 export const sendNoticeEmail = sendBillingReminderEmail;
+
+/** Sends one real test email with the given settings (Integrations > Email > Send test). */
+export async function sendSmtpTestEmail(
+  cfg: { host: string; port: number; username: string; password: string; senderEmail: string; senderName: string },
+  to: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!cfg.host || !cfg.username) return { ok: false, error: 'Add the SMTP host and username first.' };
+  try {
+    const transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.port === 465,
+      auth: { user: cfg.username, pass: cfg.password },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000
+    } as any);
+    await transporter.sendMail({
+      from: `"${cfg.senderName}" <${cfg.senderEmail}>`,
+      to,
+      subject: 'Test email from your signage dashboard',
+      text: 'This is a test. If you can read it, email is set up correctly — password resets, billing reminders and screen alerts will be delivered.',
+      html: '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#1e293b"><p><b>Email is working.</b></p><p>Password resets, billing reminders and screen alerts from your signage dashboard will be delivered.</p></div>'
+    });
+    return { ok: true };
+  } catch (error: any) {
+    return { ok: false, error: error?.message || 'Sending failed' };
+  }
+}

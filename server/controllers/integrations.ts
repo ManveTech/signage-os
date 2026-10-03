@@ -1,7 +1,7 @@
 import { pb, ensurePBAuth } from '../db';
-import { getIntegration, saveIntegration, recordTestResult, IntegrationType } from '../integrationsStore';
+import { getIntegration, saveIntegration, recordTestResult, IntegrationType, getSmtpConfig, getCloudflareConfig, getGoogleOAuthConfig } from '../integrationsStore';
 import { testR2Connection } from '../r2';
-import { testSmtpConnection } from '../email';
+import { testSmtpConnection, sendSmtpTestEmail } from '../email';
 
 function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
@@ -43,8 +43,15 @@ export async function listIntegrations(req: any, res: any) {
   try {
     const results = await Promise.all(VALID_TYPES.map(async (type) => {
       const rec = await getIntegration(type);
+      // Which settings are actually live: the ones saved here, the server's
+      // environment variables (used when nothing is enabled here), or none.
+      const live = type === 'smtp' ? await getSmtpConfig()
+        : type === 'cloudflare' ? await getCloudflareConfig()
+        : await getGoogleOAuthConfig();
+      const source = rec?.enabled ? 'dashboard' : live.enabled ? 'environment' : 'off';
       return {
         type,
+        source,
         config: maskConfig(type, rec?.config || {}),
         enabled: rec?.enabled || false,
         lastTestStatus: rec?.lastTestStatus || 'untested',
@@ -161,5 +168,37 @@ export async function testIntegrationConnection(req: any, res: any) {
   } catch (error: any) {
     console.error(`Error testing ${type} integration:`, error);
     res.status(500).json({ ok: false, error: error.message || 'Error testing integration' });
+  }
+}
+
+/**
+ * POST /integrations/smtp/send-test — sends a real email to the signed-in
+ * admin with the settings on screen (saved or not), so "it works" means an
+ * email actually arrived, not just that the server accepted a login.
+ */
+export async function sendTestEmail(req: any, res: any) {
+  if (!isAdminUser(req.user)) {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
+  try {
+    const existing = await getIntegration('smtp');
+    const live = await getSmtpConfig();
+    const body = req.body?.config && typeof req.body.config === 'object' ? req.body.config : {};
+    const cfg: Record<string, any> = { ...(existing?.config || {}), ...body };
+    if (!cfg.password || cfg.password === SECRET_MASK) cfg.password = existing?.config?.password || '';
+    // Nothing saved here — fall back to what the server is using.
+    if (!cfg.host) Object.assign(cfg, { host: live.host, port: live.port, username: live.username, password: live.password, senderEmail: live.senderEmail, senderName: live.senderName });
+    const result = await sendSmtpTestEmail({
+      host: String(cfg.host || ''),
+      port: Number(cfg.port) || 587,
+      username: String(cfg.username || ''),
+      password: String(cfg.password || ''),
+      senderEmail: String(cfg.senderEmail || cfg.username || ''),
+      senderName: String(cfg.senderName || 'SignageOS')
+    }, req.user.email);
+    await recordTestResult('smtp', result.ok, result.error || '');
+    res.json({ ...result, to: req.user.email });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error.message || 'Could not send the test email' });
   }
 }
