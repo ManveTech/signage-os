@@ -73,7 +73,7 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'reports-screens': return <Reports activeTab="Screen Reports" />;
     case 'reports-media': return <Reports activeTab="Media Reports" />;
     case 'reports-logs': return <Reports activeTab="Device Logs" />;
-    case 'users': return <Users />;
+    case 'users': return <Users onNavigate={navigate} />;
     case 'licenses-management': return <Licenses activeTab="management" onNavigate={navigate} />;
     case 'licenses-payments': return <Licenses activeTab="payments" onNavigate={navigate} />;
     case 'licenses-expirations': return <Licenses activeTab="expirations" onNavigate={navigate} />;

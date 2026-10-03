@@ -15,7 +15,9 @@ const VALID_TYPES: IntegrationType[] = ['cloudflare', 'smtp', 'oauth_google'];
 // exposing the value again; a PUT that echoes the sentinel back unchanged
 // tells saveIntegration to keep whatever's already stored instead of
 // overwriting it with the literal placeholder string.
-const SECRET_FIELD: Record<IntegrationType, string> = {
+// ('business' holds the invoice billing details — no secrets, not listed
+// on the Integrations page; see controllers/businessDetails.ts.)
+const SECRET_FIELD: Partial<Record<IntegrationType, string>> = {
   cloudflare: 'secretAccessKey',
   smtp: 'password',
   oauth_google: 'clientSecret'
@@ -25,6 +27,7 @@ export const SECRET_MASK = '__SECRET_UNCHANGED__';
 function maskConfig(type: IntegrationType, config: Record<string, any>): Record<string, any> {
   const field = SECRET_FIELD[type];
   const masked = { ...config };
+  if (!field) return masked;
   if (masked[field]) {
     masked[field] = SECRET_MASK;
   } else {

@@ -4,7 +4,7 @@ import {
   SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_SENDER_EMAIL, SMTP_SENDER_NAME
 } from './config';
 
-export type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google';
+export type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'business';
 
 export interface IntegrationRecord {
   id: string;

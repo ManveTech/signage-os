@@ -157,10 +157,12 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
       return;
     }
 
-    if (tabId === 'licenses' && role === 'user') {
+    // Licensing has its own section switcher (Licenses / Expiring / Invoices /
+    // Payments), so the tab goes straight there instead of a submenu.
+    if (tabId === 'licenses') {
       setActivePopover(null);
       setSheetOpen(false);
-      onNavigate('license-billing');
+      onNavigate(role === 'user' ? 'license-billing' : 'licenses-management');
       return;
     }
 

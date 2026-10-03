@@ -44,6 +44,7 @@ export default function LicenseBillingView({ userEmail }: Props) {
     setPayments(licensingStore.getPayments());
     setInvoices(licensingStore.getInvoices());
     setBizDetails(licensingStore.getBusinessDetails());
+    licensingStore.fetchBusinessDetails().then(setBizDetails);
 
     // Calculate user screen count
     const storedScreens = localStorage.getItem('signageos_screens');

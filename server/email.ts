@@ -53,19 +53,24 @@ interface CredentialsMailOptions {
   userName: string;
   role: string;
   tempPassword: string;
+  /** Dashboard URL for the sign-in link (see utils/appUrl.ts). */
+  loginUrl?: string;
 }
 
 export async function sendCredentialsEmail({
   toEmail,
   userName,
   role,
-  tempPassword
+  tempPassword,
+  loginUrl: loginUrlParam
 }: CredentialsMailOptions): Promise<boolean> {
   const transporter = await getTransporter();
   const smtpCfg = await getSmtpConfig();
 
   const appName = "SignageOS Technologies";
-  const loginUrl = "http://localhost:3000";
+  // Was hard-coded to http://localhost:3000, so every welcome email linked
+  // clients to a page that doesn't exist for them.
+  const loginUrl = loginUrlParam || process.env.APP_URL || process.env.PUBLIC_URL || '';
 
   const emailHtml = `
     <!DOCTYPE html>
@@ -405,5 +410,58 @@ export async function sendPasswordResetEmail({
     console.log(`To: ${toEmail} | Reset Link: ${resetLink}`);
     console.log('==============================================================================\n');
     return false;
+  }
+}
+
+export type ReminderResult = 'sent' | 'not_configured' | 'failed';
+
+interface BillingReminderOptions {
+  toEmail: string;
+  clientName?: string;
+  subject: string;
+  headline: string;
+  message: string;
+  rows: [string, string][];
+  ctaLabel: string;
+  ctaUrl?: string;
+}
+
+/**
+ * Billing reminder (license renewal / unpaid invoice) sent from the admin's
+ * Licensing pages. Unlike the credentials email this reports when SMTP isn't
+ * set up instead of pretending it was sent, so the dashboard can say so.
+ */
+export async function sendBillingReminderEmail(opts: BillingReminderOptions): Promise<ReminderResult> {
+  const transporter = await getTransporter();
+  if (!transporter) return 'not_configured';
+  const smtpCfg = await getSmtpConfig();
+  const esc = (v: string) => v.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+  const rowsHtml = opts.rows.map(([k, v]) =>
+    `<tr><td style="padding:6px 0;color:#64748b;font-size:13px">${esc(k)}</td><td style="padding:6px 0;text-align:right;font-weight:600;font-size:13px;color:#0f172a">${esc(v)}</td></tr>`
+  ).join('');
+  const html = `<!DOCTYPE html><html><body style="margin:0;padding:24px;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;color:#1e293b">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+    <div style="padding:28px 24px 8px">
+      <h1 style="margin:0 0 8px;font-size:20px;color:#0f172a">${esc(opts.headline)}</h1>
+      <p style="margin:0;font-size:14px;line-height:1.6;color:#475569">Hi ${esc(opts.clientName || 'there')},<br>${esc(opts.message)}</p>
+    </div>
+    <div style="padding:8px 24px 0"><table style="width:100%;border-collapse:collapse;border-top:1px solid #f1f5f9">${rowsHtml}</table></div>
+    ${opts.ctaUrl ? `<div style="padding:24px;text-align:center"><a href="${esc(opts.ctaUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:14px">${esc(opts.ctaLabel)}</a></div>` : '<div style="height:24px"></div>'}
+  </div></body></html>`;
+  const text = `${opts.headline}\n\nHi ${opts.clientName || 'there'},\n${opts.message}\n\n${opts.rows.map(([k, v]) => `${k}: ${v}`).join('\n')}${opts.ctaUrl ? `\n\n${opts.ctaLabel}: ${opts.ctaUrl}` : ''}`;
+
+  try {
+    await transporter.sendMail({
+      from: `"${smtpCfg.senderName}" <${smtpCfg.senderEmail}>`,
+      to: opts.toEmail,
+      subject: opts.subject,
+      html,
+      text,
+    });
+    return 'sent';
+  } catch (error: any) {
+    console.error(`Failed to send billing reminder to ${opts.toEmail}:`, error.message);
+    return 'failed';
   }
 }

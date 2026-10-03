@@ -2,6 +2,7 @@ import PocketBase from 'pocketbase';
 import { pb, ensurePBAuth } from '../db';
 import { PB_URL } from '../config';
 import { sendCredentialsEmail } from '../email';
+import { appBaseUrl } from '../utils/appUrl';
 import { logAudit, getClientIp } from '../services/auditLog';
 
 function isAdminUser(user: any): boolean {
@@ -168,7 +169,8 @@ export async function createUser(req: any, res: any) {
         toEmail: record.email,
         userName: record.name,
         role: record.role,
-        tempPassword: userPassword
+        tempPassword: userPassword,
+        loginUrl: appBaseUrl(req)
       });
     }
 

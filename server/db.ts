@@ -1293,6 +1293,33 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update support_docs collection schema:', docsSchemaErr.message);
     }
 
+    // Helpdesk conversation thread on tickets (admin <-> client replies), and
+    // the "business" settings row that holds the invoice billing details
+    // (previously saved only in the admin's own browser).
+    try {
+      const tickets: any = await pb.collections.getOne('tickets');
+      const tFields = tickets.fields || [];
+      if (!tFields.some((f: any) => f.name === 'messages')) {
+        tFields.push({ id: 'jsonticketmessagesid', name: 'messages', type: 'json', required: false, system: false, hidden: false, presentable: false, maxSize: 0 });
+        tickets.fields = tFields;
+        await pb.collections.update('tickets', tickets);
+        console.log('Added messages field to tickets collection');
+      }
+    } catch (ticketsErr: any) {
+      console.warn('Failed to ensure tickets.messages field:', ticketsErr.message);
+    }
+    try {
+      const integrations: any = await pb.collections.getOne('integrations');
+      const typeField = (integrations.fields || []).find((f: any) => f.name === 'type');
+      if (typeField && Array.isArray(typeField.values) && !typeField.values.includes('business')) {
+        typeField.values.push('business');
+        await pb.collections.update('integrations', integrations);
+        console.log('Added "business" to integrations.type values');
+      }
+    } catch (bizErr: any) {
+      console.warn('Failed to add business integration type:', bizErr.message);
+    }
+
     // Ensure organizations collection schema is up to date
     try {
       console.log('Ensuring organizations collection schema is up to date...');
@@ -1383,19 +1410,18 @@ Notes:
 - Private videos not supported
 - Age restricted videos may not play
 - Deleted videos are skipped automatically`,
-          youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
           images: [],
           createdDate: new Date().toISOString().split('T')[0]
         });
         console.log('YouTube tutorial seeded successfully in support_docs');
       } else {
+        // Earlier versions seeded this guide with a placeholder video that
+        // was actually a music video (dQw4w9WgXcQ) and re-added it on every
+        // boot. Clear it; an admin can attach a real tutorial video.
         const existing = docsList.items[0];
-        if (!existing.youtubeUrl || existing.youtubeUrl === '') {
-          console.log('Updating existing Using YouTube Videos documentation to include youtubeUrl...');
-          await pb.collection('support_docs').update(existing.id, {
-            youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-          });
-          console.log('YouTube tutorial updated successfully in support_docs');
+        if ((existing.youtubeUrl || '').includes('dQw4w9WgXcQ')) {
+          await pb.collection('support_docs').update(existing.id, { youtubeUrl: '' });
+          console.log('Removed placeholder video from Using YouTube Videos documentation');
         }
       }
     } catch (docErr: any) {

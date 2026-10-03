@@ -1,4 +1,5 @@
-import { pushToDatabase, generatePocketBaseId, PushResult } from './syncHelper';
+import { pushToDatabase, generatePocketBaseId, PushResult, getHeaders } from './syncHelper';
+import { API_BASE } from '../config';
 
 export interface License {
   id: string;
@@ -49,17 +50,18 @@ export interface BusinessDetails {
   logoUrl: string;
   contactEmail: string;
   contactPhone: string;
-  razorpayKeyId?: string;
 }
 
+// Empty until the admin fills in Licensing → Invoices → Billing details.
+// (These used to be demo values — "123 Demo Street", a sample GSTIN — which
+// is what every client saw on their invoices.)
 const DEFAULT_BUSINESS_DETAILS: BusinessDetails = {
-  name: "SignageOS Technologies Ltd.",
-  address: "123 Demo Street, Bengaluru, Karnataka - 560001",
-  gstNumber: "29AAAAA1111A1Z1",
-  logoUrl: "",
-  contactEmail: "billing@demo.com",
-  contactPhone: "+91 99999 99999",
-  razorpayKeyId: "rzp_live_demo83920194"
+  name: '',
+  address: '',
+  gstNumber: '',
+  logoUrl: '',
+  contactEmail: '',
+  contactPhone: ''
 };
 
 const INITIAL_LICENSES: License[] = [];
@@ -158,17 +160,49 @@ export const licensingStore = {
     pushToDatabase('invoices', newInvoice.id, newInvoice, 'POST');
   },
 
+  /** Last known billing details (cached copy of GET /business-details). */
   getBusinessDetails(): BusinessDetails {
-    const data = localStorage.getItem('signageos_business_details');
-    if (!data) {
-      localStorage.setItem('signageos_business_details', JSON.stringify(DEFAULT_BUSINESS_DETAILS));
+    try {
+      const data = localStorage.getItem('signageos_business_details');
+      return data ? { ...DEFAULT_BUSINESS_DETAILS, ...JSON.parse(data) } : DEFAULT_BUSINESS_DETAILS;
+    } catch {
       return DEFAULT_BUSINESS_DETAILS;
     }
-    return JSON.parse(data);
   },
 
-  saveBusinessDetails(details: BusinessDetails) {
-    localStorage.setItem('signageos_business_details', JSON.stringify(details));
+  /**
+   * Billing details from the server — shared by the admin and every client.
+   * They used to be saved only in the admin's own browser. Falls back to the
+   * cached copy when offline.
+   */
+  async fetchBusinessDetails(): Promise<BusinessDetails> {
+    try {
+      const res = await fetch(`${API_BASE}/business-details`, { headers: getHeaders() });
+      if (res.ok) {
+        const details = { ...DEFAULT_BUSINESS_DETAILS, ...(await res.json()) };
+        localStorage.setItem('signageos_business_details', JSON.stringify(details));
+        return details;
+      }
+    } catch { /* offline — use cache */ }
+    return this.getBusinessDetails();
+  },
+
+  async saveBusinessDetails(details: BusinessDetails): Promise<PushResult> {
+    try {
+      const res = await fetch(`${API_BASE}/business-details`, {
+        method: 'PUT',
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(details)
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return { ok: false, status: res.status, error: body.message || body.error || `Request failed (${res.status})` };
+      }
+      localStorage.setItem('signageos_business_details', JSON.stringify(details));
+      return { ok: true, status: res.status, data: details };
+    } catch {
+      return { ok: false, status: 0, error: "Can't reach the server" };
+    }
   },
 
   getUserLicense(userEmail: string): License | null {

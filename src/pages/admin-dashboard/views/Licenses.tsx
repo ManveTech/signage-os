@@ -1,1321 +1,902 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Key, Plus, Clock, UserPlus, Trash2, Edit2, ShieldAlert, CheckCircle,
-  XCircle, Receipt, FileText, Send, Building, ShieldCheck, Mail, MapPin,
-  Phone, Globe, Image as ImageIcon, CreditCard
+  Key, Plus, Search, Edit2, Trash2, Send, Receipt, CreditCard, Building, CheckCircle,
+  Image as ImageIcon, Video, Palette, Mail, AlertTriangle
 } from 'lucide-react';
 import { API_BASE } from '../../../config';
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
 import { syncCollection } from '../../../lib/syncHelper';
+import { getAuthToken } from '../../../lib/authStorage';
+import { apiPost } from '../../../lib/screenActions';
 import { toast } from '../../../components/Toast';
 import CustomSelect from '../../../components/CustomSelect';
-import { getAuthToken } from '../../../lib/authStorage';
+import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
+import ConfirmDialog from '../../../components/screens/ConfirmDialog';
+import {
+  licenseState, LicenseStateKey, daysUntil, formatDate, formatInr, relativeDays, defaultExpiry, planLabel
+} from '../../../components/licenses/licenseStatus';
 
-type Tab = 'management' | 'payments' | 'expirations' | 'invoices';
+type Tab = 'management' | 'expirations' | 'invoices' | 'payments';
 
-const statusColors: Record<License['status'], string> = {
-  active: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  expired: 'bg-rose-50 text-rose-700 border-rose-100',
-  pending_payment: 'bg-amber-50 text-amber-700 border-amber-100',
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'management', label: 'Licenses' },
+  { key: 'expirations', label: 'Expiring' },
+  { key: 'invoices', label: 'Invoices' },
+  { key: 'payments', label: 'Payments' },
+];
+
+const inputCls = 'w-full h-11 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white';
+const labelCls = 'block text-xs font-medium text-slate-600 mb-1.5';
+
+function Toggle({ checked, onChange, label, hint, icon }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string; icon: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50"
+      aria-pressed={checked}
+    >
+      <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">{icon}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-slate-900">{label}</span>
+        <span className="block text-xs text-slate-500">{hint}</span>
+      </span>
+      <span className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${checked ? 'bg-blue-600' : 'bg-slate-200'}`}>
+        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${checked ? 'left-[18px]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  );
+}
+
+type FormState = {
+  name: string;
+  price: number;
+  tenure: 'monthly' | 'yearly';
+  email: string;
+  expiry: string;
+  expiryTouched: boolean;
+  storage: number;
+  devices: number;
+  whiteLabel: boolean;
+  videoConferencing: boolean;
+  status: License['status'];
 };
+
+const emptyForm = (): FormState => ({
+  name: '', price: 1000, tenure: 'monthly', email: '', expiry: defaultExpiry('monthly'), expiryTouched: false,
+  storage: 5, devices: 5, whiteLabel: false, videoConferencing: false, status: 'active'
+});
 
 export default function Licenses({ activeTab: initTab = 'management', onNavigate }: { activeTab?: Tab; onNavigate?: (view: string) => void }) {
   const [tab, setTab] = useState<Tab>(initTab);
+  const [licenses, setLicenses] = useState<License[]>(() => licensingStore.getLicenses());
+  const [payments, setPayments] = useState<PaymentRecord[]>(() => licensingStore.getPayments());
+  const [invoices, setInvoices] = useState<Invoice[]>(() => licensingStore.getInvoices());
+  const [users, setUsers] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_users') || '[]'));
+  const [organizations, setOrganizations] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_organizations') || '[]'));
+  const [screens, setScreens] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_screens') || '[]'));
 
-  const handleTabChange = (newTab: Tab) => {
-    setTab(newTab);
-    if (onNavigate) {
-      onNavigate(`licenses-${newTab}`);
-    }
+  const [search, setSearch] = useState('');
+  const [stateFilter, setStateFilter] = useState<LicenseStateKey | 'all'>('all');
+  const [invoiceFilter, setInvoiceFilter] = useState<'unpaid' | 'paid' | 'all'>('all');
+
+  const [openLicenseId, setOpenLicenseId] = useState<string | null>(null);
+  const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
+  const [openPaymentId, setOpenPaymentId] = useState<string | null>(null);
+  const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null);
+  const [editing, setEditing] = useState<License | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [revokeTarget, setRevokeTarget] = useState<License | null>(null);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [biz, setBiz] = useState<BusinessDetails>(() => licensingStore.getBusinessDetails());
+  const [sending, setSending] = useState<string | null>(null);
+
+  useEffect(() => { setTab(initTab); }, [initTab]);
+
+  const load = () => {
+    setLicenses(licensingStore.getLicenses());
+    setInvoices(licensingStore.getInvoices());
+    setUsers(JSON.parse(localStorage.getItem('signageos_users') || '[]'));
+    setOrganizations(JSON.parse(localStorage.getItem('signageos_organizations') || '[]'));
+    setScreens(JSON.parse(localStorage.getItem('signageos_screens') || '[]'));
   };
 
-  const [licenses, setLicenses] = useState<License[]>([]);
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [businessDetails, setBusinessDetails] = useState<BusinessDetails | null>(null);
-  const [users, setUsers] = useState<any[]>([]);
-  const [organizations, setOrganizations] = useState<any[]>([]);
-
-  // Modal states
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [currentLicense, setCurrentLicense] = useState<License | null>(null);
-
-  // Form states (Create)
-  const [newLicId, setNewLicId] = useState('');
-  const [newLicName, setNewLicName] = useState('');
-  const [newLicPrice, setNewLicPrice] = useState(1000);
-  const [newLicTenure, setNewLicTenure] = useState<'monthly' | 'yearly'>('monthly');
-  const [newLicOrg, setNewLicOrg] = useState('');
-  const [newLicUserEmail, setNewLicUserEmail] = useState('');
-  const [newLicExpiry, setNewLicExpiry] = useState('');
-  const [newLicStorage, setNewLicStorage] = useState(5);
-  const [newLicDevice, setNewLicDevice] = useState(5);
-  const [newLicWhiteLabel, setNewLicWhiteLabel] = useState(false);
-  const [newLicVideoConferencing, setNewLicVideoConferencing] = useState(false);
-
-  // Form states (Edit)
-  const [editLicName, setEditLicName] = useState('');
-  const [editLicPrice, setEditLicPrice] = useState(1000);
-  const [editLicTenure, setEditLicTenure] = useState<'monthly' | 'yearly'>('monthly');
-  const [editLicOrg, setEditLicOrg] = useState('');
-  const [editLicUserEmail, setEditLicUserEmail] = useState('');
-  const [editLicExpiry, setEditLicExpiry] = useState('');
-  const [editLicStatus, setEditLicStatus] = useState<License['status']>('active');
-  const [editLicStorage, setEditLicStorage] = useState(5);
-  const [editLicDevice, setEditLicDevice] = useState(5);
-  const [editLicWhiteLabel, setEditLicWhiteLabel] = useState(false);
-  const [editLicVideoConferencing, setEditLicVideoConferencing] = useState(false);
-
-  // Business settings state
-  const [bizName, setBizName] = useState('');
-  const [bizAddress, setBizAddress] = useState('');
-  const [bizGst, setBizGst] = useState('');
-  const [bizLogo, setBizLogo] = useState('');
-  const [bizEmail, setBizEmail] = useState('');
-  const [bizPhone, setBizPhone] = useState('');
-  const [bizRzpKey, setBizRzpKey] = useState('');
-
-  // Toast feedback
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
   useEffect(() => {
-    setTab(initTab);
-  }, [initTab]);
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    // Sync from server first so localStorage is up to date
-    await Promise.all([
+    Promise.all([
       syncCollection('licenses', 'signageos_licenses'),
-      syncCollection('payments', 'signageos_payments'),
       syncCollection('invoices', 'signageos_invoices'),
       syncCollection('users', 'signageos_users'),
       syncCollection('organizations', 'signageos_organizations'),
-    ]);
+      syncCollection('screens', 'signageos_screens'),
+    ]).finally(load);
 
-    setLicenses(licensingStore.getLicenses());
-    
-    // Fetch payments history directly from backend webhook payments API
-    try {
-      const token = getAuthToken();
-      const res = await fetch(`${API_BASE}/payments/history`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.items && Array.isArray(data.items) && data.items.length > 0) {
-          setPayments(data.items);
-        } else {
-          setPayments(licensingStore.getPayments());
+    // Payments come from the payment history API (written by the Razorpay
+    // verify/webhook handlers); the local list is only a fallback.
+    (async () => {
+      try {
+        const token = getAuthToken();
+        const res = await fetch(`${API_BASE}/payments/history`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.items) && data.items.length > 0) { setPayments(data.items); return; }
         }
-      } else {
-        setPayments(licensingStore.getPayments());
-      }
-    } catch (_) {
+      } catch { /* fall back to local */ }
       setPayments(licensingStore.getPayments());
-    }
+    })();
+  }, []);
 
-    setInvoices(licensingStore.getInvoices());
-    const biz = licensingStore.getBusinessDetails();
-    setBusinessDetails(biz);
-    if (biz) {
-      setBizName(biz.name);
-      setBizAddress(biz.address);
-      setBizGst(biz.gstNumber);
-      setBizLogo(biz.logoUrl);
-      setBizEmail(biz.contactEmail);
-      setBizPhone(biz.contactPhone);
-      setBizRzpKey(biz.razorpayKeyId || '');
-    }
-
-    const storedUsers = localStorage.getItem('signageos_users');
-    setUsers(storedUsers ? JSON.parse(storedUsers) : []);
-    const storedOrgs = localStorage.getItem('signageos_organizations');
-    setOrganizations(storedOrgs ? JSON.parse(storedOrgs) : []);
+  const goTab = (t: Tab) => {
+    setTab(t);
+    onNavigate?.(`licenses-${t}`);
   };
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+  const clients = users.filter(u => u.role !== 'admin' && u.role !== 'super_admin');
+  const clientName = (email?: string) => clients.find(u => u.email === email)?.name;
+  const screensUsed = (email?: string) => (email ? screens.filter(s => s.assignedToUserEmail === email && s.status !== 'pairing' && s.status !== 'unlinked').length : 0);
+  const orgFor = (email: string) => {
+    const user = clients.find(u => u.email === email);
+    const org = organizations.find(o => (o.email || '').toLowerCase() === email.toLowerCase())
+      || (user?.company ? organizations.find(o => o.name === user.company) : undefined);
+    return { id: org?.id as string | undefined, name: (org?.name || user?.company || undefined) as string | undefined };
   };
 
-  const handleCreateLicense = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newLicId || !newLicName) {
-      toast.warning('Please fill out ID and Name');
-      return;
+  // ── Reminders (real emails, see server/controllers/reminders.ts) ──────────
+  const remind = async (body: { licenseId?: string; invoiceId?: string }, key: string) => {
+    setSending(key);
+    try {
+      const res = await apiPost('/payments/remind', body);
+      toast.success(`Reminder emailed to ${res.to}`);
+    } catch (e: any) {
+      toast.error(e.message || 'Could not send the reminder');
+    } finally {
+      setSending(null);
     }
+  };
 
-    const org = organizations.find(o => o.id === newLicOrg);
-    const user = users.find(u => u.email === newLicUserEmail);
+  // ── Create / edit ─────────────────────────────────────────────────────────
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm());
+    setFormMode('create');
+  };
 
-    const generatedExpiry = newLicExpiry || (newLicTenure === 'monthly' ? '2026-07-02' : '2027-06-02');
-
-    licensingStore.createLicense({
-      id: newLicId.toUpperCase(),
-      name: newLicName,
-      price: Number(newLicPrice),
-      tenure: newLicTenure,
-      assignedOrgId: org?.id,
-      assignedOrgName: org?.name,
-      assignedUserEmail: newLicUserEmail || user?.email,
-      expiryDate: generatedExpiry,
-      status: newLicUserEmail ? 'pending_payment' : 'active',
-      storageLimit: Number(newLicStorage),
-      deviceLimit: Number(newLicDevice),
-      whiteLabel: newLicWhiteLabel,
-      enableVideoConferencing: newLicVideoConferencing
+  const openEdit = (lic: License) => {
+    setEditing(lic);
+    setForm({
+      name: lic.name,
+      price: lic.price,
+      tenure: lic.tenure,
+      email: lic.assignedUserEmail || '',
+      expiry: lic.expiryDate || defaultExpiry(lic.tenure),
+      expiryTouched: true,
+      storage: lic.storageLimit || 5,
+      devices: lic.deviceLimit || 5,
+      whiteLabel: !!lic.whiteLabel,
+      videoConferencing: !!lic.enableVideoConferencing,
+      status: lic.status,
     });
-
-    // Auto-generate unpaid invoice if assigned to a user
-    if (newLicUserEmail) {
-      const clientName = user?.name || org?.adminName || 'Valued Client';
-      const amountWithGst = Math.round(Number(newLicPrice) * 1.18);
-      licensingStore.addInvoice({
-        id: `INV-AUTO-${Math.floor(1000 + Math.random() * 9000)}`,
-        licenseId: newLicId.toUpperCase(),
-        licenseName: newLicName,
-        clientName,
-        clientEmail: newLicUserEmail,
-        amount: amountWithGst,
-        dueDate: generatedExpiry,
-        status: 'unpaid',
-        issuedDate: new Date().toISOString().split('T')[0]
-      });
-    }
-
-    showToast(`License ${newLicId.toUpperCase()} created successfully!`);
-    setIsCreateModalOpen(false);
-    // Reset fields
-    setNewLicId('');
-    setNewLicName('');
-    setNewLicPrice(1000);
-    setNewLicTenure('monthly');
-    setNewLicOrg('');
-    setNewLicUserEmail('');
-    setNewLicExpiry('');
-    setNewLicStorage(5);
-    setNewLicDevice(5);
-    setNewLicWhiteLabel(false);
-    setNewLicVideoConferencing(false);
-    loadData();
+    setFormMode('edit');
   };
 
-  const openEditModal = (lic: License) => {
-    setCurrentLicense(lic);
-    setEditLicName(lic.name);
-    setEditLicPrice(lic.price);
-    setEditLicTenure(lic.tenure);
-    setEditLicOrg(lic.assignedOrgId || '');
-    setEditLicUserEmail(lic.assignedUserEmail || '');
-    setEditLicExpiry(lic.expiryDate);
-    setEditLicStatus(lic.status);
-    setEditLicStorage(lic.storageLimit || 5);
-    setEditLicDevice(lic.deviceLimit || 5);
-    setEditLicWhiteLabel(lic.whiteLabel || false);
-    setEditLicVideoConferencing((lic as any).enableVideoConferencing || false);
-    setIsEditModalOpen(true);
-  };
+  const setF = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm(f => ({ ...f, [key]: value }));
 
-  const handleEditLicense = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentLicense) return;
+  const pricingChanged = !!editing && (Number(form.price) !== editing.price || form.tenure !== editing.tenure);
 
-    const org = organizations.find(o => o.id === editLicOrg);
-    const user = users.find(u => u.email === editLicUserEmail);
-
-    // If price or tenure changes, it's a "rework" - we update the checkout status to pending payment
-    const pricingChanged = editLicPrice !== currentLicense.price || editLicTenure !== currentLicense.tenure;
-    let statusUpdate = editLicStatus;
-
-    if (pricingChanged) {
-      statusUpdate = 'pending_payment';
-      // Create a fresh unpaid invoice for the new pricing structure
-      const clientName = user?.name || org?.adminName || 'Valued Client';
-      const amountWithGst = Math.round(Number(editLicPrice) * 1.18);
-      licensingStore.addInvoice({
-        id: `INV-REWORK-${Math.floor(1000 + Math.random() * 9000)}`,
-        licenseId: currentLicense.id,
-        licenseName: editLicName,
-        clientName,
-        clientEmail: editLicUserEmail || currentLicense.assignedUserEmail || 'billing@client.com',
-        amount: amountWithGst,
-        dueDate: editLicExpiry,
-        status: 'unpaid',
-        issuedDate: new Date().toISOString().split('T')[0]
-      });
-      showToast(`Pricing updated! License set to pending payment and new invoice sent.`);
-    } else {
-      showToast(`License ${currentLicense.id} updated successfully!`);
-    }
-
-    licensingStore.updateLicense(currentLicense.id, {
-      name: editLicName,
-      price: Number(editLicPrice),
-      tenure: editLicTenure,
-      assignedOrgId: org?.id,
-      assignedOrgName: org?.name,
-      assignedUserEmail: editLicUserEmail,
-      expiryDate: editLicExpiry,
-      status: statusUpdate,
-      storageLimit: Number(editLicStorage),
-      deviceLimit: Number(editLicDevice),
-      whiteLabel: editLicWhiteLabel,
-      enableVideoConferencing: editLicVideoConferencing
+  const issueInvoice = (licenseId: string, email: string) => {
+    const user = clients.find(u => u.email === email);
+    licensingStore.addInvoice({
+      id: '',
+      licenseId,
+      licenseName: form.name,
+      clientName: user?.name || orgFor(email).name || 'Client',
+      clientEmail: email,
+      amount: Math.round(Number(form.price) * 1.18),
+      dueDate: form.expiry,
+      status: 'unpaid',
+      issuedDate: new Date().toISOString().split('T')[0],
     });
-
-    setIsEditModalOpen(false);
-    loadData();
   };
 
-  const handleDeleteLicense = (id: string) => {
-    if (confirm(`Are you sure you want to delete/revoke License ${id}?`)) {
-      licensingStore.deleteLicense(id);
-      showToast(`License ${id} revoked.`);
-      loadData();
+  const saveForm = async () => {
+    if (!form.name.trim()) { toast.warning('Give the license a name'); return; }
+    if (!(Number(form.price) >= 0)) { toast.warning('Enter a valid price'); return; }
+    if (!form.expiry) { toast.warning('Pick an expiry date'); return; }
+    const org = form.email ? orgFor(form.email) : { id: undefined, name: undefined };
+
+    if (formMode === 'create') {
+      // The typed "License ID" used to be discarded (records get a database
+      // id) while the auto-invoice pointed at the typed one, so invoices never
+      // matched their license. The real id is used for both now.
+      const created = licensingStore.createLicense({
+        id: '',
+        name: form.name.trim(),
+        price: Number(form.price),
+        tenure: form.tenure,
+        assignedOrgId: org.id,
+        assignedOrgName: org.name,
+        assignedUserEmail: form.email || undefined,
+        expiryDate: form.expiry,
+        status: form.email ? 'pending_payment' : 'active',
+        storageLimit: Number(form.storage),
+        deviceLimit: Number(form.devices),
+        whiteLabel: form.whiteLabel,
+        enableVideoConferencing: form.videoConferencing,
+      });
+      if (form.email) issueInvoice(created.id, form.email);
+      toast.success(form.email ? `License created — invoice issued to ${form.email}` : 'License added to the pool');
+    } else if (editing) {
+      // Changing the price or billing period is a new deal: the license waits
+      // for payment and a fresh invoice is issued.
+      const status = pricingChanged && form.email ? 'pending_payment' : form.status;
+      const res = await licensingStore.updateLicense(editing.id, {
+        name: form.name.trim(),
+        price: Number(form.price),
+        tenure: form.tenure,
+        assignedOrgId: org.id,
+        assignedOrgName: org.name,
+        assignedUserEmail: form.email || undefined,
+        expiryDate: form.expiry,
+        status,
+        storageLimit: Number(form.storage),
+        deviceLimit: Number(form.devices),
+        whiteLabel: form.whiteLabel,
+        enableVideoConferencing: form.videoConferencing,
+      });
+      if (res.ok === false) {
+        toast.error(`Couldn't save: ${res.error || 'please try again'}`);
+        return;
+      }
+      if (pricingChanged && form.email) {
+        issueInvoice(editing.id, form.email);
+        toast.success('Saved — new pricing sent as an invoice');
+      } else {
+        toast.success('License updated');
+      }
     }
+    setFormMode(null);
+    load();
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setBizLogo(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+  const revoke = (lic: License) => {
+    licensingStore.deleteLicense(lic.id);
+    toast.success(`"${lic.name}" revoked`);
+    setRevokeTarget(null);
+    setOpenLicenseId(null);
+    load();
   };
 
-  const handleSaveBusinessSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    const details: BusinessDetails = {
-      name: bizName,
-      address: bizAddress,
-      gstNumber: bizGst,
-      logoUrl: bizLogo,
-      contactEmail: bizEmail,
-      contactPhone: bizPhone,
-      razorpayKeyId: bizRzpKey
-    };
-    licensingStore.saveBusinessDetails(details);
-    showToast("Business & billing settings updated successfully!");
-    loadData();
+  const markInvoicePaid = async (inv: Invoice) => {
+    const res = await licensingStore.updateInvoiceStatus(inv.id, 'paid');
+    if (res.ok === false) { toast.error(`Couldn't update: ${res.error || 'please try again'}`); return; }
+    toast.success('Invoice marked as paid');
+    setOpenInvoiceId(null);
+    load();
   };
 
-  const sendReminder = (email: string, licenseId: string, itemType: 'license' | 'invoice', extraInfo = '') => {
-    showToast(`Billing alert: Automated ${itemType} email sent to ${email} for ${licenseId}!`);
+  // ── Derived lists ─────────────────────────────────────────────────────────
+  const q = search.trim().toLowerCase();
+  const withState = licenses.map(lic => ({ lic, state: licenseState(lic) }));
+  const stateCounts = (key: LicenseStateKey) => withState.filter(x => x.state.key === key).length;
+  const visibleLicenses = withState
+    .filter(x => stateFilter === 'all' || x.state.key === stateFilter)
+    .filter(x => !q || [x.lic.name, x.lic.assignedOrgName, x.lic.assignedUserEmail, clientName(x.lic.assignedUserEmail)]
+      .some(v => (v || '').toLowerCase().includes(q)));
+
+  const expiringRows = licenses
+    .filter(l => l.assignedUserEmail)
+    .map(lic => ({ lic, days: daysUntil(lic.expiryDate) }))
+    .filter((x): x is { lic: License; days: number } => x.days !== null && x.days <= 30)
+    .sort((a, b) => a.days - b.days);
+  const expiringGroups = [
+    { title: 'Expired', rows: expiringRows.filter(x => x.days < 0) },
+    { title: 'This week', rows: expiringRows.filter(x => x.days >= 0 && x.days <= 7) },
+    { title: 'Within 30 days', rows: expiringRows.filter(x => x.days > 7) },
+  ].filter(g => g.rows.length > 0);
+
+  const unpaidInvoices = invoices.filter(i => i.status === 'unpaid');
+  const visibleInvoices = invoices
+    .filter(i => invoiceFilter === 'all' || i.status === invoiceFilter)
+    .filter(i => !q || [i.clientName, i.clientEmail, i.licenseName].some(v => (v || '').toLowerCase().includes(q)));
+
+  const visiblePayments = payments.filter(p => !q || [p.clientName, p.clientEmail, p.licenseName, p.razorpayPaymentId].some(v => (v || '').toLowerCase().includes(q)));
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const collectedThisMonth = payments.filter(p => (p.paymentDate || '').startsWith(monthKey)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const collectedTotal = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+  const tabCount: Record<Tab, number> = {
+    management: licenses.length,
+    expirations: expiringRows.length,
+    invoices: unpaidInvoices.length,
+    payments: payments.length,
   };
+
+  const openLicense = openLicenseId ? licenses.find(l => l.id === openLicenseId) : null;
+  const openInvoice = openInvoiceId ? invoices.find(i => i.id === openInvoiceId) : null;
+  const openPayment = openPaymentId ? payments.find(p => p.id === openPaymentId) : null;
+
+  const pill = (text: string, cls: string) => (
+    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>{text}</span>
+  );
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 text-left relative">
-      {/* Toast Alert */}
-      {toastMessage && (
-        <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-slate-700 animate-slideIn z-50">
-          <CheckCircle size={16} className="text-emerald-400" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-ink-950 tracking-tight">Licensing</h1>
-          <p className="text-xs text-slate-500 font-semibold mt-1">Manage billing schedules, Razorpay invoices, and client access limits</p>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">Licensing</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Plans, renewals, invoices and payments for your clients</p>
         </div>
-        <button
-          onClick={() => {
-            const randomDigits = Math.floor(1000 + Math.random() * 9000);
-            setNewLicId(`LN-BLST-${randomDigits}`);
-            setIsCreateModalOpen(true);
-          }}
-          className="shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-150 shadow-md shadow-blue-600/10 cursor-pointer"
-        >
-          <Plus size={15} /> Create New License
-        </button>
+        <div className="flex items-center gap-2">
+          {tab === 'invoices' && (
+            <button
+              onClick={() => { setBiz(licensingStore.getBusinessDetails()); setBillingOpen(true); licensingStore.fetchBusinessDetails().then(setBiz); }}
+              className="flex items-center gap-2 h-10 px-4 border border-slate-200 bg-white rounded-xl text-sm font-medium text-slate-700"
+            >
+              <Building size={15} /> Billing details
+            </button>
+          )}
+          <button onClick={openCreate} className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium">
+            <Plus size={16} /> New license
+          </button>
+        </div>
       </div>
 
+      {/* Section switcher */}
+      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl">
+        {TABS.map(t => {
+          const active = tab === t.key;
+          const count = tabCount[t.key];
+          const alert = (t.key === 'expirations' || t.key === 'invoices') && count > 0;
+          return (
+            <button
+              key={t.key}
+              onClick={() => goTab(t.key)}
+              className={`flex items-center justify-center gap-1 h-9 px-1 rounded-lg text-[13px] sm:text-sm font-medium transition-colors whitespace-nowrap ${
+                active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label}
+              {count > 0 && (
+                <span className={`min-w-[18px] px-1.5 py-0.5 rounded-full text-[10px] leading-none ${
+                  alert ? 'bg-amber-100 text-amber-700' : 'hidden sm:inline bg-slate-200 text-slate-600'
+                }`}>{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
+      {(tab !== 'expirations') && (
+        <div className="relative">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={tab === 'management' ? 'Search licenses or clients' : tab === 'invoices' ? 'Search invoices' : 'Search payments'}
+            className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
+          />
+        </div>
+      )}
 
-      {/* 1. LICENSE MANAGEMENT */}
+      {/* ── LICENSES ─────────────────────────────────────────────────────── */}
       {tab === 'management' && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Active License Pool</span>
-            <span className="text-xs font-bold text-slate-400">{licenses.length} Total Licenses</span>
-          </div>
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="px-5 py-3.5">License ID</th>
-                  <th className="px-5 py-3.5">Title</th>
-                  <th className="px-5 py-3.5">Tenure / Pricing</th>
-                  <th className="px-5 py-3.5">Assigned To</th>
-                  <th className="px-5 py-3.5">Limits</th>
-                  <th className="px-5 py-3.5">Expiry Date</th>
-                  <th className="px-5 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-xs">
-                {licenses.map(lic => (
-                  <tr key={lic.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="px-5 py-4 font-mono font-bold text-slate-900">{lic.id}</td>
-                    <td className="px-5 py-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-slate-800">{lic.name}</p>
-                          {lic.whiteLabel && (
-                            <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-[9px] font-bold uppercase tracking-wider">
-                              White Label
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Created: {lic.createdAt}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-extrabold text-slate-900">₹{lic.price.toLocaleString()}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-semibold capitalize">{lic.tenure}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      {lic.assignedUserEmail ? (
-                        <div>
-                          <p className="font-semibold text-slate-700">{lic.assignedOrgName || 'Individual User'}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{lic.assignedUserEmail}</p>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic">Unassigned (Available)</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="text-[10.5px] text-slate-600 font-semibold space-y-0.5">
-                        <p>Storage: <span className="text-slate-900 font-bold">{lic.storageLimit || 5} GB</span></p>
-                        <p>Screens: <span className="text-slate-900 font-bold">{lic.deviceLimit || 5} Max</span></p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 font-semibold text-slate-600">{lic.expiryDate}</td>
-                    <td className="px-5 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border tracking-wider ${statusColors[lic.status]}`}>
-                        {lic.status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <div className="flex justify-end gap-1.5">
-                        <button
-                          onClick={() => openEditModal(lic)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                          title="Edit Pricing / Tenure"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteLicense(lic.id)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="Revoke / Delete"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+            {([
+              { key: 'all', label: 'All', count: licenses.length },
+              { key: 'active', label: 'Active', count: stateCounts('active') },
+              { key: 'expiring', label: 'Expiring', count: stateCounts('expiring') },
+              { key: 'expired', label: 'Expired', count: stateCounts('expired') },
+              { key: 'pending', label: 'Awaiting payment', count: stateCounts('pending') },
+              { key: 'unassigned', label: 'Unassigned', count: stateCounts('unassigned') },
+            ] as const).filter(c => c.key === 'all' || c.count > 0).map(c => {
+              const active = stateFilter === c.key;
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => setStateFilter(c.key)}
+                  aria-pressed={active}
+                  className={`shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold transition-colors ${
+                    active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {c.label}
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none ${active ? 'bg-white/20' : 'bg-gray-100 text-gray-600'}`}>{c.count}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Mobile card list */}
-          <div className="md:hidden divide-y divide-gray-100">
-            {licenses.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-400 text-xs">No licenses in the pool yet.</div>
-            ) : (
-              licenses.map(lic => (
-                <div key={lic.id} className="p-4 flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-mono font-bold text-slate-900 text-sm">{lic.id}</span>
-                        {lic.whiteLabel && (
-                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-[9px] font-bold uppercase tracking-wider">
-                            White Label
-                          </span>
-                        )}
-                      </div>
-                      <p className="font-bold text-slate-800 text-sm mt-0.5 truncate">{lic.name}</p>
-                    </div>
-                    <span className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase border tracking-wider flex-shrink-0 ${statusColors[lic.status]}`}>
-                      {lic.status.replace('_', ' ')}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {visibleLicenses.map(({ lic, state }) => (
+              <button
+                key={lic.id}
+                type="button"
+                onClick={() => setOpenLicenseId(lic.id)}
+                className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 hover:shadow-sm p-4 transition-colors"
+              >
+                <span className="flex items-start gap-3">
+                  <span className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Key size={17} /></span>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-900 truncate">{lic.name}</span>
                     </span>
-                  </div>
-
-                  {lic.assignedUserEmail ? (
-                    <p className="text-[11px] text-slate-500">
-                      <span className="font-semibold text-slate-700">{lic.assignedOrgName || 'Individual User'}</span>
-                      {' · '}<span className="font-mono">{lic.assignedUserEmail}</span>
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-slate-400 italic">Unassigned (Available)</p>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-3 border-t border-gray-100">
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Pricing</p>
-                      <p className="text-slate-900 font-extrabold mt-0.5">₹{lic.price.toLocaleString()} <span className="font-semibold text-slate-500 capitalize">/ {lic.tenure}</span></p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Expiry</p>
-                      <p className="text-slate-600 font-semibold mt-0.5">{lic.expiryDate}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Storage</p>
-                      <p className="text-slate-900 font-bold mt-0.5">{lic.storageLimit || 5} GB</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Screens</p>
-                      <p className="text-slate-900 font-bold mt-0.5">{lic.deviceLimit || 5} Max</p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-1.5 pt-1">
-                    <button
-                      onClick={() => openEditModal(lic)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                      title="Edit Pricing / Tenure"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteLicense(lic.id)}
-                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                      title="Revoke / Delete"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
+                    <span className={`block text-xs mt-0.5 truncate ${lic.assignedUserEmail ? 'text-slate-600' : 'text-slate-400'}`}>
+                      {lic.assignedUserEmail ? (lic.assignedOrgName || clientName(lic.assignedUserEmail) || lic.assignedUserEmail) : 'Not assigned to a client'}
+                    </span>
+                  </span>
+                  {pill(state.label, state.className)}
+                </span>
+                <span className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-xs">
+                  <span>
+                    <span className="block text-slate-400">Plan</span>
+                    <span className="block font-semibold text-slate-800 truncate">{formatInr(lic.price)}<span className="font-normal text-slate-500">/{lic.tenure === 'yearly' ? 'yr' : 'mo'}</span></span>
+                  </span>
+                  <span>
+                    <span className="block text-slate-400">Screens</span>
+                    <span className="block font-semibold text-slate-800">
+                      {lic.assignedUserEmail ? `${screensUsed(lic.assignedUserEmail)} of ${lic.deviceLimit || 5}` : `${lic.deviceLimit || 5}`}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="block text-slate-400">Expires</span>
+                    <span className={`block font-semibold truncate ${state.key === 'expired' ? 'text-rose-600' : state.key === 'expiring' ? 'text-orange-600' : 'text-slate-800'}`}>
+                      {formatDate(lic.expiryDate)}
+                    </span>
+                  </span>
+                </span>
+              </button>
+            ))}
           </div>
-        </div>
+
+          {licenses.length === 0 && (
+            <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+              <Key size={30} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm font-medium text-gray-700">No licenses yet</p>
+              <p className="text-xs text-gray-500 mt-1">Create one, then assign it to a client when you onboard them.</p>
+              <button onClick={openCreate} className="mt-4 inline-flex items-center gap-2 h-10 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium">
+                <Plus size={16} /> New license
+              </button>
+            </div>
+          )}
+          {licenses.length > 0 && visibleLicenses.length === 0 && (
+            <p className="text-sm text-gray-500 text-center py-8">No licenses match.</p>
+          )}
+        </>
       )}
 
-      {/* 2. PAYMENT HISTORY */}
-      {tab === 'payments' && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Razorpay Payment Logs</span>
-            <span className="text-xs font-bold text-slate-400">{payments.length} Payments Registered</span>
-          </div>
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="px-5 py-3.5">Transaction ID</th>
-                  <th className="px-5 py-3.5">License</th>
-                  <th className="px-5 py-3.5">Client User</th>
-                  <th className="px-5 py-3.5">Amount Paid</th>
-                  <th className="px-5 py-3.5">Payment Date</th>
-                  <th className="px-5 py-3.5">Razorpay Ref</th>
-                  <th className="px-5 py-3.5">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-xs">
-                {payments.map(pmt => (
-                  <tr key={pmt.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="px-5 py-4 font-mono font-bold text-slate-800">{pmt.id}</td>
-                    <td className="px-5 py-4">
-                      <div>
-                        <p className="font-bold text-slate-800">{pmt.licenseName}</p>
-                        <p className="text-[10px] font-mono text-slate-400">{pmt.licenseId}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div>
-                        <p className="font-semibold text-slate-700">{pmt.clientName}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">{pmt.clientEmail}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 font-extrabold text-slate-900">₹{pmt.amount.toLocaleString()}</td>
-                    <td className="px-5 py-4 font-medium text-slate-500">{pmt.paymentDate}</td>
-                    <td className="px-5 py-4">
-                      <div className="text-[10px] font-mono text-slate-500 space-y-0.5">
-                        <p>ID: {pmt.razorpayPaymentId}</p>
-                        <p className="text-slate-400">Ord: {pmt.razorpayOrderId}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="flex items-center gap-1 text-emerald-600 font-bold uppercase text-[10px] tracking-wider">
-                        <CheckCircle size={12} /> Success
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile card list */}
-          <div className="md:hidden divide-y divide-gray-100">
-            {payments.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-400 text-xs">No payments recorded yet.</div>
-            ) : (
-              payments.map(pmt => (
-                <div key={pmt.id} className="p-4 flex flex-col gap-2.5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-mono font-bold text-slate-800 text-sm">{pmt.id}</p>
-                      <p className="font-bold text-slate-800 text-xs mt-0.5 truncate">{pmt.licenseName}</p>
-                      <p className="text-[10px] font-mono text-slate-400">{pmt.licenseId}</p>
-                    </div>
-                    <span className="flex items-center gap-1 text-emerald-600 font-bold uppercase text-[9px] tracking-wider flex-shrink-0">
-                      <CheckCircle size={12} /> Success
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600">
-                    <span className="font-semibold text-slate-700">{pmt.clientName}</span>
-                    {' · '}<span className="font-mono text-slate-400">{pmt.clientEmail}</span>
-                  </p>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-2.5 border-t border-gray-100">
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Amount</p>
-                      <p className="text-slate-900 font-extrabold mt-0.5">₹{pmt.amount.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Date</p>
-                      <p className="text-slate-600 font-medium mt-0.5">{pmt.paymentDate}</p>
-                    </div>
-                    <div className="col-span-2">
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Razorpay Ref</p>
-                      <p className="font-mono text-slate-500 mt-0.5 truncate">{pmt.razorpayPaymentId}</p>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 3. UPCOMING EXPIRATIONS */}
+      {/* ── EXPIRING ─────────────────────────────────────────────────────── */}
       {tab === 'expirations' && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Expiry Timeline (Next 30 Days)</span>
+        expiringGroups.length === 0 ? (
+          <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+            <CheckCircle size={30} className="mx-auto text-emerald-400 mb-2" />
+            <p className="text-sm font-medium text-gray-700">Nothing expiring in the next 30 days</p>
           </div>
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="px-5 py-3.5">License</th>
-                  <th className="px-5 py-3.5">Assigned Client</th>
-                  <th className="px-5 py-3.5">Pricing</th>
-                  <th className="px-5 py-3.5">Expiration Date</th>
-                  <th className="px-5 py-3.5">Time Left</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-xs">
-                {licenses
-                  .filter(l => l.assignedUserEmail) // Only assigned ones
-                  .map(lic => {
-                    const daysRemaining = Math.ceil(
-                      (new Date(lic.expiryDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24)
-                    );
-                    return { lic, daysRemaining };
-                  })
-                  .filter(item => item.daysRemaining <= 30) // matches the "Next 30 Days" header above
-                  .sort((a, b) => a.daysRemaining - b.daysRemaining) // sort ascending of days left
-                  .map(({ lic, daysRemaining }) => {
-                    const isExpiringSoon = daysRemaining <= 30;
-                    const isOverdue = daysRemaining < 0;
-
-                    return (
-                      <tr key={lic.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="px-5 py-4">
-                          <div>
-                            <p className="font-bold text-slate-800">{lic.name}</p>
-                            <p className="text-[10px] font-mono text-blue-600 font-semibold">{lic.id}</p>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div>
-                            <p className="font-semibold text-slate-700">{lic.assignedOrgName || 'Direct Client'}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">{lic.assignedUserEmail}</p>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className="font-bold text-slate-800">₹{lic.price.toLocaleString()}</span>
-                          <span className="text-[10px] text-slate-400 ml-1">/ {lic.tenure}</span>
-                        </td>
-                        <td className="px-5 py-4 font-mono font-bold text-slate-700">{lic.expiryDate}</td>
-                        <td className="px-5 py-4">
-                          {isOverdue ? (
-                            <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-600 font-bold border border-rose-100 text-[10px]">
-                              Overdue by {Math.abs(daysRemaining)} days
-                            </span>
-                          ) : isExpiringSoon ? (
-                            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 text-[10px]">
-                              Expiring in {daysRemaining} days
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 font-semibold border border-emerald-100 text-[10px]">
-                              {daysRemaining} days remaining
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <button
-                            onClick={() => sendReminder(lic.assignedUserEmail!, lic.id, 'license')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 ml-auto bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold uppercase rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Send size={11} /> Send Alert
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile card list */}
-          <div className="md:hidden divide-y divide-gray-100">
-            {(() => {
-              const rows = licenses
-                .filter(l => l.assignedUserEmail)
-                .map(lic => {
-                  const daysRemaining = Math.ceil(
-                    (new Date(lic.expiryDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24)
-                  );
-                  return { lic, daysRemaining };
-                })
-                .filter(item => item.daysRemaining <= 30)
-                .sort((a, b) => a.daysRemaining - b.daysRemaining);
-
-              if (rows.length === 0) {
-                return <div className="px-4 py-8 text-center text-gray-400 text-xs">No upcoming expirations.</div>;
-              }
-
-              return rows.map(({ lic, daysRemaining }) => {
-                const isExpiringSoon = daysRemaining <= 30;
-                const isOverdue = daysRemaining < 0;
-                return (
-                  <div key={lic.id} className="p-4 flex flex-col gap-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-bold text-slate-800 text-sm truncate">{lic.name}</p>
-                        <p className="text-[10px] font-mono text-blue-600 font-semibold">{lic.id}</p>
-                      </div>
-                      {isOverdue ? (
-                        <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-600 font-bold border border-rose-100 text-[9px] flex-shrink-0">
-                          Overdue {Math.abs(daysRemaining)}d
+        ) : (
+          <div className="space-y-5">
+            {expiringGroups.map(group => (
+              <div key={group.title}>
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">{group.title} · {group.rows.length}</p>
+                <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                  {group.rows.map(({ lic, days }) => (
+                    <div key={lic.id} className="flex items-center gap-3 px-4 py-3">
+                      <button type="button" onClick={() => setOpenLicenseId(lic.id)} className="flex-1 min-w-0 text-left">
+                        <span className="block text-sm font-medium text-slate-900 truncate">{lic.assignedOrgName || clientName(lic.assignedUserEmail) || lic.assignedUserEmail}</span>
+                        <span className="block text-xs text-slate-500 truncate">
+                          {lic.name} · {planLabel(lic)}
                         </span>
-                      ) : isExpiringSoon ? (
-                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 text-[9px] flex-shrink-0">
-                          {daysRemaining}d left
+                        <span className={`block text-xs font-medium mt-0.5 ${days < 0 ? 'text-rose-600' : days <= 7 ? 'text-orange-600' : 'text-amber-600'}`}>
+                          {relativeDays(days)} · {formatDate(lic.expiryDate)}
                         </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 font-semibold border border-emerald-100 text-[9px] flex-shrink-0">
-                          {daysRemaining}d left
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-600">
-                      <span className="font-semibold text-slate-700">{lic.assignedOrgName || 'Direct Client'}</span>
-                      {' · '}<span className="font-mono text-slate-400">{lic.assignedUserEmail}</span>
-                    </p>
-                    <div className="flex items-center justify-between pt-2.5 border-t border-gray-100">
-                      <p className="text-[11px]">
-                        <span className="font-bold text-slate-800">₹{lic.price.toLocaleString()}</span>
-                        <span className="text-slate-400 ml-1">/ {lic.tenure}</span>
-                      </p>
+                      </button>
                       <button
-                        onClick={() => sendReminder(lic.assignedUserEmail!, lic.id, 'license')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold uppercase rounded-lg transition-colors cursor-pointer"
+                        onClick={() => remind({ licenseId: lic.id }, lic.id)}
+                        disabled={sending === lic.id}
+                        className="shrink-0 flex items-center gap-1.5 h-9 px-3 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
-                        <Send size={11} /> Send Alert
+                        <Send size={13} /> {sending === lic.id ? 'Sending…' : 'Remind'}
                       </button>
                     </div>
-                  </div>
-                );
-              });
-            })()}
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        )
       )}
 
-      {/* 4. INVOICES & BUSINESS SETTINGS */}
+      {/* ── INVOICES ─────────────────────────────────────────────────────── */}
       {tab === 'invoices' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
-          {/* Invoices List */}
-          <div className="lg:col-span-8 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Billing Invoice Registry</span>
+        <>
+          <div className="flex gap-2">
+            {([
+              { key: 'all', label: 'All', count: invoices.length },
+              { key: 'unpaid', label: 'Unpaid', count: unpaidInvoices.length },
+              { key: 'paid', label: 'Paid', count: invoices.length - unpaidInvoices.length },
+            ] as const).map(c => {
+              const active = invoiceFilter === c.key;
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => setInvoiceFilter(c.key)}
+                  className={`flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold ${
+                    active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200'
+                  }`}
+                >
+                  {c.label}
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none ${active ? 'bg-white/20' : 'bg-gray-100 text-gray-600'}`}>{c.count}</span>
+                </button>
+              );
+            })}
+          </div>
+          {visibleInvoices.length > 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+              {visibleInvoices.map(inv => (
+                <button key={inv.id} type="button" onClick={() => setOpenInvoiceId(inv.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+                  <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${inv.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                    <Receipt size={16} />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-slate-900 truncate">{inv.clientName}</span>
+                    <span className="block text-xs text-slate-500 truncate">{inv.licenseName} · due {formatDate(inv.dueDate)}</span>
+                  </span>
+                  <span className="text-right shrink-0">
+                    <span className="block text-sm font-semibold text-slate-900">{formatInr(inv.amount)}</span>
+                    <span className={`block text-[11px] font-medium ${inv.status === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>{inv.status === 'paid' ? 'Paid' : 'Unpaid'}</span>
+                  </span>
+                </button>
+              ))}
             </div>
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    <th className="px-5 py-3.5">Invoice ID</th>
-                    <th className="px-5 py-3.5">Client User</th>
-                    <th className="px-5 py-3.5">License</th>
-                    <th className="px-5 py-3.5">Total Amount</th>
-                    <th className="px-5 py-3.5">Due Date</th>
-                    <th className="px-5 py-3.5">Status</th>
-                    <th className="px-5 py-3.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-xs">
-                  {invoices.map(inv => (
-                    <tr key={inv.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-5 py-4 font-mono font-bold text-slate-800">{inv.id}</td>
-                      <td className="px-5 py-4">
-                        <div>
-                          <p className="font-semibold text-slate-700">{inv.clientName}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{inv.clientEmail}</p>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 font-medium text-slate-600">{inv.licenseName}</td>
-                      <td className="px-5 py-4">
-                        <div>
-                          <p className="font-extrabold text-slate-900">₹{inv.amount.toLocaleString()}</p>
-                          <p className="text-[9px] text-slate-400">Includes 18% GST</p>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 font-mono font-medium text-slate-500">{inv.dueDate}</td>
-                      <td className="px-5 py-4">
-                        <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[9px] border ${
-                          inv.status === 'paid'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                            : 'bg-rose-50 text-rose-700 border-rose-100 animate-pulse'
-                        }`}>
-                          {inv.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        {inv.status === 'unpaid' && (
-                          <button
-                            onClick={() => sendReminder(inv.clientEmail, inv.id, 'invoice')}
-                            className="flex items-center gap-1 px-2.5 py-1.5 ml-auto text-[10px] font-bold uppercase text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Send size={10} /> Remind
-                          </button>
-                        )}
-                        {inv.status === 'paid' && (
-                          <span className="text-[10px] font-bold text-slate-400 italic">Settled</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          ) : (
+            <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+              <Receipt size={30} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm font-medium text-gray-700">{invoices.length ? 'No invoices match' : 'No invoices yet'}</p>
+              <p className="text-xs text-gray-500 mt-1">Invoices are issued automatically when a license is assigned or repriced.</p>
             </div>
+          )}
+        </>
+      )}
 
-            {/* Mobile card list */}
-            <div className="md:hidden divide-y divide-gray-100">
-              {invoices.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-400 text-xs">No invoices issued yet.</div>
-              ) : (
-                invoices.map(inv => (
-                  <div key={inv.id} className="p-4 flex flex-col gap-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-mono font-bold text-slate-800 text-sm">{inv.id}</p>
-                        <p className="font-semibold text-slate-700 text-xs mt-0.5 truncate">{inv.clientName}</p>
-                        <p className="text-[10px] text-slate-400 font-mono truncate">{inv.clientEmail}</p>
-                      </div>
-                      <span className={`px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[9px] border flex-shrink-0 ${
-                        inv.status === 'paid'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                          : 'bg-rose-50 text-rose-700 border-rose-100 animate-pulse'
-                      }`}>
-                        {inv.status}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-2.5 border-t border-gray-100">
-                      <div>
-                        <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">License</p>
-                        <p className="text-slate-600 font-medium mt-0.5 truncate">{inv.licenseName}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Due Date</p>
-                        <p className="text-slate-500 font-mono font-medium mt-0.5">{inv.dueDate}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Total (incl. 18% GST)</p>
-                        <p className="text-slate-900 font-extrabold mt-0.5">₹{inv.amount.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    {inv.status === 'unpaid' ? (
+      {/* ── PAYMENTS ─────────────────────────────────────────────────────── */}
+      {tab === 'payments' && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white rounded-2xl border border-slate-100 p-4">
+              <p className="text-xs text-slate-500">This month</p>
+              <p className="text-xl font-semibold text-slate-900 mt-1">{formatInr(collectedThisMonth)}</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-100 p-4">
+              <p className="text-xs text-slate-500">All time · {payments.length} payment{payments.length === 1 ? '' : 's'}</p>
+              <p className="text-xl font-semibold text-slate-900 mt-1">{formatInr(collectedTotal)}</p>
+            </div>
+          </div>
+          {visiblePayments.length > 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+              {visiblePayments.map(p => (
+                <button key={p.id} type="button" onClick={() => setOpenPaymentId(p.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+                  <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><CreditCard size={16} /></span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-slate-900 truncate">{p.clientName || p.clientEmail}</span>
+                    <span className="block text-xs text-slate-500 truncate">{p.licenseName} · {formatDate(p.paymentDate)}</span>
+                  </span>
+                  <span className="text-sm font-semibold text-slate-900 shrink-0">{formatInr(p.amount)}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+              <CreditCard size={30} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm font-medium text-gray-700">{payments.length ? 'No payments match' : 'No payments yet'}</p>
+              <p className="text-xs text-gray-500 mt-1">Razorpay payments from clients show up here.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── License sheet ────────────────────────────────────────────────── */}
+      {openLicense && (() => {
+        const state = licenseState(openLicense);
+        const email = openLicense.assignedUserEmail;
+        const used = screensUsed(email);
+        const licInvoices = invoices.filter(i => i.licenseId === openLicense.id && i.status === 'unpaid');
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setOpenLicenseId(null)}
+            title={openLicense.name}
+            subtitle={email ? (openLicense.assignedOrgName || clientName(email) || email) : 'In the pool — not assigned'}
+            badge={pill(state.label, state.className)}
+            details={[
+              ...(email ? [{ label: 'Client', value: email }] : []),
+              { label: 'Plan', value: planLabel(openLicense) },
+              { label: 'Expires', value: <span className={state.key === 'expired' ? 'text-rose-600' : ''}>{formatDate(openLicense.expiryDate)} · {relativeDays(state.days)}</span> },
+              { label: 'Screens', value: email ? `${used} of ${openLicense.deviceLimit || 5} in use` : `Up to ${openLicense.deviceLimit || 5}` },
+              { label: 'Storage', value: `${openLicense.storageLimit || 5} GB` },
+              { label: 'Features', value: [openLicense.enableVideoConferencing && 'Video calls', openLicense.whiteLabel && 'White label'].filter(Boolean).join(', ') || <span className="text-slate-400">Standard</span> },
+              ...(licInvoices.length ? [{ label: 'Unpaid invoices', value: <span className="text-amber-700">{licInvoices.length} · {formatInr(licInvoices.reduce((s, i) => s + i.amount, 0))}</span> }] : []),
+              { label: 'Created', value: formatDate(openLicense.createdAt) },
+            ]}
+            groups={[
+              {
+                title: 'License',
+                actions: [
+                  { key: 'edit', label: 'Edit license', description: 'Plan, limits, expiry, client and features', icon: <Edit2 size={17} />, onClick: () => openEdit(openLicense) },
+                  ...(email ? [{
+                    key: 'remind',
+                    label: state.key === 'expired' ? 'Email renewal notice' : 'Email renewal reminder',
+                    description: `Sends a renew link to ${email}`,
+                    icon: <Mail size={17} />,
+                    onClick: () => remind({ licenseId: openLicense.id }, openLicense.id)
+                  }] : []),
+                ]
+              },
+              {
+                title: 'Danger zone',
+                actions: [{
+                  key: 'revoke',
+                  label: 'Revoke license',
+                  description: email ? `${email} loses access to their screens` : 'Removes it from the pool',
+                  icon: <Trash2 size={17} />,
+                  tone: 'danger' as const,
+                  onClick: () => setRevokeTarget(openLicense)
+                }]
+              }
+            ]}
+          />
+        );
+      })()}
+
+      {/* ── Invoice sheet ────────────────────────────────────────────────── */}
+      {openInvoice && (
+        <ScreenDetailsSheet
+          open
+          onClose={() => setOpenInvoiceId(null)}
+          title={formatInr(openInvoice.amount)}
+          subtitle={`${openInvoice.clientName} · ${openInvoice.licenseName}`}
+          badge={openInvoice.status === 'paid'
+            ? pill('Paid', 'bg-emerald-50 text-emerald-700 border-emerald-100')
+            : pill('Unpaid', 'bg-amber-50 text-amber-700 border-amber-100')}
+          details={[
+            { label: 'Client', value: openInvoice.clientEmail },
+            { label: 'License', value: openInvoice.licenseName },
+            { label: 'Amount', value: `${formatInr(openInvoice.amount)} incl. 18% GST` },
+            { label: 'Issued', value: formatDate(openInvoice.issuedDate) },
+            { label: 'Due', value: formatDate(openInvoice.dueDate) },
+            { label: 'Invoice no.', value: <span className="font-mono text-xs">{openInvoice.id}</span> },
+          ]}
+          groups={openInvoice.status === 'unpaid' ? [{
+            title: 'Collect payment',
+            actions: [
+              { key: 'remind', label: 'Email payment reminder', description: `Sends a pay link to ${openInvoice.clientEmail}`, icon: <Send size={17} />, onClick: () => remind({ invoiceId: openInvoice.id }, openInvoice.id) },
+              { key: 'paid', label: 'Mark as paid', description: 'For payments received outside Razorpay', icon: <CheckCircle size={17} />, onClick: () => markInvoicePaid(openInvoice) },
+            ]
+          }] : []}
+        />
+      )}
+
+      {/* ── Payment sheet ────────────────────────────────────────────────── */}
+      {openPayment && (
+        <ScreenDetailsSheet
+          open
+          onClose={() => setOpenPaymentId(null)}
+          title={formatInr(openPayment.amount)}
+          subtitle={`${openPayment.clientName || openPayment.clientEmail} · ${formatDate(openPayment.paymentDate)}`}
+          badge={pill('Received', 'bg-emerald-50 text-emerald-700 border-emerald-100')}
+          details={[
+            { label: 'Client', value: openPayment.clientEmail },
+            { label: 'License', value: openPayment.licenseName },
+            { label: 'Razorpay payment', value: <span className="font-mono text-xs">{openPayment.razorpayPaymentId || '—'}</span> },
+            { label: 'Razorpay order', value: <span className="font-mono text-xs">{openPayment.razorpayOrderId || '—'}</span> },
+          ]}
+          groups={[]}
+        />
+      )}
+
+      {/* ── Create / edit form ───────────────────────────────────────────── */}
+      {formMode && (
+        <ScreenDetailsSheet
+          open
+          onClose={() => setFormMode(null)}
+          title={formMode === 'create' ? 'New license' : 'Edit license'}
+          subtitle={formMode === 'create' ? 'Add to the pool, or assign it to a client right away' : editing?.name}
+          details={[]}
+          groups={[]}
+          hero={
+            <div className="space-y-4">
+              <div>
+                <label className={labelCls}>Name</label>
+                <input value={form.name} onChange={e => setF('name', e.target.value)} placeholder="e.g. Phoenix Mall — 5 screens" className={inputCls} autoFocus={formMode === 'create'} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Price (₹, before GST)</label>
+                  <input type="number" inputMode="numeric" min={0} value={form.price} onChange={e => setF('price', Number(e.target.value))} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Billed</label>
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl h-11">
+                    {(['monthly', 'yearly'] as const).map(t => (
                       <button
-                        onClick={() => sendReminder(inv.clientEmail, inv.id, 'invoice')}
-                        className="flex items-center justify-center gap-1 px-2.5 py-2 text-[11px] font-bold uppercase text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg transition-colors cursor-pointer"
+                        key={t}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, tenure: t, expiry: f.expiryTouched ? f.expiry : defaultExpiry(t) }))}
+                        className={`rounded-lg text-sm font-medium ${form.tenure === t ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
                       >
-                        <Send size={11} /> Remind
+                        {t === 'monthly' ? 'Monthly' : 'Yearly'}
                       </button>
-                    ) : (
-                      <p className="text-[11px] font-bold text-slate-400 italic text-center">Settled</p>
-                    )}
+                    ))}
                   </div>
-                ))
+                </div>
+              </div>
+
+              <div>
+                <label className={labelCls}>Client</label>
+                <CustomSelect
+                  value={form.email}
+                  onChange={v => setF('email', v)}
+                  options={[
+                    { value: '', label: 'Keep in the pool (unassigned)' },
+                    ...clients.map(u => {
+                      const has = licenses.some(l => l.assignedUserEmail === u.email && l.id !== editing?.id);
+                      return { value: u.email, label: `${u.company || u.name} · ${u.email}${has ? ' (has a license)' : ''}` };
+                    })
+                  ]}
+                  buttonClassName="h-11 text-sm px-3"
+                />
+                {formMode === 'create' && form.email && (
+                  <p className="text-xs text-slate-500 mt-1.5">They'll get an invoice for {formatInr(Math.round(Number(form.price) * 1.18))} (incl. GST); the license activates once it's paid.</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Screens allowed</label>
+                  <input type="number" inputMode="numeric" min={1} value={form.devices} onChange={e => setF('devices', Number(e.target.value))} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Storage (GB)</label>
+                  <input type="number" inputMode="numeric" min={1} value={form.storage} onChange={e => setF('storage', Number(e.target.value))} className={inputCls} />
+                </div>
+              </div>
+
+              <div className={formMode === 'edit' ? 'grid grid-cols-2 gap-3' : ''}>
+                <div>
+                  <label className={labelCls}>Expires on</label>
+                  <input type="date" value={form.expiry} onChange={e => setForm(f => ({ ...f, expiry: e.target.value, expiryTouched: true }))} className={inputCls} />
+                </div>
+                {formMode === 'edit' && (
+                  <div>
+                    <label className={labelCls}>Status</label>
+                    <CustomSelect
+                      value={form.status}
+                      onChange={v => setF('status', v as License['status'])}
+                      options={[
+                        { value: 'active', label: 'Active' },
+                        { value: 'pending_payment', label: 'Awaiting payment' },
+                        { value: 'expired', label: 'Expired' },
+                      ]}
+                      buttonClassName="h-11 text-sm px-3"
+                    />
+                  </div>
+                )}
+              </div>
+              {formMode === 'create' && !form.expiryTouched && (
+                <p className="text-xs text-slate-500 -mt-2">One {form.tenure === 'yearly' ? 'year' : 'month'} from today.</p>
+              )}
+
+              <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                <Toggle checked={form.videoConferencing} onChange={v => setF('videoConferencing', v)} label="Video calls" hint="Calls between the dashboard and TVs" icon={<Video size={17} />} />
+                <Toggle checked={form.whiteLabel} onChange={v => setF('whiteLabel', v)} label="White label" hint="Client's own logo and name in the app" icon={<Palette size={17} />} />
+              </div>
+
+              {pricingChanged && form.email && (
+                <p className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  New pricing: the license will wait for payment and {form.email} gets a new invoice.
+                </p>
               )}
             </div>
-          </div>
-
-          {/* Business Settings Form */}
-          <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 space-y-4">
-            <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
-              <Building size={16} className="text-blue-600" />
-              <h2 className="text-xs font-bold uppercase text-slate-900 tracking-wider">Business & Invoice Details</h2>
+          }
+          footer={
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setFormMode(null)} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700">Cancel</button>
+              <button type="button" onClick={saveForm} className="flex-[2] h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">
+                {formMode === 'create' ? (form.email ? 'Create & send invoice' : 'Create license') : 'Save changes'}
+              </button>
             </div>
+          }
+        />
+      )}
 
-            <form onSubmit={handleSaveBusinessSettings} className="space-y-3.5 text-xs">
+      {/* ── Billing details (shown on invoices) ──────────────────────────── */}
+      {billingOpen && (
+        <ScreenDetailsSheet
+          open
+          onClose={() => setBillingOpen(false)}
+          title="Billing details"
+          subtitle="Printed on every client's invoices"
+          details={[]}
+          groups={[]}
+          hero={
+            <div className="space-y-4">
               <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Registered Business Name</label>
-                <input 
-                  type="text"
-                  value={bizName}
-                  onChange={e => setBizName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 font-semibold text-slate-800"
-                />
+                <label className={labelCls}>Registered business name</label>
+                <input value={biz.name} onChange={e => setBiz(b => ({ ...b, name: e.target.value }))} className={inputCls} />
               </div>
-
               <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Address</label>
-                <textarea 
-                  rows={3}
-                  value={bizAddress}
-                  onChange={e => setBizAddress(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 font-semibold text-slate-800 resize-none"
-                />
+                <label className={labelCls}>Billing address</label>
+                <textarea rows={3} value={biz.address} onChange={e => setBiz(b => ({ ...b, address: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 resize-none" />
               </div>
-
               <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">GSTIN Number</label>
-                <input 
-                  type="text"
-                  value={bizGst}
-                  onChange={e => setBizGst(e.target.value)}
-                  placeholder="e.g. 29AAAAA1111A1Z1"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 font-mono font-bold text-slate-800"
-                />
+                <label className={labelCls}>GSTIN</label>
+                <input value={biz.gstNumber} onChange={e => setBiz(b => ({ ...b, gstNumber: e.target.value.toUpperCase() }))} placeholder="29AAAAA1111A1Z1" className={`${inputCls} font-mono`} />
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Email</label>
-                  <input 
-                    type="email"
-                    value={bizEmail}
-                    onChange={e => setBizEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 font-semibold text-slate-800"
-                  />
+                  <label className={labelCls}>Billing email</label>
+                  <input type="email" value={biz.contactEmail} onChange={e => setBiz(b => ({ ...b, contactEmail: e.target.value }))} className={inputCls} />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Phone</label>
-                  <input 
-                    type="text"
-                    value={bizPhone}
-                    onChange={e => setBizPhone(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500 font-semibold text-slate-800"
-                  />
+                  <label className={labelCls}>Billing phone</label>
+                  <input type="tel" value={biz.contactPhone} onChange={e => setBiz(b => ({ ...b, contactPhone: e.target.value }))} className={inputCls} />
                 </div>
               </div>
-
               <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Company Logo</label>
-                <div className="flex items-center gap-3 mt-1.5">
-                  {bizLogo ? (
-                    <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center group">
-                      <img src={bizLogo} alt="Business Logo" className="w-full h-full object-contain" />
-                      <button 
-                        type="button"
-                        onClick={() => setBizLogo('')}
-                        className="absolute inset-0 bg-rose-600/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[9px] font-bold uppercase tracking-wider transition-opacity cursor-pointer"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="w-12 h-12 rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-slate-400">
-                      <ImageIcon size={16} />
-                    </div>
-                  )}
-                  <label className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-bold cursor-pointer transition-colors flex-1 text-center select-none">
-                    Select Logo File
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleLogoUpload} 
-                      className="hidden" 
+                <label className={labelCls}>Logo</label>
+                <div className="flex items-center gap-3">
+                  <span className="w-14 h-14 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
+                    {biz.logoUrl ? <img src={biz.logoUrl} alt="" className="w-full h-full object-contain" /> : <ImageIcon size={18} className="text-slate-400" />}
+                  </span>
+                  <label className="flex-1 h-11 flex items-center justify-center rounded-xl border border-slate-200 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50">
+                    {biz.logoUrl ? 'Change logo' : 'Upload logo'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onloadend = () => setBiz(b => ({ ...b, logoUrl: reader.result as string }));
+                        reader.readAsDataURL(file);
+                      }}
                     />
                   </label>
+                  {biz.logoUrl && (
+                    <button type="button" onClick={() => setBiz(b => ({ ...b, logoUrl: '' }))} className="h-11 px-3 rounded-xl text-sm text-rose-600 hover:bg-rose-50">Remove</button>
+                  )}
                 </div>
               </div>
-
-              <button 
-                type="submit"
-                className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs uppercase tracking-wider font-extrabold rounded-lg transition-colors cursor-pointer"
-              >
-                Save Details
-              </button>
-            </form>
-          </div>
-        </div>
+            </div>
+          }
+          footer={
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await licensingStore.saveBusinessDetails(biz);
+                if (res.ok === false) { toast.error(`Couldn't save: ${res.error}`); return; }
+                toast.success('Billing details saved — clients see them on their invoices');
+                setBillingOpen(false);
+              }}
+              className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold"
+            >
+              Save
+            </button>
+          }
+        />
       )}
 
-      {/* CREATE MODAL */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn text-left p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
-                <Key size={16} className="text-blue-600" /> Create License Profile
-              </h2>
-              <button 
-                onClick={() => setIsCreateModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 font-bold p-1 cursor-pointer"
-              >
-                &times;
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateLicense} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">License ID / Number</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. LIC-981"
-                  required
-                  value={newLicId}
-                  onChange={e => setNewLicId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold uppercase placeholder-slate-300 outline-none focus:border-blue-500 bg-slate-50"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Title</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Phoenix Mall Entry Display"
-                  required
-                  value={newLicName}
-                  onChange={e => setNewLicName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold placeholder-slate-300 outline-none focus:border-blue-500 bg-slate-50"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Price (INR)</label>
-                  <input 
-                    type="number" 
-                    required
-                    value={newLicPrice}
-                    onChange={e => setNewLicPrice(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-extrabold outline-none focus:border-blue-500 bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Tenure</label>
-                  <CustomSelect 
-                    value={newLicTenure}
-                    onChange={val => setNewLicTenure(val as 'monthly' | 'yearly')}
-                    options={[
-                      { value: 'monthly', label: 'Monthly' },
-                      { value: 'yearly', label: 'Yearly' }
-                    ]}
-                    buttonClassName="px-3.5 py-2.5 text-xs font-bold min-h-[42px]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Assign to Organization (Optional)</label>
-                <CustomSelect 
-                  value={newLicOrg}
-                  onChange={val => setNewLicOrg(val)}
-                  placeholder="Do not assign yet"
-                  options={[
-                    { value: '', label: 'Do not assign yet' },
-                    ...organizations.map(o => ({ value: o.id, label: o.name }))
-                  ]}
-                  buttonClassName="px-3.5 py-2.5 text-xs min-h-[42px]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Assign User / Billing Email</label>
-                <CustomSelect
-                  value={newLicUserEmail}
-                  onChange={val => setNewLicUserEmail(val)}
-                  placeholder="No Email Assigned (Free to pool)"
-                  options={[
-                    { value: '', label: 'No Email Assigned (Free to pool)' },
-                    ...users.map(u => ({ value: u.email, label: `${u.email} (${u.name})` }))
-                  ]}
-                  buttonClassName="px-3.5 py-2.5 text-xs min-h-[42px]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Storage Limit (GB)</label>
-                  <input 
-                    type="number" 
-                    required
-                    value={newLicStorage}
-                    onChange={e => setNewLicStorage(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Allowed Screens</label>
-                  <input 
-                    type="number" 
-                    required
-                    value={newLicDevice}
-                    onChange={e => setNewLicDevice(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 bg-slate-50"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Expiry Date (Optional)</label>
-                <input 
-                  type="date" 
-                  value={newLicExpiry}
-                  onChange={e => setNewLicExpiry(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl outline-none focus:border-blue-500 bg-slate-50"
-                />
-              </div>
-
-              <div className="space-y-2 py-2 border-t border-gray-100">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="newLicVideoConferencing"
-                    checked={newLicVideoConferencing}
-                    onChange={e => setNewLicVideoConferencing(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                  />
-                  <label htmlFor="newLicVideoConferencing" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                    Enable Video Conferencing
-                  </label>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="newLicWhiteLabel"
-                    checked={newLicWhiteLabel}
-                    onChange={e => setNewLicWhiteLabel(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
-                  />
-                  <label htmlFor="newLicWhiteLabel" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                    Enable White Labeling (Custom Branding)
-                  </label>
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2.5">
-                <button 
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold uppercase rounded-xl cursor-pointer"
-                >
-                  Confirm & Create
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT MODAL */}
-      {isEditModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn text-left p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-bold uppercase text-slate-900 flex items-center gap-2">
-                <Edit2 size={16} className="text-indigo-600" /> Rework License Settings
-              </h2>
-              <button 
-                onClick={() => setIsEditModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 font-bold p-1 cursor-pointer"
-              >
-                &times;
-              </button>
-            </div>
-
-
-            <form onSubmit={handleEditLicense} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">License ID</label>
-                <input 
-                  type="text" 
-                  value={currentLicense?.id} 
-                  disabled 
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold uppercase outline-none bg-gray-100 text-gray-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Title</label>
-                <input 
-                  type="text" 
-                  value={editLicName}
-                  onChange={e => setEditLicName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-semibold outline-none focus:border-blue-500 bg-slate-50"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Price (INR)</label>
-                  <input 
-                    type="number" 
-                    value={editLicPrice}
-                    onChange={e => setEditLicPrice(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-extrabold outline-none focus:border-blue-500 bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Billing Tenure</label>
-                  <CustomSelect 
-                    value={editLicTenure}
-                    onChange={val => setEditLicTenure(val as 'monthly' | 'yearly')}
-                    options={[
-                      { value: 'monthly', label: 'Monthly' },
-                      { value: 'yearly', label: 'Yearly' }
-                    ]}
-                    buttonClassName="px-3.5 py-2.5 text-xs font-bold min-h-[42px]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Assign User / Billing Email</label>
-                <CustomSelect
-                  value={editLicUserEmail}
-                  onChange={val => setEditLicUserEmail(val)}
-                  placeholder="No Email Assigned (Free to pool)"
-                  options={[
-                    { value: '', label: 'No Email Assigned (Free to pool)' },
-                    ...users.map(u => ({ value: u.email, label: `${u.email} (${u.name})` }))
-                  ]}
-                  buttonClassName="px-3.5 py-2.5 text-xs min-h-[42px]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Storage Limit (GB)</label>
-                  <input 
-                    type="number" 
-                    required
-                    value={editLicStorage}
-                    onChange={e => setEditLicStorage(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:border-indigo-500 bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Allowed Screens</label>
-                  <input 
-                    type="number" 
-                    required
-                    value={editLicDevice}
-                    onChange={e => setEditLicDevice(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl font-bold outline-none focus:border-indigo-500 bg-slate-50"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Expiration Date</label>
-                  <input 
-                    type="date" 
-                    value={editLicExpiry}
-                    onChange={e => setEditLicExpiry(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl outline-none focus:border-indigo-500 bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Status</label>
-                  <CustomSelect 
-                    value={editLicStatus}
-                    onChange={val => setEditLicStatus(val as License['status'])}
-                    options={[
-                      { value: 'active', label: 'Active' },
-                      { value: 'pending_payment', label: 'Pending Payment' },
-                      { value: 'expired', label: 'Expired' }
-                    ]}
-                    buttonClassName="px-3.5 py-2.5 text-xs font-bold min-h-[42px]"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2 py-2 border-t border-gray-100">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="editLicVideoConferencing"
-                    checked={editLicVideoConferencing}
-                    onChange={e => setEditLicVideoConferencing(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
-                  />
-                  <label htmlFor="editLicVideoConferencing" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                    Enable Video Conferencing
-                  </label>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="editLicWhiteLabel"
-                    checked={editLicWhiteLabel}
-                    onChange={e => setEditLicWhiteLabel(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
-                  />
-                  <label htmlFor="editLicWhiteLabel" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
-                    Enable White Labeling (Custom Branding)
-                  </label>
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2.5">
-                <button 
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold uppercase rounded-xl cursor-pointer"
-                >
-                  Apply & Rework
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {revokeTarget && (
+        <ConfirmDialog
+          title={`Revoke “${revokeTarget.name}”?`}
+          body={revokeTarget.assignedUserEmail
+            ? <p>{revokeTarget.assignedUserEmail} will lose this license — their screens stop playing if it's their only one. This can't be undone.</p>
+            : <p>The license is removed from the pool. This can't be undone.</p>}
+          confirmLabel="Revoke license"
+          tone="danger"
+          onCancel={() => setRevokeTarget(null)}
+          onConfirm={() => revoke(revokeTarget)}
+        />
       )}
     </div>
   );

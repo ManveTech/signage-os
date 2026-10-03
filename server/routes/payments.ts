@@ -7,6 +7,7 @@ import {
   saveRazorpayConfig,
   getPaymentHistory
 } from '../controllers/payments';
+import { sendBillingReminder } from '../controllers/reminders';
 import { createCrudRouter } from '../controllers/crud';
 import { paymentLimiter } from '../middleware/rateLimiter';
 
@@ -24,6 +25,8 @@ router.get('/history', getPaymentHistory);
 router.post('/create-order', paymentLimiter, createOrder);
 router.post('/verify', paymentLimiter, verifyPayment);
 router.post('/webhook', handleWebhook);
+// Admin-only renewal / unpaid-invoice reminder email.
+router.post('/remind', sendBillingReminder);
 
 // Mount CRUD router for generic list/get/create/update/delete operations on payments collection (e.g. GET /)
 router.use('/', createCrudRouter('payments'));

@@ -1,1048 +1,690 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Plus, Search, Edit, Trash2, X, CheckCircle, AlertCircle, Mail, Phone,
-  MapPin, Building, Key, Lock, ArrowRight, ArrowLeft
+  Plus, Search, Edit2, Trash2, Mail, Phone, Key, Users as UsersIcon, RefreshCw, Copy, Check,
+  Radio, MessageSquare, Camera, Video
 } from 'lucide-react';
 import type { User as UserType } from '../types';
-import { licensingStore } from '../../../lib/licensingStore';
-import { pushToDatabase, generatePocketBaseId, generateClientPassword, syncCollection } from '../../../lib/syncHelper';
-import CustomSelect from '../../../components/CustomSelect';
+import { licensingStore, License } from '../../../lib/licensingStore';
+import { pushToDatabase, generateClientPassword, syncCollection } from '../../../lib/syncHelper';
+import { toast } from '../../../components/Toast';
+import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
+import ConfirmDialog from '../../../components/screens/ConfirmDialog';
+import { licenseState, LicenseStateKey, formatDate, planLabel } from '../../../components/licenses/licenseStatus';
 
-export default function Users() {
-  const [search, setSearch] = useState('');
-  
-  // Persistent users list for clients — seeded from whatever the last real
-  // sync cached, never from demo data, so a fresh/empty deployment shows an
-  // empty table instead of fake clients until the useEffect sync below
-  // replaces it with the server's actual users.
+const inputCls = 'w-full h-11 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white';
+const labelCls = 'block text-xs font-medium text-slate-600 mb-1.5';
+
+type ClientState = LicenseStateKey | 'none';
+
+function initials(name: string) {
+  return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(n => n[0]!.toUpperCase()).join('');
+}
+
+function errorText(result: any): string {
+  const raw = result?.error;
+  if (typeof raw !== 'string') return 'please try again';
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.error || parsed.message || raw;
+  } catch {
+    return raw;
+  }
+}
+
+function FeatureToggle({ checked, onChange, label, hint, icon }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string; icon: React.ReactNode }) {
+  return (
+    <button type="button" onClick={() => onChange(!checked)} aria-pressed={checked} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+      <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">{icon}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-slate-900">{label}</span>
+        <span className="block text-xs text-slate-500">{hint}</span>
+      </span>
+      <span className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${checked ? 'bg-blue-600' : 'bg-slate-200'}`}>
+        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${checked ? 'left-[18px]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  );
+}
+
+/** Pool license as a selectable card (used when onboarding and when changing a client's license). */
+function LicenseOption({ lic, selected, onSelect, note }: { lic: License; selected: boolean; onSelect: () => void; note?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${selected ? 'bg-blue-50/60' : 'hover:bg-slate-50'}`}
+    >
+      <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${selected ? 'border-blue-600' : 'border-slate-300'}`}>
+        {selected && <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />}
+      </span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-slate-900 truncate">{lic.name}</span>
+        <span className="block text-xs text-slate-500 truncate">
+          {planLabel(lic)} · {lic.deviceLimit || 5} screens · {lic.storageLimit || 5} GB{note ? ` · ${note}` : ''}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+export default function Users({ onNavigate }: { onNavigate?: (view: string) => void } = {}) {
   const [users, setUsers] = useState<UserType[]>(() => {
     const data = localStorage.getItem('signageos_users');
-    return data ? JSON.parse(data) : [];
+    return (data ? JSON.parse(data) : []).filter((u: any) => u.role !== 'super_admin' && u.role !== 'admin');
   });
+  const [licenses, setLicenses] = useState<License[]>(() => licensingStore.getLicenses());
+  const [screens, setScreens] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_screens') || '[]'));
+  const [organizations, setOrganizations] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_organizations') || '[]'));
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | ClientState | 'attention'>('all');
 
-  // Track active licenses for assignments
-  const [licenses, setLicenses] = useState(() => licensingStore.getLicenses());
-  const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<UserType | null>(null);
 
-  // Refresh from server on mount. Always applies the result, including an
-  // empty array — syncCollection already falls back to cached/local data on
-  // a network failure, so a real empty result here means there genuinely are
-  // no client users yet, not that the fetch failed.
-  useEffect(() => {
-    syncCollection('users', 'signageos_users').then(serverUsers => {
-      setUsers(serverUsers.filter((u: any) => u.role !== 'super_admin' && u.role !== 'admin'));
-    });
-    syncCollection('licenses', 'signageos_licenses').then(() => {
-      setLicenses(licensingStore.getLicenses());
-    });
-    syncCollection('organizations', 'signageos_organizations');
-  }, []);
+  // Edit details
+  const [editing, setEditing] = useState<UserType | null>(null);
+  const [edit, setEdit] = useState({ name: '', mobile: '', company: '', address: '' });
+  const [saving, setSaving] = useState(false);
 
-  // Add Client Modal states
-  const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+  // Change license
+  const [licenseFor, setLicenseFor] = useState<UserType | null>(null);
+  const [licenseChoice, setLicenseChoice] = useState('');
+
+  // Add client
+  const [addOpen, setAddOpen] = useState(false);
   const [step, setStep] = useState(1);
-  const [isOnboarding, setIsOnboarding] = useState(false);
+  const [draft, setDraft] = useState({ name: '', email: '', mobile: '', address: '', company: '', licenseId: '', password: '', sendEmail: true });
+  const [features, setFeatures] = useState({ enableBroadcasting: true, enableLiveChat: true, enableCameraMonitoring: false });
+  const [onboarding, setOnboarding] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // Form states
-  const [clientName, setClientName] = useState('');
-  const [clientEmail, setClientEmail] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
-  const [clientAddress, setClientAddress] = useState('');
-  const [orgName, setOrgName] = useState('');
-  const [selectedLicenseId, setSelectedLicenseId] = useState('');
-  const [generatedPassword, setGeneratedPassword] = useState('');
-  const [sendEmail, setSendEmail] = useState(true);
-
-  // Feature toggle states
-  const [enableVideoConferencing, setEnableVideoConferencing] = useState(false);
-  const [enableBroadcasting, setEnableBroadcasting] = useState(true);
-  const [enableLiveChat, setEnableLiveChat] = useState(true);
-  const [enableCameraMonitoring, setEnableCameraMonitoring] = useState(false);
-
-  // Edit Modal states
-  const [editingUser, setEditingUser] = useState<UserType | null>(null);
-  const [editStep, setEditStep] = useState(1);
-  const [editName, setEditName] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editAddress, setEditAddress] = useState('');
-  const [editOrg, setEditOrg] = useState('');
-  const [editSelectedLicenseId, setEditSelectedLicenseId] = useState('');
-
-  const addToast = (message: string, type: 'success' | 'error' = 'success') => {
-    const id = Date.now();
-    setToasts(p => [...p, { id, message, type }]);
-    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000);
+  const refresh = async () => {
+    const [serverUsers] = await Promise.all([
+      syncCollection('users', 'signageos_users'),
+      syncCollection('licenses', 'signageos_licenses'),
+      syncCollection('organizations', 'signageos_organizations').then(o => { if (o.length) setOrganizations(o); }),
+      syncCollection('screens', 'signageos_screens').then(s => setScreens(s)),
+    ]);
+    setUsers(serverUsers.filter((u: any) => u.role !== 'super_admin' && u.role !== 'admin'));
+    setLicenses(licensingStore.getLicenses());
   };
 
-  const resetForm = () => {
+  useEffect(() => { refresh(); }, []);
+
+  // A client can hold more than one license; the one expiring last decides
+  // their status (that's how long their screens keep playing).
+  const licenseOf = (email: string) => licenses
+    .filter(l => l.assignedUserEmail?.toLowerCase() === email.toLowerCase())
+    .sort((a, b) => (b.expiryDate || '').localeCompare(a.expiryDate || ''))[0];
+  const stateOf = (u: UserType): { key: ClientState; label: string; className: string } => {
+    const lic = licenseOf(u.email);
+    if (!lic) return { key: 'none', label: 'No license', className: 'bg-slate-100 text-slate-600 border-slate-200' };
+    const s = licenseState(lic);
+    return { key: s.key, label: s.label, className: s.className };
+  };
+  const screensUsed = (email: string) => screens.filter(s => s.assignedToUserEmail === email && s.status !== 'pairing' && s.status !== 'unlinked').length;
+  const poolLicenses = licenses.filter(l => !l.assignedUserEmail);
+
+  const needsAttention = (k: ClientState) => k === 'expired' || k === 'expiring' || k === 'pending' || k === 'none';
+  const counts = {
+    attention: users.filter(u => needsAttention(stateOf(u).key)).length,
+    active: users.filter(u => stateOf(u).key === 'active').length,
+  };
+  const q = search.trim().toLowerCase();
+  const visible = users
+    .filter(u => filter === 'all' || (filter === 'attention' ? needsAttention(stateOf(u).key) : stateOf(u).key === filter))
+    .filter(u => !q || [u.name, u.email, u.company, u.mobile].some(v => (v || '').toLowerCase().includes(q)))
+    .sort((a, b) => (a.company || a.name).localeCompare(b.company || b.name));
+
+  // ── Edit details ──────────────────────────────────────────────────────────
+  const openEdit = (u: UserType) => {
+    setEditing(u);
+    setEdit({ name: u.name || '', mobile: u.mobile || '', company: u.company || '', address: u.address || '' });
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    if (!edit.name.trim() || !edit.mobile.trim() || !edit.company.trim()) {
+      toast.warning('Name, phone and organization are required');
+      return;
+    }
+    setSaving(true);
+    const updatedUser = { ...editing, name: edit.name.trim(), mobile: edit.mobile.trim(), company: edit.company.trim(), address: edit.address.trim() };
+    const result = await pushToDatabase('users', editing.id, updatedUser, 'PUT');
+    setSaving(false);
+    if (!result.ok) {
+      toast.error(`Couldn't save: ${errorText(result)}`);
+      return;
+    }
+    // Renaming the organization renames it everywhere it shows up.
+    if (editing.company && editing.company !== updatedUser.company) {
+      licenses.filter(l => l.assignedUserEmail === editing.email).forEach(l => {
+        licensingStore.updateLicense(l.id, { assignedOrgName: updatedUser.company });
+      });
+      const orgs = organizations.map((o: any) => {
+        if ((o.name || '').toLowerCase() !== editing.company.toLowerCase()) return o;
+        const renamed = { ...o, name: updatedUser.company };
+        pushToDatabase('organizations', o.id, renamed, 'PUT');
+        return renamed;
+      });
+      setOrganizations(orgs);
+      localStorage.setItem('signageos_organizations', JSON.stringify(orgs));
+    }
+    const next = users.map(u => (u.id === editing.id ? updatedUser : u));
+    setUsers(next);
+    localStorage.setItem('signageos_users', JSON.stringify(next));
+    setLicenses(licensingStore.getLicenses());
+    setEditing(null);
+    toast.success('Client details saved');
+  };
+
+  // ── Change license ────────────────────────────────────────────────────────
+  const openLicensePicker = (u: UserType) => {
+    setLicenseFor(u);
+    setLicenseChoice(licenseOf(u.email)?.id || '');
+  };
+
+  const saveLicense = () => {
+    if (!licenseFor) return;
+    const current = licenseOf(licenseFor.email);
+    if ((current?.id || '') === licenseChoice) { setLicenseFor(null); return; }
+    if (current) {
+      licensingStore.updateLicense(current.id, { assignedUserEmail: undefined, assignedOrgName: undefined, assignedOrgId: undefined });
+    }
+    if (licenseChoice) {
+      const org = organizations.find((o: any) => o.name === licenseFor.company);
+      licensingStore.updateLicense(licenseChoice, { assignedUserEmail: licenseFor.email, assignedOrgName: licenseFor.company, assignedOrgId: org?.id || '' });
+    }
+    setLicenses(licensingStore.getLicenses());
+    setLicenseFor(null);
+    toast.success(licenseChoice ? 'License assigned' : 'License removed — it\'s back in the pool');
+  };
+
+  // ── Remove ────────────────────────────────────────────────────────────────
+  const removeClient = async (u: UserType) => {
+    const result = await pushToDatabase('users', u.id, null, 'DELETE');
+    if (!result.ok) {
+      toast.error(`Couldn't remove ${u.name}: ${errorText(result)}`);
+      return;
+    }
+    licenses.filter(l => l.assignedUserEmail === u.email).forEach(l => {
+      licensingStore.updateLicense(l.id, { assignedUserEmail: undefined, assignedOrgName: undefined, assignedOrgId: undefined });
+    });
+    const next = users.filter(x => x.id !== u.id);
+    setUsers(next);
+    localStorage.setItem('signageos_users', JSON.stringify(next));
+    setLicenses(licensingStore.getLicenses());
+    setRemoveTarget(null);
+    setOpenId(null);
+    toast.success(`${u.name} removed`);
+  };
+
+  // ── Add client ────────────────────────────────────────────────────────────
+  const openAdd = () => {
+    setDraft({ name: '', email: '', mobile: '', address: '', company: '', licenseId: '', password: '', sendEmail: true });
+    setFeatures({ enableBroadcasting: true, enableLiveChat: true, enableCameraMonitoring: false });
     setStep(1);
-    setClientName('');
-    setClientEmail('');
-    setClientPhone('');
-    setClientAddress('');
-    setOrgName('');
-    setSelectedLicenseId('');
-    setGeneratedPassword('');
-    setSendEmail(true);
-    setEnableVideoConferencing(false);
-    setEnableBroadcasting(true);
-    setEnableLiveChat(true);
-    setEnableCameraMonitoring(false);
-    setIsOnboarding(false);
+    setCopied(false);
+    setAddOpen(true);
   };
 
-  const handleNextStep = () => {
+  const nextStep = () => {
     if (step === 1) {
-      if (!clientName.trim() || !clientEmail.trim() || !clientPhone.trim()) {
-        addToast("Please fill in Name, Email, and Phone number.", 'error');
-        return;
-      }
+      if (!draft.name.trim() || !draft.email.trim() || !draft.mobile.trim()) { toast.warning('Name, email and phone are required'); return; }
+      if (!/^\S+@\S+\.\S+$/.test(draft.email.trim())) { toast.warning('That email doesn\'t look right'); return; }
+      if (users.some(u => u.email.toLowerCase() === draft.email.trim().toLowerCase())) { toast.warning('A client with this email already exists'); return; }
       setStep(2);
     } else if (step === 2) {
-      if (!orgName.trim()) {
-        addToast("Please enter an Organization name.", 'error');
-        return;
-      }
-      if (!selectedLicenseId) {
-        addToast("Assigning a license is mandatory. Please select a license from the pool.", 'error');
-        return;
-      }
-      // Auto-generate password upon entering step 3 if empty
-      if (!generatedPassword) {
-        setGeneratedPassword(generateClientPassword(clientName));
-      }
+      if (!draft.company.trim()) { toast.warning('Enter the organization name'); return; }
+      if (!draft.licenseId) { toast.warning('Pick a license for this client'); return; }
+      if (!draft.password) setDraft(d => ({ ...d, password: generateClientPassword(d.name) }));
       setStep(3);
     }
   };
 
-  const handlePrevStep = () => {
-    setStep(p => Math.max(1, p - 1));
-  };
-
-  const handleGeneratePassword = () => {
-    setGeneratedPassword(generateClientPassword(clientName));
-    addToast("New random password generated!");
-  };
-
-  const handleOnboardClient = async () => {
-    setIsOnboarding(true);
-    try {
-      const userPayload = {
-        name: clientName,
-        email: clientEmail,
-        mobile: clientPhone,
-        address: clientAddress,
-        company: orgName,
-        licenseId: selectedLicenseId,
-        password: generatedPassword,
-        sendEmail: sendEmail,
-        role: 'org_admin',
-        enableVideoConferencing,
-        enableBroadcasting,
-        enableLiveChat,
-        enableCameraMonitoring
-      };
-
-      const userResult = await pushToDatabase('users', '', userPayload, 'POST');
-      if (!userResult.ok) {
-        const errorText = (userResult as any).error;
-        let errMsg = 'unknown error';
-        if (typeof errorText === 'string') {
-          try {
-            const parsed = JSON.parse(errorText);
-            errMsg = parsed.error || parsed.message || errorText;
-          } catch (e) {
-            errMsg = errorText;
-          }
-        }
-        addToast(`Failed to onboard client: ${errMsg}`, 'error');
-        setIsOnboarding(false);
-        return;
-      }
-
-      // Sync all collections from backend server to update local listings
-      const updatedUsers = await syncCollection('users', 'signageos_users');
-      await syncCollection('licenses', 'signageos_licenses');
-      await syncCollection('organizations', 'signageos_organizations');
-
-      // Update React state
-      if (updatedUsers && updatedUsers.length > 0) {
-        setUsers(updatedUsers.filter((u: any) => u.role !== 'super_admin' && u.role !== 'admin'));
-      }
-      setLicenses(licensingStore.getLicenses());
-
-      addToast(`Client onboarded successfully!${sendEmail ? ` Credentials emailed to ${clientEmail}` : ''}`);
-      setIsAddClientOpen(false);
-      resetForm();
-    } catch (error: any) {
-      console.error('Error in onboard flow:', error);
-      addToast(`An unexpected error occurred: ${error.message || error}`, 'error');
-      setIsOnboarding(false);
-    }
-  };
-
-  const handleDeleteClient = async (userId: string, userEmail: string, userName: string) => {
-    if (!confirm(`Are you sure you want to remove client "${userName}"? This will unassign any active license from their account.`)) return;
-
-    const result = await pushToDatabase('users', userId, null, 'DELETE');
+  const onboard = async () => {
+    setOnboarding(true);
+    const result = await pushToDatabase('users', '', {
+      name: draft.name.trim(),
+      email: draft.email.trim().toLowerCase(),
+      mobile: draft.mobile.trim(),
+      address: draft.address.trim(),
+      company: draft.company.trim(),
+      licenseId: draft.licenseId,
+      password: draft.password,
+      sendEmail: draft.sendEmail,
+      role: 'org_admin',
+      ...features,
+    }, 'POST');
+    setOnboarding(false);
     if (!result.ok) {
-      addToast(`Failed to remove "${userName}". ${(result as any).error || 'Please try again.'}`, 'error');
+      toast.error(`Couldn't add the client: ${errorText(result)}`);
       return;
     }
-
-    // Clear license assignment in licensing store
-    const associatedLic = licenses.find(l => l.assignedUserEmail === userEmail);
-    if (associatedLic) {
-      licensingStore.updateLicense(associatedLic.id, {
-        assignedUserEmail: undefined,
-        assignedOrgName: undefined,
-        assignedOrgId: undefined
-      });
-      setLicenses(licensingStore.getLicenses());
-    }
-
-    const updated = users.filter(u => u.id !== userId);
-    setUsers(updated);
-    localStorage.setItem('signageos_users', JSON.stringify(updated));
-    addToast(`Client "${userName}" has been successfully removed.`);
+    await refresh();
+    setAddOpen(false);
+    toast.success(draft.sendEmail ? `Client added — login details emailed to ${draft.email.trim()}` : 'Client added');
   };
 
-  const handleOpenEdit = (user: UserType) => {
-    setEditingUser(user);
-    setEditStep(1);
-    setEditName(user.name);
-    setEditPhone(user.mobile);
-    setEditAddress(user.address || '');
-    setEditOrg(user.company);
-
-    // Find assigned license
-    const userLicense = licenses.find(l => l.assignedUserEmail === user.email);
-    setEditSelectedLicenseId(userLicense?.id || '');
-  };
-
-  const handleEditNextStep = () => {
-    if (editStep === 1) {
-      if (!editName.trim() || !editPhone.trim()) {
-        addToast("Please fill in Name and Phone number.", 'error');
-        return;
-      }
-      setEditStep(2);
-    } else if (editStep === 2) {
-      if (!editOrg.trim()) {
-        addToast("Please enter an Organization name.", 'error');
-        return;
-      }
-      setEditStep(3);
-    }
-  };
-
-  const handleEditPrevStep = () => {
-    setEditStep(p => Math.max(1, p - 1));
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingUser) return;
-    if (!editName.trim() || !editPhone.trim() || !editOrg.trim()) {
-      addToast("Please fill out all required fields.", 'error');
-      return;
-    }
-
-    // Update user details
-    const updated = users.map(u => u.id === editingUser.id ? {
-      ...u,
-      name: editName,
-      mobile: editPhone,
-      address: editAddress,
-      company: editOrg
-    } : u);
-
-    const updatedUserForSave = updated.find(u => u.id === editingUser.id);
-    if (!updatedUserForSave) return;
-
-    const result = await pushToDatabase('users', editingUser.id, updatedUserForSave, 'PUT');
-    if (!result.ok) {
-      addToast(`Failed to update client details. ${(result as any).error || 'Please try again.'}`, 'error');
-      return;
-    }
-
-    // Handle license reassignment if changed
-    const oldAssignedLic = licenses.find(l => l.assignedUserEmail === editingUser.email);
-    if (editSelectedLicenseId && editSelectedLicenseId !== oldAssignedLic?.id) {
-      // Unassign old license
-      if (oldAssignedLic) {
-        licensingStore.updateLicense(oldAssignedLic.id, {
-          assignedUserEmail: undefined,
-          assignedOrgName: undefined,
-          assignedOrgId: undefined
-        });
-      }
-      // Assign new license
-      licensingStore.updateLicense(editSelectedLicenseId, {
-        assignedUserEmail: editingUser.email,
-        assignedOrgName: editOrg,
-        assignedOrgId: ''
-      });
-      setLicenses(licensingStore.getLicenses());
-    } else if (!editSelectedLicenseId && oldAssignedLic) {
-      // Unassign if license was cleared
-      licensingStore.updateLicense(oldAssignedLic.id, {
-        assignedUserEmail: undefined,
-        assignedOrgName: undefined,
-        assignedOrgId: undefined
-      });
-      setLicenses(licensingStore.getLicenses());
-    } else if (oldAssignedLic) {
-      // Update org name in license if org changed
-      licensingStore.updateLicense(oldAssignedLic.id, {
-        assignedOrgName: editOrg
-      });
-      setLicenses(licensingStore.getLicenses());
-    }
-
-    // Sync organization name in signageos_organizations if it matches the editing company name
-    const orgsData = localStorage.getItem('signageos_organizations');
-    if (orgsData) {
-      let orgList = JSON.parse(orgsData);
-      orgList = orgList.map((o: any) => {
-        if (o.name.toLowerCase() === editingUser.company.toLowerCase()) {
-          const updatedOrg = { ...o, name: editOrg };
-          pushToDatabase('organizations', o.id, updatedOrg, 'PUT');
-          return updatedOrg;
-        }
-        return o;
-      });
-      localStorage.setItem('signageos_organizations', JSON.stringify(orgList));
-    }
-
-    setUsers(updated);
-    localStorage.setItem('signageos_users', JSON.stringify(updated));
-    setEditingUser(null);
-    addToast("Client details updated successfully.");
-  };
-
-  // Filter clients based on search query
-  const filteredClients = users.filter(u => {
-    const term = search.toLowerCase();
-    return (
-      u.name.toLowerCase().includes(term) ||
-      u.email.toLowerCase().includes(term) ||
-      u.company.toLowerCase().includes(term)
-    );
-  });
-
-  // Filter unassigned licenses
-  const unassignedLicenses = licenses.filter(l => !l.assignedUserEmail);
+  const open = openId ? users.find(u => u.id === openId) : null;
+  const pill = (text: string, cls: string) => <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>{text}</span>;
+  const selectedPoolLicense = licenses.find(l => l.id === draft.licenseId);
 
   return (
-    <div className="p-6 space-y-5 text-left">
-      {/* Toast Alert — z-[60], above the z-50 add/edit-client modals, so a
-          validation error triggered from inside an open modal (e.g. Next
-          without filling details) doesn't render behind it. */}
-      <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
-        {toasts.map(t => (
-          <div key={t.id} className="flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white bg-slate-900 border border-slate-700 animate-slideIn">
-            {t.type === 'error' ? (
-              <AlertCircle size={16} className="text-red-400 shrink-0" />
-            ) : (
-              <CheckCircle size={16} className="text-emerald-400 shrink-0" />
-            )}
-            <span>{t.message}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="space-y-3">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="display text-2xl sm:text-3xl text-ink-950">Clients</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{users.length} clients registered in the system</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {users.length ? `${users.length} client${users.length === 1 ? '' : 's'}${counts.attention ? ` · ${counts.attention} need${counts.attention === 1 ? 's' : ''} attention` : ''}` : 'The businesses you run screens for'}
+          </p>
         </div>
+        <button onClick={openAdd} className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium">
+          <Plus size={16} /> Add client
+        </button>
+      </div>
 
-        {/* Search + Add Client, side by side — the title's subtitle is long
-            enough that squeezing the button in beside it wraps to its own
-            line anyway, so the button pairs with the search bar instead. */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+      {users.length > 0 && (
+        <>
+          <div className="relative">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search clients by name, email, or organization..."
-              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+              placeholder="Search by name, email, organization or phone"
+              className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
             />
           </div>
-          <button
-            onClick={() => { resetForm(); setIsAddClientOpen(true); }}
-            className="shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
-          >
-            <Plus size={16} /> Add Client
-          </button>
-        </div>
-      </div>
-
-      {/* Clients Table (desktop) */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="px-5 py-3.5">Client</th>
-                <th className="px-5 py-3.5">Email</th>
-                <th className="px-5 py-3.5">Phone Number</th>
-                <th className="px-5 py-3.5">Organization</th>
-                <th className="px-5 py-3.5">License Details</th>
-                <th className="px-5 py-3.5">License Expiry</th>
-                <th className="px-5 py-3.5">Screens Assigned</th>
-                <th className="px-5 py-3.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-xs text-slate-600">
-              {filteredClients.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-gray-400">
-                    No clients found matching the filter criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredClients.map(user => {
-                  // Find license for user
-                  const userLicense = licenses.find(l => l.assignedUserEmail === user.email);
-
-                  return (
-                    <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-teal-500 flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
-                            {user.name.split(' ').map(n => n[0]).join('')}
-                          </div>
-                          <div>
-                            <span className="font-bold text-slate-800">{user.name}</span>
-                            {user.address && (
-                              <p className="text-[10px] text-gray-400 truncate max-w-[150px] font-medium mt-0.5">{user.address}</p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 font-mono text-slate-500 font-semibold">{user.email}</td>
-                      <td className="px-5 py-4 font-semibold text-slate-600">{user.mobile}</td>
-                      <td className="px-5 py-4 font-bold text-slate-800">{user.company}</td>
-                      <td className="px-5 py-4">
-                        {userLicense ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono font-bold text-slate-900">
-                              {userLicense.id}
-                            </span>
-                            <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-semibold capitalize">
-                              {userLicense.tenure}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Unassigned</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 font-semibold text-slate-600">
-                        {userLicense ? userLicense.expiryDate : '—'}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="text-[10.5px] text-slate-600 font-semibold space-y-0.5">
-                          <p>Screens: <span className="text-slate-900 font-bold">{user.screensAssigned} Max</span></p>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          <button
-                            onClick={() => handleOpenEdit(user)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            title="Edit Client"
-                          >
-                            <Edit size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClient(user.id, user.email, user.name)}
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Remove Client"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Clients list (mobile) */}
-        <div className="md:hidden divide-y divide-gray-100">
-          {filteredClients.length === 0 ? (
-            <div className="px-4 py-8 text-center text-gray-400 text-xs">
-              No clients found matching the filter criteria.
-            </div>
-          ) : (
-            filteredClients.map(user => {
-              const userLicense = licenses.find(l => l.assignedUserEmail === user.email);
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+            {([
+              { key: 'all', label: 'All', count: users.length },
+              { key: 'active', label: 'Active', count: counts.active },
+              { key: 'attention', label: 'Needs attention', count: counts.attention },
+            ] as const).map(c => {
+              const active = filter === c.key;
               return (
-                <div key={user.id} className="p-4 flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-teal-500 flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
-                        {user.name.split(' ').map(n => n[0]).join('')}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-slate-800 text-sm truncate">{user.name}</p>
-                        <p className="text-[11px] text-gray-400 font-mono truncate">{user.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => handleOpenEdit(user)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                        title="Edit Client"
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClient(user.id, user.email, user.name)}
-                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Remove Client"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] pt-3 border-t border-gray-100">
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Phone</p>
-                      <p className="text-slate-600 font-semibold mt-0.5">{user.mobile}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Organization</p>
-                      <p className="text-slate-800 font-bold mt-0.5 truncate">{user.company}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">License</p>
-                      {userLicense ? (
-                        <p className="mt-0.5 flex items-center gap-1">
-                          <span className="font-mono font-bold text-slate-900">{userLicense.id}</span>
-                        </p>
-                      ) : (
-                        <p className="text-slate-400 italic mt-0.5">Unassigned</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Expiry</p>
-                      <p className="text-slate-600 font-semibold mt-0.5">{userLicense ? userLicense.expiryDate : '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400 font-semibold uppercase text-[9px] tracking-wider">Screens</p>
-                      <p className="text-slate-900 font-bold mt-0.5">{user.screensAssigned} Max</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* ADD CLIENT WIZARD MODAL */}
-      {isAddClientOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]">
-            
-            {/* Modal Header */}
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-base font-bold text-gray-900">Add New Client</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Onboard a client organization and assign license profiles</p>
-              </div>
-              <button 
-                onClick={() => setIsAddClientOpen(false)}
-                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Stepper Wizard Progress */}
-            <div className="bg-gray-50 px-6 py-3 border-b border-gray-100 flex items-center justify-between text-xs font-semibold text-gray-500">
-              <div className="flex items-center gap-2">
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>1</span>
-                <span className={step >= 1 ? 'text-blue-600' : ''}>Client Details</span>
-              </div>
-              <div className="w-10 h-px bg-gray-200" />
-              <div className="flex items-center gap-2">
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>2</span>
-                <span className={step >= 2 ? 'text-blue-600' : ''}>Org & License</span>
-              </div>
-              <div className="w-10 h-px bg-gray-200" />
-              <div className="flex items-center gap-2">
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step === 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>3</span>
-                <span className={step === 3 ? 'text-blue-600' : ''}>Summary</span>
-              </div>
-            </div>
-
-            {/* Wizard Body content */}
-            <div className="p-6 flex-1 overflow-y-auto space-y-4">
-              
-              {/* STEP 1: CLIENT DETAILS */}
-              {step === 1 && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client Full Name *</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Priyan Sharma"
-                      value={clientName} 
-                      onChange={e => setClientName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address *</label>
-                    <input 
-                      type="email" 
-                      placeholder="e.g. priya@demo.com"
-                      value={clientEmail} 
-                      onChange={e => setClientEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-mono font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Phone Number *</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. +91 99999 99999"
-                      value={clientPhone} 
-                      onChange={e => setClientPhone(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Billing / Office Address</label>
-                    <textarea 
-                      placeholder="Enter physical address..."
-                      rows={3}
-                      value={clientAddress} 
-                      onChange={e => setClientAddress(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 resize-none font-semibold"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 2: ORGANIZATION & LICENSE */}
-              {step === 2 && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Organization / Company Name *</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Phoenix Mall Group"
-                      value={orgName} 
-                      onChange={e => setOrgName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assign Licensing Profile *</label>
-                    {unassignedLicenses.length === 0 ? (
-                      <div className="p-3.5 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-700 font-medium">
-                        No unassigned licenses found in the pool. Assigning a license is mandatory. Please go to the "Licensing" section to create an active license first before onboarding this client.
-                      </div>
-                    ) : (
-                      <CustomSelect 
-                        value={selectedLicenseId} 
-                        onChange={val => setSelectedLicenseId(val)}
-                        placeholder="Select a license..."
-                        options={[
-                          { value: '', label: 'Select a license...' },
-                          ...unassignedLicenses.map(lic => ({
-                            value: lic.id,
-                            label: `${lic.id} - ${lic.name} (${lic.deviceLimit} Screens, ${lic.tenure})`
-                          }))
-                        ]}
-                        buttonClassName="px-3.5 py-2.5 text-sm min-h-[42px]"
-                      />
-                    )}
-                    <p className="text-[11px] text-gray-400 mt-1">Assigning a license is mandatory. Only unassigned licenses are listed. Each license can only be allocated to a single client.</p>
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 3: SUMMARY & CREDENTIALS */}
-              {step === 3 && (
-                <div className="space-y-4">
-                  {/* Summary card */}
-                  <div className="border border-gray-100 rounded-xl p-4 bg-slate-50/50 space-y-2 text-xs">
-                    <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-1.5 mb-2 uppercase text-[10px] tracking-wider">Client Onboarding Summary</h3>
-                    <div className="grid grid-cols-3 gap-y-1.5 text-gray-600">
-                      <span className="font-medium text-gray-400">Name:</span>
-                      <span className="col-span-2 text-gray-900 font-semibold">{clientName}</span>
-                      
-                      <span className="font-medium text-gray-400">Email:</span>
-                      <span className="col-span-2 text-gray-900 font-mono font-semibold">{clientEmail}</span>
-                      
-                      <span className="font-medium text-gray-400">Phone:</span>
-                      <span className="col-span-2 text-gray-900 font-semibold">{clientPhone}</span>
-                      
-                      <span className="font-medium text-gray-400">Organization:</span>
-                      <span className="col-span-2 text-gray-900 font-semibold">{orgName}</span>
-                      
-                      <span className="font-medium text-gray-400">Address:</span>
-                      <span className="col-span-2 text-gray-800 font-semibold">{clientAddress || '—'}</span>
-
-                      <span className="font-medium text-gray-400">License:</span>
-                      <span className="col-span-2 text-blue-700 font-bold">
-                        {selectedLicenseId ? `${selectedLicenseId} (${licenses.find(l => l.id === selectedLicenseId)?.name})` : 'No License Assigned'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Password Generation */}
-                  <div className="border border-gray-100 rounded-xl p-4 space-y-3 bg-white">
-                    <h3 className="font-bold text-gray-900 text-xs flex items-center gap-1.5">
-                      <Lock size={14} className="text-blue-600" /> Account Security Credentials
-                    </h3>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Lock size={14} className="absolute left-3 top-3 text-gray-400" />
-                        <input 
-                          type="text" 
-                          readOnly 
-                          value={generatedPassword}
-                          placeholder="Generate simple login password..."
-                          className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm bg-slate-50 font-semibold font-mono text-slate-800 outline-none"
-                        />
-                      </div>
-                      <button 
-                        type="button" 
-                        onClick={handleGeneratePassword}
-                        className="px-4 py-2.5 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                      >
-                        Generate Password
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-gray-400 font-medium">Generated password formula: [first-name][4-digits] (e.g. john1829)</p>
-                  </div>
-
-                  {/* Mailing checkbox */}
-                  <div className="flex items-start gap-2.5 p-1">
-                    <input
-                      type="checkbox"
-                      id="sendEmailBox"
-                      checked={sendEmail}
-                      onChange={e => setSendEmail(e.target.checked)}
-                      className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <label htmlFor="sendEmailBox" className="text-xs text-gray-600 font-medium cursor-pointer">
-                      <strong>Email credentials to client automatically</strong>
-                      <span className="block text-[10px] text-gray-400 mt-0.5 font-medium">Sends welcome instructions, login details, and assigned license parameters immediately.</span>
-                    </label>
-                  </div>
-
-                  {/* Feature Toggles */}
-                  <div className="border border-gray-100 rounded-xl p-4 space-y-3 bg-blue-50">
-                    <h3 className="font-bold text-gray-900 text-xs uppercase tracking-wider text-blue-900">Feature Enablement</h3>
-
-                    <div className="space-y-2.5">
-                      <label className="flex items-start gap-2.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={enableVideoConferencing}
-                          onChange={e => setEnableVideoConferencing(e.target.checked)}
-                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span className="text-xs text-gray-700">
-                          <strong>Video Conferencing</strong>
-                          <span className="block text-[10px] text-gray-500 mt-0.5">Enable 1-to-1, group, and manual TV calls with camera detection</span>
-                        </span>
-                      </label>
-
-                      <label className="flex items-start gap-2.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={enableBroadcasting}
-                          onChange={e => setEnableBroadcasting(e.target.checked)}
-                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span className="text-xs text-gray-700">
-                          <strong>Live Broadcasting</strong>
-                          <span className="block text-[10px] text-gray-500 mt-0.5">Allow admin to broadcast video/screen to all TVs</span>
-                        </span>
-                      </label>
-
-                      <label className="flex items-start gap-2.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={enableLiveChat}
-                          onChange={e => setEnableLiveChat(e.target.checked)}
-                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span className="text-xs text-gray-700">
-                          <strong>Live Chat Messaging</strong>
-                          <span className="block text-[10px] text-gray-500 mt-0.5">Send colored messages with auto-dismiss to TV displays</span>
-                        </span>
-                      </label>
-
-                      <label className="flex items-start gap-2.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={enableCameraMonitoring}
-                          onChange={e => setEnableCameraMonitoring(e.target.checked)}
-                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span className="text-xs text-gray-700">
-                          <strong>Camera Monitoring</strong>
-                          <span className="block text-[10px] text-gray-500 mt-0.5">View all TV camera feeds and monitor screen activity</span>
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-              <div>
-                {step > 1 && (
-                  <button 
-                    onClick={handlePrevStep}
-                    className="flex items-center gap-1 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <ArrowLeft size={15} /> Back
-                  </button>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setIsAddClientOpen(false)}
-                  className="px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                <button
+                  key={c.key}
+                  onClick={() => setFilter(c.key)}
+                  aria-pressed={active}
+                  className={`shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold transition-colors ${
+                    active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                  }`}
                 >
-                  Cancel
+                  {c.label}
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none ${active ? 'bg-white/20' : c.key === 'attention' && c.count ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{c.count}</span>
                 </button>
-                
-                {step < 3 ? (
-                  <button 
-                    onClick={handleNextStep}
-                    disabled={step === 2 && unassignedLicenses.length === 0}
-                    className="flex items-center gap-1 px-4.5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    Next <ArrowRight size={15} />
-                  </button>
-                ) : (
-                  <button 
-                    onClick={handleOnboardClient}
-                    disabled={!generatedPassword || isOnboarding}
-                    className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    {isOnboarding ? 'Onboarding...' : 'Confirm & Onboard'}
-                  </button>
-                )}
-              </div>
-            </div>
-
+              );
+            })}
           </div>
-        </div>
+        </>
       )}
 
-      {/* EDIT CLIENT DETAILS MODAL - 3 STEP FORM */}
-      {editingUser && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        {visible.map(u => {
+          const lic = licenseOf(u.email);
+          const st = stateOf(u);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => setOpenId(u.id)}
+              className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 hover:shadow-sm p-4 flex items-center gap-3 transition-colors"
+            >
+              <span className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-600 to-teal-500 text-white text-sm font-semibold flex items-center justify-center shrink-0">
+                {initials(u.name)}
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-900 truncate">{u.company || u.name}</span>
+                </span>
+                <span className="block text-xs text-slate-500 truncate">{u.company ? u.name : u.email}</span>
+                <span className="block text-xs text-slate-400 mt-0.5 truncate">
+                  {lic ? `${screensUsed(u.email)}/${lic.deviceLimit || 5} screens · ${formatDate(lic.expiryDate)}` : 'No license — screens won\'t play'}
+                </span>
+              </span>
+              {pill(st.label, st.className)}
+            </button>
+          );
+        })}
+      </div>
 
-            {/* Modal Header */}
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+      {users.length === 0 && (
+        <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+          <UsersIcon size={30} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-sm font-medium text-gray-700">No clients yet</p>
+          <p className="text-xs text-gray-500 mt-1">Add a client to give them their own dashboard and screens.</p>
+          <button onClick={openAdd} className="mt-4 inline-flex items-center gap-2 h-10 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium">
+            <Plus size={16} /> Add client
+          </button>
+        </div>
+      )}
+      {users.length > 0 && visible.length === 0 && (
+        <p className="text-sm text-gray-500 text-center py-8">No clients match.</p>
+      )}
+
+      {/* ── Client sheet ─────────────────────────────────────────────────── */}
+      {open && (() => {
+        const lic = licenseOf(open.email);
+        const st = stateOf(open);
+        const extra = licenses.filter(l => l.assignedUserEmail === open.email).length - 1;
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setOpenId(null)}
+            title={open.company || open.name}
+            subtitle={open.company ? open.name : open.email}
+            badge={pill(st.label, st.className)}
+            details={[
+              { label: 'Email', value: <a href={`mailto:${open.email}`} className="text-blue-600" onClick={e => e.stopPropagation()}>{open.email}</a> },
+              ...(open.mobile ? [{ label: 'Phone', value: <a href={`tel:${open.mobile.replace(/\s+/g, '')}`} className="text-blue-600">{open.mobile}</a> }] : []),
+              ...(open.address ? [{ label: 'Address', value: open.address }] : []),
+              { label: 'License', value: lic ? `${lic.name}${extra > 0 ? ` +${extra} more` : ''}` : <span className="text-slate-400">None</span> },
+              ...(lic ? [
+                { label: 'Plan', value: planLabel(lic) },
+                { label: 'Expires', value: formatDate(lic.expiryDate) },
+                { label: 'Screens', value: `${screensUsed(open.email)} of ${lic.deviceLimit || 5} in use` },
+              ] : [{ label: 'Screens', value: `${screensUsed(open.email)} paired` }]),
+            ]}
+            groups={[
+              {
+                title: 'Client',
+                actions: [
+                  { key: 'edit', label: 'Edit details', description: 'Name, phone, organization and address', icon: <Edit2 size={17} />, onClick: () => openEdit(open) },
+                  {
+                    key: 'license',
+                    label: lic ? 'Change license' : 'Assign a license',
+                    description: lic ? 'Swap for another license from the pool' : poolLicenses.length ? `${poolLicenses.length} available in the pool` : 'No free licenses — create one first',
+                    icon: <Key size={17} />,
+                    onClick: () => (lic || poolLicenses.length ? openLicensePicker(open) : onNavigate?.('licenses-management'))
+                  },
+                ]
+              },
+              {
+                title: 'Contact',
+                actions: [
+                  { key: 'mail', label: 'Send an email', description: open.email, icon: <Mail size={17} />, onClick: () => { window.location.href = `mailto:${open.email}`; } },
+                  ...(open.mobile ? [{ key: 'call', label: 'Call', description: open.mobile, icon: <Phone size={17} />, onClick: () => { window.location.href = `tel:${open.mobile.replace(/\s+/g, '')}`; } }] : []),
+                ]
+              },
+              {
+                title: 'Danger zone',
+                actions: [{
+                  key: 'remove',
+                  label: 'Remove client',
+                  description: 'Deletes their account; licenses go back to the pool',
+                  icon: <Trash2 size={17} />,
+                  tone: 'danger' as const,
+                  onClick: () => setRemoveTarget(open)
+                }]
+              }
+            ]}
+          />
+        );
+      })()}
+
+      {/* ── Edit details ─────────────────────────────────────────────────── */}
+      {editing && (
+        <ScreenDetailsSheet
+          open
+          onClose={() => setEditing(null)}
+          title="Edit client"
+          subtitle={editing.email}
+          details={[]}
+          groups={[]}
+          hero={
+            <div className="space-y-4">
               <div>
-                <h2 className="text-base font-bold text-gray-900">Edit Client Details</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Modify profile information for <strong>{editingUser.name}</strong></p>
+                <label className={labelCls}>Contact name</label>
+                <input value={edit.name} onChange={e => setEdit(v => ({ ...v, name: e.target.value }))} className={inputCls} />
               </div>
-              <button
-                onClick={() => setEditingUser(null)}
-                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
-              >
-                <X size={18} />
+              <div>
+                <label className={labelCls}>Phone</label>
+                <input type="tel" value={edit.mobile} onChange={e => setEdit(v => ({ ...v, mobile: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Organization</label>
+                <input value={edit.company} onChange={e => setEdit(v => ({ ...v, company: e.target.value }))} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Address</label>
+                <textarea rows={2} value={edit.address} onChange={e => setEdit(v => ({ ...v, address: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 resize-none" />
+              </div>
+              <p className="text-xs text-slate-500">The email is their login, so it can't be changed here.</p>
+            </div>
+          }
+          footer={
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setEditing(null)} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700">Cancel</button>
+              <button type="button" onClick={saveEdit} disabled={saving} className="flex-[2] h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold">
+                {saving ? 'Saving…' : 'Save changes'}
               </button>
             </div>
+          }
+        />
+      )}
 
-            {/* Stepper Wizard Progress */}
-            <div className="bg-gray-50 px-6 py-3 border-b border-gray-100 flex items-center justify-between text-xs font-semibold text-gray-500">
-              <div className="flex items-center gap-2">
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${editStep >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>1</span>
-                <span className={editStep >= 1 ? 'text-blue-600' : ''}>Contact Info</span>
-              </div>
-              <div className="w-10 h-px bg-gray-200" />
-              <div className="flex items-center gap-2">
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${editStep >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>2</span>
-                <span className={editStep >= 2 ? 'text-blue-600' : ''}>Org & License</span>
-              </div>
-              <div className="w-10 h-px bg-gray-200" />
-              <div className="flex items-center gap-2">
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${editStep === 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>3</span>
-                <span className={editStep === 3 ? 'text-blue-600' : ''}>Features</span>
-              </div>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-6 flex-1 overflow-y-auto space-y-4">
-
-              {/* STEP 1: CONTACT INFO */}
-              {editStep === 1 && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client Full Name *</label>
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address</label>
-                    <input
-                      type="email"
-                      value={editingUser.email}
-                      readOnly
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-100 font-mono font-semibold text-gray-500 cursor-not-allowed"
-                    />
-                    <p className="text-[10px] text-gray-400 mt-1">Email cannot be changed</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Phone Number *</label>
-                    <input
-                      type="text"
-                      value={editPhone}
-                      onChange={e => setEditPhone(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Address</label>
-                    <textarea
-                      rows={2}
-                      value={editAddress}
-                      onChange={e => setEditAddress(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 resize-none font-semibold"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 2: ORGANIZATION & LICENSE */}
-              {editStep === 2 && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Organization / Company Name *</label>
-                    <input
-                      type="text"
-                      value={editOrg}
-                      onChange={e => setEditOrg(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500 bg-slate-50 font-semibold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assign Licensing Profile</label>
-                    <CustomSelect
-                      value={editSelectedLicenseId}
-                      onChange={val => setEditSelectedLicenseId(val)}
-                      placeholder="Select a license..."
-                      options={[
-                        { value: '', label: 'No License (Unassign)' },
-                        ...licenses.map(lic => ({
-                          value: lic.id,
-                          label: `${lic.id} - ${lic.name} (${lic.deviceLimit} Screens, ${lic.tenure})`
-                        }))
-                      ]}
-                      buttonClassName="px-3.5 py-2.5 text-sm min-h-[42px]"
-                    />
-                    <p className="text-[11px] text-gray-400 mt-1">You can reassign or unassign the license for this client.</p>
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 3: SUMMARY */}
-              {editStep === 3 && (
-                <div className="space-y-4">
-                  {/* Summary card */}
-                  <div className="border border-gray-100 rounded-xl p-4 bg-slate-50/50 space-y-2 text-xs">
-                    <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-1.5 mb-2 uppercase text-[10px] tracking-wider">Update Summary</h3>
-                    <div className="grid grid-cols-3 gap-y-1.5 text-gray-600">
-                      <span className="font-medium text-gray-400">Name:</span>
-                      <span className="col-span-2 text-gray-900 font-semibold">{editName}</span>
-
-                      <span className="font-medium text-gray-400">Email:</span>
-                      <span className="col-span-2 text-gray-900 font-mono font-semibold text-[11px]">{editingUser.email}</span>
-
-                      <span className="font-medium text-gray-400">Phone:</span>
-                      <span className="col-span-2 text-gray-900 font-semibold">{editPhone}</span>
-
-                      <span className="font-medium text-gray-400">Organization:</span>
-                      <span className="col-span-2 text-gray-900 font-semibold">{editOrg}</span>
-
-                      <span className="font-medium text-gray-400">License:</span>
-                      <span className="col-span-2 text-blue-700 font-bold">
-                        {editSelectedLicenseId ? `${editSelectedLicenseId}` : 'Unassigned'}
+      {/* ── Change license ───────────────────────────────────────────────── */}
+      {licenseFor && (() => {
+        const current = licenseOf(licenseFor.email);
+        // Only this client's license and free ones — the old picker listed
+        // every license, so choosing one could silently take it from another
+        // client.
+        const options = [...(current ? [current] : []), ...poolLicenses];
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setLicenseFor(null)}
+            title={current ? 'Change license' : 'Assign a license'}
+            subtitle={licenseFor.company || licenseFor.name}
+            details={[]}
+            groups={[]}
+            hero={
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                  {options.map(l => (
+                    <LicenseOption key={l.id} lic={l} selected={licenseChoice === l.id} onSelect={() => setLicenseChoice(l.id)} note={l.id === current?.id ? 'current' : undefined} />
+                  ))}
+                  {current && (
+                    <button type="button" onClick={() => setLicenseChoice('')} className={`w-full flex items-center gap-3 px-4 py-3 text-left ${licenseChoice === '' ? 'bg-rose-50/60' : 'hover:bg-slate-50'}`}>
+                      <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${licenseChoice === '' ? 'border-rose-500' : 'border-slate-300'}`}>
+                        {licenseChoice === '' && <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />}
                       </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium text-slate-900">No license</span>
+                        <span className="block text-xs text-slate-500">Their screens stop playing</span>
+                      </span>
+                    </button>
+                  )}
+                </div>
+                {poolLicenses.length === 0 && (
+                  <p className="text-xs text-slate-500">
+                    No free licenses in the pool.{' '}
+                    {onNavigate && <button type="button" onClick={() => onNavigate('licenses-management')} className="text-blue-600 font-medium">Create one</button>}
+                  </p>
+                )}
+              </div>
+            }
+            footer={
+              <button type="button" onClick={saveLicense} className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">Save</button>
+            }
+          />
+        );
+      })()}
+
+      {/* ── Add client ───────────────────────────────────────────────────── */}
+      {addOpen && (
+        <ScreenDetailsSheet
+          open
+          onClose={() => setAddOpen(false)}
+          title="Add client"
+          subtitle={['Contact details', 'Organization & license', 'Review & send login'][step - 1]}
+          badge={<span className="text-[11px] font-medium text-slate-400">Step {step} of 3</span>}
+          details={[]}
+          groups={[]}
+          hero={
+            <div className="space-y-4">
+              <div className="flex gap-1.5">
+                {[1, 2, 3].map(n => <span key={n} className={`h-1 flex-1 rounded-full ${n <= step ? 'bg-blue-600' : 'bg-slate-200'}`} />)}
+              </div>
+
+              {step === 1 && (
+                <>
+                  <div>
+                    <label className={labelCls}>Contact name</label>
+                    <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="e.g. Priya Sharma" className={inputCls} autoFocus />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Email — their login</label>
+                    <input type="email" inputMode="email" autoCapitalize="none" value={draft.email} onChange={e => setDraft(d => ({ ...d, email: e.target.value }))} placeholder="priya@company.com" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Phone</label>
+                    <input type="tel" value={draft.mobile} onChange={e => setDraft(d => ({ ...d, mobile: e.target.value }))} placeholder="+91 98765 43210" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Address <span className="text-slate-400 font-normal">(optional)</span></label>
+                    <textarea rows={2} value={draft.address} onChange={e => setDraft(d => ({ ...d, address: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 resize-none" />
+                  </div>
+                </>
+              )}
+
+              {step === 2 && (
+                <>
+                  <div>
+                    <label className={labelCls}>Organization</label>
+                    <input list="client-orgs" value={draft.company} onChange={e => setDraft(d => ({ ...d, company: e.target.value }))} placeholder="e.g. Phoenix Mall Group" className={inputCls} autoFocus />
+                    <datalist id="client-orgs">
+                      {organizations.map((o: any) => <option key={o.id} value={o.name} />)}
+                    </datalist>
+                    {organizations.some((o: any) => (o.name || '').toLowerCase() === draft.company.trim().toLowerCase()) && (
+                      <p className="text-xs text-slate-500 mt-1.5">Joins the existing “{draft.company.trim()}” organization.</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className={labelCls}>License</label>
+                    {poolLicenses.length > 0 ? (
+                      <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                        {poolLicenses.map(l => (
+                          <LicenseOption key={l.id} lic={l} selected={draft.licenseId === l.id} onSelect={() => setDraft(d => ({ ...d, licenseId: l.id }))} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-slate-600 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                        Every license is already assigned. Create a new one first.
+                        {onNavigate && (
+                          <button type="button" onClick={() => { setAddOpen(false); onNavigate('licenses-management'); }} className="block mt-2 text-blue-600 font-medium">
+                            Go to Licensing →
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {step === 3 && (
+                <>
+                  <dl className="rounded-2xl border border-slate-100 divide-y divide-slate-100">
+                    {[
+                      ['Contact', draft.name],
+                      ['Email', draft.email],
+                      ['Phone', draft.mobile],
+                      ['Organization', draft.company],
+                      ['License', selectedPoolLicense ? `${selectedPoolLicense.name} · ${planLabel(selectedPoolLicense)}` : '—'],
+                    ].map(([k, v]) => (
+                      <div key={k} className="flex items-center justify-between gap-4 px-4 py-2.5">
+                        <dt className="text-xs text-slate-500 shrink-0">{k}</dt>
+                        <dd className="text-sm font-medium text-slate-800 text-right truncate">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <div>
+                    <label className={labelCls}>Temporary password</label>
+                    <div className="flex gap-2">
+                      <input readOnly value={draft.password} className={`${inputCls} font-mono`} />
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard?.writeText(draft.password); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                        className="w-11 h-11 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50"
+                        aria-label="Copy password"
+                      >
+                        {copied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDraft(d => ({ ...d, password: generateClientPassword(d.name) }))}
+                        className="w-11 h-11 shrink-0 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50"
+                        aria-label="New password"
+                      >
+                        <RefreshCw size={16} />
+                      </button>
                     </div>
+                    <p className="text-xs text-slate-500 mt-1.5">They'll be asked to change it the first time they sign in.</p>
                   </div>
 
-                  {/* Info message */}
-                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-900">
-                    <strong>Features enabled by License Profile</strong>
-                    <p className="text-[11px] mt-1">Video Conferencing and other features are controlled at the License Profile level. Assign or update the license to enable features.</p>
+                  <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                    <FeatureToggle checked={draft.sendEmail} onChange={v => setDraft(d => ({ ...d, sendEmail: v }))} label="Email the login details" hint={`Sends the sign-in link and password to ${draft.email || 'the client'}`} icon={<Mail size={17} />} />
                   </div>
-                </div>
+
+                  <div>
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Features</p>
+                    <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                      <FeatureToggle checked={features.enableBroadcasting} onChange={v => setFeatures(f => ({ ...f, enableBroadcasting: v }))} label="Live broadcasting" hint="Broadcast video or their screen to all TVs" icon={<Radio size={17} />} />
+                      <FeatureToggle checked={features.enableLiveChat} onChange={v => setFeatures(f => ({ ...f, enableLiveChat: v }))} label="Live messages" hint="Pop-up messages on their TVs" icon={<MessageSquare size={17} />} />
+                      <FeatureToggle checked={features.enableCameraMonitoring} onChange={v => setFeatures(f => ({ ...f, enableCameraMonitoring: v }))} label="Camera monitoring" hint="View their TVs' camera feeds" icon={<Camera size={17} />} />
+                    </div>
+                    <p className="flex items-center gap-1.5 text-xs text-slate-500 mt-2 px-1">
+                      <Video size={13} /> Video calls: {selectedPoolLicense?.enableVideoConferencing ? 'included with this license' : 'not included in this license'}
+                    </p>
+                  </div>
+                </>
               )}
             </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-              <div>
-                {editStep > 1 && (
-                  <button
-                    onClick={handleEditPrevStep}
-                    className="flex items-center gap-1 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <ArrowLeft size={15} /> Back
-                  </button>
-                )}
-              </div>
-              <div className="flex gap-2">
+          }
+          footer={
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => (step === 1 ? setAddOpen(false) : setStep(s => s - 1))}
+                className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700"
+              >
+                {step === 1 ? 'Cancel' : 'Back'}
+              </button>
+              {step < 3 ? (
                 <button
-                  onClick={() => setEditingUser(null)}
-                  className="px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                  type="button"
+                  onClick={nextStep}
+                  disabled={step === 2 && poolLicenses.length === 0}
+                  className="flex-[2] h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold"
                 >
-                  Cancel
+                  Next
                 </button>
-
-                {editStep < 3 ? (
-                  <button
-                    onClick={handleEditNextStep}
-                    className="flex items-center gap-1 px-4.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    Next <ArrowRight size={15} />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSaveEdit}
-                    className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    Save Changes
-                  </button>
-                )}
-              </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onboard}
+                  disabled={onboarding || !draft.password}
+                  className="flex-[2] h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold"
+                >
+                  {onboarding ? 'Adding…' : 'Add client'}
+                </button>
+              )}
             </div>
-          </div>
-        </div>
+          }
+        />
+      )}
+
+      {removeTarget && (
+        <ConfirmDialog
+          title={`Remove ${removeTarget.name}?`}
+          body={<p>Their account is deleted and {licenses.some(l => l.assignedUserEmail === removeTarget.email) ? 'their license goes back to the pool' : 'they lose access'}. Their screens stop playing. This can't be undone.</p>}
+          confirmLabel="Remove client"
+          tone="danger"
+          onCancel={() => setRemoveTarget(null)}
+          onConfirm={() => removeClient(removeTarget)}
+        />
       )}
     </div>
   );

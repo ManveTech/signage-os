@@ -11,6 +11,8 @@ import integrationsRouter from './integrations';
 import { createCrudRouter } from '../controllers/crud';
 import { authenticateToken, enforceLicense } from '../middleware/auth';
 import { clearAllScreenLogs } from '../controllers/screens';
+import { postTicketMessage } from '../controllers/tickets';
+import { getBusinessDetails, putBusinessDetails } from '../controllers/businessDetails';
 import { Readable } from 'stream';
 import { isAllowedMediaUrl, getImageThumb, getVideoPoster } from '../services/mediaThumbs';
 
@@ -173,6 +175,9 @@ apiRouter.use('/media_items', createCrudRouter('media_items'));
 apiRouter.use('/playlists', createCrudRouter('playlists'));
 apiRouter.use('/licenses', createCrudRouter('licenses'));
 apiRouter.use('/organizations', createCrudRouter('organizations'));
+apiRouter.get('/business-details', getBusinessDetails);
+apiRouter.put('/business-details', putBusinessDetails);
+apiRouter.post('/tickets/:id/messages', postTicketMessage);
 apiRouter.use('/tickets', createCrudRouter('tickets'));
 apiRouter.use('/faqs', createCrudRouter('faqs'));
 apiRouter.use('/support_docs', createCrudRouter('support_docs'));

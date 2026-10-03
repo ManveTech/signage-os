@@ -120,7 +120,11 @@ export async function enforceLicense(req: any, res: any, next: any) {
     const path: string = req.path || '';
     const isPaymentRoute = path === '/payments' || path.startsWith('/payments/');
     const isOwnUserRecord = !!req.user?.id && (path === `/users/${req.user.id}` || path === `/users/${req.user.id}/avatar`);
-    if (req.method === 'GET' || isPaymentRoute || isOwnUserRecord) {
+    // Support stays reachable too: a customer whose license lapsed (or whose
+    // payment failed) is exactly who needs to open a ticket. The tickets
+    // routes do their own ownership checks.
+    const isSupportRoute = (req.method === 'POST') && (path === '/tickets' || /^\/tickets\/[^/]+\/messages$/.test(path));
+    if (req.method === 'GET' || isPaymentRoute || isOwnUserRecord || isSupportRoute) {
       return next();
     }
 

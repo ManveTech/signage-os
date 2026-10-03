@@ -131,7 +131,6 @@ Notes:
 - Private videos not supported
 - Age restricted videos may not play
 - Deleted videos are skipped automatically`,
-        youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         images: [],
         createdDate: new Date().toISOString().split('T')[0]
       }];

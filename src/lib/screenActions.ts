@@ -56,3 +56,6 @@ export function unlinkScreen(screenId: string): Promise<any> {
 export function pairTvToScreen(screenId: string, pairingCode: string): Promise<any> {
   return post('/screens/reconnect', { screenId, pairingCode: pairingCode.trim().toUpperCase() });
 }
+
+/** Authenticated JSON POST to the API, with friendly network errors. */
+export { post as apiPost };

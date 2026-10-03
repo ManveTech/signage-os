@@ -1,7 +1,7 @@
 import { API_BASE } from '../config';
 import { getAuthToken } from './authStorage';
 
-function getHeaders() {
+export function getHeaders() {
   const token = getAuthToken();
   return {
     'Content-Type': 'application/json',
