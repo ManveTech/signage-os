@@ -50,14 +50,14 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail={userEmail} />;
     case 'playlists-create': return <CreatePlaylist userEmail={userEmail} onNavigate={navigate} />;
     case 'playlists-scheduler': return <Scheduler userEmail={userEmail} />;
-    case 'reports-overview': return <Reports activeTab="Overview" userEmail={userEmail} />;
-    case 'reports-screens': return <Reports activeTab="Screen Reports" userEmail={userEmail} />;
-    case 'reports-media': return <Reports activeTab="Media Reports" userEmail={userEmail} />;
-    case 'reports-logs': return <Reports activeTab="Device Logs" userEmail={userEmail} />;
+    case 'reports-overview': return <Reports activeTab="Overview" userEmail={userEmail} onNavigate={navigate} />;
+    case 'reports-screens': return <Reports activeTab="Screen Reports" userEmail={userEmail} onNavigate={navigate} />;
+    case 'reports-media': return <Reports activeTab="Media Reports" userEmail={userEmail} onNavigate={navigate} />;
+    case 'reports-logs': return <Reports activeTab="Device Logs" userEmail={userEmail} onNavigate={navigate} />;
     case 'license-billing':
-    case 'licenses-pool': return <Licenses activeTab="License Pool" userEmail={userEmail} />;
-    case 'licenses-assign': return <Licenses activeTab="Assign License" userEmail={userEmail} />;
-    case 'licenses-history': return <Licenses activeTab="History" userEmail={userEmail} />;
+    case 'licenses-pool': return <Licenses activeTab="License Pool" userEmail={userEmail} onNavigate={navigate} />;
+    case 'licenses-assign': return <Licenses activeTab="Assign License" userEmail={userEmail} onNavigate={navigate} />;
+    case 'licenses-history': return <Licenses activeTab="History" userEmail={userEmail} onNavigate={navigate} />;
     case 'video-conferencing': return <VideoConferencing enabled={videoConferencingEnabled} organizationId={organizationId} licenseChecked={licenseChecked} />;
     case 'settings-general': return <Settings activeTab="General" userEmail={userEmail} />;
     // Storage config is an admin/platform concern, never reachable from this
@@ -68,7 +68,7 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'support':
     case 'support-tickets': return <Support activeTab="tickets" userEmail={userEmail} onNavigate={navigate} />;
     case 'support-help': return <Support activeTab="help" userEmail={userEmail} onNavigate={navigate} />;
-    case 'profile': return <Profile userEmail={userEmail} />;
+    case 'profile': return <Profile userEmail={userEmail} onNavigate={navigate} />;
     default: return <Dashboard userEmail={userEmail} onNavigate={navigate} />;
   }
 }

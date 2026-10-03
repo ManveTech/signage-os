@@ -116,13 +116,29 @@ async function handleOrgUpdate(req: any, res: any) {
   // decision made there (billing-relevant fields like screensAllowed/
   // storageLimit/planType live on this same record, not just branding).
   const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
-  if (!isAdmin) {
-    return res.status(403).json({ error: 'Admin access required.' });
-  }
 
   try {
     const orgId = req.params.id;
-    const body = { ...req.body };
+    let body = { ...req.body };
+
+    // A client whose license includes white label may set their own
+    // organization's brand name and logo (Profile → Branding) — and nothing
+    // else on the record. Previously every non-admin save was rejected while
+    // the dashboard reported "Branding settings saved".
+    if (!isAdmin) {
+      const email = (req.user?.email || '').toLowerCase();
+      const org = await pb.collection('organizations').getOne(orgId).catch(() => null);
+      if (!org || !email) return res.status(403).json({ error: 'Access denied.' });
+      const user = await pb.collection('users').getFirstListItem(pb.filter('email = {:email}', { email })).catch(() => null);
+      const belongs = (org.email || '').toLowerCase() === email || (!!user?.company && user.company === org.name);
+      const whiteLabel = await pb.collection('licenses').getList(1, 1, {
+        filter: pb.filter('assignedUserEmail = {:email} && whiteLabel = true', { email })
+      }).then(r => r.items.length > 0).catch(() => false);
+      if (!belongs || !whiteLabel) return res.status(403).json({ error: 'Custom branding isn\'t included in your license.' });
+      body = { websiteName: typeof body.websiteName === 'string' ? body.websiteName.slice(0, 80) : undefined, websiteLogo: body.websiteLogo };
+      if (body.websiteName === undefined) delete body.websiteName;
+      if (body.websiteLogo === undefined) delete body.websiteLogo;
+    }
     delete body.id;
     delete body.collectionId;
     delete body.collectionName;

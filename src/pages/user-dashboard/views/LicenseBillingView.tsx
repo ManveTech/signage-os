@@ -1,97 +1,69 @@
-import { useState, useEffect } from 'react';
-import {
-  Key, CreditCard, Calendar, Receipt, Download, FileText, CheckCircle,
-  Clock, RefreshCw, Printer, X, ShieldCheck
-} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Key, Receipt, CreditCard, Printer, AlertTriangle, CheckCircle, Video, Palette, LifeBuoy, ChevronRight, Loader2 } from 'lucide-react';
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
+import { mediaStore } from '../../../lib/mediaStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import { getAuthToken } from '../../../lib/authStorage';
 import { API_BASE } from '../../../config';
+import { toast } from '../../../components/Toast';
+import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
+import { licenseState, formatDate, formatInr, relativeDays, planLabel } from '../../../components/licenses/licenseStatus';
 
 interface Props {
   userEmail: string;
+  onNavigate?: (view: string) => void;
 }
 
-export default function LicenseBillingView({ userEmail }: Props) {
-  const [licenses, setLicenses] = useState<License[]>([]);
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [bizDetails, setBizDetails] = useState<BusinessDetails | null>(null);
-  const [screensCount, setScreensCount] = useState(0);
-  const [storageUsedBytes, setStorageUsedBytes] = useState(0);
+const lower = (v?: string) => (v || '').toLowerCase().trim();
 
-  // Razorpay Checkout states
-  const [isRzpOpen, setIsRzpOpen] = useState(false);
-  const [rzpStep, setRzpStep] = useState<'processing' | 'success'>('processing');
-  const [payingLicense, setPayingLicense] = useState<License | null>(null);
+/**
+ * Client License & Billing: what plan they're on and how much of it they
+ * use, anything that needs paying, and their invoices and payments.
+ */
+export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
+  const me = lower(userEmail);
+  const [licenses, setLicenses] = useState<License[]>(() => licensingStore.getLicenses().filter(l => lower(l.assignedUserEmail) === me));
+  const [invoices, setInvoices] = useState<Invoice[]>(() => licensingStore.getInvoices().filter(i => lower(i.clientEmail) === me));
+  const [payments, setPayments] = useState<PaymentRecord[]>(() => licensingStore.getPayments().filter(p => lower(p.clientEmail) === me));
+  const [biz, setBiz] = useState<BusinessDetails>(() => licensingStore.getBusinessDetails());
+  const [screensUsed, setScreensUsed] = useState(0);
+  const [storageBytes, setStorageBytes] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  // Invoice view states
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [paying, setPaying] = useState<string | null>(null); // license id
+  const [paidLicense, setPaidLicense] = useState<string | null>(null);
+  const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
+  const [openPaymentId, setOpenPaymentId] = useState<string | null>(null);
+
+  const load = () => {
+    setLicenses(licensingStore.getLicenses().filter(l => lower(l.assignedUserEmail) === me));
+    setInvoices(licensingStore.getInvoices().filter(i => lower(i.clientEmail) === me)
+      .sort((a, b) => (b.issuedDate || '').localeCompare(a.issuedDate || '')));
+    setPayments(licensingStore.getPayments().filter(p => lower(p.clientEmail) === me)
+      .sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || '')));
+    const screens = mediaStore.getScreens();
+    setScreensUsed(screens.filter(s => lower(s.assignedToUserEmail) === me && s.status !== 'pairing' && s.status !== 'unlinked').length);
+    // Uses the real media fields (uploadedBy / fileSizeBytes) — the old page
+    // read a cache key and field names that don't exist, so storage always
+    // showed 0 GB.
+    setStorageBytes(mediaStore.getClientStorageUsedBytes(userEmail));
+  };
 
   useEffect(() => {
-    loadData();
-  }, [userEmail]);
-
-  const loadData = async () => {
-    await Promise.all([
+    load();
+    Promise.all([
       syncCollection('licenses', 'signageos_licenses'),
       syncCollection('payments', 'signageos_payments'),
       syncCollection('invoices', 'signageos_invoices'),
       syncCollection('screens', 'signageos_screens'),
-      syncCollection('media_items', 'signageos_media_items'),
-    ]);
-    setLicenses(licensingStore.getLicenses());
-    setPayments(licensingStore.getPayments());
-    setInvoices(licensingStore.getInvoices());
-    setBizDetails(licensingStore.getBusinessDetails());
-    licensingStore.fetchBusinessDetails().then(setBizDetails);
+      syncCollection('media_items', 'signageos_media'),
+    ]).finally(() => { load(); setLoading(false); });
+    licensingStore.fetchBusinessDetails().then(setBiz);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail]);
 
-    // Calculate user screen count
-    const storedScreens = localStorage.getItem('signageos_screens');
-    if (storedScreens) {
-      const screensList = JSON.parse(storedScreens);
-      const userEmailLower = userEmail.toLowerCase().trim();
-      const myScreens = screensList.filter((s: any) => 
-        (s.assignedToUserEmail && s.assignedToUserEmail.toLowerCase().trim() === userEmailLower) ||
-        (s.createdBy && s.createdBy.toLowerCase().trim() === userEmailLower)
-      );
-      setScreensCount(myScreens.length);
-    }
-
-    // Calculate user media storage
-    const storedMedia = localStorage.getItem('signageos_media_items');
-    if (storedMedia) {
-      const mediaList = JSON.parse(storedMedia);
-      const userEmailLower = userEmail.toLowerCase().trim();
-      const myMedia = mediaList.filter((m: any) => 
-        (m.userEmail && m.userEmail.toLowerCase().trim() === userEmailLower) ||
-        (m.createdBy && m.createdBy.toLowerCase().trim() === userEmailLower)
-      );
-      const totalBytes = myMedia.reduce((acc: number, item: any) => acc + (Number(item.size) || 0), 0);
-      setStorageUsedBytes(totalBytes);
-    }
-  };
-
-  // Lookup user name from synced users list (localStorage)
-  const getClientName = () => {
-    const stored = localStorage.getItem('signageos_users');
-    if (stored) {
-      const users = JSON.parse(stored);
-      const match = users.find((u: any) => u.email === userEmail);
-      if (match) return match.name;
-    }
-    return userEmail.split('@')[0];
-  };
-
-  const clientLicense = licenses.find(l => l.assignedUserEmail === userEmail);
-  const clientPayments = payments.filter(p => p.clientEmail === userEmail);
-  const clientInvoices = invoices.filter(i => i.clientEmail === userEmail);
-  const clientUserName = getClientName();
-
-  // Razorpay's checkout script (and the analytics it pulls in) used to load
-  // in index.html on every app launch, for every user — it's only needed
-  // here, at the moment someone pays.
-  const loadRazorpayCheckout = (): Promise<void> => {
+  // ── Payment (real Razorpay checkout only) ────────────────────────────────
+  const loadCheckout = (): Promise<void> => {
     if (typeof (window as any).Razorpay !== 'undefined') return Promise.resolve();
     return new Promise(resolve => {
       const existing = document.querySelector<HTMLScriptElement>('script[data-razorpay-checkout]');
@@ -108,566 +80,370 @@ export default function LicenseBillingView({ userEmail }: Props) {
     });
   };
 
-  // Real Razorpay Checkout only. There used to be a "simulated" fallback here
-  // (shown whenever checkout.js failed to load — e.g. an ad-blocker) that
-  // told the server the payment succeeded without any money changing hands.
-  // If the gateway can't load, the customer now gets an error instead.
-  const paymentFailed = (message: string) => {
-    setIsRzpOpen(false);
-    setPayingLicense(null);
-    alert(message);
-  };
+  const pay = async (lic: License) => {
+    setPaying(lic.id);
+    const fail = (msg: string) => { setPaying(null); toast.error(msg, 7000); };
 
-  const triggerRazorpay = async (lic: License) => {
-    // Show progress right away — the gateway script may take a moment to load.
-    setPayingLicense(lic);
-    setRzpStep('processing');
-    setIsRzpOpen(true);
-
-    await loadRazorpayCheckout();
+    await loadCheckout();
     if (typeof (window as any).Razorpay === 'undefined') {
-      paymentFailed('The payment gateway could not be loaded. Please check your internet connection, disable any ad-blocker for this site, and try again.');
+      fail('The payment page couldn\'t load. Check your connection, turn off any ad-blocker for this site, and try again.');
       return;
     }
+    const headers = { 'Content-Type': 'application/json', ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}) };
 
-    const token = getAuthToken();
-    const authHeaders = {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-
-    let orderData: any;
+    let order: any;
     try {
-      const res = await fetch(`${API_BASE}/payments/create-order`, {
-        method: 'POST',
-        headers: authHeaders,
-        credentials: 'include',
-        body: JSON.stringify({ licenseId: lic.id })
-      });
-      orderData = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(orderData.message || 'Could not start the payment.');
+      const res = await fetch(`${API_BASE}/payments/create-order`, { method: 'POST', headers, credentials: 'include', body: JSON.stringify({ licenseId: lic.id }) });
+      order = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(order.message || 'Could not start the payment.');
     } catch (err: any) {
-      console.error('Order creation failed:', err);
-      paymentFailed(err.message || 'Could not start the payment. Please try again.');
+      fail(err.message || 'Could not start the payment.');
       return;
     }
 
-    const options = {
-      key: orderData.razorpayKeyId,
-      amount: orderData.amount,
-      currency: orderData.currency || 'INR',
-      name: 'SignageOS Technologies',
-      description: `License Reactivation for ${lic.name}`,
-      order_id: orderData.orderId,
-      handler: async function (response: any) {
-        setRzpStep('processing');
-        setIsRzpOpen(true);
-        try {
-          const verifyRes = await fetch(`${API_BASE}/payments/verify`, {
-            method: 'POST',
-            headers: authHeaders,
-            credentials: 'include',
-            body: JSON.stringify({
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpayOrderId: response.razorpay_order_id,
-              razorpaySignature: response.razorpay_signature,
-              licenseId: lic.id
-            })
-          });
-
-          if (verifyRes.ok) {
-            setRzpStep('success');
-            setTimeout(() => {
-              setIsRzpOpen(false);
-              loadData();
-            }, 1500);
-          } else {
-            const errData = await verifyRes.json().catch(() => ({}));
-            paymentFailed(errData.message || 'Payment verification failed. If money was deducted, it will be reconciled automatically — please contact support if your license is not updated shortly.');
-            loadData();
-          }
-        } catch (err) {
-          console.error(err);
-          paymentFailed('Network error while verifying payment. If money was deducted, your license will be updated automatically once the payment is confirmed.');
-        }
-      },
-      prefill: { email: userEmail },
-      theme: { color: '#0EA5E9' },
-      modal: {
-        ondismiss: function () {
-          setIsRzpOpen(false);
-          setPayingLicense(null);
-        }
-      }
-    };
-
     try {
-      const rzp = new (window as any).Razorpay(options);
-      setIsRzpOpen(false); // Razorpay's own checkout takes over from here
+      const rzp = new (window as any).Razorpay({
+        key: order.razorpayKeyId,
+        amount: order.amount,
+        currency: order.currency || 'INR',
+        name: biz.name || 'License renewal',
+        description: `${lic.name} — ${lic.tenure === 'yearly' ? '1 year' : '1 month'}`,
+        image: biz.logoUrl && biz.logoUrl.startsWith('https://') ? biz.logoUrl : undefined,
+        order_id: order.orderId,
+        prefill: { email: userEmail },
+        theme: { color: '#2563EB' },
+        handler: async (response: any) => {
+          setPaying(lic.id);
+          try {
+            const res = await fetch(`${API_BASE}/payments/verify`, {
+              method: 'POST', headers, credentials: 'include',
+              body: JSON.stringify({
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpaySignature: response.razorpay_signature,
+                licenseId: lic.id,
+              }),
+            });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              fail(data.message || 'We couldn\'t confirm the payment yet. If money was taken, your plan updates automatically within a few minutes.');
+              return;
+            }
+            setPaying(null);
+            setPaidLicense(lic.id);
+            await Promise.all([
+              syncCollection('licenses', 'signageos_licenses', { force: true }),
+              syncCollection('invoices', 'signageos_invoices', { force: true }),
+              syncCollection('payments', 'signageos_payments', { force: true }),
+            ]).catch(() => {});
+            load();
+          } catch {
+            fail('Connection lost while confirming. If money was taken, your plan updates automatically once the payment is confirmed.');
+          }
+        },
+        modal: { ondismiss: () => setPaying(null) },
+      });
       rzp.open();
-    } catch (err) {
-      console.error('Razorpay initialization failed:', err);
-      paymentFailed('The payment gateway could not be opened. Please try again.');
+    } catch {
+      fail('The payment page couldn\'t open. Please try again.');
     }
   };
+
+  // Print only the invoice, not the whole dashboard (see index.css).
+  const printInvoice = () => {
+    document.documentElement.classList.add('print-invoice');
+    const done = () => { document.documentElement.classList.remove('print-invoice'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    window.print();
+    setTimeout(done, 1000);
+  };
+
+  // ── Derived ──────────────────────────────────────────────────────────────
+  const main = [...licenses].sort((a, b) => (b.expiryDate || '').localeCompare(a.expiryDate || ''))[0];
+  const unpaid = invoices.filter(i => i.status === 'unpaid');
+  const deviceLimit = licenses.reduce((s, l) => s + (l.deviceLimit || 0), 0) || 5;
+  const storageLimitGb = licenses.reduce((s, l) => s + (l.storageLimit || 0), 0) || 5;
+  const storageGb = storageBytes / 1024 ** 3;
+  const openInvoice = openInvoiceId ? invoices.find(i => i.id === openInvoiceId) : null;
+  const openPayment = openPaymentId ? payments.find(p => p.id === openPaymentId) : null;
+  const licenseFor = (inv: Invoice) => licenses.find(l => l.id === inv.licenseId);
+  const askSupport = () => onNavigate?.('support-tickets');
+
+  // The one thing that most needs doing, shown at the top.
+  const attention = (() => {
+    if (!main) return null;
+    const st = licenseState(main);
+    if (st.key === 'expired') return { tone: 'rose', title: 'Your plan has expired', body: 'Your screens have stopped playing. Renew to bring them back right away.', lic: main };
+    if (st.key === 'pending') return { tone: 'amber', title: 'Payment needed to activate your plan', body: unpaid.length ? `You have ${unpaid.length} unpaid invoice${unpaid.length === 1 ? '' : 's'}.` : 'Complete the payment to start using your plan.', lic: main };
+    if (st.days !== null && st.days <= 14) return { tone: 'amber', title: `Your plan renews in ${st.days} day${st.days === 1 ? '' : 's'}`, body: 'Renew now so your screens keep playing without a gap — the new period starts after the current one ends.', lic: main };
+    return null;
+  })();
+
+  const bar = (pct: number) => (
+    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2">
+      <div className={`h-full rounded-full ${pct > 90 ? 'bg-rose-500' : pct > 75 ? 'bg-amber-400' : 'bg-blue-600'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+    </div>
+  );
 
   return (
-    <div className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 text-left relative overflow-x-hidden w-full max-w-full">
-      {/* Page Title */}
+    <div className="p-4 sm:p-6 max-w-5xl space-y-4 sm:space-y-5">
       <div>
         <h1 className="display text-2xl sm:text-3xl text-ink-950">License & Billing</h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">Manage your software plan, review invoices, and settle outstanding payments</p>
+        <p className="text-sm text-gray-500 mt-0.5">Your plan, what you're using, and your invoices</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        
-        {/* LICENSE PROFILE CARD */}
-        <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider flex items-center gap-1">
-              <Key size={14} className="text-blue-500" /> Plan Details
-            </span>
-            {clientLicense && (
-              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
-                clientLicense.status === 'active' 
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                  : 'bg-rose-50 text-rose-700 border-rose-100'
-              }`}>
-                {clientLicense.status}
-              </span>
-            )}
+      {paidLicense && (
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3.5">
+          <CheckCircle size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-emerald-900">Payment received — thank you!</p>
+            <p className="text-xs text-emerald-800 mt-0.5">Your plan is active{main ? ` until ${formatDate(main.expiryDate)}` : ''}. A receipt is in your invoices below.</p>
           </div>
-
-          {clientLicense ? (
-            <div className="space-y-4">
-              <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">License ID</p>
-                <p className="font-mono font-bold text-slate-900 text-sm mt-0.5 break-all">{clientLicense.id}</p>
-              </div>
-
-              <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Plan Name</p>
-                <p className="font-bold text-slate-800 mt-0.5">{clientLicense.name}</p>
-              </div>
-
-              <div>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Pricing / Cycle</p>
-                <p className="font-extrabold text-slate-900 text-base mt-0.5">
-                  ₹{clientLicense.price.toLocaleString()} 
-                  <span className="text-xs text-slate-500 font-medium"> / {clientLicense.tenure}</span>
-                </p>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center">
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Renews / Expiry Date</p>
-                  {clientLicense.expiryDate && (
-                    <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                      {Math.max(0, Math.ceil((new Date(clientLicense.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} Days Left
-                    </span>
-                  )}
-                </div>
-                <p className="font-bold text-slate-700 mt-0.5 flex items-center gap-1.5 text-xs">
-                  <Calendar size={13} className="text-slate-400" />
-                  {clientLicense.expiryDate}
-                </p>
-              </div>
-
-              {/* Connected Displays Quota */}
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5">
-                <div className="flex justify-between text-[11px] font-bold">
-                  <span className="text-slate-600">Screen Quota</span>
-                  <span className="text-slate-900">{screensCount} / {clientLicense.deviceLimit || 5} Connected</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600 rounded-full transition-all"
-                    style={{ width: `${Math.min(100, Math.round((screensCount / (clientLicense.deviceLimit || 5)) * 100))}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Storage Quota */}
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5">
-                <div className="flex justify-between text-[11px] font-bold">
-                  <span className="text-slate-600">Storage Usage</span>
-                  <span className="text-slate-900">
-                    {(storageUsedBytes / (1024 * 1024 * 1024)).toFixed(2)} GB / {clientLicense.storageLimit || 5} GB
-                  </span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-indigo-600 rounded-full transition-all"
-                    style={{ width: `${Math.min(100, Math.round(((storageUsedBytes / (1024 * 1024 * 1024)) / (clientLicense.storageLimit || 5)) * 100))}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* White Label Branding Status */}
-              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs font-bold">
-                <span className="text-slate-600">White-Label Branding</span>
-                <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-extrabold ${
-                  clientLicense.whiteLabel ? 'bg-purple-100 text-purple-700' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {clientLicense.whiteLabel ? 'Included' : 'Not Included'}
-                </span>
-              </div>
-
-              {clientLicense.status !== 'active' ? (
-                <button
-                  onClick={() => triggerRazorpay(clientLicense)}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer text-center"
-                >
-                  Pay & Settle Amount
-                </button>
-              ) : (
-                <button
-                  onClick={() => triggerRazorpay(clientLicense)}
-                  className="w-full py-2.5 bg-slate-900 hover:bg-black text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer text-center"
-                >
-                  Renew Plan Early
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="py-8 text-center text-slate-400 space-y-2">
-              <Key size={30} className="mx-auto text-slate-300" />
-              <p className="text-xs font-semibold">No active license profile linked to this user.</p>
-              <p className="text-[10px] text-slate-400">Please contact administrative billing (billing@demo.com) to assign a license.</p>
-            </div>
-          )}
-        </div>
-
-        {/* INVOICE REGISTRY */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col justify-between">
-          <div>
-            <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Your Invoice Logs</span>
-            </div>
-
-            {/* Desktop Table View */}
-            <div className="hidden md:block overflow-y-auto max-h-[300px]">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    <th className="px-4 py-3">Invoice ID</th>
-                    <th className="px-4 py-3">Issue Date</th>
-                    <th className="px-4 py-3">Amount</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Receipt</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-xs">
-                  {clientInvoices.length > 0 ? (
-                    clientInvoices.map(inv => (
-                      <tr key={inv.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="px-4 py-3.5 font-mono font-bold text-slate-800">{inv.id}</td>
-                        <td className="px-4 py-3.5 font-semibold text-slate-500">{inv.issuedDate}</td>
-                        <td className="px-4 py-3.5">
-                          <p className="font-extrabold text-slate-900">₹{inv.amount.toLocaleString()}</p>
-                          <p className="text-[9px] text-slate-400">Incl. GST 18%</p>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
-                            inv.status === 'paid' 
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                              : 'bg-rose-50 text-rose-700 border-rose-100 animate-pulse'
-                          }`}>
-                            {inv.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <button
-                            onClick={() => setSelectedInvoice(inv)}
-                            className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5 text-[10px] font-bold"
-                          >
-                            <FileText size={12} /> View/Print
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-400 italic font-semibold">No invoices issued.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Card List (No Horizontal Scrollbar) */}
-            <div className="block md:hidden divide-y divide-gray-100 max-h-[350px] overflow-y-auto">
-              {clientInvoices.length > 0 ? (
-                clientInvoices.map(inv => (
-                  <div key={inv.id} className="p-3.5 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-slate-800 text-xs">{inv.id}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
-                        inv.status === 'paid' 
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                          : 'bg-rose-50 text-rose-700 border-rose-100'
-                      }`}>
-                        {inv.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500">{inv.issuedDate}</span>
-                      <span className="font-extrabold text-slate-900">₹{inv.amount.toLocaleString()}</span>
-                    </div>
-                    <div className="pt-1 flex justify-end">
-                      <button
-                        onClick={() => setSelectedInvoice(inv)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <FileText size={12} /> View/Print Receipt
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="py-8 text-center text-slate-400 italic font-semibold text-xs">No invoices issued.</div>
-              )}
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* RECENT TRANSACTION LOGS */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-3.5 sm:p-4 border-b border-gray-100 bg-gray-50/60">
-          <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Payment Transaction History</span>
-        </div>
-
-        {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="px-4 py-3">Transaction ID</th>
-                <th className="px-4 py-3">Paid Amount</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Razorpay Payment ID</th>
-                <th className="px-4 py-3">Razorpay Order ID</th>
-                <th className="px-4 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-xs">
-              {clientPayments.length > 0 ? (
-                clientPayments.map(p => (
-                  <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="px-4 py-3.5 font-mono font-bold text-slate-800">{p.id}</td>
-                    <td className="px-4 py-3.5 font-extrabold text-slate-900">₹{p.amount.toLocaleString()}</td>
-                    <td className="px-4 py-3.5 font-semibold text-slate-500">{p.paymentDate}</td>
-                    <td className="px-4 py-3.5 font-mono text-slate-600">{p.razorpayPaymentId}</td>
-                    <td className="px-4 py-3.5 font-mono text-slate-400">{p.razorpayOrderId}</td>
-                    <td className="px-4 py-3.5">
-                      <span className="text-emerald-600 font-bold text-[10px] uppercase flex items-center gap-1 tracking-wider">
-                        <CheckCircle size={12} /> Success
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400 italic font-semibold">No transactions recorded.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile Card List (No Horizontal Scrollbar) */}
-        <div className="block md:hidden divide-y divide-gray-100">
-          {clientPayments.length > 0 ? (
-            clientPayments.map(p => (
-              <div key={p.id} className="p-3.5 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-slate-800">{p.id}</span>
-                  <span className="text-emerald-600 font-bold text-[10px] uppercase flex items-center gap-1 tracking-wider">
-                    <CheckCircle size={11} /> Success
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">{p.paymentDate}</span>
-                  <span className="font-extrabold text-slate-900">₹{p.amount.toLocaleString()}</span>
-                </div>
-                <div className="bg-slate-50 p-2 rounded-lg font-mono text-[10px] text-slate-600 space-y-0.5 break-all">
-                  <p><span className="text-slate-400">Pay ID:</span> {p.razorpayPaymentId}</p>
-                  <p><span className="text-slate-400">Order:</span> {p.razorpayOrderId}</p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="py-8 text-center text-slate-400 italic font-semibold text-xs">No transactions recorded.</div>
-          )}
-        </div>
-      </div>
-
-      {/* Payment status overlay (processing / success) around the real Razorpay Checkout */}
-      {isRzpOpen && payingLicense && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="w-full max-w-sm bg-slate-900 text-white rounded-2xl overflow-hidden shadow-2xl border border-slate-700 animate-scaleIn select-none">
-            {/* Razorpay Top Bar */}
-            <div className="bg-[#111827] px-4 py-3.5 flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded bg-blue-500 flex items-center justify-center">
-                  <span className="text-[10px] font-bold italic text-white">R</span>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold tracking-wider uppercase text-slate-300">Razorpay Checkout</p>
-                  <p className="text-[8px] text-slate-400">SignageOS Technologies Ltd.</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setIsRzpOpen(false)}
-                className="text-slate-400 hover:text-white cursor-pointer font-bold text-sm"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            {/* Razorpay Body */}
-            {rzpStep === 'processing' && (
-              <div className="p-8 text-center space-y-4">
-                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-slate-100">Processing Payment...</p>
-                  <p className="text-[10px] text-slate-400">Authenticating transaction with your bank gateway.</p>
-                </div>
-              </div>
-            )}
-
-            {rzpStep === 'success' && (
-              <div className="p-8 text-center space-y-4 animate-fadeIn">
-                <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-500 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle size={24} className="text-emerald-400" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-slate-100">Payment Succeeded!</p>
-                  <p className="text-[10px] text-slate-400 font-mono">Invoice updated & License extended.</p>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-[#111827] py-2 border-t border-slate-800 text-center text-[8px] text-slate-500 font-mono">
-              SECURE 256-BIT SSL ENCRYPTION
-            </div>
-          </div>
+          <button onClick={() => setPaidLicense(null)} className="text-xs text-emerald-700 font-medium">Dismiss</button>
         </div>
       )}
 
-      {/* PRINTABLE INVOICE MODAL */}
-      {selectedInvoice && bizDetails && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="w-full max-w-2xl bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 animate-scaleIn text-left p-6 space-y-6">
-            
-            {/* Actions header */}
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3 no-print">
-              <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Invoice Document Preview</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                >
-                  <Printer size={13} /> Print
-                </button>
-                <button
-                  onClick={() => setSelectedInvoice(null)}
-                  className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold uppercase rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
+      {attention && !paidLicense && (
+        <div className={`flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border px-4 py-3.5 ${attention.tone === 'rose' ? 'border-rose-100 bg-rose-50' : 'border-amber-100 bg-amber-50'}`}>
+          <AlertTriangle size={18} className={`shrink-0 ${attention.tone === 'rose' ? 'text-rose-600' : 'text-amber-600'}`} />
+          <div className="flex-1">
+            <p className={`text-sm font-semibold ${attention.tone === 'rose' ? 'text-rose-900' : 'text-amber-900'}`}>{attention.title}</p>
+            <p className={`text-xs mt-0.5 ${attention.tone === 'rose' ? 'text-rose-800' : 'text-amber-800'}`}>{attention.body}</p>
+          </div>
+          <button
+            onClick={() => pay(attention.lic)}
+            disabled={!!paying}
+            className="h-10 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold flex items-center justify-center gap-2 shrink-0"
+          >
+            {paying === attention.lic.id && <Loader2 size={15} className="animate-spin" />}
+            Pay {formatInr(attention.lic.price)}
+          </button>
+        </div>
+      )}
 
-            {/* Printable Invoice Page */}
-            <div className="p-4 border border-gray-200 rounded-2xl bg-white space-y-6" id="invoice-print-area">
-              {/* Header */}
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-xs font-bold">BS</div>
-                    <span className="font-extrabold text-sm text-slate-900 tracking-tight">{bizDetails.name}</span>
+      {!loading && licenses.length === 0 && (
+        <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+          <Key size={30} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-sm font-medium text-gray-700">No plan on your account yet</p>
+          <p className="text-xs text-gray-500 mt-1 mb-4">Ask us to set one up and your screens can start playing.</p>
+          {onNavigate && (
+            <button onClick={askSupport} className="inline-flex items-center gap-2 h-10 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium">
+              <LifeBuoy size={16} /> Contact support
+            </button>
+          )}
+        </div>
+      )}
+
+      {licenses.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          {/* Plan(s) */}
+          <div className="lg:col-span-3 space-y-4">
+            {licenses.map(lic => {
+              const st = licenseState(lic);
+              const due = st.key === 'expired' || st.key === 'pending';
+              return (
+                <section key={lic.id} className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Key size={18} /></span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base font-semibold text-slate-900">{lic.name}</h2>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${st.className}`}>{st.label}</span>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-0.5">{planLabel(lic)}</p>
+                    </div>
                   </div>
-                  <p className="text-[10px] text-slate-500 max-w-[250px] leading-normal">{bizDetails.address}</p>
-                  <p className="text-[10px] text-slate-400 font-semibold">GSTIN: {bizDetails.gstNumber}</p>
-                </div>
-                <div className="text-right space-y-1">
-                  <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight">TAX INVOICE</h2>
-                  <p className="text-xs font-mono font-bold text-slate-800">{selectedInvoice.id}</p>
-                  <p className="text-[10px] text-slate-400">Date: {selectedInvoice.issuedDate}</p>
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs text-slate-500">{st.key === 'expired' ? 'Expired on' : 'Renews on'}</p>
+                      <p className={`text-sm font-semibold mt-0.5 ${st.key === 'expired' ? 'text-rose-600' : 'text-slate-900'}`}>{formatDate(lic.expiryDate)}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{relativeDays(st.days)}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs text-slate-500">Includes</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{lic.deviceLimit || 5} screens · {lic.storageLimit || 5} GB</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
+                        <span className={`inline-flex items-center gap-1 ${lic.enableVideoConferencing ? 'text-slate-600' : 'line-through'}`}><Video size={11} /> Video calls</span>
+                        <span className={`inline-flex items-center gap-1 ${lic.whiteLabel ? 'text-slate-600' : 'line-through'}`}><Palette size={11} /> Branding</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-4">
+                    <button
+                      onClick={() => pay(lic)}
+                      disabled={!!paying}
+                      className={`h-11 sm:h-10 px-5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 ${
+                        due ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {paying === lic.id && <Loader2 size={15} className="animate-spin" />}
+                      {due ? `Pay ${formatInr(lic.price)}` : `Renew early · ${formatInr(lic.price)}`}
+                    </button>
+                    <p className="text-xs text-slate-500 sm:ml-1">
+                      {due ? `Activates for 1 ${lic.tenure === 'yearly' ? 'year' : 'month'} once paid.` : `Adds 1 ${lic.tenure === 'yearly' ? 'year' : 'month'} after ${formatDate(lic.expiryDate)}.`} Secure payment by Razorpay.
+                    </p>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
 
-              <hr className="border-gray-100" />
-
-              {/* Billed To / From */}
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div>
-                  <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Billed To</p>
-                  <p className="font-extrabold text-slate-800">{selectedInvoice.clientName}</p>
-                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedInvoice.clientEmail}</p>
-                </div>
-                <div>
-                  <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Billing Support</p>
-                  <p className="font-semibold text-slate-700">Email: {bizDetails.contactEmail}</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Phone: {bizDetails.contactPhone}</p>
-                </div>
+          {/* Usage */}
+          <section className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 space-y-5 h-fit">
+            <h2 className="text-sm font-semibold text-slate-900">What you're using</h2>
+            <div>
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-slate-600">Screens</span>
+                <span className="font-semibold text-slate-900">{screensUsed} of {deviceLimit}</span>
               </div>
-
-              {/* Items Table */}
-              <div className="border border-gray-100 rounded-xl overflow-x-auto text-xs">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-gray-100 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="px-4 py-2.5">Description</th>
-                      <th className="px-4 py-2.5 text-right">Base Amount</th>
-                      <th className="px-4 py-2.5 text-right">GST (18%)</th>
-                      <th className="px-4 py-2.5 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="px-4 py-4">
-                        <p className="font-bold text-slate-800">{selectedInvoice.licenseName}</p>
-                        <p className="text-[9px] text-slate-400 font-mono mt-0.5">License: {selectedInvoice.licenseId}</p>
-                      </td>
-                      <td className="px-4 py-4 text-right font-semibold text-slate-700">
-                        ₹{Math.round(selectedInvoice.amount / 1.18).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-4 text-right font-semibold text-slate-500">
-                        ₹{Math.round((selectedInvoice.amount / 1.18) * 0.18).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-4 text-right font-extrabold text-slate-900">
-                        ₹{selectedInvoice.amount.toLocaleString()}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Total block */}
-              <div className="flex justify-between items-center bg-slate-50 rounded-xl p-4 border border-gray-100">
-                <div>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">Payment Status</p>
-                  <p className={`text-xs font-bold uppercase mt-0.5 ${
-                    selectedInvoice.status === 'paid' ? 'text-emerald-600' : 'text-rose-600'
-                  }`}>
-                    {selectedInvoice.status}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">Net Total Payable</p>
-                  <p className="text-xl font-bold text-slate-900">₹{selectedInvoice.amount.toLocaleString()}</p>
-                </div>
-              </div>
-
-              <div className="text-[9px] text-slate-400 text-center select-text font-mono border-t border-gray-100 pt-4">
-                Thank you for choosing SignageOS Technologies Ltd. This is a computer-generated tax invoice.
-              </div>
+              {bar((screensUsed / deviceLimit) * 100)}
+              {screensUsed >= deviceLimit && <p className="text-xs text-amber-700 mt-1.5">You've used every screen on your plan — contact us to add more.</p>}
             </div>
+            <div>
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-slate-600">Storage</span>
+                <span className="font-semibold text-slate-900">{storageGb >= 1 ? `${storageGb.toFixed(1)} GB` : `${Math.round(storageBytes / 1024 ** 2)} MB`} of {storageLimitGb} GB</span>
+              </div>
+              {bar((storageGb / storageLimitGb) * 100)}
+            </div>
+            {onNavigate && (
+              <button onClick={askSupport} className="w-full flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-2.5 text-left hover:bg-slate-50">
+                <LifeBuoy size={16} className="text-blue-600 shrink-0" />
+                <span className="flex-1 text-sm text-slate-700">Need more screens or storage?</span>
+                <ChevronRight size={15} className="text-slate-300" />
+              </button>
+            )}
+          </section>
+        </div>
+      )}
 
+      {/* Invoices & payments */}
+      {(invoices.length > 0 || payments.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <section>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Invoices</p>
+            {invoices.length > 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                {invoices.map(inv => (
+                  <button key={inv.id} type="button" onClick={() => setOpenInvoiceId(inv.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+                    <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${inv.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}><Receipt size={16} /></span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-slate-900 truncate">{inv.licenseName}</span>
+                      <span className="block text-xs text-slate-500">{formatDate(inv.issuedDate)}{inv.status === 'unpaid' ? ` · due ${formatDate(inv.dueDate)}` : ''}</span>
+                    </span>
+                    <span className="text-right shrink-0">
+                      <span className="block text-sm font-semibold text-slate-900">{formatInr(inv.amount)}</span>
+                      <span className={`block text-[11px] font-medium ${inv.status === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>{inv.status === 'paid' ? 'Paid' : 'Unpaid'}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : <p className="text-sm text-slate-500 bg-white rounded-2xl border border-slate-100 px-4 py-6 text-center">No invoices yet.</p>}
+          </section>
+
+          <section>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Payments</p>
+            {payments.length > 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                {payments.map(p => (
+                  <button key={p.id} type="button" onClick={() => setOpenPaymentId(p.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+                    <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><CreditCard size={16} /></span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-slate-900 truncate">{p.licenseName}</span>
+                      <span className="block text-xs text-slate-500">{formatDate(p.paymentDate)}</span>
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900 shrink-0">{formatInr(p.amount)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : <p className="text-sm text-slate-500 bg-white rounded-2xl border border-slate-100 px-4 py-6 text-center">No payments yet.</p>}
+          </section>
+        </div>
+      )}
+
+      {/* ── Invoice ─────────────────────────────────────────────────────── */}
+      {openInvoice && (() => {
+        const lic = licenseFor(openInvoice);
+        const base = Math.round(openInvoice.amount / 1.18);
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setOpenInvoiceId(null)}
+            title={`Invoice · ${formatInr(openInvoice.amount)}`}
+            subtitle={formatDate(openInvoice.issuedDate)}
+            badge={<span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${openInvoice.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>{openInvoice.status === 'paid' ? 'Paid' : 'Unpaid'}</span>}
+            details={[]}
+            groups={[]}
+            hero={
+              <div id="invoice-print-area" className="rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-5 bg-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      {biz.logoUrl && <img src={biz.logoUrl} alt="" className="w-8 h-8 rounded-lg object-contain" />}
+                      <span className="text-sm font-semibold text-slate-900">{biz.name || 'Your provider'}</span>
+                    </div>
+                    {biz.address && <p className="text-xs text-slate-500 mt-1.5 whitespace-pre-line">{biz.address}</p>}
+                    {biz.gstNumber && <p className="text-xs text-slate-500 mt-0.5">GSTIN {biz.gstNumber}</p>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-semibold text-slate-900 tracking-wide">TAX INVOICE</p>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{openInvoice.id}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <p className="text-slate-400 mb-0.5">Billed to</p>
+                    <p className="font-medium text-slate-800">{openInvoice.clientName}</p>
+                    <p className="text-slate-500">{openInvoice.clientEmail}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 mb-0.5">{openInvoice.status === 'paid' ? 'Paid' : 'Due'}</p>
+                    <p className="font-medium text-slate-800">{formatDate(openInvoice.status === 'paid' ? openInvoice.issuedDate : openInvoice.dueDate)}</p>
+                    {(biz.contactEmail || biz.contactPhone) && <p className="text-slate-500 mt-1">Questions: {[biz.contactEmail, biz.contactPhone].filter(Boolean).join(' · ')}</p>}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-100 divide-y divide-slate-100 text-sm">
+                  <div className="flex justify-between gap-4 px-3 py-2.5"><span className="text-slate-700">{openInvoice.licenseName}</span><span className="text-slate-900">{formatInr(base)}</span></div>
+                  <div className="flex justify-between gap-4 px-3 py-2.5"><span className="text-slate-500">GST (18%)</span><span className="text-slate-700">{formatInr(openInvoice.amount - base)}</span></div>
+                  <div className="flex justify-between gap-4 px-3 py-2.5 font-semibold"><span>Total</span><span>{formatInr(openInvoice.amount)}</span></div>
+                </div>
+                <p className="text-[10px] text-slate-400 text-center">Computer-generated invoice — no signature required.</p>
+              </div>
+            }
+            footer={
+              <div className="flex gap-2">
+                <button type="button" onClick={printInvoice} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 flex items-center justify-center gap-2"><Printer size={15} /> Print / save PDF</button>
+                {openInvoice.status === 'unpaid' && lic && (
+                  <button type="button" onClick={() => { setOpenInvoiceId(null); pay(lic); }} className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">Pay now</button>
+                )}
+              </div>
+            }
+          />
+        );
+      })()}
+
+      {/* ── Payment ─────────────────────────────────────────────────────── */}
+      {openPayment && (
+        <ScreenDetailsSheet
+          open
+          onClose={() => setOpenPaymentId(null)}
+          title={formatInr(openPayment.amount)}
+          subtitle={`${openPayment.licenseName} · ${formatDate(openPayment.paymentDate)}`}
+          badge={<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-emerald-50 text-emerald-700 border-emerald-100">Successful</span>}
+          details={[
+            { label: 'Paid on', value: openPayment.paymentDate },
+            { label: 'Payment ID', value: <span className="font-mono text-xs">{openPayment.razorpayPaymentId || '—'}</span> },
+            { label: 'Order ID', value: <span className="font-mono text-xs">{openPayment.razorpayOrderId || '—'}</span> },
+          ]}
+          groups={onNavigate ? [{ title: 'Help', actions: [{ key: 'q', label: 'Question about this payment?', description: 'Open a support ticket', icon: <LifeBuoy size={17} />, onClick: askSupport }] }] : []}
+        />
+      )}
+
+      {paying && (
+        <div className="fixed inset-0 z-[400] bg-slate-950/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl px-6 py-5 flex items-center gap-3">
+            <Loader2 size={20} className="animate-spin text-blue-600" />
+            <span className="text-sm font-medium text-slate-800">Opening secure payment…</span>
           </div>
         </div>
       )}

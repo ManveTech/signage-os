@@ -25,7 +25,10 @@ const OWNER_FIELD_BY_COLLECTION: Record<string, string> = {
   licenses: 'assignedUserEmail',
   organizations: 'email',
   tickets: 'clientEmail',
-  invoices: 'clientEmail'
+  invoices: 'clientEmail',
+  // Clients read their own payment history on License & Billing; without an
+  // owner field the list was denied outright and always came back empty.
+  payments: 'clientEmail'
 };
 
 // Shared reference content with no owner — every authenticated user can read
@@ -39,8 +42,8 @@ const ADMIN_ONLY_COLLECTIONS = new Set(['leads']);
 // modify it directly — these are admin/billing/system-managed. A client can
 // read their own license, but never edit their device limit or activate
 // themselves, for example.
-const WRITE_ADMIN_ONLY_COLLECTIONS = new Set(['licenses', 'organizations', 'invoices', 'faqs', 'support_docs', 'tickets']);
-const CREATE_ADMIN_ONLY_COLLECTIONS = new Set(['licenses', 'organizations', 'invoices', 'faqs', 'support_docs']);
+const WRITE_ADMIN_ONLY_COLLECTIONS = new Set(['licenses', 'organizations', 'invoices', 'faqs', 'support_docs', 'tickets', 'payments']);
+const CREATE_ADMIN_ONLY_COLLECTIONS = new Set(['licenses', 'organizations', 'invoices', 'faqs', 'support_docs', 'payments']);
 
 function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';

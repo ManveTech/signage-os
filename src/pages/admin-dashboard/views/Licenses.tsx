@@ -341,7 +341,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       </div>
 
       {/* Section switcher */}
-      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl">
+      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl md:max-w-xl">
         {TABS.map(t => {
           const active = tab === t.key;
           const count = tabCount[t.key];
@@ -366,7 +366,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       </div>
 
       {(tab !== 'expirations') && (
-        <div className="relative">
+        <div className="relative md:max-w-sm">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             value={search}
@@ -406,7 +406,42 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {visibleLicenses.length > 0 && (
+            <div className="hidden md:block bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <div className="grid grid-cols-[minmax(0,1.8fr)_minmax(0,1.6fr)_130px_100px_120px_130px] gap-4 px-5 py-2.5 bg-slate-50/70 border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                <span>License</span><span>Client</span><span>Plan</span><span>Screens</span><span>Expires</span><span className="text-right">Status</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {visibleLicenses.map(({ lic, state }) => (
+                  <button
+                    key={lic.id}
+                    type="button"
+                    onClick={() => setOpenLicenseId(lic.id)}
+                    className="w-full grid grid-cols-[minmax(0,1.8fr)_minmax(0,1.6fr)_130px_100px_120px_130px] gap-4 items-center px-5 py-3 text-left hover:bg-slate-50 transition-colors"
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Key size={15} /></span>
+                      <span className="text-sm font-medium text-slate-900 truncate">{lic.name}</span>
+                    </span>
+                    <span className="min-w-0">
+                      {lic.assignedUserEmail ? (
+                        <>
+                          <span className="block text-sm text-slate-700 truncate">{lic.assignedOrgName || clientName(lic.assignedUserEmail) || lic.assignedUserEmail}</span>
+                          <span className="block text-xs text-slate-500 truncate">{lic.assignedUserEmail}</span>
+                        </>
+                      ) : <span className="text-sm text-slate-400">In the pool</span>}
+                    </span>
+                    <span className="text-sm text-slate-700">{formatInr(lic.price)}<span className="text-slate-400">/{lic.tenure === 'yearly' ? 'yr' : 'mo'}</span></span>
+                    <span className="text-sm text-slate-700">{lic.assignedUserEmail ? `${screensUsed(lic.assignedUserEmail)} / ${lic.deviceLimit || 5}` : lic.deviceLimit || 5}</span>
+                    <span className={`text-sm ${state.key === 'expired' ? 'text-rose-600' : state.key === 'expiring' ? 'text-orange-600' : 'text-slate-700'}`}>{formatDate(lic.expiryDate)}</span>
+                    <span className="flex justify-end">{pill(state.label, state.className)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:hidden">
             {visibleLicenses.map(({ lic, state }) => (
               <button
                 key={lic.id}

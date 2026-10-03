@@ -69,17 +69,17 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'playlists-all': return <AllPlaylists onNavigate={navigate} userEmail={adminEmail} />;
     case 'playlists-create': return <CreatePlaylist userEmail={adminEmail} onNavigate={navigate} />;
     case 'playlists-scheduler': return <Scheduler userEmail={adminEmail} isAdmin={true} />;
-    case 'reports-overview': return <Reports activeTab="Overview" />;
-    case 'reports-screens': return <Reports activeTab="Screen Reports" />;
-    case 'reports-media': return <Reports activeTab="Media Reports" />;
-    case 'reports-logs': return <Reports activeTab="Device Logs" />;
+    case 'reports-overview': return <Reports activeTab="Overview" userEmail={adminEmail} onNavigate={navigate} />;
+    case 'reports-screens': return <Reports activeTab="Screen Reports" userEmail={adminEmail} onNavigate={navigate} />;
+    case 'reports-media': return <Reports activeTab="Media Reports" userEmail={adminEmail} onNavigate={navigate} />;
+    case 'reports-logs': return <Reports activeTab="Device Logs" userEmail={adminEmail} onNavigate={navigate} />;
     case 'users': return <Users onNavigate={navigate} />;
     case 'licenses-management': return <Licenses activeTab="management" onNavigate={navigate} />;
     case 'licenses-payments': return <Licenses activeTab="payments" onNavigate={navigate} />;
     case 'licenses-expirations': return <Licenses activeTab="expirations" onNavigate={navigate} />;
     case 'licenses-invoices': return <Licenses activeTab="invoices" onNavigate={navigate} />;
     case 'licenses-code': return <LicenseDecoder />;
-    case 'organizations': return <Organizations />;
+    case 'organizations': return <Organizations onNavigate={navigate} />;
     case 'video-conferencing': return <VideoConferencing />;
     case 'integrations': return <Integrations />;
     case 'settings-general': return <Settings activeTab="General" />;
@@ -91,7 +91,7 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'support-issues': return <Support activeTab="issues" onNavigate={navigate} userEmail={adminEmail} />;
     case 'support-faq': return <Support activeTab="faq" onNavigate={navigate} userEmail={adminEmail} />;
     case 'support-docs': return <Support activeTab="docs" onNavigate={navigate} userEmail={adminEmail} />;
-    case 'profile': return <Profile />;
+    case 'profile': return <Profile userEmail={adminEmail} onNavigate={navigate} />;
     default: return <Dashboard userEmail={adminEmail} onNavigate={navigate} />;
   }
 }

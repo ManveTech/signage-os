@@ -1,7 +1,18 @@
-import { pushToDatabase, generatePocketBaseId } from './syncHelper';
+import { pushToDatabase, generatePocketBaseId, PushResult } from './syncHelper';
+import { apiPost } from './screenActions';
+
+export interface TicketMessage {
+  id: string;
+  from: 'support' | 'client';
+  authorName?: string;
+  text: string;
+  at: string;
+}
 
 export interface Ticket {
   id: string;
+  /** Replies after the original description, oldest first. */
+  messages?: TicketMessage[];
   subject: string;
   description: string;
   status: 'open' | 'in_progress' | 'resolved' | 'closed';
@@ -54,7 +65,8 @@ export const supportStore = {
       ...ticket,
       id: generatePocketBaseId(),
       createdDate: new Date().toISOString().split('T')[0],
-      lastUpdated: 'Just now'
+      lastUpdated: new Date().toISOString(),
+      messages: []
     };
     tickets.unshift(newTicket);
     this.saveTickets(tickets);
@@ -66,7 +78,7 @@ export const supportStore = {
     const tickets = this.getTickets();
     const index = tickets.findIndex(t => t.id === id);
     if (index !== -1) {
-      tickets[index] = { ...tickets[index], status, lastUpdated: 'Just now' };
+      tickets[index] = { ...tickets[index], status, lastUpdated: new Date().toISOString() };
       this.saveTickets(tickets);
       pushToDatabase('tickets', id, tickets[index], 'PUT');
     }
@@ -77,6 +89,18 @@ export const supportStore = {
     const filtered = tickets.filter(t => t.id !== id);
     this.saveTickets(filtered);
     pushToDatabase('tickets', id, null, 'DELETE');
+  },
+
+  /**
+   * Reply on a ticket (and/or change its status) through the server, which
+   * also emails the client when support replies. See
+   * server/controllers/tickets.ts.
+   */
+  async postMessage(id: string, body: { text?: string; status?: Ticket['status'] }): Promise<Ticket> {
+    const updated: Ticket = await apiPost(`/tickets/${id}/messages`, body);
+    const tickets = this.getTickets().map(t => (t.id === id ? { ...t, ...updated } : t));
+    this.saveTickets(tickets);
+    return tickets.find(t => t.id === id) || updated;
   },
 
   getFAQs(): FAQ[] {
@@ -99,6 +123,12 @@ export const supportStore = {
     this.saveFAQs(faqs);
     pushToDatabase('faqs', newFaq.id, newFaq, 'POST');
     return newFaq;
+  },
+
+  async updateFAQ(id: string, faq: Omit<FAQ, 'id'>): Promise<PushResult> {
+    const faqs = this.getFAQs().map(f => (f.id === id ? { ...f, ...faq } : f));
+    this.saveFAQs(faqs);
+    return pushToDatabase('faqs', id, { id, ...faq }, 'PUT');
   },
 
   deleteFAQ(id: string) {
@@ -155,6 +185,13 @@ Notes:
     this.saveDocs(docs);
     pushToDatabase('support_docs', newDoc.id, newDoc, 'POST');
     return newDoc;
+  },
+
+  async updateDoc(id: string, doc: Partial<Omit<SupportDoc, 'id' | 'createdDate'>>): Promise<PushResult> {
+    const docs = this.getDocs().map(d => (d.id === id ? { ...d, ...doc } : d));
+    this.saveDocs(docs);
+    const full = docs.find(d => d.id === id);
+    return pushToDatabase('support_docs', id, full, 'PUT');
   },
 
   deleteDoc(id: string) {

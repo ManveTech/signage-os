@@ -213,8 +213,8 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
   await pb.collection('payments').create({
     licenseId,
     licenseName: license.name,
-    clientName: license.assignedOrgName || 'Client Org',
-    clientEmail: license.assignedUserEmail || 'client@demo.com',
+    clientName: license.assignedOrgName || 'Client',
+    clientEmail: license.assignedUserEmail || '',
     amount,
     paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
     status: 'success',
@@ -222,16 +222,28 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     razorpayOrderId: orderId
   });
 
-  await pb.collection('invoices').create({
-    licenseId,
-    licenseName: license.name,
-    clientName: license.assignedOrgName || 'Client Org',
-    clientEmail: license.assignedUserEmail || 'client@demo.com',
-    amount: Math.round(amount * 1.18),
-    dueDate: newExpiryStr,
-    status: 'paid',
-    issuedDate: new Date().toISOString().split('T')[0]
-  });
+  // Settle the invoice(s) this payment was for. Previously the unpaid invoice
+  // stayed "unpaid" forever and a second, "paid" one was created — recorded
+  // at 18% more than the amount actually charged.
+  const unpaid = await pb.collection('invoices').getFullList({
+    filter: pb.filter('licenseId = {:licenseId} && status = "unpaid"', { licenseId })
+  }).catch(() => [] as any[]);
+  if (unpaid.length > 0) {
+    for (const inv of unpaid) {
+      await pb.collection('invoices').update(inv.id, { status: 'paid' }).catch(() => {});
+    }
+  } else {
+    await pb.collection('invoices').create({
+      licenseId,
+      licenseName: license.name,
+      clientName: license.assignedOrgName || 'Client',
+      clientEmail: license.assignedUserEmail || '',
+      amount: Math.round(amount),
+      dueDate: newExpiryStr,
+      status: 'paid',
+      issuedDate: new Date().toISOString().split('T')[0]
+    });
+  }
 }
 
 export async function verifyPayment(req: any, res: any) {

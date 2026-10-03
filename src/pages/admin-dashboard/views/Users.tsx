@@ -285,17 +285,17 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
       </div>
 
       {users.length > 0 && (
-        <>
-          <div className="relative">
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <div className="relative md:w-80 md:order-2 md:ml-auto">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, email, organization or phone"
+              placeholder="Search clients"
               className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 md:order-1">
             {([
               { key: 'all', label: 'All', count: users.length },
               { key: 'active', label: 'Active', count: counts.active },
@@ -317,10 +317,49 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
               );
             })}
           </div>
-        </>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+      {/* Desktop: one row per client with aligned columns — cards stretched
+          across a wide screen left big empty gaps. */}
+      {visible.length > 0 && (
+        <div className="hidden md:block bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_110px_120px_130px] gap-4 px-5 py-2.5 bg-slate-50/70 border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+            <span>Client</span><span>Contact</span><span>Screens</span><span>Renews</span><span className="text-right">Status</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {visible.map(u => {
+              const lic = licenseOf(u.email);
+              const st = stateOf(u);
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => setOpenId(u.id)}
+                  className="w-full grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.6fr)_110px_120px_130px] gap-4 items-center px-5 py-3 text-left hover:bg-slate-50 transition-colors"
+                >
+                  <span className="flex items-center gap-3 min-w-0">
+                    <span className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-teal-500 text-white text-xs font-semibold flex items-center justify-center shrink-0">{initials(u.name)}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-slate-900 truncate">{u.company || u.name}</span>
+                      <span className="block text-xs text-slate-500 truncate">{lic ? lic.name : 'No license'}</span>
+                    </span>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm text-slate-700 truncate">{u.name}</span>
+                    <span className="block text-xs text-slate-500 truncate">{u.email}</span>
+                  </span>
+                  <span className="text-sm text-slate-700">{lic ? `${screensUsed(u.email)} / ${lic.deviceLimit || 5}` : screensUsed(u.email)}</span>
+                  <span className="text-sm text-slate-700">{lic ? formatDate(lic.expiryDate) : '—'}</span>
+                  <span className="flex justify-end">{pill(st.label, st.className)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:hidden">
         {visible.map(u => {
           const lic = licenseOf(u.email);
           const st = stateOf(u);
