@@ -107,7 +107,7 @@ class VideoCallManager(private val context: Context) {
     @Volatile var statusReporter: (() -> JSONObject)? = null
 
     /** Connects the signaling socket and registers this screen as a call target. */
-    fun start(serverUrl: String, screenId: String) {
+    fun start(serverUrl: String, screenId: String, hardwareUuid: String = "") {
         if (socket != null && registeredScreenId == screenId) return
         stop()
         registeredScreenId = screenId
@@ -123,7 +123,12 @@ class VideoCallManager(private val context: Context) {
             newSocket.on(Socket.EVENT_CONNECT) {
                 Log.d(TAG, "Socket connected, registering display $screenId")
                 com.example.util.Breadcrumbs.mark(context, "socket-connected")
-                newSocket.emit("register-display", screenId)
+                // With the hardware id the server can check this TV really owns
+                // the screen before letting it into the screen's room.
+                newSocket.emit("register-display", JSONObject().apply {
+                    put("screenId", screenId)
+                    put("hardwareUuid", hardwareUuid)
+                })
             }
             newSocket.on("conference:initiated") { args -> onConferenceInitiated(args) }
             newSocket.on("conference:ended") { onConferenceEnded() }

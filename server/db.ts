@@ -454,7 +454,13 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
     // hardwareUuid field succeeds, a wrong hardwareUuid is rejected (404 —
     // PocketBase's normal response for a failed record-level rule), and the
     // correct hardwareUuid succeeds.
-    const desiredUpdateRule = '(@request.body.hardwareUuid:isset = false) || (hardware_uuid = @request.body.hardwareUuid)';
+    // The `:isset = false` escape hatch (for very old APKs that never sent
+    // hardwareUuid) let anyone with the PocketBase URL rewrite any screen —
+    // owner, playlist, status — by simply leaving the field out. Current
+    // TV builds send it on every write (and now go through /devices/ack
+    // instead), so the escape hatch is closed: the caller must be the
+    // screen's own paired device.
+    const desiredUpdateRule = 'hardware_uuid != "" && hardware_uuid = @request.body.hardwareUuid';
     if (screensCollection.listRule !== null || screensCollection.viewRule !== null || screensCollection.createRule !== null || screensCollection.deleteRule !== null || screensCollection.updateRule !== desiredUpdateRule) {
       screensCollection.listRule = null;
       screensCollection.viewRule = null;

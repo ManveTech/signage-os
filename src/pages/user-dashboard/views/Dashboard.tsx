@@ -165,6 +165,7 @@ export default function Dashboard({
   const healthCard = (
     <button
       type="button"
+      data-tour="kpi-cards"
       onClick={() => onNavigate('my-screens-list')}
       className="w-full text-left bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 hover:border-gray-200 transition-colors"
     >
@@ -263,7 +264,6 @@ export default function Dashboard({
   const planSection = (
     <button
       type="button"
-      data-tour="kpi-cards"
       onClick={() => onNavigate('license-billing')}
       className="w-full text-left bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 hover:border-gray-200 transition-colors"
     >

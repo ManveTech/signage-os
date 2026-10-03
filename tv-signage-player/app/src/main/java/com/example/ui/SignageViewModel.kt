@@ -48,6 +48,14 @@ data class SignageUiState(
     val downloadCurrentFile: String = "",
     val downloadCurrentBytes: Long = 0L,
     val downloadCurrentTotalBytes: Long = 0L,
+    // Whole-playlist figures for the download screen (bytes, when the server
+    // reports file sizes; otherwise 0 and the screen falls back to counts).
+    val downloadBytesDone: Long = 0L,
+    val downloadBytesTotal: Long = 0L,
+    val downloadBytesPerSecond: Long = 0L,
+    val downloadSecondsLeft: Long = -1L,
+    val downloadRetryAt: Long = 0L,
+    val downloadOffline: Boolean = false,
     val showSplash: Boolean = true,
     // Playlist playback settings
     val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
@@ -184,7 +192,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     // same socket stay inert for non-VC screens since the server
                     // never initiates a conference on a screen without a camera.
                     if (config.screenId.isNotEmpty()) {
-                        videoCallManager.start(config.serverUrl, config.screenId)
+                        videoCallManager.start(config.serverUrl, config.screenId, config.hardwareUuid)
                     } else {
                         videoCallManager.stop()
                     }
@@ -245,28 +253,32 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                         ""
                     }
                     
-                    val overallProgress = if (it.playlist.isNotEmpty()) {
-                        val totalAssets = it.playlist.size
-                        val alreadyDownloaded = it.playlist.count { asset ->
-                            asset.mediaType.equals("youtube", ignoreCase = true) || 
-                            (!asset.localPath.isNullOrEmpty() && java.io.File(asset.localPath).exists())
-                        }
-                        
-                        if (totalAssets > 0) {
-                            if (downloadState.isDownloading && downloadState.totalFiles > 0) {
-                                val pendingCount = downloadState.totalFiles
-                                val initialDownloadedCount = totalAssets - pendingCount
-                                ((initialDownloadedCount.toFloat() + downloadState.completedFiles + downloadState.currentFileProgress) / totalAssets).coerceIn(0f, 1f)
-                            } else {
-                                (alreadyDownloaded.toFloat() / totalAssets).coerceIn(0f, 1f)
-                            }
-                        } else {
-                            0f
-                        }
-                    } else {
-                        0f
+                    // Progress by data, not file count — one big video used to sit
+                    // at "3 of 4" for minutes. Falls back to counts when the server
+                    // didn't report file sizes.
+                    val media = it.playlist.filter { a ->
+                        a.mediaType.equals("image", ignoreCase = true) || a.mediaType.equals("video", ignoreCase = true)
                     }
-                    
+                    val sized = media.all { a -> (a.fileSizeBytes ?: 0L) > 0L }
+                    val isReady = { a: PlaylistAsset -> !a.localPath.isNullOrEmpty() && java.io.File(a.localPath).exists() }
+                    val current = if (downloadState.isDownloading) media.firstOrNull { a -> a.filename == downloadState.currentFileName && !isReady(a) } else null
+                    val bytesTotal = if (sized) media.sumOf { a -> a.fileSizeBytes ?: 0L } else 0L
+                    val bytesDone = if (sized) {
+                        media.filter { a -> isReady(a) && a !== current }.sumOf { a -> a.fileSizeBytes ?: 0L } +
+                            (if (current != null) downloadState.downloadedBytes else 0L)
+                    } else 0L
+                    val overallProgress = when {
+                        media.isEmpty() -> 0f
+                        sized && bytesTotal > 0 -> (bytesDone.toFloat() / bytesTotal).coerceIn(0f, 1f)
+                        else -> {
+                            val readyCount = media.count(isReady)
+                            ((readyCount + (if (current != null) downloadState.currentFileProgress else 0f)) / media.size).coerceIn(0f, 1f)
+                        }
+                    }
+                    val secondsLeft = if (sized && downloadState.bytesPerSecond > 0 && bytesTotal > bytesDone) {
+                        (bytesTotal - bytesDone) / downloadState.bytesPerSecond
+                    } else -1L
+
                     it.copy(
                         isDownloading = downloadState.isDownloading,
                         downloadProgressMessage = progressMessage,
@@ -274,6 +286,12 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                         downloadCurrentFile = if (downloadState.isDownloading) downloadState.currentFileName else "",
                         downloadCurrentBytes = downloadState.downloadedBytes,
                         downloadCurrentTotalBytes = downloadState.totalFileBytes,
+                        downloadBytesDone = bytesDone,
+                        downloadBytesTotal = bytesTotal,
+                        downloadBytesPerSecond = downloadState.bytesPerSecond,
+                        downloadSecondsLeft = secondsLeft,
+                        downloadRetryAt = downloadState.nextRetryAt,
+                        downloadOffline = downloadState.offline,
                         errorMessage = downloadState.errorMessage
                     )
                 }
@@ -283,7 +301,6 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         // Start dynamic sync and diagnostics background services
         startSyncEngine()
         startDiagnosticsHeartbeatEngine()
-        repository.startRealtimeSync()
 
         // Generate initial pairing code request if setup is needed
         viewModelScope.launch {
@@ -408,7 +425,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             while (isActive) {
                 try {
                     val state = _uiState.value
-                    if (state.status == "active" || state.status == "online" || state.status == "offline") {
+                    if (state.screenId.isNotEmpty() && isPlayingStatus(state.status)) {
                         val currentAsset = state.playbackPlaylist.getOrNull(state.currentAssetIndex)
                         repository.sendDiagnosticsHeartbeat(currentAsset?.filename)
                     }
@@ -478,7 +495,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
         assetRotationJob?.cancel()
         val playlist = _uiState.value.playbackPlaylist
-        if (playlist.isEmpty() || _uiState.value.paused || (_uiState.value.status != "active" && _uiState.value.status != "online" && _uiState.value.status != "offline")) {
+        if (playlist.isEmpty() || _uiState.value.paused || !isPlayingStatus(_uiState.value.status)) {
             return
         }
 
@@ -490,7 +507,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                 val currentIndex = state.currentAssetIndex
 
                 if (livePlaylist.isEmpty()) break
-                if (state.status != "active" && state.status != "online" && state.status != "offline") break
+                if (!isPlayingStatus(state.status)) break
 
                 val currentAsset = livePlaylist.getOrNull(currentIndex) ?: break
 

@@ -72,8 +72,8 @@ export function getAdminTourSteps(): TourStep[] {
     {
       element: firstVisible('[data-tour="sidebar-support"]', '[data-tour="dock-more"]'),
       popover: {
-        title: 'Support',
-        description: 'Track ongoing issues, maintain your FAQ, and manage support documentation your clients see.'
+        title: 'Helpdesk',
+        description: 'Reply to client tickets, and keep the FAQs and help guides your clients see up to date.'
       }
     },
     {

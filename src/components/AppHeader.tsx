@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import DefaultAvatar from './DefaultAvatar';
 import { createPortal } from 'react-dom';
 import { Search, ChevronDown, ChevronRight, LogOut, User, Repeat, X, Monitor, ListVideo, Film, Users, FileText, CornerDownLeft } from 'lucide-react';
 import logoImg from '../assets/bluestar-icon.png';
@@ -94,10 +95,9 @@ export default function AppHeader({
     if (e.key === 'Enter') { e.preventDefault(); go(results[highlight].view); }
   };
 
-  const initials = (profile.name || profile.email).split(/[\s@]+/).filter(Boolean).slice(0, 2).map(p => p[0]!.toUpperCase()).join('');
   const avatar = (size: string, text: string) => profile.avatar
     ? <img src={profile.avatar} alt="" className={`${size} rounded-full object-cover`} />
-    : <span className={`${size} rounded-full bg-gradient-to-br from-blue-600 to-teal-500 text-white ${text} font-semibold flex items-center justify-center`}>{initials || '?'}</span>;
+    : <DefaultAvatar className={size} iconSize={text === 'text-sm' ? 22 : 18} />;
 
   const resultList = (compact: boolean) => {
     if (!q) return null;

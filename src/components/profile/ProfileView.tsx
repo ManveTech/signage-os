@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import DefaultAvatar from '../DefaultAvatar';
 import { User as UserIcon, Camera, Eye, EyeOff, Key, Lock, CreditCard, Palette, Image as ImageIcon, ChevronRight, Check } from 'lucide-react';
 import { API_BASE } from '../../config';
 import { getAuthToken } from '../../lib/authStorage';
@@ -258,7 +259,6 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
     toast.success('Branding saved — your screens pick it up on their next sync');
   };
 
-  const initials = (name || email).split(/[\s@]+/).filter(Boolean).slice(0, 2).map(p => p[0]!.toUpperCase()).join('');
   const st = license ? licenseState(license) : null;
 
   return (
@@ -274,7 +274,7 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
           <span className={`block w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden ring-4 ring-white shadow-md ${avatarBusy ? 'opacity-60' : ''}`}>
             {avatar
               ? <img src={avatar} alt="" className="w-full h-full object-cover" />
-              : <span className="w-full h-full bg-gradient-to-br from-blue-600 to-teal-500 text-white text-3xl font-semibold flex items-center justify-center">{initials || '?'}</span>}
+              : <DefaultAvatar className="w-full h-full" iconSize={52} />}
           </span>
           <span className="absolute bottom-0.5 right-0.5 w-9 h-9 rounded-full bg-blue-600 group-hover:bg-blue-700 text-white flex items-center justify-center ring-4 ring-white shadow">
             <Camera size={16} />

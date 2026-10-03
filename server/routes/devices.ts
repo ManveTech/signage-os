@@ -1,5 +1,6 @@
 import express from 'express';
 import { recordHeartbeat, getPairingCode, reportOffline, getScreenStatusForDevice } from '../controllers/screens';
+import { acknowledgeDevice, logFromDevice } from '../controllers/devices';
 import { deviceLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
@@ -13,6 +14,8 @@ router.post('/heartbeat', recordHeartbeat);
 router.post('/pairing-code', getPairingCode);
 router.post('/offline', reportOffline);
 router.post('/sync', getScreenStatusForDevice);
+router.post('/ack', acknowledgeDevice);
+router.post('/log', logFromDevice);
 // NOTE: '/clear-command' (clearScreenCommand in controllers/screens.ts) was
 // removed — it was unauthenticated, trusted a caller-supplied screenId with
 // no ownership check, and the TV app never actually called it (it clears its

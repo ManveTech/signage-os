@@ -136,17 +136,16 @@
 
         try {
             const POCKETBASE_URL = getPocketBaseUrl();
-            const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
-            const res = await fetchWithTimeout(url, {}, 2500);
-            if (!res.ok) {
-                if (res.status === 404 || res.status === 403) {
-                    disconnectDevice();
-                    return;
-                }
+            // Through the server's verified sync endpoint (see
+            // SignageApi.fetchDeviceScreen). Only an explicit "unpaired" from
+            // the server disconnects this TV — a network blip no longer does.
+            const result = await window.SignageApi.fetchDeviceScreen(state);
+            if (!result.ok) {
+                if (result.unpaired) disconnectDevice();
                 return;
             }
 
-            const data = await res.json();
+            const data = result.data;
 
             if (data.status === 'pairing') {
                 disconnectDevice();

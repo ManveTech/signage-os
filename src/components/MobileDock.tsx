@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import DefaultAvatar from './DefaultAvatar';
 import { motion, useReducedMotion } from 'framer-motion';
 import {
   LayoutDashboard, MonitorPlay, Tv, Key, Menu, LogOut, Film, Users, Building2, BarChart3,
@@ -162,7 +163,6 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
 
   const go = (view: string) => { setSheet(null); onNavigate(view); };
 
-  const initials = profile.name.split(/[\s@]+/).filter(Boolean).slice(0, 2).map(p => p[0]!.toUpperCase()).join('');
   const sheetSections = sheet && sheet !== 'dashboard' && sheet !== 'licenses' ? sections[sheet] : null;
   const sheetTitle = sheet === 'screens' ? 'Screens' : sheet === 'playlists' ? (admin ? 'Content' : 'Playlists') : 'More';
 
@@ -186,7 +186,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
               <button type="button" onClick={() => go('profile')} className="mx-4 mb-3 w-[calc(100%-2rem)] flex items-center gap-3 p-3 rounded-2xl bg-slate-50 text-left active:bg-slate-100">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-11 h-11 rounded-full object-cover" />
-                  : <span className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-600 to-teal-500 text-white text-sm font-semibold flex items-center justify-center">{initials || '?'}</span>}
+                  : <DefaultAvatar className="w-11 h-11" iconSize={24} />}
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-slate-900 truncate">{profile.name}</span>
                   <span className="block text-xs text-slate-500">View profile</span>

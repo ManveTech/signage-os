@@ -29,7 +29,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
-import kotlin.random.Random
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.async
@@ -48,8 +47,36 @@ data class DownloadState(
     val currentFileName: String = "",
     val downloadedBytes: Long = 0L,
     val totalFileBytes: Long = 0L,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** Smoothed download speed of the current run, bytes per second (0 = unknown). */
+    val bytesPerSecond: Long = 0L,
+    /** elapsedRealtime() at which the next automatic retry starts (0 = none scheduled). */
+    val nextRetryAt: Long = 0L,
+    /** Last failure was a connectivity problem (vs. a server / file problem). */
+    val offline: Boolean = false
 )
+
+/** Turns a download exception into something a person standing at the TV can act on. */
+internal fun friendlyDownloadError(e: Throwable): Pair<String, Boolean> = when (e) {
+    is java.net.UnknownHostException, is java.net.ConnectException, is java.net.NoRouteToHostException ->
+        "This display can't reach the internet. Check its network connection." to true
+    is java.net.SocketTimeoutException, is java.io.InterruptedIOException ->
+        "The connection is very slow or keeps dropping." to true
+    is javax.net.ssl.SSLException ->
+        "A secure connection to the server couldn't be made. Check the display's date and time." to true
+    else -> {
+        val msg = e.message ?: ""
+        when {
+            msg.contains("Checksum", ignoreCase = true) -> "A file arrived damaged and will be downloaded again." to false
+            msg.contains("status: 404") -> "A file is no longer on the server — it may have been deleted." to false
+            msg.contains("status: 403") -> "The server refused a file download." to false
+            msg.contains("status: 5") -> "The server had a problem sending a file. It will retry shortly." to false
+            msg.contains("ENOSPC", ignoreCase = true) || msg.contains("No space", ignoreCase = true) ->
+                "This display is out of storage space." to false
+            else -> "Some files couldn't be downloaded." to false
+        }
+    }
+}
 
 class SignageRepository(private val context: Context) {
 
@@ -222,14 +249,32 @@ class SignageRepository(private val context: Context) {
     // whole cache every minute).
     private suspend fun clearCommandFlag(config: ScreenConfig, flag: String): Boolean {
         return try {
-            val patchUrl = "${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}"
-            apiService.updateScreenRecord(patchUrl, mapOf(flag to false, "hardwareUuid" to config.hardwareUuid))
+            acknowledge(config, mapOf("clear" to listOf(flag)))
             true
         } catch (e: Exception) {
             Log.e("SignageRepository", "Failed to clear $flag flag on server; skipping command this time", e)
             logErrorToServer("Command Flag Clear Failure", "$flag: ${e.message ?: "Unknown error"}")
             false
         }
+    }
+
+    /**
+     * Reports handled commands / local changes to the server (POST /devices/ack,
+     * verified by this device's hardware id). Falls back to the old direct
+     * PocketBase write only if the server is too old to have the endpoint.
+     */
+    private suspend fun acknowledge(config: ScreenConfig, fields: Map<String, Any?>) {
+        val body = fields + mapOf("screenId" to config.screenId, "hardwareUuid" to config.hardwareUuid)
+        val response = apiService.acknowledge("${config.serverUrl}/api/v1/devices/ack", body)
+        if (response.isSuccessful) return
+        if (response.code() == 404 && response.errorBody()?.string()?.contains("unpaired") != true) {
+            val legacy = mutableMapOf<String, Any?>("hardwareUuid" to config.hardwareUuid)
+            (fields["clear"] as? List<*>)?.forEach { legacy[it.toString()] = false }
+            fields["volume"]?.let { legacy["volume"] = it }
+            apiService.updateScreenRecord("${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}", legacy)
+            return
+        }
+        throw IllegalStateException("Acknowledge failed: HTTP ${response.code()}")
     }
 
     private suspend fun syncScreenStatusOnce(): Result<Unit> = withContext(Dispatchers.IO) {
@@ -504,17 +549,8 @@ class SignageRepository(private val context: Context) {
                 }
             }
 
-            // Update screen record on server (PATCH to screens collection)
-            val patchUrl = "${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}"
-            val fields = mapOf(
-                "playlist" to newPlaylistId,
-                "playlistId" to newPlaylistId,
-                "schedulePlaylist" to "",
-                "scheduleDate" to "",
-                "scheduleTime" to "",
-                "hardwareUuid" to config.hardwareUuid
-            )
-            apiService.updateScreenRecord(patchUrl, fields)
+            // Tell the server the scheduled switch happened (it clears the schedule).
+            acknowledge(config, mapOf("schedule" to mapOf("playlistId" to newPlaylistId)))
             Log.d("SignageRepository", "Server screen record successfully updated/patched for schedule")
         } catch (e: Exception) {
             Log.e("SignageRepository", "Error applying scheduled playlist switch", e)
@@ -1008,11 +1044,15 @@ class SignageRepository(private val context: Context) {
                 continue
             }
 
-            if (failures > 0 && failureRetries < 5) {
-                // Retry failed files with backoff (30s, 60s, ... 150s), waking
-                // early if new work is requested in the meantime.
+            if (failures > 0) {
+                // Retry failed files with backoff (30s, 60s, ... capped at 5 min),
+                // waking early if new work is requested in the meantime. This
+                // used to give up after 5 tries (~7 min), so a TV that lost its
+                // connection mid-download sat on the download screen until
+                // someone rebooted it or changed the playlist.
                 failureRetries++
-                val waitUntil = SystemClock.elapsedRealtime() + 30_000L * failureRetries
+                val waitUntil = SystemClock.elapsedRealtime() + (30_000L * failureRetries).coerceAtMost(300_000L)
+                downloadStateFlow.value = downloadStateFlow.value.copy(nextRetryAt = waitUntil)
                 while (SystemClock.elapsedRealtime() < waitUntil &&
                     !synchronized(this) { downloadRerunRequested || downloadForceAllRequested }) {
                     delay(1000)
@@ -1035,6 +1075,13 @@ class SignageRepository(private val context: Context) {
     private suspend fun downloadPendingAssetsInternal(forceAll: Boolean = false): Int = withContext(Dispatchers.IO) {
         val generation = cacheGeneration
         var failures = 0
+        // Bytes fetched this run, for the speed / time-left shown on the TV.
+        var runBytes = 0L
+        val runStart = SystemClock.elapsedRealtime()
+        fun speedNow(): Long {
+            val elapsed = SystemClock.elapsedRealtime() - runStart
+            return if (elapsed > 1500 && runBytes > 0) runBytes * 1000 / elapsed else 0L
+        }
         val config = getOrCreateConfig()
         val cacheDir = File(context.filesDir, "signage_cache")
 
@@ -1193,6 +1240,7 @@ class SignageRepository(private val context: Context) {
                                     if (generation != cacheGeneration) throw DownloadAbortedException()
                                     outputStream.write(buffer, 0, bytesRead)
                                     totalBytesRead += bytesRead
+                                    runBytes += bytesRead
 
                                     val now = System.currentTimeMillis()
                                     if (now - lastProgressMs > 100) {
@@ -1206,7 +1254,8 @@ class SignageRepository(private val context: Context) {
                                             currentFileName = asset.filename,
                                             downloadedBytes = totalBytesRead,
                                             totalFileBytes = contentLength,
-                                            errorMessage = downloadStateFlow.value.errorMessage
+                                            errorMessage = downloadStateFlow.value.errorMessage,
+                                            bytesPerSecond = speedNow()
                                         )
                                     }
                                 }
@@ -1263,19 +1312,26 @@ class SignageRepository(private val context: Context) {
                 if (generation != cacheGeneration) throw DownloadAbortedException()
                 failures++
                 Log.e("SignageRepository", "Failed to download asset: ${asset.url}", e)
+                val (friendly, offline) = friendlyDownloadError(e)
                 downloadStateFlow.value = DownloadState(
                     isDownloading = true,
                     totalFiles = totalToDownload,
                     completedFiles = startIndex + index + 1,
                     currentFileProgress = 0.0f,
                     currentFileName = asset.filename,
-                    errorMessage = e.message ?: "Unknown download error"
+                    errorMessage = friendly,
+                    bytesPerSecond = speedNow(),
+                    offline = offline
                 )
                 sendDiagnosticsHeartbeat("Playback/Download Error: Failed to download or verify checksum of ${asset.filename} (${e.message})")
             }
         }
-        val currentError = downloadStateFlow.value.errorMessage
-        downloadStateFlow.value = DownloadState(isDownloading = false, errorMessage = if (failures > 0) currentError else null)
+        val last = downloadStateFlow.value
+        downloadStateFlow.value = DownloadState(
+            isDownloading = false,
+            errorMessage = if (failures > 0) last.errorMessage else null,
+            offline = failures > 0 && last.offline
+        )
         failures
     }
 
@@ -1293,95 +1349,11 @@ class SignageRepository(private val context: Context) {
         return hashBytes.joinToString("") { "%02x".format(it) }
     }
 
-    private var sseJob: kotlinx.coroutines.Job? = null
-
-    fun startRealtimeSync() {
-        sseJob?.cancel()
-        sseJob = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-            while (isActive) {
-                try {
-                    val config = getOrCreateConfig()
-                    if (config.pocketbaseUrl.isEmpty() || config.screenId.isEmpty()) {
-                        delay(5000)
-                        continue
-                    }
-
-                    val url = "${resolveUrl(config.pocketbaseUrl, config.pocketbaseUrl, config.serverUrl)}/api/realtime"
-                    Log.d("SignageRepository", "Connecting to PocketBase SSE at $url")
-
-                    val request = Request.Builder()
-                        .url(url)
-                        .header("Accept", "text/event-stream")
-                        .build()
-
-                    okHttpClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) {
-                            Log.e("SignageRepository", "SSE connection failed: ${response.code}")
-                            delay(5000)
-                            return@use
-                        }
-
-                        val reader = response.body?.charStream()?.buffered() ?: return@use
-                        var clientId = ""
-                        var line: String? = null
-
-                        while (isActive && reader.readLine().also { line = it } != null) {
-                            val currentLine = line ?: break
-                            if (currentLine.startsWith("event:")) {
-                                val event = currentLine.substring(6).trim()
-                                val dataLine = reader.readLine() ?: break
-                                if (dataLine.startsWith("data:")) {
-                                    val data = dataLine.substring(5).trim()
-                                    Log.d("SignageRepository", "SSE Event: $event, Data: $data")
-                                    
-                                    if (event == "PB_CONNECT") {
-                                        val connectionInfo = moshi.adapter(Map::class.java).fromJson(data)
-                                        clientId = connectionInfo?.get("clientId") as? String ?: ""
-                                        if (clientId.isNotEmpty()) {
-                                            Log.d("SignageRepository", "SSE Connected. ClientID: $clientId. Subscribing...")
-                                            subscribeToRealtime(config.pocketbaseUrl, config.serverUrl, clientId, config.screenId)
-                                        }
-                                    } else {
-                                        Log.d("SignageRepository", "SSE update event received. Syncing screen status.")
-                                        syncScreenStatus()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("SignageRepository", "SSE connection error, retrying in 5 seconds...", e)
-                    delay(5000)
-                }
-            }
-        }
-    }
-
-    private suspend fun subscribeToRealtime(pocketbaseUrl: String, serverUrl: String, clientId: String, screenId: String) {
-        try {
-            val url = "${resolveUrl(pocketbaseUrl, pocketbaseUrl, serverUrl)}/api/realtime"
-            val bodyMap = mapOf(
-                "clientId" to clientId,
-                "subscriptions" to listOf("screens", "playlists", "media_items")
-            )
-            val jsonBody = moshi.adapter(Map::class.java).toJson(bodyMap) ?: ""
-            val requestBody = jsonBody.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-            val request = Request.Builder()
-                .url(url)
-                .post(requestBody)
-                .build()
-
-            okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    Log.d("SignageRepository", "Successfully subscribed to PocketBase SSE collections")
-                } else {
-                    Log.e("SignageRepository", "Failed to subscribe to PocketBase SSE: ${response.code}")
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("SignageRepository", "Error subscribing to SSE topics", e)
-        }
-    }
+    // (PocketBase realtime/SSE subscription removed: it subscribed to every
+    // tenant's playlists and media, so any change anywhere made every TV
+    // re-sync at once, while changes to this screen's own record never
+    // arrived. The server pushes "config changed" over the socket held by
+    // VideoCallManager instead, backed by the periodic poll.)
 
     suspend fun sendDiagnosticsHeartbeat(currentPlayingAsset: String?): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -1439,7 +1411,7 @@ class SignageRepository(private val context: Context) {
         }
     }
 
-    private fun getCpuTemperature(): Double {
+    private fun getCpuTemperature(): Double? {
         return try {
             // Read from various thermal files typically found on Android/Linux
             val paths = listOf(
@@ -1458,10 +1430,11 @@ class SignageRepository(private val context: Context) {
                     }
                 }
             }
-            // Real thermal fallback: battery temperature or standard simulation around comfortable thermal values (42 C to 53 C)
-            45.0 + Random.nextDouble(0.0, 8.5)
+            // No readable sensor: report nothing rather than a made-up value
+            // (this used to send a random 45–53°C, shown as real data).
+            null
         } catch (e: Exception) {
-            48.2
+            null
         }
     }
 
@@ -1490,8 +1463,7 @@ class SignageRepository(private val context: Context) {
             configDao.saveConfig(updatedConfig)
             
             if (config.screenId.isNotEmpty() && config.pocketbaseUrl.isNotEmpty()) {
-                val url = "${config.pocketbaseUrl}/api/collections/screens/records/${config.screenId}"
-                apiService.updateScreenRecord(url, mapOf("volume" to volume, "hardwareUuid" to config.hardwareUuid))
+                acknowledge(config, mapOf("volume" to volume))
                 Log.d("SignageRepository", "Successfully updated volume on server to: $volume")
             }
         } catch (e: Exception) {
@@ -1536,10 +1508,13 @@ class SignageRepository(private val context: Context) {
         try {
             val config = getOrCreateConfig()
             if (config.screenId.isEmpty()) return
-            val url = "${config.serverUrl}/api/v1/screen_logs"
+            // /devices/log is verified by hardware id. This used to post to
+            // /screen_logs, which needs a dashboard login, so every report was
+            // rejected and never reached the screen's logs.
+            val url = "${config.serverUrl}/api/v1/devices/log"
             val fields = mapOf(
                 "screenId" to config.screenId,
-                "screenName" to config.screenName,
+                "hardwareUuid" to config.hardwareUuid,
                 "event" to redactText(event, config.pocketbaseUrl, config.serverUrl),
                 "type" to "error",
                 "detail" to redactText(detail, config.pocketbaseUrl, config.serverUrl)

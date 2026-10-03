@@ -128,7 +128,7 @@ fun SignagePlayerApp(
     val hasPlayableContent = uiState.playbackPlaylist.isNotEmpty()
 
     LaunchedEffect(uiState.status, uiState.playlist, uiState.playlistOrientation) {
-        val isPlaying = (uiState.status == "active" || uiState.status == "online" || uiState.status == "offline") && uiState.playlist.isNotEmpty()
+        val isPlaying = com.example.ui.isPlayingStatus(uiState.status) && uiState.playlist.isNotEmpty()
         
         try {
             activity?.requestedOrientation = if (isPlaying) {
@@ -153,8 +153,18 @@ fun SignagePlayerApp(
             // returns to Idle.
             VideoCallScreen(callManager = viewModel.videoCallManager)
         } else if (!uiState.showSplash) {
-            when (uiState.status) {
-                "active", "online", "offline" -> {
+            when {
+                uiState.status == "suspended" -> {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        SuspendedScreen(
+                            onOpenAdmin = {}
+                        )
+                    }
+                }
+                // Any paired status plays — not just active/online/offline.
+                // "warning" (or any status added later) used to fall through to
+                // the pairing screen on a TV that was already set up.
+                com.example.ui.isPlayingStatus(uiState.status) -> {
                     // Portrait playlist on a display that is still landscape
                     // (the TV ignored requestedOrientation): rotate everything
                     // ourselves. If the OS did switch to portrait, the window
@@ -291,13 +301,6 @@ fun SignagePlayerApp(
                         }
                     }
                 }
-                "suspended" -> {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        SuspendedScreen(
-                            onOpenAdmin = {}
-                        )
-                    }
-                }
                 else -> {
                     PairingSetupScreen(
                         uiState = uiState,
@@ -318,56 +321,17 @@ fun SignagePlayerApp(
             AppSplashScreen(uiState = uiState, onLogoStarted = { viewModel.onSplashLogoStarted() })
         }
 
+        // New content downloading while the current playlist keeps playing.
+        // This is a customer-facing display, so it's a small, quiet pill in the
+        // corner — it used to be a large "Downloading Media..." card over the
+        // content (shown even for a background re-download after Sync).
         if (uiState.isDownloading && hasPlayableContent && !uiState.paused && callState is CallState.Idle && !uiState.showSplash) {
-            Box(
+            UpdatingContentPill(
+                progress = uiState.downloadProgressFraction,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(24.dp),
-                contentAlignment = Alignment.BottomStart
-            ) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xDD1C1B1F)
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .width(320.dp)
-                        .border(1.dp, Color(0xFF49454F), RoundedCornerShape(16.dp))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                progress = { uiState.downloadProgressFraction },
-                                modifier = Modifier.size(28.dp),
-                                color = Color(0xFFD0BCFF),
-                                strokeWidth = 3.dp,
-                                trackColor = Color(0xFF49454F)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Downloading Media...",
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = uiState.downloadProgressMessage,
-                                    color = Color(0xFFCAC4D0),
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+                    .padding(20.dp)
+            )
         }
     }
 }

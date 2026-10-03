@@ -168,8 +168,10 @@ export default function Dashboard({
     );
   };
 
+  // Tour step 1 points here: the network summary is the first thing on the
+  // page in both layouts (the overview list sits lower on phones).
   const healthCard = (
-    <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5">
+    <div data-tour="kpi-cards" className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
           <Monitor size={14} /> Screens
@@ -277,7 +279,7 @@ export default function Dashboard({
   ) : null;
 
   const overviewSection = (
-    <section data-tour="kpi-cards" className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+    <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
       <h2 className="text-sm font-semibold text-ink-950 px-4 sm:px-5 pt-4 pb-1">Overview</h2>
       <ul className="divide-y divide-gray-50">
         {overview.map(o => (
