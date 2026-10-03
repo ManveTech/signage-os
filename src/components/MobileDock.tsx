@@ -37,28 +37,49 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
     ? { name: localStorage.getItem('signageos_admin_name') || 'Administrator', avatar: localStorage.getItem('signageos_admin_avatar') || '' }
     : { name: localStorage.getItem(`signageos_user_name_${email}`) || email.split('@')[0], avatar: localStorage.getItem(`signageos_user_avatar_${email}`) || '' };
 
-  // Small counts on the tabs for things that need doing.
+  // Small counts on the tabs for things that need attention — cleared once
+  // you open that section, and shown again only for something new (they
+  // used to stay on screen permanently, even right after checking).
   useEffect(() => {
     try {
       const licenses = licensingStore.getLicenses();
       const tickets = supportStore.getTickets();
-      if (admin) {
-        const lic = licenses.filter(l => l.assignedUserEmail && ['expired', 'expiring', 'pending'].includes(licenseState(l).key)).length;
-        const waiting = tickets.filter(t => (t.status === 'open' || t.status === 'in_progress') && ((t.messages || []).slice(-1)[0]?.from ?? 'client') === 'client').length;
-        setBadges({ licenses: lic, more: waiting });
-      } else {
-        const mine = licenses.filter(l => (l.assignedUserEmail || '').toLowerCase() === email.toLowerCase());
-        const lic = mine.filter(l => {
-          const s = licenseState(l);
-          return s.key === 'expired' || s.key === 'pending' || (s.days !== null && s.days <= 14);
-        }).length;
-        const replies = tickets.filter(t => (t.clientEmail || '').toLowerCase() === email.toLowerCase()
-          && (t.status === 'open' || t.status === 'in_progress')
-          && (t.messages || []).slice(-1)[0]?.from === 'support').length;
-        setBadges({ licenses: lic, more: replies });
-      }
+      const lastAt = (t: any) => (t.messages || []).slice(-1)[0]?.at || t.lastUpdated || t.createdDate || '';
+
+      // Each item's key includes its state, so a licence going from
+      // "expiring" to "expired" (or a new reply) counts as new again.
+      const licenseKeys = (admin
+        ? licenses.filter(l => l.assignedUserEmail && ['expired', 'expiring', 'pending'].includes(licenseState(l).key))
+        : licenses.filter(l => (l.assignedUserEmail || '').toLowerCase() === email.toLowerCase()).filter(l => {
+            const st = licenseState(l);
+            return st.key === 'expired' || st.key === 'pending' || (st.days !== null && st.days <= 14);
+          })
+      ).map(l => `${l.id}:${licenseState(l).key}`);
+
+      const ticketKeys = (admin
+        ? tickets.filter(t => (t.status === 'open' || t.status === 'in_progress') && ((t.messages || []).slice(-1)[0]?.from ?? 'client') === 'client')
+        : tickets.filter(t => (t.clientEmail || '').toLowerCase() === email.toLowerCase()
+            && (t.status === 'open' || t.status === 'in_progress')
+            && (t.messages || []).slice(-1)[0]?.from === 'support')
+      ).map(t => `${t.id}:${lastAt(t)}`);
+
+      const storeKey = (kind: string) => `signageos_badge_seen_${role}_${email}_${kind}`;
+      const readSeen = (kind: string): string[] => {
+        try { return JSON.parse(localStorage.getItem(storeKey(kind)) || '[]'); } catch { return []; }
+      };
+      const onLicensing = admin ? activeView.startsWith('licenses-') : activeView === 'license-billing';
+      const onHelpdesk = admin ? activeView.startsWith('support') : activeView === 'support' || activeView === 'support-tickets';
+      if (onLicensing) localStorage.setItem(storeKey('licenses'), JSON.stringify(licenseKeys));
+      if (onHelpdesk) localStorage.setItem(storeKey('tickets'), JSON.stringify(ticketKeys));
+
+      const seenLic = new Set(readSeen('licenses'));
+      const seenTickets = new Set(readSeen('tickets'));
+      setBadges({
+        licenses: licenseKeys.filter(k => !seenLic.has(k)).length,
+        more: ticketKeys.filter(k => !seenTickets.has(k)).length,
+      });
     } catch { /* badges are a nicety */ }
-  }, [activeView, admin, email]);
+  }, [activeView, admin, email, role]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSheet(null); };
@@ -258,7 +279,9 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
               aria-label={tab.label}
               aria-current={isActive(tab.id) ? 'page' : undefined}
               whileTap={reduce ? undefined : { scale: 0.92 }}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 pt-2 pb-1.5 min-h-[60px] ${on ? 'text-blue-700' : 'text-slate-500'}`}
+              // No outline after a tap (it stayed as a blue box around the tab);
+              // keyboard / D-pad focus still gets a ring.
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 pt-2 pb-1.5 min-h-[60px] outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-300 ${on ? 'text-blue-700' : 'text-slate-500'}`}
             >
               <span className="relative w-14 h-8 flex items-center justify-center">
                 {on && (
