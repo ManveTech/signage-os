@@ -18,7 +18,9 @@ data class PairingResponse(
     val screenId: String,
     val pairingCode: String,
     val status: String,
-    val pocketbaseUrl: String? = null
+    val pocketbaseUrl: String? = null,
+    // Dashboard link for the QR code (opens Add screen with the code filled in).
+    val pairUrl: String? = null
 )
 
 @JsonClass(generateAdapter = true)

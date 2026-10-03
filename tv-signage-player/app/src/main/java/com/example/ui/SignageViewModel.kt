@@ -23,6 +23,8 @@ data class SignageUiState(
     val hardwareUuid: String = "",
     val screenId: String = "",
     val pairingCode: String = "",
+    // Link template for the pairing QR ("…/#/pair?code={code}"); empty = QR holds just the code.
+    val pairUrlTemplate: String = "",
     val status: String = "pairing", // "pairing", "active", "suspended"
     val screenName: String = "Digital Signage",
     val serverUrl: String = com.example.AppConfig.SERVER_URL,
@@ -163,6 +165,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                             hardwareUuid = config.hardwareUuid,
                             screenId = config.screenId,
                             pairingCode = config.pairingCode,
+                            pairUrlTemplate = repository.pairUrlTemplate(),
                             status = config.status,
                             screenName = config.screenName,
                             serverUrl = config.serverUrl,
@@ -367,6 +370,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                     state.copy(
                         isSyncing = false,
                         pairingCode = config?.pairingCode ?: "",
+                        pairUrlTemplate = repository.pairUrlTemplate(),
                         screenId = config?.screenId ?: "",
                         statusMessage = "Awaiting pairing from Bluestar CMS..."
                     )

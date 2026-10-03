@@ -4,6 +4,7 @@ import { API_BASE } from '../../config';
 import { USER_ROUTES, getUserViewFromPath } from '../../lib/routes';
 import MobileDock from '../../components/MobileDock';
 import SectionTransition from '../../components/SectionTransition';
+import { getPendingPairCode } from '../../lib/pendingPair';
 import { runTour } from '../../lib/tour/runner';
 import { getUserTourSteps } from '../../lib/tour/userTour';
 import { hasSeenTour, markTourSeen } from '../../lib/tour/state';
@@ -103,6 +104,12 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   });
   const [licenseChecked, setLicenseChecked] = useState(false);
 
+  // Signed in from a TV's pairing QR? Continue straight to Add screen.
+  useEffect(() => {
+    if (getPendingPairCode() && !activeView.startsWith('screens-add')) handleNavigate('screens-add');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleNavigate = (targetView: string) => {
     const targetPath = USER_ROUTES[targetView] || `/${targetView}`;
     navigate(targetPath);
@@ -142,6 +149,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   // and only once per account.
   useEffect(() => {
     if (activeView !== 'dashboard') return;
+    if (getPendingPairCode()) return; // pairing a TV first — the tour can wait
     if (hasSeenTour('user-dashboard', userEmail)) return;
     const timer = setTimeout(() => {
       runTour({

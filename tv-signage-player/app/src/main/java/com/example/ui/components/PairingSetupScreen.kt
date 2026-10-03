@@ -157,14 +157,14 @@ fun PairingSetupScreen(
                                         .padding(8.dp)
                                 ) {
                                     QrCodeImage(
-                                        content = uiState.pairingCode,
+                                        content = pairQrContent(uiState.pairUrlTemplate, uiState.pairingCode),
                                         sizePx = 260,
                                         modifier = Modifier.size(180.dp)
                                     )
                                 }
                             }
                             Text(
-                                text = "Scan with your phone",
+                                text = if (uiState.pairUrlTemplate.contains("{code}")) "Scan with your phone camera" else "Scan in the dashboard app",
                                 color = PairMuted,
                                 fontSize = 13.sp
                             )
@@ -260,13 +260,13 @@ fun PairingSetupScreen(
                                 .padding(10.dp)
                         ) {
                             QrCodeImage(
-                                content = uiState.pairingCode,
+                                content = pairQrContent(uiState.pairUrlTemplate, uiState.pairingCode),
                                 sizePx = 300,
                                 modifier = Modifier.size(200.dp)
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "Scan with your phone", color = PairMuted, fontSize = 13.sp)
+                        Text(text = if (uiState.pairUrlTemplate.contains("{code}")) "Scan with your phone camera" else "Scan in the dashboard app", color = PairMuted, fontSize = 13.sp)
                     }
 
                     Spacer(modifier = Modifier.height(32.dp))
@@ -307,3 +307,7 @@ fun PairingSetupScreen(
         }
     }
 }
+
+/** The pairing QR: a dashboard link with the code filled in, or just the code for older servers. */
+internal fun pairQrContent(template: String, code: String): String =
+    if (template.contains("{code}") && code.isNotEmpty()) template.replace("{code}", code) else code

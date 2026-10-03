@@ -7,6 +7,7 @@ import { pushToDatabase, syncCollection } from '../../lib/syncHelper';
 import { getAuthToken } from '../../lib/authStorage';
 import { toast } from '../Toast';
 import QrScannerModal from '../QrScannerModal';
+import { clearPendingPairCode, getPendingPairCode, parsePairCode } from '../../lib/pendingPair';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana',
@@ -52,12 +53,15 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 export default function AddScreenFlow({
   mode,
   userEmail,
-  onDone
+  onDone,
+  onSwitchToMine
 }: {
   mode: AddScreenMode;
   userEmail: string;
   /** Called after the screen is created, or on cancel from the first step. */
   onDone: () => void;
+  /** Admin, adding a client's screen from a TV's QR: "it's for my own channel". */
+  onSwitchToMine?: () => void;
 }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -70,7 +74,12 @@ export default function AddScreenFlow({
     group: '',
     playlist: ''
   });
-  const [code, setCode] = useState('');
+  // Opened from a TV's pairing QR? The code is already known.
+  const [qrCode] = useState(() => getPendingPairCode());
+  const [code, setCode] = useState(() => qrCode || '');
+  // Quick connect needs only a name — not for a client's screen, where the
+  // client has to be picked first.
+  const quickConnect = !!qrCode && mode !== 'admin-client';
   const [busy, setBusy] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [done, setDone] = useState<null | 'paired' | 'later'>(null);
@@ -134,7 +143,9 @@ export default function AddScreenFlow({
     }
     setStep(s => Math.min(s + 1, STEPS.length - 1));
   };
-  const back = () => (step === 0 ? onDone() : setStep(s => s - 1));
+  const back = () => {
+    if (step === 0) { clearPendingPairCode(); onDone(); } else setStep(s => s - 1);
+  };
 
   const connectTv = async () => {
     const clean = code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -166,6 +177,7 @@ export default function AddScreenFlow({
         return;
       }
       await syncCollection('screens', 'signageos_screens', { force: true });
+      clearPendingPairCode();
       setDone('paired');
     } catch {
       toast.error("Can't reach the server. Check your connection and try again.");
@@ -226,6 +238,27 @@ export default function AddScreenFlow({
 
   return (
     <div>
+      {qrCode && (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl bg-blue-50 border border-blue-100 px-4 py-3">
+          <ScanLine size={18} className="text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-sm min-w-0">
+            <p className="font-semibold text-slate-900">
+              TV code <span className="font-mono tracking-wider">{qrCode}</span> scanned
+            </p>
+            <p className="text-slate-600 text-xs mt-0.5">
+              {quickConnect
+                ? 'Give the screen a name and tap Connect TV — or set its location and content first.'
+                : 'Fill in the details — the code is already on the last step.'}
+            </p>
+            {onSwitchToMine && (
+              <button type="button" onClick={onSwitchToMine} className="text-xs font-semibold text-blue-700 mt-1.5">
+                It's for my own channel →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Progress */}
       <ol data-tour="add-steps" className="flex items-center gap-2 mb-5" aria-label="Progress">
         {STEPS.map((label, i) => (
@@ -448,7 +481,7 @@ export default function AddScreenFlow({
                 instructions="Point your camera at the QR code on the TV's pairing screen."
                 onClose={() => setScannerOpen(false)}
                 onScan={value => {
-                  setCode(value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 6));
+                  setCode(parsePairCode(value));
                   setScannerOpen(false);
                 }}
               />
@@ -484,6 +517,25 @@ export default function AddScreenFlow({
               className="h-11 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 whitespace-nowrap"
             >
               Connect later
+            </button>
+          </div>
+        </div>
+      ) : step === 0 && quickConnect ? (
+        <div className="mt-4 space-y-2">
+          <button
+            type="button"
+            onClick={() => (form.name.trim() ? connectTv() : toast.warning('Give the screen a name first.'))}
+            disabled={busy}
+            className={`w-full h-12 rounded-xl text-white text-sm font-semibold ${form.name.trim() ? 'bg-blue-600' : 'bg-blue-600/40'}`}
+          >
+            {busy ? 'Connecting…' : 'Connect TV'}
+          </button>
+          <div className="flex items-center justify-between">
+            <button type="button" onClick={back} disabled={busy} className="h-11 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100">
+              Cancel
+            </button>
+            <button type="button" onClick={next} disabled={busy} className="h-11 px-3 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 flex items-center gap-1">
+              More options
             </button>
           </div>
         </div>

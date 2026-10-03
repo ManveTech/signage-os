@@ -157,6 +157,9 @@ class SignageRepository(private val context: Context) {
         }
     }
 
+    /** "<dashboard>/#/pair?code={code}" from the server, or "" if it didn't send one. */
+    fun pairUrlTemplate(): String = prefs.getString("pair_url_template", null) ?: ""
+
     suspend fun getOrCreateConfig(): ScreenConfig = withContext(Dispatchers.IO) {
         var config = configDao.getConfig()
         if (config == null) {
@@ -208,6 +211,16 @@ class SignageRepository(private val context: Context) {
                 basePbUrl.replace("localhost", targetHost).replace("127.0.0.1", targetHost)
             } else {
                 currentConfig.pocketbaseUrl
+            }
+
+            // Remember the QR link as a template so it stays right when the
+            // code is refreshed later. Older servers don't send one — the QR
+            // then just holds the code, as before.
+            val pairUrl = response.pairUrl
+            if (!pairUrl.isNullOrBlank() && response.pairingCode.isNotEmpty() && pairUrl.contains(response.pairingCode)) {
+                prefs.edit().putString("pair_url_template", pairUrl.replace(response.pairingCode, "{code}")).apply()
+            } else {
+                prefs.edit().remove("pair_url_template").apply()
             }
 
             val updatedConfig = currentConfig.copy(

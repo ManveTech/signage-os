@@ -1,4 +1,5 @@
 import { pb, ensurePBAuth } from '../db';
+import { APP_URL } from '../config';
 import { syncScreenSchedule } from '../scheduler';
 import { redis, isRedisReady, acquireLock, releaseLock } from '../redis';
 import { notifyScreenConfigChanged } from '../services/screenPush';
@@ -126,6 +127,8 @@ export async function getPairingCode(req: any, res: any) {
     }
 
     const pairingCode = await generateUniquePairingCode();
+    // What the TV's QR code opens: the dashboard's Add screen with the code filled in.
+    const pairUrlFor = (code: string) => (APP_URL && code ? `${APP_URL.replace(/\/$/, '')}/#/pair?code=${encodeURIComponent(code)}` : '');
 
     // Set expiration to 10 minutes in the future
     const pairingCodeExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -151,6 +154,7 @@ export async function getPairingCode(req: any, res: any) {
         return res.status(200).json({
           screenId: existing.id,
           pairingCode: existing.pairing_code || '',
+          pairUrl: pairUrlFor(existing.pairing_code || ''),
           status: existing.status,
           pocketbaseUrl: pb.baseUrl
         });
@@ -162,6 +166,7 @@ export async function getPairingCode(req: any, res: any) {
         return res.status(200).json({
           screenId: existing.id,
           pairingCode: existing.pairing_code,
+          pairUrl: pairUrlFor(existing.pairing_code),
           status: existing.status || 'pairing',
           pocketbaseUrl: pb.baseUrl
         });
@@ -190,6 +195,7 @@ export async function getPairingCode(req: any, res: any) {
     res.status(200).json({
       screenId: screenRecord.id,
       pairingCode: pairingCode,
+      pairUrl: pairUrlFor(pairingCode),
       status: 'pairing',
       pocketbaseUrl: pb.baseUrl
     });

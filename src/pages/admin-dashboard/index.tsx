@@ -30,6 +30,7 @@ import MobileDock from '../../components/MobileDock';
 import OfflineIndicator from '../../components/OfflineIndicator';
 import PullToRefresh from '../../components/PullToRefresh';
 import SectionTransition from '../../components/SectionTransition';
+import { getPendingPairCode } from '../../lib/pendingPair';
 import { runTour } from '../../lib/tour/runner';
 import { getAdminTourSteps } from '../../lib/tour/adminTour';
 import { hasSeenTour, markTourSeen } from '../../lib/tour/state';
@@ -119,6 +120,12 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
     });
   };
 
+  // Signed in from a TV's pairing QR? Continue straight to Add screen.
+  useEffect(() => {
+    if (getPendingPairCode() && !activeView.startsWith('screens-add')) handleNavigate('screens-add');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleNavigate = (targetView: string) => {
     const targetPath = ADMIN_ROUTES[targetView] || `/admin/${targetView}`;
     navigate(targetPath);
@@ -156,6 +163,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
   // first paint and KPI fetch settle before the tour measures anything.
   useEffect(() => {
     if (activeView !== 'dashboard') return;
+    if (getPendingPairCode()) return; // pairing a TV first — the tour can wait
     if (hasSeenTour('admin-dashboard', userEmail)) return;
     const timer = setTimeout(() => {
       runTour({

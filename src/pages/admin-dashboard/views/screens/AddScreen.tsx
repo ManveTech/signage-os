@@ -13,6 +13,7 @@ export default function AddScreen({ mode = 'client', onNavigate, userEmail = 'ad
         mode={mode === 'my' ? 'admin-my' : 'admin-client'}
         userEmail={userEmail}
         onDone={() => onNavigate?.(mode === 'my' ? 'my-screens-list' : 'screens-all')}
+        onSwitchToMine={mode === 'my' ? undefined : () => onNavigate?.('screens-add-my')}
       />
     </div>
   );
