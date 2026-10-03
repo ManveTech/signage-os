@@ -44,49 +44,95 @@ function getScreenLocalDateTime(dateStr: string, timeStr: string, timezone: stri
   }
 }
 
+const RECORD_ID = /^[a-z0-9]{15}$/;
+
 /**
- * Activates a scheduled playlist for a screen immediately, clears schedule fields, and logs it.
+ * True once a screen's scheduled time has arrived (in the screen's timezone).
+ * A minute of slack covers TVs whose clocks run slightly ahead.
  */
-async function activateScheduledPlaylist(screen: any) {
+export function isScheduleDue(screen: any): boolean {
+  if (!screen?.schedulePlaylist || !screen.scheduleDate || !screen.scheduleTime) return false;
+  const at = getScreenLocalDateTime(screen.scheduleDate, screen.scheduleTime, screen.timezone || 'Asia/Kolkata');
+  return at.getTime() - 60 * 1000 <= Date.now();
+}
+
+/**
+ * Works out which playlist a screen's schedule refers to — and only ever one
+ * the screen's owner may use (their own, or one an admin made). The
+ * dashboard stores the playlist id; older schedules stored its name, which
+ * used to be looked up across every account, so two clients with a
+ * "Morning" playlist could get each other's.
+ */
+export async function resolveScheduledPlaylist(screen: any): Promise<{ id: string; name: string } | null> {
+  const value = String(screen.schedulePlaylist || '').trim();
+  if (!value) return null;
+  const owner = screen.assignedToUserEmail || '';
+
+  const allowed = async (playlist: any) => {
+    if (!playlist) return false;
+    if (playlist.createdBy && playlist.createdBy === owner) return true;
+    // Admin-made playlists may be scheduled on any screen they manage.
+    if (!playlist.createdBy || playlist.createdBy === 'admin') return true;
+    const creator = await pb.collection('users')
+      .getFirstListItem(pb.filter('email = {:email}', { email: playlist.createdBy }))
+      .catch(() => null);
+    return !!creator && (creator.role === 'admin' || creator.role === 'super_admin');
+  };
+
+  if (RECORD_ID.test(value)) {
+    const playlist = await pb.collection('playlists').getOne(value).catch(() => null);
+    if (playlist && await allowed(playlist)) return { id: playlist.id, name: playlist.name };
+  }
+  // Older schedules stored the name — match it within the owner's playlists only.
+  if (owner) {
+    const own = await pb.collection('playlists')
+      .getFirstListItem(pb.filter('name = {:name} && createdBy = {:owner}', { name: value, owner }))
+      .catch(() => null);
+    if (own) return { id: own.id, name: own.name };
+  }
+  return null;
+}
+
+/**
+ * Activates a scheduled playlist for a screen immediately, clears schedule
+ * fields, and logs it. Shared by the timer and by a TV reporting the
+ * schedule is due (whichever comes first), so the server alone decides what
+ * plays.
+ */
+export async function activateScheduledPlaylist(screen: any) {
   console.log(`[Scheduler] Activating scheduled playlist for screen "${screen.name}" (${screen.id}) → "${screen.schedulePlaylist}"`);
 
   try {
     await ensurePBAuth();
+    // Re-read: the TV and the timer can both get here for the same schedule.
+    const latest = await pb.collection('screens').getOne(screen.id).catch(() => null);
+    if (!latest || !latest.schedulePlaylist) return;
 
-    // Resolve playlistId from its name if not already set or outdated
-    let playlistId = '';
-    try {
-      const plResult = await pb.collection('playlists').getList(1, 10, {
-        filter: pb.filter('name = {:playlistName}', { playlistName: screen.schedulePlaylist }),
-      });
-      if (plResult.items.length > 0) {
-        playlistId = plResult.items[0].id;
-      }
-    } catch (_) { /* ignore and fallback */ }
-
-    // Update screen: apply the playlist and clear schedule fields
-    await pb.collection('screens').update(screen.id, {
-      playlist: screen.schedulePlaylist,
-      playlistId: playlistId,
-      schedulePlaylist: '',
-      scheduleDate: '',
-      scheduleTime: '',
-    });
+    const playlist = await resolveScheduledPlaylist(latest);
+    const update: Record<string, any> = { schedulePlaylist: '', scheduleDate: '', scheduleTime: '' };
+    if (playlist) {
+      update.playlist = playlist.name;
+      update.playlistId = playlist.id;
+    }
+    await pb.collection('screens').update(latest.id, update);
+    removeScreenSchedule(latest.id);
 
     // This fires at an exact scheduled instant — push immediately rather than
     // letting the screen sit on stale content until its next poll.
-    notifyScreenConfigChanged(screen.id);
+    notifyScreenConfigChanged(latest.id);
 
     // Log the event to screen_logs
     try {
-      const metrics = await getLiveScreenMetrics(screen);
+      const metrics = await getLiveScreenMetrics(latest);
       await pb.collection('screen_logs').create({
-        screenId: screen.id,
-        screenName: screen.name,
-        assignedToUserEmail: screen.assignedToUserEmail || '',
-        event: 'Scheduled playlist activated',
-        type: 'sync',
-        detail: `Playlist "${screen.schedulePlaylist}" was automatically activated on schedule (${screen.scheduleDate} ${screen.scheduleTime}).`,
+        screenId: latest.id,
+        screenName: latest.name,
+        assignedToUserEmail: latest.assignedToUserEmail || '',
+        event: playlist ? 'Scheduled playlist started' : 'Scheduled switch skipped',
+        type: playlist ? 'sync' : 'error',
+        detail: playlist
+          ? `"${playlist.name}" started on schedule (${latest.scheduleDate} ${latest.scheduleTime}).`
+          : 'The scheduled playlist was deleted or isn\'t available to this screen, so it kept its current playlist.',
         totalUptime: metrics.totalUptime,
         loopsPlayed: metrics.loopsPlayed
       });
@@ -199,12 +245,12 @@ export async function syncPlaylistDeletion(playlistName: string, playlistId?: st
       }
     }
 
-    if (!playlistName) return;
     console.log(`[Scheduler] Checking for scheduled switches referencing "${playlistName}"...`);
 
-    // Query screens scheduling this playlist
+    // Schedules store the playlist id (older ones its name).
     const screensResult = await pb.collection('screens').getList(1, 500, {
-      filter: pb.filter('schedulePlaylist = {:playlistName}', { playlistName }),
+      filter: pb.filter('(schedulePlaylist != "" && schedulePlaylist = {:playlistId}) || (schedulePlaylist != "" && schedulePlaylist = {:playlistName})',
+        { playlistId: playlistId || '', playlistName: playlistName || '' }),
     });
 
     for (const screen of screensResult.items) {

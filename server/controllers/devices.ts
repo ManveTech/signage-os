@@ -1,5 +1,6 @@
 import { pb, ensurePBAuth } from '../db';
 import { redis, isRedisReady } from '../redis';
+import { activateScheduledPlaylist, isScheduleDue } from '../scheduler';
 
 const COMMAND_FLAGS = new Set(['clear_cache', 'force_sync', 'restart_playlist']);
 
@@ -53,23 +54,15 @@ export async function acknowledgeDevice(req: any, res: any) {
     if (req.body.volume !== undefined && Number.isFinite(volume)) {
       update.volume = Math.max(0, Math.min(100, Math.round(volume)));
     }
-    const schedule = req.body.schedule;
-    if (schedule && typeof schedule === 'object' && screen.schedulePlaylist) {
-      const playlistId = typeof schedule.playlistId === 'string' ? schedule.playlistId : '';
-      if (playlistId) {
-        const playlist = await pb.collection('playlists').getOne(playlistId).catch(() => null);
-        if (!playlist) return res.status(400).json({ message: 'Unknown playlist.' });
-      }
-      update.playlist = playlistId;
-      update.playlistId = playlistId;
-      update.schedulePlaylist = '';
-      update.scheduleDate = '';
-      update.scheduleTime = '';
-    }
+    // The TV says a scheduled switch is due. The server decides which
+    // playlist that is (the TV's suggestion is ignored — older builds looked
+    // it up by name across every account).
+    const scheduleDue = !!(req.body.schedule && typeof req.body.schedule === 'object' && screen.schedulePlaylist);
 
-    if (Object.keys(update).length === 0) return res.status(204).end();
+    if (Object.keys(update).length === 0 && !scheduleDue) return res.status(204).end();
 
-    await pb.collection('screens').update(screen.id, update);
+    if (Object.keys(update).length > 0) await pb.collection('screens').update(screen.id, update);
+    if (scheduleDue && isScheduleDue(screen)) await activateScheduledPlaylist(screen);
     if (isRedisReady()) {
       await redis.pipeline()
         .del(`cache:screen:${screen.id}`)

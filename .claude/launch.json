@@ -4,14 +4,44 @@
     {
       "name": "signage-os-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "5173"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5173"
+      ],
       "port": 5173
     },
     {
       "name": "signage-os-ui-offline",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["VITE_NODE_SERVER_URL=http://127.0.0.1:9", "VITE_POCKETBASE_URL=http://127.0.0.1:9", "npm", "run", "dev", "--", "--port", "5174"],
+      "runtimeArgs": [
+        "VITE_NODE_SERVER_URL=http://127.0.0.1:9",
+        "VITE_POCKETBASE_URL=http://127.0.0.1:9",
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5174"
+      ],
       "port": 5174
+    },
+    {
+      "name": "signage-os-ui-local-backend",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_NODE_SERVER_URL=http://127.0.0.1:5099",
+        "VITE_POCKETBASE_URL=http://127.0.0.1:8095",
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5175"
+      ],
+      "port": 5175
     }
   ]
 }

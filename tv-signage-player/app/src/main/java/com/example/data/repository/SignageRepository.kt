@@ -537,8 +537,13 @@ class SignageRepository(private val context: Context) {
         var newPlaylistId = ""
         try {
             Log.d("SignageRepository", "Schedule triggered! Switching active playlist to: $playlistName")
-            if (playlistName != "Normal" && playlistName != "Unassigned") {
-                // Fetch the list of playlists to find one with the matching name
+            if (Regex("^[a-z0-9]{15}$").matches(playlistName)) {
+                // Current dashboards store the playlist's id. The server decides
+                // the final playlist when we acknowledge below; this only lets
+                // the switch show at once instead of on the next sync.
+                newPlaylistId = playlistName
+            } else if (playlistName != "Normal" && playlistName != "Unassigned") {
+                // Older schedules stored the playlist name.
                 val url = "${config.pocketbaseUrl}/api/collections/playlists/records?filter=name=\"$playlistName\""
                 val response = apiService.getPlaylistList(url)
                 val matchingPlaylist = response.items.firstOrNull()

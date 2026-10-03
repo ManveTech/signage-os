@@ -114,14 +114,25 @@ export const mediaStore = {
 
     // Upload to server and update thumbnail with the real R2 URL from the response
     const result = await pushToDatabase('media_items', newItem.id, newItem, 'POST');
-    if (result.ok && result.data) {
+    if (!result.ok) {
+      // Don't leave a file in the library that the server never stored.
+      this.saveMedia(this.getMedia().filter(m => m.id !== newItem.id));
+      let message = (result as { error?: string }).error || '';
+      try { const body = JSON.parse(message); message = body.error || body.message || message; } catch { /* plain text */ }
+      if (result.status === 0) message = 'No connection — check your internet and try again';
+      throw new Error(message || `Upload failed (${result.status})`);
+    }
+    if (result.data) {
       const serverRecord = result.data;
       // Update our local copy with the authoritative URL from the server (R2 or PocketBase)
       const currentAll = this.getMedia();
       const idx = currentAll.findIndex(m => m.id === newItem.id);
       if (idx !== -1) {
+        // The local data URL / file payload is no longer needed once stored.
+        delete currentAll[idx].fileData;
         if (serverRecord.thumbnail) currentAll[idx].thumbnail = serverRecord.thumbnail;
         if (serverRecord.fileUrl) currentAll[idx].fileUrl = serverRecord.fileUrl;
+        if (serverRecord.fileSizeBytes) currentAll[idx].fileSizeBytes = serverRecord.fileSizeBytes;
         if (serverRecord.id) currentAll[idx].id = serverRecord.id;
         this.saveMedia(currentAll);
         return currentAll[idx];
@@ -129,6 +140,36 @@ export const mediaStore = {
     }
 
     return newItem;
+  },
+
+  renameMedia(id: string, title: string) {
+    const all = this.getMedia();
+    const item = all.find(m => m.id === id);
+    if (!item) return;
+    item.title = title;
+    this.saveMedia([...all]);
+    pushToDatabase('media_items', id, { title }, 'PUT');
+  },
+
+  /**
+   * Takes files out of every playlist that uses them, so TVs don't keep a
+   * slide pointing at a file that no longer exists. A split slide just
+   * loses its second zone.
+   */
+  removeMediaFromPlaylists(ids: Set<string>) {
+    this.getPlaylists().forEach(p => {
+      const slides = p.slides || [];
+      const touches = slides.some(s => ids.has(s.mediaId) || (s.secondMediaId && ids.has(s.secondMediaId))) ||
+        (p.mediaIds || []).some(id => ids.has(id));
+      if (!touches) return;
+      const nextSlides = slides
+        .filter(s => !ids.has(s.mediaId))
+        .map(s => (s.secondMediaId && ids.has(s.secondMediaId) ? { ...s, secondMediaId: undefined, layoutType: 'single' as const } : s));
+      this.updatePlaylist(p.id, {
+        slides: nextSlides,
+        mediaIds: (p.mediaIds || []).filter(id => !ids.has(id)),
+      });
+    });
   },
 
   deleteMedia(id: string) {

@@ -199,8 +199,8 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   useEffect(() => {
     Promise.all([
       syncCollection('licenses', 'signageos_licenses'),
-      syncCollection('organizations', 'signageos_organizations'),
-      syncCollection('users', 'signageos_users')
+      // /users is admin-only — the org is matched by licence below.
+      syncCollection('organizations', 'signageos_organizations')
     ]).then(() => {
       checkLicense();
 

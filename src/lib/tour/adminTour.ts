@@ -131,14 +131,14 @@ export function getAdminTourSteps(): TourStep[] {
       element: '[data-tour="media-upload"]',
       popover: {
         title: 'Upload media',
-        description: 'Add images and videos (or a YouTube link). Files are stored once and reused in as many playlists as you like.'
+        description: 'Add images and videos — tap Upload or drop files on the page. Files are stored once and reused in as many playlists as you like.'
       }
     },
     {
       element: '[data-tour="media-card"]',
       popover: {
         title: 'Your files',
-        description: 'Tap a video to preview it. Delete files you no longer need to free up storage.'
+        description: 'Tap a file to preview it, see which playlists use it, rename it, or delete it to free up storage.'
       }
     },
     {

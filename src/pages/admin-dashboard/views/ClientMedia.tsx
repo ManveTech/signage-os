@@ -89,24 +89,7 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
     return { usedMb: used / (1024 * 1024), limitGb, percent: limitGb ? Math.min(100, (used / (limitGb * 1024 ** 3)) * 100) : 0 };
   })();
 
-  // Take a deleted file out of every playlist that uses it, so TVs don't keep
-  // a slide pointing at a file that no longer exists. A split slide just
-  // loses its second zone.
-  const removeFromPlaylists = (ids: Set<string>) => {
-    mediaStore.getPlaylists().forEach(p => {
-      const slides = p.slides || [];
-      const touches = slides.some(s => ids.has(s.mediaId) || (s.secondMediaId && ids.has(s.secondMediaId))) ||
-        (p.mediaIds || []).some(id => ids.has(id));
-      if (!touches) return;
-      const nextSlides = slides
-        .filter(s => !ids.has(s.mediaId))
-        .map(s => (s.secondMediaId && ids.has(s.secondMediaId) ? { ...s, secondMediaId: undefined, layoutType: 'single' as const } : s));
-      mediaStore.updatePlaylist(p.id, {
-        slides: nextSlides,
-        mediaIds: (p.mediaIds || []).filter(id => !ids.has(id)),
-      });
-    });
-  };
+  const removeFromPlaylists = (ids: Set<string>) => mediaStore.removeMediaFromPlaylists(ids);
 
   const deleteOne = (m: MediaItem) => {
     removeFromPlaylists(new Set([m.id]));

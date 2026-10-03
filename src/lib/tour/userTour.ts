@@ -118,7 +118,7 @@ export function getUserTourSteps(): TourStep[] {
       element: '[data-tour="media-upload"]',
       popover: {
         title: 'Upload media',
-        description: 'Add images and videos (or a YouTube link). Upload once, use in as many playlists as you like.'
+        description: 'Add images and videos — tap Upload or drop files on the page. Upload once, use in as many playlists as you like.'
       }
     },
     {

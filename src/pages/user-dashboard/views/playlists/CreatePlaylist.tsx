@@ -7,6 +7,7 @@ import {
   Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive,
   Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2, CloudRain, CloudSnow, CloudSun, Wind
 } from 'lucide-react';
+import { checkFiles, uploadMediaFile } from '../../../../lib/mediaUpload';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
@@ -464,96 +465,13 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     e.target.value = '';
   };
 
-  const uploadSingleFile = (file: File): Promise<void> => {
-    return new Promise<void>((resolve, reject) => {
-      const isVideo = file.type.startsWith('video/');
-      const maxFileBytes = maxUploadBytesFor(isVideo);
-      const limitMb = maxFileBytes / (1024 * 1024);
-
-      if (file.size > maxFileBytes) {
-        reject(new Error(`"${file.name}" is larger than ${limitMb}MB (${(file.size / (1024 * 1024)).toFixed(1)} MB). All uploaded ${isVideo ? 'video' : 'image'} files must be under ${limitMb}MB.`));
-        return;
-      }
-
-      const fileSizeMb = file.size / (1024 * 1024);
-      const fileSizeBytes = file.size;
-      const storageLimitBytes = storageLimitGb * 1024 * 1024 * 1024;
-
-      if (storageUsedBytes + fileSizeBytes > storageLimitBytes) {
-        reject(new Error(`This file of ${fileSizeMb.toFixed(1)} MB exceeds your remaining license storage limit. Allowed storage: ${storageLimitGb} GB.`));
-        return;
-      }
-
-      const fileType = isVideo ? 'video' : 'image';
-      const reader = new FileReader();
-
-      reader.onload = (event) => {
-        const resultDataUrl = event.target?.result as string;
-        const base64Data = resultDataUrl.split(',')[1];
-
-        const saveMediaWithThumb = async (thumbUrl: string, width: number, height: number, duration: number) => {
-          try {
-            const newMedia = await mediaStore.uploadMedia({
-              title: file.name,
-              type: fileType,
-              duration: duration,
-              resolution: `${width}x${height}`,
-              fileSize: `${fileSizeMb.toFixed(1)} MB`,
-              fileSizeBytes: fileSizeBytes,
-              uploadedBy: userEmail,
-              expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              tags: ['uploaded', 'playlist-direct'],
-              thumbnail: thumbUrl,
-              width: width,
-              height: height,
-              mimeType: file.type,
-              fileData: base64Data,
-              fileName: file.name
-            });
-
-            loadMedia();
-            addAssetToTimeline(newMedia);
-            showToast(`Media "${file.name}" uploaded and appended to playlist!`);
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        };
-
-        if (fileType === 'image') {
-          const img = new Image();
-          img.onload = () => {
-            const width = img.naturalWidth;
-            const height = img.naturalHeight;
-            saveMediaWithThumb(resultDataUrl, width, height, 10);
-          };
-          img.onerror = () => {
-            reject(new Error(`Failed to load image "${file.name}".`));
-          };
-          img.src = resultDataUrl;
-        } else {
-          const video = document.createElement('video');
-          video.preload = 'metadata';
-          video.onloadedmetadata = () => {
-            const width = video.videoWidth;
-            const height = video.videoHeight;
-            const duration = Math.round(video.duration) || 15;
-            window.URL.revokeObjectURL(video.src);
-            saveMediaWithThumb('https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60', width, height, duration);
-          };
-          video.onerror = () => {
-            saveMediaWithThumb('https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=400&fit=crop&q=60', 1920, 1080, 15);
-          };
-          video.src = URL.createObjectURL(file);
-        }
-      };
-
-      reader.onerror = () => {
-        reject(new Error(`Failed to read file "${file.name}".`));
-      };
-
-      reader.readAsDataURL(file);
-    });
+  const uploadSingleFile = async (file: File): Promise<void> => {
+    const [check] = checkFiles([file], storageUsedBytes, storageLimitGb > 0 ? storageLimitGb * 1024 ** 3 : null);
+    if (check.error) throw new Error(check.error);
+    const newMedia = await uploadMediaFile(file, userEmail);
+    loadMedia();
+    addAssetToTimeline(newMedia);
+    showToast(`"${newMedia.title}" uploaded and added to the playlist`);
   };
 
   const processUploadedFiles = async (files: File[]) => {
