@@ -80,7 +80,7 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'licenses-invoices': return <Licenses activeTab="invoices" onNavigate={navigate} />;
     case 'licenses-code': return <LicenseDecoder />;
     case 'organizations': return <Organizations onNavigate={navigate} />;
-    case 'video-conferencing': return <VideoConferencing />;
+    case 'video-conferencing': return <VideoConferencing userEmail={adminEmail} />;
     case 'integrations': return <Integrations />;
     case 'settings-general': return <Settings userEmail={adminEmail} />;
     // Storage config moved to Integrations (Cloudflare R2) — redirect any old link/bookmark there.

@@ -58,7 +58,7 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'licenses-pool': return <Licenses activeTab="License Pool" userEmail={userEmail} onNavigate={navigate} />;
     case 'licenses-assign': return <Licenses activeTab="Assign License" userEmail={userEmail} onNavigate={navigate} />;
     case 'licenses-history': return <Licenses activeTab="History" userEmail={userEmail} onNavigate={navigate} />;
-    case 'video-conferencing': return <VideoConferencing enabled={videoConferencingEnabled} organizationId={organizationId} licenseChecked={licenseChecked} />;
+    case 'video-conferencing': return <VideoConferencing enabled={videoConferencingEnabled} organizationId={organizationId} licenseChecked={licenseChecked} userEmail={userEmail} />;
     case 'settings-general': return <Settings userEmail={userEmail} />;
     // Storage config is an admin/platform concern, never reachable from this
     // dashboard's own nav — redirect any old link/bookmark to General.

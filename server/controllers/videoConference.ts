@@ -67,7 +67,8 @@ export async function initiateConference(req: any, res: any) {
 
     // Verify admin has video conferencing enabled
     const admin = await pb.collection('users').getOne(adminUserId);
-    if (!admin.enableVideoConferencing) {
+    // Admins can always call; clients need video calls on their account.
+    if (!admin.enableVideoConferencing && !isAdminUser(admin)) {
       return res.status(403).json({ error: 'Video conferencing is not enabled for this user' });
     }
 
