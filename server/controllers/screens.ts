@@ -2,6 +2,7 @@ import { pb, ensurePBAuth } from '../db';
 import { syncScreenSchedule } from '../scheduler';
 import { redis, isRedisReady, acquireLock, releaseLock } from '../redis';
 import { notifyScreenConfigChanged } from '../services/screenPush';
+import { alertScreenOffline } from '../services/screenAlerts';
 
 async function logServerError(screenId: string, screenName: string, email: string, event: string, detail: string) {
   try {
@@ -531,6 +532,7 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
 
             markedOfflineCount++;
             console.log(`[Status Checker] 🔴 OFFLINE: Screen "${latestScreen.name}" (ID: ${latestScreen.id}) missed heartbeat. Marked offline in database (Redis detection).`);
+            alertScreenOffline(latestScreen, 'It stopped sending heartbeats.');
 
             retryWithBackoff(async () => pb.collection('screen_logs').create(
               await buildScreenLog(latestScreen, {
@@ -625,6 +627,7 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
                 loopsPlayed: updatedCumulativeLoops
               })
             )).catch(err => console.error('Error logging screen offline:', err));
+            alertScreenOffline(latestScreen, 'It stopped sending heartbeats.');
 
           } catch (err: any) {
             console.error(`[Status Checker] Error processing screen ${screen.id}:`, err.message);
@@ -1272,6 +1275,8 @@ export async function markScreenOffline(screenId: string, detail: string): Promi
     )).catch(err => console.error('Error logging screen offline:', err));
 
     console.log(`Screen "${latestScreen.name}" (${latestScreen.id}) marked offline. Reason: ${detail}`);
+    // Unlinking is deliberate — nobody needs an email about it.
+    if (!detail.startsWith('TV unlinked')) alertScreenOffline(latestScreen, detail);
   });
   return changed;
 }

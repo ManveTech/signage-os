@@ -71,14 +71,7 @@ const navSections: NavSection[] = [
   },
   // Tickets, FAQs and guides are sections inside the Helpdesk page itself.
   { id: 'support', label: 'Helpdesk', icon: <MessageSquare size={18} /> },
-  {
-    id: 'settings', label: 'Settings', icon: <Settings size={18} />,
-    children: [
-      { id: 'settings-general', label: 'General' },
-      { id: 'settings-player', label: 'Player Settings' },
-      { id: 'settings-notifications', label: 'Notifications' },
-    ]
-  },
+  { id: 'settings-general', label: 'Settings', icon: <Settings size={18} /> },
   { id: 'integrations', label: 'Integrations', icon: <Plug size={18} /> },
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
 ];

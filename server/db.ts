@@ -92,6 +92,21 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('Programmatically added enableVideoConferencing field to users collection');
     }
 
+    // Settings > Alerts: email the owner when one of their screens goes offline.
+    if (!fields.some((f: any) => f.name === 'alertScreenOffline')) {
+      fields.push({
+        id: 'boolalertscreenoffline',
+        name: 'alertScreenOffline',
+        type: 'bool',
+        required: false,
+        system: false,
+        hidden: false,
+        presentable: false
+      });
+      usersUpdated = true;
+      console.log('Programmatically added alertScreenOffline field to users collection');
+    }
+
     if (!fields.some((f: any) => f.name === 'enableBroadcasting')) {
       fields.push({
         id: 'boolenablebroadcasting',

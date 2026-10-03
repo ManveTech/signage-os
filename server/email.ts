@@ -465,3 +465,6 @@ export async function sendBillingReminderEmail(opts: BillingReminderOptions): Pr
     return 'failed';
   }
 }
+
+/** Same layout as the billing reminder — used for other account notices (e.g. screen offline alerts). */
+export const sendNoticeEmail = sendBillingReminderEmail;

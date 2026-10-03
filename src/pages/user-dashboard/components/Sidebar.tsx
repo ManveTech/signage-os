@@ -42,6 +42,7 @@ const navSections: NavSection[] = [
       { id: 'support-help', label: 'Help Center' }
     ]
   },
+  { id: 'settings-general', label: 'Settings', icon: <Settings size={18} /> },
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
 ];
 

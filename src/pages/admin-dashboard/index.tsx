@@ -82,11 +82,12 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'organizations': return <Organizations onNavigate={navigate} />;
     case 'video-conferencing': return <VideoConferencing />;
     case 'integrations': return <Integrations />;
-    case 'settings-general': return <Settings activeTab="General" />;
+    case 'settings-general': return <Settings userEmail={adminEmail} />;
     // Storage config moved to Integrations (Cloudflare R2) — redirect any old link/bookmark there.
     case 'settings-storage': return <Integrations />;
-    case 'settings-player': return <Settings activeTab="Player Settings" />;
-    case 'settings-notifications': return <Settings activeTab="Notifications" />;
+    // Old bookmarks for the removed placeholder tabs.
+    case 'settings-player':
+    case 'settings-notifications': return <Settings userEmail={adminEmail} />;
     case 'support':
     case 'support-issues': return <Support activeTab="issues" onNavigate={navigate} userEmail={adminEmail} />;
     case 'support-faq': return <Support activeTab="faq" onNavigate={navigate} userEmail={adminEmail} />;

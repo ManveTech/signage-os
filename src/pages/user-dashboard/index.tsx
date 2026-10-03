@@ -59,12 +59,13 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'licenses-assign': return <Licenses activeTab="Assign License" userEmail={userEmail} onNavigate={navigate} />;
     case 'licenses-history': return <Licenses activeTab="History" userEmail={userEmail} onNavigate={navigate} />;
     case 'video-conferencing': return <VideoConferencing enabled={videoConferencingEnabled} organizationId={organizationId} licenseChecked={licenseChecked} />;
-    case 'settings-general': return <Settings activeTab="General" userEmail={userEmail} />;
+    case 'settings-general': return <Settings userEmail={userEmail} />;
     // Storage config is an admin/platform concern, never reachable from this
     // dashboard's own nav — redirect any old link/bookmark to General.
-    case 'settings-storage': return <Settings activeTab="General" userEmail={userEmail} />;
-    case 'settings-player': return <Settings activeTab="Player Settings" userEmail={userEmail} />;
-    case 'settings-notifications': return <Settings activeTab="Notifications" userEmail={userEmail} />;
+    // Old bookmarks for the removed placeholder tabs.
+    case 'settings-storage':
+    case 'settings-player':
+    case 'settings-notifications': return <Settings userEmail={userEmail} />;
     case 'support':
     case 'support-tickets': return <Support activeTab="tickets" userEmail={userEmail} onNavigate={navigate} />;
     case 'support-help': return <Support activeTab="help" userEmail={userEmail} onNavigate={navigate} />;
