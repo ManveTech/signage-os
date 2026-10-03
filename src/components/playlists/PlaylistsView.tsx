@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, ListVideo, Play, Pause, Edit, Trash2, ChevronRight, CheckCircle, Trash, Monitor, Layers } from 'lucide-react';
+import { Plus, Search, ListVideo, Play, Pause, Edit, Trash2, ChevronRight, CheckCircle, Trash, Monitor, Layers, Building2, Check } from 'lucide-react';
 import { mediaStore, Playlist, Screen } from '../../lib/mediaStore';
 import { syncCollection } from '../../lib/syncHelper';
 import ScreenDetailsSheet from '../screens/ScreenDetailsSheet';
 import ConfirmDialog from '../screens/ConfirmDialog';
 import MediaThumb from '../media/MediaThumb';
 import { toast } from '../Toast';
+import CustomSelect from '../CustomSelect';
+import { licensingStore } from '../../lib/licensingStore';
 
 function formatDuration(totalSeconds: number): string {
   if (!totalSeconds) return '0s';
@@ -21,9 +23,13 @@ const TRANSITION_LABELS: Record<string, string> = {
 };
 
 /**
- * Playlist list shared by the admin "My Channel" and client playlist pages:
- * compact cards (cover thumbnail, slide count, length, where it plays) that
- * open a details sheet with the playlist's slides and actions.
+ * Playlist list shared by the admin "My Channel", admin "Client Playlists"
+ * and client playlist pages: compact cards (cover thumbnail, slide count,
+ * length, where it plays) that open a details sheet with the playlist's
+ * slides and actions.
+ *
+ * scope="clients" is the admin's view of playlists owned by client
+ * accounts: it adds a client filter and shows whose playlist each one is.
  */
 export default function PlaylistsView({
   userEmail,
@@ -31,7 +37,10 @@ export default function PlaylistsView({
   subtitle,
   createView,
   onNavigate,
-  allowBulkDelete = false
+  allowBulkDelete = false,
+  scope = 'mine',
+  screensView = 'my-screens-list',
+  groupsView
 }: {
   userEmail: string;
   title: string;
@@ -40,8 +49,16 @@ export default function PlaylistsView({
   createView: string;
   onNavigate: (view: string) => void;
   allowBulkDelete?: boolean;
+  scope?: 'mine' | 'clients';
+  /** View id of the screens list ("Assign to screens" fallback link). */
+  screensView?: string;
+  /** View id of the screen groups page. */
+  groupsView?: string;
 }) {
-  const [playlists, setPlaylists] = useState<Playlist[]>(() => mediaStore.getPlaylists().filter(p => p.createdBy === userEmail));
+  const isOwn = (p: Playlist) => (scope === 'mine'
+    ? p.createdBy === userEmail
+    : !!p.createdBy && p.createdBy !== userEmail && p.createdBy !== 'admin');
+  const [playlists, setPlaylists] = useState<Playlist[]>(() => mediaStore.getPlaylists().filter(isOwn));
   const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens());
   const [groups, setGroups] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_groups') || '[]'));
   const [media, setMedia] = useState<any[]>(() => mediaStore.getMedia());
@@ -51,9 +68,13 @@ export default function PlaylistsView({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [clientFilter, setClientFilter] = useState('all');
+  const [pickerFor, setPickerFor] = useState<Playlist | null>(null);
+  const [pickerSelection, setPickerSelection] = useState<string[]>([]);
+  const [orgs, setOrgs] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_organizations') || '[]'));
 
   const reload = () => {
-    setPlaylists(mediaStore.getPlaylists().filter(p => p.createdBy === userEmail));
+    setPlaylists(mediaStore.getPlaylists().filter(isOwn));
     setScreens(mediaStore.getScreens());
     setMedia(mediaStore.getMedia());
   };
@@ -65,9 +86,24 @@ export default function PlaylistsView({
       syncCollection('screens', 'signageos_screens'),
       syncCollection('media_items', 'signageos_media'),
       syncCollection('screen_groups', 'signageos_groups').then(g => { if (g.length) setGroups(g); }),
+      ...(scope === 'clients' ? [
+        syncCollection('organizations', 'signageos_organizations').then(o => { if (o.length) setOrgs(o); }),
+        syncCollection('licenses', 'signageos_licenses'),
+      ] : []),
     ]).then(reload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userEmail]);
+  }, [userEmail, scope]);
+
+  // "Organisation name" for a client account, falling back to the email.
+  const licenses = scope === 'clients' ? licensingStore.getLicenses() : [];
+  const ownerName = (email?: string) => {
+    if (!email) return 'Unknown client';
+    const org = orgs.find((o: any) => o.email === email);
+    if (org?.name) return org.name;
+    const lic = licenses.find(l => l.assignedUserEmail === email && l.assignedOrgName);
+    return lic?.assignedOrgName || email;
+  };
+  const owners = Array.from(new Set(playlists.map(p => p.createdBy).filter(Boolean))) as string[];
 
   const mediaById = new Map(media.map((m: any) => [m.id, m]));
   const slidesOf = (p: Playlist) => (p.slides && p.slides.length ? p.slides : (p.mediaIds || []).map((id, i) => ({ id: `${id}-${i}`, mediaId: id, duration: 10, layoutType: 'single' as const })));
@@ -80,11 +116,49 @@ export default function PlaylistsView({
     return { groups: viaGroups, direct, total: direct.length + inGroups.length };
   };
 
-  const filtered = playlists.filter(p => !search.trim() || p.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const filtered = playlists.filter(p =>
+    (clientFilter === 'all' || p.createdBy === clientFilter) &&
+    (!search.trim() || p.name.toLowerCase().includes(search.trim().toLowerCase()) ||
+      (scope === 'clients' && ownerName(p.createdBy).toLowerCase().includes(search.trim().toLowerCase()))));
+
+  // The admin's create page builds a client's playlist when told whose it
+  // is; without that it saves under the admin's own account.
+  const startCreate = () => {
+    localStorage.removeItem('signageos_editing_playlist_id');
+    if (scope === 'clients') {
+      localStorage.setItem('signageos_create_playlist_for_client', clientFilter !== 'all' ? clientFilter : 'new');
+    } else {
+      localStorage.removeItem('signageos_create_playlist_for_client');
+    }
+    onNavigate(createView);
+  };
 
   const editPlaylist = (p: Playlist) => {
     localStorage.setItem('signageos_editing_playlist_id', p.id);
+    if (scope === 'clients' && p.createdBy) localStorage.setItem('signageos_create_playlist_for_client', p.createdBy);
+    else localStorage.removeItem('signageos_create_playlist_for_client');
     onNavigate(createView);
+  };
+
+  // Screens a playlist can be put on: its owner's paired screens.
+  const ownerScreens = (p: Playlist) => screens.filter(s =>
+    s.assignedToUserEmail === p.createdBy && s.status !== 'pairing' && s.status !== 'unlinked');
+
+  const openPicker = (p: Playlist) => {
+    setPickerSelection(ownerScreens(p).filter(s => !s.groupId && s.playlistId === p.id).map(s => s.id));
+    setPickerFor(p);
+  };
+
+  const savePicker = () => {
+    if (!pickerFor) return;
+    const candidates = ownerScreens(pickerFor).filter(s => !s.groupId).map(s => s.id);
+    const { added, removed } = mediaStore.setPlaylistScreens(pickerFor.id, pickerSelection, candidates);
+    if (added || removed) {
+      const now = pickerSelection.length;
+      toast.success(now ? `"${pickerFor.name}" now plays on ${now} screen${now === 1 ? '' : 's'}` : `"${pickerFor.name}" removed from its screens`);
+    }
+    setPickerFor(null);
+    reload();
   };
 
   // Pausing keeps every screen/group assignment — an inactive playlist simply
@@ -145,7 +219,7 @@ export default function PlaylistsView({
           )}
           {!selectionMode && (
             <button
-              onClick={() => { localStorage.removeItem('signageos_editing_playlist_id'); onNavigate(createView); }}
+              onClick={startCreate}
               className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium"
             >
               <Plus size={16} /> New playlist
@@ -154,15 +228,32 @@ export default function PlaylistsView({
         </div>
       </div>
 
-      {playlists.length > 3 && (
-        <div className="relative">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search playlists"
-            className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
-          />
+      {(playlists.length > 3 || (scope === 'clients' && owners.length > 1)) && (
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={scope === 'clients' ? 'Search playlists or clients' : 'Search playlists'}
+              className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
+            />
+          </div>
+          {scope === 'clients' && owners.length > 1 && (
+            <div className="sm:w-64">
+              <CustomSelect
+                value={clientFilter}
+                onChange={setClientFilter}
+                options={[
+                  { value: 'all', label: `All clients (${owners.length})` },
+                  ...owners
+                    .map(email => ({ value: email, label: ownerName(email) === email ? email : `${ownerName(email)} · ${email}` }))
+                    .sort((a, b) => a.label.localeCompare(b.label))
+                ]}
+                buttonClassName="h-11 text-sm px-3"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -201,6 +292,12 @@ export default function PlaylistsView({
                   <span className="text-sm font-semibold text-slate-900 truncate">{p.name}</span>
                   {!p.active && <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[10px] font-semibold">Paused</span>}
                 </span>
+                {scope === 'clients' && (
+                  <span className="flex items-center gap-1 text-xs text-blue-700 mt-0.5 min-w-0">
+                    <Building2 size={11} className="shrink-0" />
+                    <span className="truncate">{ownerName(p.createdBy)}</span>
+                  </span>
+                )}
                 <span className="block text-xs text-slate-500 mt-0.5">
                   {slides.length} slide{slides.length === 1 ? '' : 's'} · {formatDuration(lengthOf(p))}
                 </span>
@@ -219,10 +316,10 @@ export default function PlaylistsView({
       {playlists.length === 0 && (
         <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
           <ListVideo size={32} className="mx-auto text-gray-300 mb-2" />
-          <p className="text-sm font-medium text-gray-700">No playlists yet</p>
-          <p className="text-xs text-gray-500 mt-1">Create one to choose what your screens play.</p>
+          <p className="text-sm font-medium text-gray-700">{scope === 'clients' ? 'No client playlists yet' : 'No playlists yet'}</p>
+          <p className="text-xs text-gray-500 mt-1">{scope === 'clients' ? 'Create one for a client, or wait for clients to make their own.' : 'Create one to choose what your screens play.'}</p>
           <button
-            onClick={() => { localStorage.removeItem('signageos_editing_playlist_id'); onNavigate(createView); }}
+            onClick={startCreate}
             className="mt-4 inline-flex items-center gap-2 h-10 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium"
           >
             <Plus size={16} /> New playlist
@@ -264,6 +361,7 @@ export default function PlaylistsView({
               <p className="text-sm text-slate-500 bg-slate-50 rounded-xl px-4 py-3">This playlist has no slides yet.</p>
             )}
             details={[
+              ...(scope === 'clients' ? [{ label: 'Client', value: ownerName(open.createdBy) }] : []),
               {
                 label: 'Plays on',
                 value: plays.total > 0
@@ -302,19 +400,27 @@ export default function PlaylistsView({
               {
                 title: 'Where it plays',
                 actions: [
-                  {
+                  ownerScreens(open).length > 0 ? {
+                    key: 'screens',
+                    label: 'Choose screens',
+                    description: plays.direct.length
+                      ? `On ${plays.direct.length} screen${plays.direct.length === 1 ? '' : 's'} directly — add or remove`
+                      : `Pick from ${scope === 'clients' ? 'this client\'s' : 'your'} ${ownerScreens(open).length} screen${ownerScreens(open).length === 1 ? '' : 's'}`,
+                    icon: <Monitor size={17} />,
+                    onClick: () => openPicker(open)
+                  } : {
                     key: 'screens',
                     label: 'Assign to screens',
-                    description: 'Open your screens and choose “Change playlist”',
+                    description: scope === 'clients' ? 'This client has no paired screens yet' : 'You have no paired screens yet — add one first',
                     icon: <Monitor size={17} />,
-                    onClick: () => onNavigate('my-screens-list')
+                    onClick: () => onNavigate(screensView)
                   },
                   {
                     key: 'groups',
                     label: 'Assign to a group',
                     description: 'Every screen in the group plays it',
                     icon: <Layers size={17} />,
-                    onClick: () => onNavigate(createView === 'my-create-playlist' ? 'screens-groups-my' : 'screens-groups')
+                    onClick: () => onNavigate(groupsView || (createView === 'my-create-playlist' ? 'screens-groups-my' : 'screens-groups'))
                   }
                 ]
               },
@@ -330,6 +436,86 @@ export default function PlaylistsView({
                 }]
               }
             ]}
+          />
+        );
+      })()}
+
+      {pickerFor && (() => {
+        const list = ownerScreens(pickerFor);
+        const free = list.filter(s => !s.groupId);
+        const grouped = list.filter(s => s.groupId);
+        const elsewhere = free.filter(s => pickerSelection.includes(s.id) && s.playlistId && s.playlistId !== pickerFor.id).length;
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setPickerFor(null)}
+            title="Choose screens"
+            subtitle={`Where “${pickerFor.name}” plays${scope === 'clients' ? ` · ${ownerName(pickerFor.createdBy)}` : ''}`}
+            details={[]}
+            groups={[]}
+            hero={
+              <div className="space-y-4">
+                {free.length > 0 && (
+                  <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                    {free.map(s => {
+                      const on = pickerSelection.includes(s.id);
+                      const current = s.playlistId && s.playlistId !== pickerFor.id ? (s.playlist || 'another playlist') : '';
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setPickerSelection(prev => on ? prev.filter(x => x !== s.id) : [...prev, s.id])}
+                          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${on ? 'bg-blue-50/60' : 'hover:bg-slate-50'}`}
+                        >
+                          <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${on ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'}`}>
+                            {on && <Check size={13} strokeWidth={3} />}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-slate-900 truncate">{s.name}</span>
+                            <span className="block text-xs text-slate-500 truncate">
+                              {current ? `Now playing ${current}` : s.playlistId === pickerFor.id ? 'Playing this playlist' : 'Nothing assigned'}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {grouped.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">In a group</p>
+                    <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                      {grouped.map(s => (
+                        <div key={s.id} className="flex items-center gap-3 px-4 py-3 opacity-60">
+                          <Layers size={16} className="text-slate-400 shrink-0" />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-slate-900 truncate">{s.name}</span>
+                            <span className="block text-xs text-slate-500 truncate">Plays its group's playlist — change it on the group</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            }
+            footer={
+              <div className="space-y-2">
+                {elsewhere > 0 && (
+                  <p className="text-xs text-amber-700">
+                    {elsewhere} screen{elsewhere === 1 ? ' will switch' : 's will switch'} from {elsewhere === 1 ? 'its' : 'their'} current playlist.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={savePicker}
+                  disabled={free.length === 0}
+                  className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold"
+                >
+                  Save · {pickerSelection.length} screen{pickerSelection.length === 1 ? '' : 's'}
+                </button>
+              </div>
+            }
           />
         );
       })()}

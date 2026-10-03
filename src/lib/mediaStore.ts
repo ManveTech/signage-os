@@ -263,6 +263,61 @@ export const mediaStore = {
     }
   },
 
+  /**
+   * Set exactly which of `candidateIds` play `playlistId` in one pass.
+   * assignPlaylistToScreen re-saves every playlist on each call, so changing
+   * several screens at once used to send (screens × playlists) requests; this
+   * saves only the screens and playlists that actually change.
+   */
+  setPlaylistScreens(playlistId: string, selectedIds: string[], candidateIds: string[]) {
+    const selected = new Set(selectedIds);
+    const candidates = new Set(candidateIds);
+    const playlists = this.getPlaylists();
+    const target = playlists.find(p => p.id === playlistId);
+    if (!target) return { added: 0, removed: 0 };
+
+    let added = 0;
+    let removed = 0;
+    const movedFrom = new Map<string, Set<string>>(); // other playlist id → screen ids taken from it
+    const screens = this.getScreens().map(s => {
+      if (!candidates.has(s.id)) return s;
+      const has = s.playlistId === playlistId;
+      const want = selected.has(s.id);
+      if (has === want) return s;
+      if (want) {
+        added++;
+        if (s.playlistId) {
+          if (!movedFrom.has(s.playlistId)) movedFrom.set(s.playlistId, new Set());
+          movedFrom.get(s.playlistId)!.add(s.id);
+        }
+      } else {
+        removed++;
+      }
+      const updated = { ...s, playlistId: want ? playlistId : '', playlist: want ? target.name : '', restart_playlist: true };
+      pushToDatabase('screens', s.id, updated, 'PUT');
+      return updated;
+    });
+    if (added === 0 && removed === 0) return { added, removed };
+    this.saveScreens(screens);
+
+    const updatedPlaylists = playlists.map(p => {
+      if (p.id === playlistId) {
+        const ids = screens.filter(s => s.playlistId === playlistId).map(s => s.id);
+        const updatedPl = { ...p, assignedScreenIds: ids, assignedScreens: ids.length };
+        pushToDatabase('playlists', p.id, updatedPl, 'PUT');
+        return updatedPl;
+      }
+      const taken = movedFrom.get(p.id);
+      if (!taken) return p;
+      const ids = (p.assignedScreenIds || []).filter(id => !taken.has(id));
+      const updatedPl = { ...p, assignedScreenIds: ids, assignedScreens: ids.length };
+      pushToDatabase('playlists', p.id, updatedPl, 'PUT');
+      return updatedPl;
+    });
+    this.savePlaylists(updatedPlaylists);
+    return { added, removed };
+  },
+
   assignPlaylistToScreen(screenId: string, playlistId?: string) {
     const screens = this.getScreens();
     const screenIndex = screens.findIndex(s => s.id === screenId);

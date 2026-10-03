@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import MediaThumb from '../../../../components/media/MediaThumb';
+import MediaThumb, { PreviewMedia } from '../../../../components/media/MediaThumb';
 import LiveClock from '../../../../components/media/LiveClock';
 import { 
   Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, 
@@ -1509,11 +1509,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 <div key={previewIndex} className={`w-full h-full relative bg-slate-50 ${transitionClass}`}>
                   {slide.layoutType === 'single' ? (
                     <div className="w-full h-full">
-                      {pMedia.type === 'video' ? (
-                        <video src={pMedia.thumbnail} autoPlay loop muted className="w-full h-full object-cover" />
-                      ) : (
-                        <img src={pMedia.thumbnail} className="w-full h-full object-cover" alt="primary fullscreen" />
-                      )}
+                      <PreviewMedia src={pMedia.thumbnail} type={pMedia.type} alt="primary fullscreen" />
                     </div>
                   ) : (
                     <div className={`w-full h-full flex ${playlistOrientation === 'horizontal' ? 'flex-row' : 'flex-col'}`}>
@@ -1524,19 +1520,11 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                         }} 
                         className={`overflow-hidden flex-shrink-0 border-slate-200 ${playlistOrientation === 'horizontal' ? 'border-r-2' : 'border-b-2'}`}
                       >
-                        {pMedia.type === 'video' ? (
-                          <video src={pMedia.thumbnail} autoPlay loop muted className="w-full h-full object-cover" />
-                        ) : (
-                          <img src={pMedia.thumbnail} className="w-full h-full object-cover" alt="primary layout split" />
-                        )}
+                        <PreviewMedia src={pMedia.thumbnail} type={pMedia.type} alt="primary layout split" />
                       </div>
                       <div className="flex-1 bg-slate-100 overflow-hidden">
                         {sMedia ? (
-                          sMedia.type === 'video' ? (
-                            <video src={sMedia.thumbnail} autoPlay loop muted className="w-full h-full object-cover" />
-                          ) : (
-                            <img src={sMedia.thumbnail} className="w-full h-full object-cover" alt="secondary layout split" />
-                          )
+                          <PreviewMedia src={sMedia.thumbnail} type={sMedia.type} alt="secondary layout split" />
                         ) : (
                           <div className="w-full h-full bg-slate-50 flex items-center justify-center text-[10px] font-bold text-slate-400">
                             Split Zone 2 Empty

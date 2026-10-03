@@ -39,7 +39,8 @@ export default function ScreenDetailsSheet({
   badge,
   hero,
   details,
-  groups
+  groups,
+  footer
 }: {
   open: boolean;
   onClose: () => void;
@@ -49,6 +50,8 @@ export default function ScreenDetailsSheet({
   hero?: ReactNode;
   details: SheetDetail[];
   groups: SheetActionGroup[];
+  /** Pinned below the scrolling content (e.g. a Save button). */
+  footer?: ReactNode;
 }) {
   const [visible, setVisible] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -127,17 +130,17 @@ export default function ScreenDetailsSheet({
           </button>
         </div>
 
-        <div className="overflow-y-auto overscroll-contain px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+        <div className={`overflow-y-auto overscroll-contain px-5 ${footer ? 'pb-3' : 'pb-[calc(1.25rem+env(safe-area-inset-bottom))]'}`}>
           {hero && <div className="mb-4">{hero}</div>}
 
-          <dl className="rounded-2xl border border-slate-100 divide-y divide-slate-100 mb-5">
+          {details.length > 0 && <dl className="rounded-2xl border border-slate-100 divide-y divide-slate-100 mb-5">
             {details.map(d => (
               <div key={d.label} className="flex items-center justify-between gap-4 px-4 py-2.5">
                 <dt className="text-xs text-slate-500 shrink-0">{d.label}</dt>
                 <dd className="text-sm font-medium text-slate-800 text-right min-w-0 truncate">{d.value}</dd>
               </div>
             ))}
-          </dl>
+          </dl>}
 
           {groups.filter(g => g.actions.length > 0).map(group => (
             <div key={group.title} className="mb-4 last:mb-0">
@@ -171,6 +174,12 @@ export default function ScreenDetailsSheet({
             </div>
           ))}
         </div>
+
+        {footer && (
+          <div className="px-5 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-100">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -8,7 +8,6 @@ import Dashboard from './views/Dashboard';
 import AllScreens from './views/screens/AllScreens';
 import MyScreens from './views/screens/MyScreens';
 import AddScreen from './views/screens/AddScreen';
-import ManageScreens from './views/screens/ManageScreens';
 import ScreenGroups from './views/screens/ScreenGroups';
 import Logs from './views/screens/Logs';
 import MediaLibrary from './views/media/MediaLibrary';
@@ -59,7 +58,8 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'screens-add': return <AddScreen mode="client" onNavigate={navigate} userEmail={adminEmail} />;
     case 'screens-add-client': return <AddScreen mode="client" onNavigate={navigate} userEmail={adminEmail} />;
     case 'screens-add-my': return <AddScreen mode="my" onNavigate={navigate} userEmail={adminEmail} />;
-    case 'screens-manage': return <ManageScreens userEmail={adminEmail} />;
+    // Old "Manage & Troubleshoot" page — All Screens now has every action it had, wired to the real TVs.
+    case 'screens-manage': return <AllScreens onNavigate={navigate} userEmail={adminEmail} />;
     case 'screens-groups':
     case 'screens-groups-my': return <ScreenGroups mode="my" onNavigate={navigate} userEmail={adminEmail} />;
     case 'screens-groups-all': return <ScreenGroups mode="all" onNavigate={navigate} userEmail={adminEmail} />;

@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install build dependencies for better-sqlite3 and install redis-server
-RUN apk add --no-cache python3 make g++ sqlite-dev redis
+# Build deps for better-sqlite3, redis-server, and ffmpeg (video poster frames for dashboard tiles)
+RUN apk add --no-cache python3 make g++ sqlite-dev redis ffmpeg
 
 WORKDIR /app
 

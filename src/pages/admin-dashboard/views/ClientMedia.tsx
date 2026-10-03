@@ -1,428 +1,405 @@
-import React, { useState, useEffect } from 'react';
-import MediaThumb from '../../../components/media/MediaThumb';
-import { Search, Film, Image, Layout, Youtube, AlignLeft, Trash2, Trash, CheckCircle, Filter, HardDrive, User, Mail, ShieldAlert, Building2, Play, X } from 'lucide-react';
-import { mediaStore, MediaItem } from '../../../lib/mediaStore';
+import { useEffect, useState } from 'react';
+import { Search, Film, Image, Youtube, AlignLeft, Layout, Trash2, Trash, CheckCircle, Building2, Play, FolderOpen, HardDrive, ListVideo } from 'lucide-react';
+import MediaThumb, { PreviewMedia } from '../../../components/media/MediaThumb';
+import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
+import ConfirmDialog from '../../../components/screens/ConfirmDialog';
+import CustomSelect from '../../../components/CustomSelect';
+import { toast } from '../../../components/Toast';
+import { mediaStore, MediaItem, Playlist } from '../../../lib/mediaStore';
 import { licensingStore, License } from '../../../lib/licensingStore';
 import { syncCollection } from '../../../lib/syncHelper';
 
-const typeIcons: Record<string, React.ReactNode> = {
-  video: <Film size={13} />,
-  image: <Image size={13} />,
-  layout: <Layout size={13} />,
-  youtube: <Youtube size={13} />,
-  ticker: <AlignLeft size={13} />,
-};
+const TYPES: { key: string; label: string; icon: typeof Film }[] = [
+  { key: 'image', label: 'Images', icon: Image },
+  { key: 'video', label: 'Videos', icon: Film },
+  { key: 'youtube', label: 'YouTube', icon: Youtube },
+  { key: 'ticker', label: 'Tickers', icon: AlignLeft },
+  { key: 'layout', label: 'Layouts', icon: Layout },
+];
 
-const typeColors: Record<string, string> = {
-  video: 'bg-blue-100 text-blue-700',
-  image: 'bg-teal-100 text-teal-700',
-  layout: 'bg-purple-100 text-purple-700',
-  youtube: 'bg-red-100 text-red-700',
-  ticker: 'bg-orange-100 text-orange-700',
-};
+function youtubeId(url: string) {
+  const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/);
+  return match && match[2].length === 11 ? match[2] : null;
+}
 
+/**
+ * Admin view of every client's uploads: compact tiles with one search +
+ * client filter row; tapping a tile opens a sheet with a preview, where it's
+ * used, and delete.
+ */
 export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmail?: string } = {}) {
-  const [mediaList, setMediaList] = useState<MediaItem[]>([]);
+  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
-  const [selectedUser, setSelectedUser] = useState<string>('all');
-  const [selectedOrg, setSelectedOrg] = useState<string>('all');
-  const [search, setSearch] = useState<string>('');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [orgs, setOrgs] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_organizations') || '[]'));
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [clientFilter, setClientFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
+  const [bulkConfirm, setBulkConfirm] = useState(false);
 
-  const getYoutubeId = (url: string) => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
+  const load = () => {
+    setMedia(mediaStore.getMedia().filter(m => m.uploadedBy && m.uploadedBy !== userEmail && m.uploadedBy !== 'admin'));
+    setPlaylists(mediaStore.getPlaylists());
+    setLicenses(licensingStore.getLicenses());
   };
 
   useEffect(() => {
+    load();
     Promise.all([
+      syncCollection('media_items', 'signageos_media'),
+      syncCollection('playlists', 'signageos_playlists'),
       syncCollection('licenses', 'signageos_licenses'),
-      syncCollection('media_items', 'signageos_media')
-    ]).finally(() => {
-      loadData();
+      syncCollection('organizations', 'signageos_organizations').then(o => { if (o.length) setOrgs(o); }),
+    ]).finally(() => { load(); setLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail]);
+
+  const ownerName = (email?: string) => {
+    if (!email) return 'Unknown client';
+    const org = orgs.find((o: any) => o.email === email);
+    if (org?.name) return org.name;
+    return licenses.find(l => l.assignedUserEmail === email && l.assignedOrgName)?.assignedOrgName || email;
+  };
+
+  const usedIn = (m: MediaItem) => playlists.filter(p =>
+    (p.slides || []).some(s => s.mediaId === m.id || s.secondMediaId === m.id) || (p.mediaIds || []).includes(m.id));
+
+  const owners = Array.from(new Set(media.map(m => m.uploadedBy).filter(Boolean))) as string[];
+  const byClient = media.filter(m => clientFilter === 'all' || m.uploadedBy === clientFilter);
+  const q = search.trim().toLowerCase();
+  const filtered = byClient.filter(m =>
+    (typeFilter === 'all' || m.type === typeFilter) &&
+    (!q || m.title.toLowerCase().includes(q) || ownerName(m.uploadedBy).toLowerCase().includes(q)));
+  const typeCounts = TYPES
+    .map(t => ({ ...t, count: byClient.filter(m => m.type === t.key).length }))
+    .filter(t => t.count > 0);
+
+  // Storage for the chosen client, against their plan.
+  const storage = (() => {
+    if (clientFilter === 'all') return null;
+    const used = mediaStore.getClientStorageUsedBytes(clientFilter);
+    const limitGb = licenses
+      .filter(l => l.assignedUserEmail === clientFilter && l.status === 'active')
+      .reduce((sum, l) => sum + (l.storageLimit || 0), 0);
+    return { usedMb: used / (1024 * 1024), limitGb, percent: limitGb ? Math.min(100, (used / (limitGb * 1024 ** 3)) * 100) : 0 };
+  })();
+
+  // Take a deleted file out of every playlist that uses it, so TVs don't keep
+  // a slide pointing at a file that no longer exists. A split slide just
+  // loses its second zone.
+  const removeFromPlaylists = (ids: Set<string>) => {
+    mediaStore.getPlaylists().forEach(p => {
+      const slides = p.slides || [];
+      const touches = slides.some(s => ids.has(s.mediaId) || (s.secondMediaId && ids.has(s.secondMediaId))) ||
+        (p.mediaIds || []).some(id => ids.has(id));
+      if (!touches) return;
+      const nextSlides = slides
+        .filter(s => !ids.has(s.mediaId))
+        .map(s => (s.secondMediaId && ids.has(s.secondMediaId) ? { ...s, secondMediaId: undefined, layoutType: 'single' as const } : s));
+      mediaStore.updatePlaylist(p.id, {
+        slides: nextSlides,
+        mediaIds: (p.mediaIds || []).filter(id => !ids.has(id)),
+      });
     });
-  }, []);
-
-  const loadData = () => {
-    // Get all media in the store
-    const allMedia = mediaStore.getMedia();
-    // Filter out admin's own media, so we only display clients' media
-    const clientOnlyMedia = allMedia.filter(m => m.uploadedBy !== userEmail && m.uploadedBy !== 'admin');
-    setMediaList(clientOnlyMedia);
-
-    // Get all active/assigned licenses to fetch client emails and org details
-    const allLicenses = licensingStore.getLicenses();
-    setLicenses(allLicenses.filter(l => l.assignedUserEmail));
   };
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+  const deleteOne = (m: MediaItem) => {
+    removeFromPlaylists(new Set([m.id]));
+    mediaStore.deleteMedia(m.id);
+    toast.success(`"${m.title}" deleted`);
+    setDeleteTarget(null);
+    setOpenId(null);
+    load();
   };
 
-  const handleDelete = (id: string, title: string) => {
-    if (confirm(`Are you sure you want to delete "${title}"? This media will be removed from all client playlists.`)) {
-      mediaStore.deleteMedia(id);
-      showToast(`Successfully deleted client media: "${title}"`);
-      loadData();
-    }
-  };
-
-  const handleDeleteSelected = () => {
+  const deleteSelected = () => {
+    removeFromPlaylists(new Set(selectedIds));
     selectedIds.forEach(id => mediaStore.deleteMedia(id));
-    const count = selectedIds.length;
+    toast.success(`${selectedIds.length} item${selectedIds.length === 1 ? '' : 's'} deleted`);
     setSelectedIds([]);
-    setIsSelectionMode(false);
-    setDeleteConfirm(false);
-    showToast(`Successfully deleted ${count} client media item(s).`);
-    loadData();
+    setSelectionMode(false);
+    setBulkConfirm(false);
+    load();
   };
 
-  // Get unique list of organizations from licenses
-  const organizations = Array.from(new Set(licenses.map(l => l.assignedOrgName).filter(Boolean))) as string[];
-
-  // Get list of clients who have uploaded items or have active licenses, filtered by organization
-  const clientEmails = Array.from(new Set([
-    ...licenses
-      .filter(l => selectedOrg === 'all' || (selectedOrg === 'none' ? !l.assignedOrgName : l.assignedOrgName === selectedOrg))
-      .map(l => l.assignedUserEmail)
-      .filter(Boolean),
-    ...mediaList
-      .filter(m => {
-        if (selectedOrg === 'all') return true;
-        const lic = licenses.find(l => l.assignedUserEmail === m.uploadedBy);
-        return selectedOrg === 'none' ? (!lic || !lic.assignedOrgName) : (!!lic && lic.assignedOrgName === selectedOrg);
-      })
-      .map(m => m.uploadedBy)
-  ])) as string[];
-
-  const getClientDisplayName = (email: string) => {
-    const lic = licenses.find(l => l.assignedUserEmail === email);
-    if (lic && lic.assignedOrgName) {
-      return `${lic.assignedOrgName} (${email})`;
-    }
-    return email;
+  const open = openId ? media.find(m => m.id === openId) : null;
+  const typeIcon = (type: string) => {
+    const Icon = TYPES.find(t => t.key === type)?.icon || Film;
+    return <Icon size={11} />;
   };
-
-  const filteredMedia = mediaList.filter(media => {
-    const matchSearch = media.title.toLowerCase().includes(search.toLowerCase());
-    
-    let matchOrg = true;
-    if (selectedOrg !== 'all') {
-      const lic = licenses.find(l => l.assignedUserEmail === media.uploadedBy);
-      if (selectedOrg === 'none') {
-        matchOrg = !lic || !lic.assignedOrgName;
-      } else {
-        matchOrg = !!lic && lic.assignedOrgName === selectedOrg;
-      }
-    }
-
-    const matchUser = selectedUser === 'all' || media.uploadedBy === selectedUser;
-    const matchType = typeFilter === 'all' || media.type === typeFilter;
-    return matchSearch && matchOrg && matchUser && matchType;
-  });
-
-  // Calculate storage usage details for the selected user (if any)
-  const getSelectedUserStorageInfo = () => {
-    if (selectedUser === 'all') return null;
-    const email = selectedUser;
-    const bytesUsed = mediaStore.getClientStorageUsedBytes(email);
-    const mbUsed = (bytesUsed / (1024 * 1024)).toFixed(1);
-    
-    const lic = licenses.find(l => l.assignedUserEmail === email);
-    const limitGb = lic ? lic.storageLimit : 5;
-    const percent = Math.min(100, (bytesUsed / (limitGb * 1024 * 1024 * 1024)) * 100);
-    
-    return {
-      mbUsed,
-      limitGb,
-      percent,
-      orgName: lic?.assignedOrgName || 'Independent client'
-    };
-  };
-
-  const storageInfo = getSelectedUserStorageInfo();
 
   return (
-    <div className="p-6 space-y-5 text-left relative">
-      {/* Toast Alert */}
-      {toastMessage && (
-        <div className="fixed top-20 right-6 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl border border-slate-700 z-50 animate-slideIn">
-          {toastMessage}
-        </div>
-      )}
-
-      {/* Title */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="display text-2xl sm:text-3xl text-ink-950">Client Media Repository</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Oversee and manage media uploads for all client organizations</p>
+          <h1 className="display text-2xl sm:text-3xl text-ink-950">Client Media</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {media.length > 0
+              ? `${media.length} file${media.length === 1 ? '' : 's'} from ${owners.length} client${owners.length === 1 ? '' : 's'} — tap one to preview`
+              : 'Everything your clients have uploaded'}
+          </p>
         </div>
-        {filteredMedia.length > 0 && (
-          <div className="flex gap-2">
+        {media.length > 0 && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setIsSelectionMode(!isSelectionMode);
-                setSelectedIds([]);
-              }}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer ${
-                isSelectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100'
+              onClick={() => { setSelectionMode(v => !v); setSelectedIds([]); }}
+              className={`flex items-center gap-2 h-10 px-4 border rounded-xl text-sm font-medium ${
+                selectionMode ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-blue-50 border-blue-200 text-blue-600'
               }`}
             >
-              <CheckCircle size={14} />
-              {isSelectionMode ? 'Cancel Selection' : 'Select'}
+              <CheckCircle size={15} /> {selectionMode ? 'Cancel' : 'Select'}
             </button>
-            {isSelectionMode && selectedIds.length > 0 && (
+            {selectionMode && selectedIds.length > 0 && (
               <button
-                onClick={() => setDeleteConfirm(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 hover:border-red-300 transition-all shadow-sm cursor-pointer animate-fadeIn"
+                onClick={() => setBulkConfirm(true)}
+                className="flex items-center gap-2 h-10 px-4 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm font-medium"
               >
-                <Trash size={14} />
-                Delete Selected ({selectedIds.length})
+                <Trash size={15} /> Delete ({selectedIds.length})
               </button>
             )}
           </div>
         )}
       </div>
 
-      {/* User Storage Widget */}
-      {storageInfo && (
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs max-w-xl flex items-center gap-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-            <HardDrive size={22} />
-          </div>
-          <div className="flex-1">
-            <div className="flex justify-between items-baseline mb-1">
-              <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">{storageInfo.orgName}</span>
-              <span className="text-xs text-gray-500 font-semibold">{storageInfo.mbUsed} MB / {storageInfo.limitGb} GB</span>
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-100">
-              <div 
-                className={`h-full rounded-full transition-all duration-300 ${
-                  storageInfo.percent > 90 ? 'bg-rose-500' : storageInfo.percent > 70 ? 'bg-amber-400' : 'bg-blue-600'
-                }`}
-                style={{ width: `${storageInfo.percent}%` }}
+      {media.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search files or clients"
+                className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
               />
             </div>
+            {owners.length > 1 && (
+              <div className="sm:w-64">
+                <CustomSelect
+                  value={clientFilter}
+                  onChange={v => { setClientFilter(v); setTypeFilter('all'); }}
+                  options={[
+                    { value: 'all', label: `All clients (${owners.length})` },
+                    ...owners
+                      .map(email => ({ value: email, label: ownerName(email) === email ? email : `${ownerName(email)} · ${email}` }))
+                      .sort((a, b) => a.label.localeCompare(b.label))
+                  ]}
+                  buttonClassName="h-11 text-sm px-3"
+                />
+              </div>
+            )}
           </div>
+
+          {typeCounts.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+              {[{ key: 'all', label: 'All', count: byClient.length }, ...typeCounts].map(t => {
+                const active = typeFilter === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => setTypeFilter(t.key)}
+                    aria-pressed={active}
+                    className={`shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold transition-colors ${
+                      active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {t.label}
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none ${active ? 'bg-white/20' : 'bg-gray-100 text-gray-600'}`}>{t.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {storage && (
+            <div className="flex items-center gap-3 bg-white border border-slate-100 rounded-2xl px-4 py-3">
+              <HardDrive size={16} className="text-slate-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline justify-between gap-2 text-xs">
+                  <span className="font-medium text-slate-700 truncate">{ownerName(clientFilter)}</span>
+                  <span className="text-slate-500 shrink-0">
+                    {storage.usedMb >= 1024 ? `${(storage.usedMb / 1024).toFixed(1)} GB` : `${storage.usedMb.toFixed(0)} MB`}
+                    {storage.limitGb ? ` of ${storage.limitGb} GB` : ''}
+                  </span>
+                </div>
+                {storage.limitGb > 0 && (
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1.5">
+                    <div
+                      className={`h-full rounded-full ${storage.percent > 90 ? 'bg-rose-500' : storage.percent > 70 ? 'bg-amber-400' : 'bg-blue-600'}`}
+                      style={{ width: `${storage.percent}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Filters Panel */}
-      <div className="bg-white p-4 border border-gray-200 rounded-2xl flex flex-col md:flex-row gap-4 items-center">
-        {/* Search */}
-        <div className="relative flex-1 w-full">
-          <Search size={14} className="absolute left-3 top-3 text-gray-400" />
-          <input 
-            value={search} 
-            onChange={e => setSearch(e.target.value)} 
-            placeholder="Search client media..." 
-            className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-xl outline-none focus:border-blue-400" 
-          />
-        </div>
-
-        {/* Organization Filter */}
-        <div className="flex gap-2 items-center w-full md:w-auto shrink-0">
-          <Building2 size={13} className="text-gray-400" />
-          <select 
-            value={selectedOrg} 
-            onChange={e => {
-              setSelectedOrg(e.target.value);
-              setSelectedUser('all'); // Reset user filter when org changes
-            }}
-            className="px-3 py-2 text-xs border border-gray-200 rounded-xl outline-none bg-white font-bold text-slate-700 min-w-[200px]"
-          >
-            <option value="all">All Organizations</option>
-            {organizations.map(org => (
-              <option key={org} value={org}>{org}</option>
-            ))}
-            <option value="none">Independent / No Org</option>
-          </select>
-        </div>
-
-        {/* User filter */}
-        <div className="flex gap-2 items-center w-full md:w-auto shrink-0">
-          <Filter size={13} className="text-gray-400" />
-          <select 
-            value={selectedUser} 
-            onChange={e => setSelectedUser(e.target.value)}
-            className="px-3 py-2 text-xs border border-gray-200 rounded-xl outline-none bg-white font-bold text-slate-700 min-w-[200px]"
-          >
-            <option value="all">All Clients</option>
-            {clientEmails.map(email => (
-              <option key={email} value={email}>{getClientDisplayName(email)}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Type Filter */}
-        <div className="flex gap-1">
-          {['all', 'video', 'image', 'youtube', 'ticker'].map(type => (
-            <button 
-              key={type} 
-              onClick={() => setTypeFilter(type)} 
-              className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border capitalize transition-all cursor-pointer ${
-                typeFilter === type 
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-slate-800'
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        {filtered.map(m => {
+          const selected = selectedIds.includes(m.id);
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => (selectionMode
+                ? setSelectedIds(prev => prev.includes(m.id) ? prev.filter(x => x !== m.id) : [...prev, m.id])
+                : setOpenId(m.id))}
+              className={`text-left bg-white rounded-2xl border overflow-hidden transition-colors ${
+                selected ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100 hover:border-slate-200 hover:shadow-sm'
               }`}
             >
-              {type}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Media Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {filteredMedia.map(media => {
-          const lic = licenses.find(l => l.assignedUserEmail === media.uploadedBy);
-          return (
-            <div key={media.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-md transition-all group flex flex-col justify-between relative">
-              {isSelectionMode && (
-                <div 
-                  className="absolute inset-0 bg-slate-900/[0.02] hover:bg-slate-900/[0.05] z-45 rounded-2xl cursor-pointer flex items-start p-3"
-                  onClick={() => toggleSelect(media.id)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(media.id)}
-                    onChange={() => {}}
-                    className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer shadow-sm"
-                  />
-                </div>
-              )}
-              <div className="relative aspect-video overflow-hidden bg-gray-100 border-b border-gray-100">
-                {playingVideoId === media.id ? (
-                  <div className="absolute inset-0 z-30 bg-black">
-                    {(media.type as string) === 'youtube' ? (
-                      (() => {
-                        const ytId = getYoutubeId(media.fileUrl || media.thumbnail);
-                        return ytId ? (
-                          <iframe
-                            src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
-                            className="w-full h-full border-0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-[10px] text-white">Invalid YouTube Link</div>
-                        );
-                      })()
-                    ) : (
-                      <video
-                        src={media.fileUrl || media.thumbnail}
-                        controls
-                        autoPlay
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPlayingVideoId(null);
-                      }}
-                      className="absolute top-2 right-2 p-1.5 bg-slate-900/85 hover:bg-slate-900 text-white rounded-lg transition-colors duration-150 cursor-pointer shadow-sm z-40"
-                      title="Stop Preview"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
+              <span className="relative block aspect-video bg-slate-100">
+                {(m.type as string) === 'youtube' || m.type === 'ticker' ? (
+                  <span className="absolute inset-0 flex items-center justify-center text-slate-400">
+                    {(m.type as string) === 'youtube' ? <Youtube size={22} /> : <AlignLeft size={22} />}
+                  </span>
                 ) : (
-                  <>
-                    {media.type === 'video' && (media.fileUrl?.toLowerCase().includes('.mp4') || media.thumbnail?.toLowerCase().includes('.mp4') || media.fileUrl?.toLowerCase().includes('.mov') || media.thumbnail?.toLowerCase().includes('.mov') || media.fileUrl?.toLowerCase().includes('.webm') || media.thumbnail?.toLowerCase().includes('.webm') || media.fileUrl?.toLowerCase().includes('video/') || media.thumbnail?.toLowerCase().includes('video/')) ? (
-                      <MediaThumb src={media.fileUrl || media.thumbnail} type="video" alt={media.title} width={480} />
-                    ) : (
-                      <MediaThumb src={media.thumbnail} type="image" alt={media.title} width={480} />
-                    )}
-                    
-                    {/* Play button overlay for video or youtube */}
-                    {(media.type === 'video' || (media.type as string) === 'youtube') && (
-                      <div 
-                        className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/40 transition-colors cursor-pointer group/play"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPlayingVideoId(media.id);
-                        }}
-                      >
-                        <div className="w-10 h-10 rounded-full bg-white/85 backdrop-blur-xs flex items-center justify-center shadow-lg text-slate-800 group-hover/play:scale-110 transition-transform">
-                          <Play size={16} fill="currentColor" className="ml-0.5 text-slate-800" />
-                        </div>
-                      </div>
-                    )}
-                    
-                    {!isSelectionMode && (
-                      <button 
-                        onClick={() => handleDelete(media.id, media.title)}
-                        className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 p-0.5 sm:p-1 bg-rose-50/95 hover:bg-rose-500 text-rose-600 hover:text-white rounded-full transition-all duration-150 cursor-pointer shadow-sm border border-rose-100 z-35"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[2]" />
-                      </button>
-                    )}
-                  </>
+                  <MediaThumb src={m.thumbnail || m.fileUrl} type={m.type} alt={m.title} width={360} />
                 )}
-              </div>
-              
-              <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-xs font-bold text-slate-800 line-clamp-1">{media.title}</h3>
-                  {/* Client Info badge */}
-                  <div className="flex items-center gap-1.5 mt-1.5 text-[9.5px] text-blue-600 font-bold bg-blue-50/50 px-2 py-1 rounded-md w-fit">
-                    <User size={10} />
-                    <span className="truncate max-w-[150px]">{lic?.assignedOrgName || media.uploadedBy}</span>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between text-[9.5px] text-gray-400 border-t border-gray-50 pt-2 font-semibold">
-                  <div>Duration: <span className="text-slate-700">{media.duration}s</span></div>
-                  <div>Size: <span className="text-slate-700">{media.fileSize}</span></div>
-                </div>
-              </div>
-            </div>
+                <span className="absolute left-1.5 bottom-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/60 text-white text-[10px] font-medium">
+                  {typeIcon(m.type)}
+                  {m.type === 'video' || (m.type as string) === 'youtube' ? `${m.duration || 0}s` : m.type === 'image' ? 'Image' : m.type}
+                </span>
+                {selectionMode && (
+                  <span className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md border flex items-center justify-center ${
+                    selected ? 'bg-blue-600 border-blue-600' : 'bg-white/90 border-slate-300'
+                  }`}>
+                    {selected && <CheckCircle size={13} className="text-white" />}
+                  </span>
+                )}
+              </span>
+              <span className="block px-3 py-2.5">
+                <span className="block text-sm font-medium text-slate-900 truncate">{m.title}</span>
+                <span className="flex items-center gap-1 text-xs text-slate-500 mt-0.5 min-w-0">
+                  <Building2 size={11} className="shrink-0" />
+                  <span className="truncate">{ownerName(m.uploadedBy)}</span>
+                </span>
+              </span>
+            </button>
           );
         })}
-
-        {filteredMedia.length === 0 && (
-          <div className="col-span-full py-16 text-center text-slate-400 space-y-2 border-2 border-dashed border-gray-200 rounded-3xl bg-slate-50/50">
-            <ShieldAlert size={36} className="mx-auto text-slate-300" />
-            <p className="text-xs font-semibold">No client media matches selection</p>
-            <p className="text-[10px] text-slate-400">Ensure clients have uploaded files or select a different filter.</p>
-          </div>
-        )}
       </div>
-      {/* Delete Selected Confirm Modal */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <div className="p-6 text-center">
-              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Trash size={26} className="text-red-500" />
-              </div>
-              <h2 className="text-base font-bold text-gray-900 mb-1">Delete Selected Media</h2>
-              <p className="text-sm text-gray-500 mb-1">
-                This will permanently delete the <strong>{selectedIds.length} selected media item{selectedIds.length !== 1 ? 's' : ''}</strong> matching the active filter selections from client storage.
-              </p>
-              <p className="text-xs text-red-500 font-semibold mb-5">This action cannot be undone.</p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
-                <button onClick={handleDeleteSelected} className="flex-1 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">Delete Selected</button>
-              </div>
-            </div>
-          </div>
+
+      {!loading && media.length === 0 && (
+        <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+          <FolderOpen size={32} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-sm font-medium text-gray-700">No client uploads yet</p>
+          <p className="text-xs text-gray-500 mt-1">Files your clients upload will show up here.</p>
         </div>
+      )}
+      {media.length > 0 && filtered.length === 0 && (
+        <p className="text-sm text-gray-500 text-center py-8">Nothing matches these filters.</p>
+      )}
+
+      {open && (() => {
+        const playlistsUsing = usedIn(open);
+        const yt = (open.type as string) === 'youtube' ? youtubeId(open.fileUrl || open.thumbnail || '') : null;
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setOpenId(null)}
+            title={open.title}
+            subtitle={ownerName(open.uploadedBy)}
+            hero={
+              <div className="aspect-video rounded-xl overflow-hidden bg-slate-900">
+                {(open.type as string) === 'youtube' ? (
+                  yt ? (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${yt}`}
+                      className="w-full h-full border-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  ) : <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">Invalid YouTube link</div>
+                ) : open.type === 'ticker' ? (
+                  <div className="w-full h-full flex items-center justify-center p-4 text-sm text-white text-center">{open.title}</div>
+                ) : (
+                  <PreviewMedia src={open.fileUrl || open.thumbnail} type={open.type} alt={open.title} />
+                )}
+              </div>
+            }
+            details={[
+              { label: 'Client', value: open.uploadedBy },
+              { label: 'Type', value: <span className="capitalize">{open.type}</span> },
+              ...(open.type === 'video' || (open.type as string) === 'youtube' ? [{ label: 'Length', value: `${open.duration || 0}s` }] : []),
+              ...(open.fileSize ? [{ label: 'Size', value: open.fileSize }] : []),
+              ...(open.resolution ? [{ label: 'Resolution', value: open.resolution }] : []),
+              {
+                label: 'Used in',
+                value: playlistsUsing.length
+                  ? playlistsUsing.map(p => p.name).join(', ')
+                  : <span className="text-slate-400">No playlists</span>
+              },
+            ]}
+            groups={[
+              ...(open.fileUrl && (open.type as string) !== 'youtube' && open.type !== 'ticker' ? [{
+                title: 'File',
+                actions: [{
+                  key: 'open',
+                  label: 'Open original',
+                  description: 'Full-size file in a new tab',
+                  icon: <Play size={17} />,
+                  onClick: () => window.open(open.fileUrl, '_blank', 'noopener')
+                }]
+              }] : []),
+              {
+                title: 'Danger zone',
+                actions: [{
+                  key: 'delete',
+                  label: 'Delete file',
+                  description: playlistsUsing.length
+                    ? `Also removes it from ${playlistsUsing.length} playlist${playlistsUsing.length === 1 ? '' : 's'}`
+                    : 'Frees the client\'s storage; can\'t be undone',
+                  icon: <Trash2 size={17} />,
+                  tone: 'danger' as const,
+                  onClick: () => setDeleteTarget(open)
+                }]
+              }
+            ]}
+          />
+        );
+      })()}
+
+      {deleteTarget && (() => {
+        const using = usedIn(deleteTarget);
+        return (
+          <ConfirmDialog
+            title={`Delete “${deleteTarget.title}”?`}
+            body={
+              <div className="space-y-2">
+                <p>This deletes the client's file permanently.</p>
+                {using.length > 0 && (
+                  <p className="flex items-start gap-1.5 text-amber-700">
+                    <ListVideo size={14} className="mt-0.5 shrink-0" />
+                    It's in {using.map(p => `“${p.name}”`).join(', ')} — those slides will be removed.
+                  </p>
+                )}
+              </div>
+            }
+            confirmLabel="Delete file"
+            tone="danger"
+            onCancel={() => setDeleteTarget(null)}
+            onConfirm={() => deleteOne(deleteTarget)}
+          />
+        );
+      })()}
+
+      {bulkConfirm && (
+        <ConfirmDialog
+          title={`Delete ${selectedIds.length} file${selectedIds.length === 1 ? '' : 's'}?`}
+          body={<p>They'll be deleted from the clients' storage and removed from any playlists using them. This can't be undone.</p>}
+          confirmLabel="Delete"
+          tone="danger"
+          onCancel={() => setBulkConfirm(false)}
+          onConfirm={deleteSelected}
+        />
       )}
     </div>
   );

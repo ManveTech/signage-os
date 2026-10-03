@@ -97,7 +97,6 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
           return [
             { id: 'screens-all', label: 'All Client Screens', icon: Monitor, desc: 'Overview of all client TVs' },
             { id: 'screens-groups-all', label: 'Client Groups', icon: Layers, desc: 'Batch control client TV clusters' },
-            { id: 'screens-manage', label: 'Manage & Troubleshoot', icon: SettingsIcon, desc: 'Screen health and commands' },
             { id: 'screens-logs-all', label: 'All Logs', icon: FileText, desc: 'Activity from every screen' },
           ];
         }

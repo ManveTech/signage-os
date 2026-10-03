@@ -19,7 +19,6 @@ import Dashboard from './views/Dashboard';
 import AllScreens from './views/screens/AllScreens';
 import MyScreens from './views/screens/MyScreens';
 import AddScreen from './views/screens/AddScreen';
-import ManageScreens from './views/screens/ManageScreens';
 import ScreenGroups from './views/screens/ScreenGroups';
 import Logs from './views/screens/Logs';
 import MediaLibrary from './views/media/MediaLibrary';
@@ -44,7 +43,7 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
     case 'my-screens-list': return <MyScreens onNavigate={navigate} userEmail={userEmail} />;
     case 'screens-all': return <AllScreens onNavigate={navigate} userEmail={userEmail} />;
     case 'screens-add': return <AddScreen userEmail={userEmail} onNavigate={navigate} />;
-    case 'screens-manage': return <ManageScreens userEmail={userEmail} />;
+    case 'screens-manage': return <MyScreens onNavigate={navigate} userEmail={userEmail} />;
     case 'screens-groups': return <ScreenGroups userEmail={userEmail} onNavigate={navigate} />;
     case 'screens-logs': return <Logs userEmail={userEmail} mode="my" onNavigate={navigate} />;
     case 'media-library': return <MediaLibrary onNavigate={navigate} userEmail={userEmail} />;

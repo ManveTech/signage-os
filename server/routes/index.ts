@@ -11,7 +11,8 @@ import integrationsRouter from './integrations';
 import { createCrudRouter } from '../controllers/crud';
 import { authenticateToken, enforceLicense } from '../middleware/auth';
 import { clearAllScreenLogs } from '../controllers/screens';
-import { PB_URL, S3_ENDPOINT } from '../config';
+import { Readable } from 'stream';
+import { isAllowedMediaUrl, getImageThumb, getVideoPoster } from '../services/mediaThumbs';
 
 const apiRouter = express.Router();
 
@@ -60,30 +61,15 @@ apiRouter.get('/public/tenant-branding', async (req, res) => {
   }
 });
 
-// Hosts this proxy is allowed to fetch from — this endpoint is unauthenticated
-// (any caller, no login) and forwards the raw response back to whoever asked,
-// so without an allowlist it was a plain SSRF: a caller could pass ?url= any
-// address at all, including cloud metadata endpoints or internal-only
-// services on this server's own network, and have this server fetch it and
-// hand back the response. Only the media hosts this route actually needs to
-// proxy for (R2 and PocketBase) are allowed.
-function getAllowedProxyHosts(): Set<string> {
-  const hosts = new Set<string>();
-  const addHost = (url: string | undefined) => {
-    if (!url) return;
-    try { hosts.add(new URL(url).hostname.toLowerCase()); } catch { /* ignore malformed config */ }
-  };
-  addHost(PB_URL);
-  addHost(process.env.R2_PUBLIC_URL);
-  addHost(S3_ENDPOINT);
-  return hosts;
-}
-
 // Public dynamic media proxy to bypass Tizen SSSP CORS restrictions.
 // Optional `w` query param downscales images server-side (e.g. ?w=1920) so
-// low-power signage panels (2GB Tizen TVs) download and decode small files
-// instead of full-resolution R2/external source images. Non-images and any
-// resize failure fall back to piping the original bytes unchanged.
+// low-power signage panels and dashboard tiles download small files instead
+// of full-resolution originals. Resized results are cached (see
+// services/mediaThumbs.ts). Non-images and any resize failure fall back to
+// streaming the original bytes unchanged.
+//
+// Only our own media hosts (R2 / PocketBase) are allowed — this endpoint is
+// unauthenticated, so without the allowlist it would be an open SSRF.
 apiRouter.get('/public/proxy-media', async (req, res) => {
   const mediaUrl = req.query.url;
   if (!mediaUrl || typeof mediaUrl !== 'string') {
@@ -95,64 +81,67 @@ apiRouter.get('/public/proxy-media', async (req, res) => {
 
   try {
     const cleanUrl = decodeURIComponent(mediaUrl);
-
-    let parsed: URL;
-    try {
-      parsed = new URL(cleanUrl);
-    } catch {
-      return res.status(400).send('Invalid url parameter');
-    }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return res.status(400).send('Unsupported URL scheme');
-    }
-    const allowedHosts = getAllowedProxyHosts();
-    if (!allowedHosts.has(parsed.hostname.toLowerCase())) {
+    if (!(await isAllowedMediaUrl(cleanUrl))) {
       return res.status(403).send('URL host is not allowed');
     }
 
-    // Fetch the remote media item
-    const mediaRes = await fetch(cleanUrl);
-    if (!mediaRes.ok) {
-      return res.status(mediaRes.status).send(`Failed to fetch remote media: ${mediaRes.statusText}`);
-    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
 
-    const contentType = mediaRes.headers.get('content-type') || '';
-    const arrayBuffer = await mediaRes.arrayBuffer();
-    let buffer = Buffer.from(arrayBuffer);
-    let outContentType = contentType;
-
-    // Downscale only raster images that sharp can safely re-encode. Animated
-    // GIFs and SVGs are passed through to avoid breaking animation/vectors.
-    const isResizableImage = targetWidth > 0 && /^image\/(jpe?g|png|webp)$/i.test(contentType);
-    if (isResizableImage) {
-      try {
-        // Dynamic import so a missing/unbuilt `sharp` binary degrades to a
-        // plain proxy instead of crashing the route. Non-literal specifier keeps
-        // this compiling even before `npm install` pulls sharp in.
-        const sharpSpecifier = 'sharp';
-        const sharpModule: any = await import(sharpSpecifier).then((m: any) => m.default || m).catch(() => null);
-        if (sharpModule) {
-          buffer = await sharpModule(buffer)
-            .rotate() // honor EXIF orientation before stripping metadata
-            .resize({ width: targetWidth, height: targetWidth, fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality: 82, progressive: true, mozjpeg: true })
-            .toBuffer();
-          outContentType = 'image/jpeg';
-        }
-      } catch (resizeErr) {
-        console.error('proxy-media resize failed, serving original:', resizeErr);
-        buffer = Buffer.from(arrayBuffer);
-        outContentType = contentType;
+    if (targetWidth > 0) {
+      const thumb = await getImageThumb(cleanUrl, targetWidth);
+      if (thumb) {
+        res.setHeader('Content-Type', thumb.contentType);
+        res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+        return res.send(thumb.buffer);
       }
     }
 
-    if (outContentType) res.setHeader('Content-Type', outContentType);
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const mediaRes = await fetch(cleanUrl);
+    if (!mediaRes.ok || !mediaRes.body) {
+      return res.status(mediaRes.status || 502).send(`Failed to fetch remote media: ${mediaRes.statusText}`);
+    }
+    const contentType = mediaRes.headers.get('content-type');
+    const contentLength = mediaRes.headers.get('content-length');
+    if (contentType) res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    return res.send(buffer);
+    Readable.fromWeb(mediaRes.body as any)
+      .on('error', () => res.destroy())
+      .pipe(res);
   } catch (err) {
     console.error('Error proxying media request:', err);
-    return res.status(500).send('Internal Server Error proxying media');
+    if (!res.headersSent) res.status(500).send('Internal Server Error proxying media');
+  }
+});
+
+// Poster frame for a video, used by dashboard tiles instead of loading the
+// whole video into a <video> element. 404 when no frame can be produced
+// (e.g. ffmpeg missing) — the dashboard then falls back to the video itself.
+apiRouter.get('/public/video-poster', async (req, res) => {
+  const mediaUrl = req.query.url;
+  if (!mediaUrl || typeof mediaUrl !== 'string') {
+    return res.status(400).send('Missing url parameter');
+  }
+  const widthParam = parseInt(String(req.query.w || ''), 10);
+  const width = Number.isFinite(widthParam) && widthParam > 0 ? Math.min(widthParam, 1920) : 480;
+
+  try {
+    const cleanUrl = decodeURIComponent(mediaUrl);
+    if (!(await isAllowedMediaUrl(cleanUrl))) {
+      return res.status(403).send('URL host is not allowed');
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const poster = await getVideoPoster(cleanUrl, width);
+    if (!poster) {
+      res.setHeader('Cache-Control', 'public, max-age=600');
+      return res.status(404).send('No poster available');
+    }
+    res.setHeader('Content-Type', poster.contentType);
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    return res.send(poster.buffer);
+  } catch (err) {
+    console.error('Error generating video poster:', err);
+    if (!res.headersSent) res.status(500).send('Error generating video poster');
   }
 });
 
