@@ -622,6 +622,12 @@ window.SignagePlayer = (function () {
         }
     }
 
+    // Fingerprint of the last playlist whose media were all fetched. Every
+    // sync used to re-fetch every media record (11 requests for 10 slides);
+    // an unchanged playlist now reuses them. Full refresh every 30 minutes.
+    let lastPlaylistFingerprint = null;
+    let lastPlaylistFetchedAt = 0;
+
     async function fetchPlaylist(playlistId, state, views, updateUICallback) {
         try {
             const POCKETBASE_URL = getPocketBaseUrl();
@@ -659,6 +665,12 @@ window.SignagePlayer = (function () {
             }
 
             if (!data) throw new Error(`Playlist retrieval failed for "${playlistId}"`);
+
+            const fingerprint = [data.id, data.updated || '', JSON.stringify(data.slides || ''), JSON.stringify(data.mediaIds || '')].join('|');
+            if (fingerprint === lastPlaylistFingerprint && Date.now() - lastPlaylistFetchedAt < 30 * 60 * 1000 &&
+                state.playlist && state.playlist.length > 0 && state.isRotating) {
+                return;
+            }
 
             let fetchedAssets = [];
             let slides = data.slides || [];
@@ -776,6 +788,14 @@ window.SignagePlayer = (function () {
 
             state.playlist = localAssets;
             localStorage.setItem(KEYS.PLAYLIST, JSON.stringify(state.playlist));
+            // Remember it only if every slide resolved, so missing ones are retried.
+            const expected = (typeof data.slides === 'string' ? (JSON.parse(data.slides || '[]') || []) : (data.slides || [])).length || (data.mediaIds || []).length;
+            if (fetchedAssets.length >= expected) {
+                lastPlaylistFingerprint = fingerprint;
+                lastPlaylistFetchedAt = Date.now();
+            } else {
+                lastPlaylistFingerprint = null;
+            }
             if (data.updated) localStorage.setItem('signage_tizen_playlist_updated', data.updated);
 
             if (isDifferent || !state.isRotating) {
