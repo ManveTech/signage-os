@@ -57,7 +57,7 @@ const navSections: NavSection[] = [
       { id: 'licenses-payments', label: 'Payment History' },
       { id: 'licenses-expirations', label: 'Upcoming Expirations' },
       { id: 'licenses-invoices', label: 'Invoice Management' },
-      { id: 'licenses-code', label: 'License Decoder' },
+      { id: 'licenses-code', label: 'License Code' },
     ]
   },
   {

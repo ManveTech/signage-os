@@ -126,7 +126,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
             { id: 'video-conferencing', label: 'Video calls', icon: Video },
             { id: 'integrations', label: 'Integrations', icon: Plug },
             { id: 'settings-general', label: 'Settings', icon: SettingsIcon },
-            { id: 'licenses-code', label: 'License decoder', icon: ScanLine },
+            { id: 'licenses-code', label: 'License code', icon: ScanLine },
           ] },
         ],
       }

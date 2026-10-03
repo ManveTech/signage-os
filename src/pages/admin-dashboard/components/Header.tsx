@@ -30,7 +30,7 @@ const breadcrumbMap: Record<string, string[]> = {
   'licenses-expirations': ['Licensing', 'Expiring'],
   'licenses-invoices': ['Licensing', 'Invoices'],
   'licenses-payments': ['Licensing', 'Payments'],
-  'licenses-code': ['Licensing', 'License decoder'],
+  'licenses-code': ['Licensing', 'License code'],
   'reports-overview': ['Reports'],
   'reports-screens': ['Reports', 'Screens'],
   'reports-media': ['Reports', 'Media'],
