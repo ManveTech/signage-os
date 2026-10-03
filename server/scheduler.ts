@@ -265,4 +265,34 @@ export async function startScheduler() {
     }
   }, DEVICE_CHECK_INTERVAL_MS);
   console.log('[Scheduler] Device status poller started — checks every 2 minutes.');
+
+  // ── Abandoned pairing records ─────────────────────────────────────────────
+  // Every TV that shows a pairing code gets a screen record; a TV still on
+  // its code screen refreshes the code (and so the record) every 10 minutes.
+  // Records nobody claimed and that haven't changed in a day are from TVs
+  // that were never paired — or were reset — and only clutter the database.
+  // A TV that comes back later simply gets a new code.
+  const runPairingCleanup = () => cleanupAbandonedPairings().catch(err =>
+    console.error('[Scheduler] Pairing cleanup error:', err.message));
+  setTimeout(runPairingCleanup, 60 * 1000);
+  setInterval(runPairingCleanup, 6 * 60 * 60 * 1000);
+}
+
+const ABANDONED_PAIRING_AGE_MS = 24 * 60 * 60 * 1000;
+
+export async function cleanupAbandonedPairings(): Promise<number> {
+  await ensurePBAuth();
+  const cutoff = new Date(Date.now() - ABANDONED_PAIRING_AGE_MS);
+  const filter = pb.filter('status = "pairing" && assignedToUserEmail = "" && updated < {:cutoff}', { cutoff });
+  let removed = 0;
+  // Bounded so a huge backlog is worked through over a few runs, not one burst.
+  for (let round = 0; round < 10; round++) {
+    const page = await pb.collection('screens').getList(1, 200, { filter, fields: 'id' });
+    if (page.items.length === 0) break;
+    for (const item of page.items) {
+      await pb.collection('screens').delete(item.id).then(() => { removed++; }).catch(() => {});
+    }
+  }
+  if (removed > 0) console.log(`[Scheduler] Removed ${removed} abandoned pairing record(s) older than 24h.`);
+  return removed;
 }

@@ -33,7 +33,8 @@ import { apiLimiter } from './middleware/rateLimiter';
 import { getActiveConference, setActiveConference, clearActiveConference, clearActiveConferencesForConference } from './videoConferenceState';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { verifyJwt } from './middleware/auth';
-import { loadOwnedConference } from './controllers/videoConference';
+import { loadOwnedConference, parseTargetScreenIds } from './controllers/videoConference';
+import { pb } from './db';
 import { MEDIA_UPLOAD_BODY_LIMIT_BYTES } from './uploadLimits';
 
 const app = express();
@@ -271,6 +272,58 @@ io.use((socket, next) => {
   next();
 });
 
+/**
+ * Socket authorization for calls. Ownership of a conference is checked once
+ * per socket and remembered; its screen list is cached and re-read when a
+ * screen isn't in it (screens can be added mid-call via the REST API), so
+ * ICE candidates don't each cost a database read.
+ */
+type SocketCallCache = { owned: Set<string>; targets: Map<string, string[]> };
+function callCache(socket: any): SocketCallCache {
+  if (!socket.data.calls) socket.data.calls = { owned: new Set(), targets: new Map() };
+  return socket.data.calls;
+}
+
+async function conferenceTargets(socket: any, conferenceId: string, refresh = false): Promise<string[]> {
+  const cache = callCache(socket);
+  if (!refresh && cache.targets.has(conferenceId)) return cache.targets.get(conferenceId)!;
+  const record: any = await pb.collection('video_conferences').getOne(conferenceId).catch(() => null);
+  const targets = record && record.status !== 'ended' ? parseTargetScreenIds(record.targetScreenIds) : [];
+  cache.targets.set(conferenceId, targets);
+  return targets;
+}
+
+/** True if the screen is part of the conference (re-reading the list once if not). */
+async function isConferenceTarget(socket: any, conferenceId: string, screenId: string): Promise<boolean> {
+  if ((await conferenceTargets(socket, conferenceId)).includes(screenId)) return true;
+  return (await conferenceTargets(socket, conferenceId, true)).includes(screenId);
+}
+
+/**
+ * Runs a socket's handlers one at a time, in arrival order. The checks above
+ * are async, and without this an ICE candidate could overtake the offer it
+ * belongs to while the offer's ownership check is still running.
+ */
+function inOrder(socket: any, task: () => Promise<void>): void {
+  const prev: Promise<void> = socket.data.queue || Promise.resolve();
+  socket.data.queue = prev.then(task).catch((err: any) => console.error('[Socket.io] handler error:', err?.message || err));
+}
+
+/** True if this socket's logged-in user owns the conference (or is an admin). */
+async function ownsConference(socket: any, conferenceId: string): Promise<boolean> {
+  if (typeof conferenceId !== 'string' || !conferenceId) return false;
+  const cache = callCache(socket);
+  if (cache.owned.has(conferenceId)) return true;
+  if (!socket.data.user) return false;
+  try {
+    await loadOwnedConference(conferenceId, socket.data.user);
+    cache.owned.add(conferenceId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Setup Socket.io event handlers for video conferencing
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Client connected: ${socket.id}`);
@@ -280,17 +333,17 @@ io.on('connection', (socket) => {
     // Current TV builds send { screenId, hardwareUuid } and are checked
     // against the screen record, so another client can't join a screen's
     // room and answer its status checks. Older builds send just the id.
+    // The TV proves it is the screen's device with its hardware id. Without
+    // this, anyone who knew a screen id could join its room and receive its
+    // incoming calls.
     const displayId: string = typeof payload === 'string' ? payload : String(payload?.screenId || '');
+    const hardwareUuid: string = typeof payload === 'object' ? String(payload?.hardwareUuid || '') : '';
     if (!displayId) return;
-    if (typeof payload === 'object' && payload?.hardwareUuid) {
-      try {
-        const { pb } = await import('./db');
-        const record: any = await pb.collection('screens').getOne(displayId).catch(() => null);
-        if (record && record.hardware_uuid && record.hardware_uuid !== payload.hardwareUuid) {
-          console.warn(`[Socket.io] Refused register-display for ${displayId}: hardwareUuid mismatch`);
-          return;
-        }
-      } catch { /* fall through and allow */ }
+    const record: any = await pb.collection('screens').getOne(displayId).catch(() => null);
+    if (!record || !record.hardware_uuid || !hardwareUuid || record.hardware_uuid !== hardwareUuid) {
+      console.warn(`[Socket.io] Refused register-display for ${displayId}: ${!record ? 'unknown screen' : 'hardware id missing or mismatched'}`);
+      socket.emit('register-display:refused', { screenId: displayId });
+      return;
     }
     socket.join(`screen-${displayId}`);
     socketScreenIds.set(socket.id, displayId);
@@ -322,9 +375,7 @@ io.on('connection', (socket) => {
     // Without this, any socket — authenticated as a different tenant, or not
     // authenticated at all — could join another organization's conference
     // room by conferenceId alone and receive its WebRTC signaling.
-    try {
-      await loadOwnedConference(conferenceId, (socket.data as any).user);
-    } catch {
+    if (!(await ownsConference(socket, conferenceId))) {
       console.warn(`[Socket.io] Socket ${socket.id} denied join for conference ${conferenceId} — not the owner.`);
       return;
     }
@@ -349,63 +400,70 @@ io.on('connection', (socket) => {
   });
 
   // Handle WebRTC signals between caller and displays.
-  // toScreenId set -> caller sending to a specific display (offer/ICE).
-  // toScreenId absent -> display sending back to the caller (answer/ICE),
-  // routed via the per-conference room the caller joined above.
-  socket.on('webrtc:signal', (data: any) => {
-    const { conferenceId, toScreenId, screenId, signal } = data;
+  // toScreenId set -> caller sending to a specific display (offer/ICE): the
+  //   caller must own the conference and the screen must be part of it.
+  // toScreenId absent -> display sending back to the caller (answer/ICE): the
+  //   socket must be a registered TV that is part of the conference, and the
+  //   screenId is taken from its registration, not the payload.
+  socket.on('webrtc:signal', (data: any) => inOrder(socket, async () => {
+    const { conferenceId, toScreenId, signal } = data || {};
+    if (typeof conferenceId !== 'string' || !conferenceId) return;
 
     if (toScreenId) {
-      console.log(`[Socket.io] WebRTC signal from caller for screen ${toScreenId}`);
-      io.to(`screen-${toScreenId}`).emit('webrtc:signal', {
-        conferenceId,
-        signal
-      });
-    } else if (conferenceId) {
-      // screenId identifies which display this answer/candidate belongs to —
-      // required so the caller can route it to that screen's own peer
-      // connection when a conference targets more than one screen at once.
-      console.log(`[Socket.io] WebRTC signal from display ${screenId} for conference ${conferenceId}`);
-      socket.to(`conference-${conferenceId}`).emit('webrtc:signal', {
-        conferenceId,
-        screenId,
-        signal
-      });
-    }
-  });
-
-  // Handle conference initiation
-  socket.on('video:initiate-conference', async (data: any) => {
-    const { conferenceId, targetScreenIds } = data;
-
-    // The REST createConference endpoint already checks the caller owns
-    // targetScreenIds before creating the record — but without this check,
-    // any socket could skip that endpoint entirely and emit this event
-    // directly, ringing an arbitrary screen with a fake incoming call.
-    try {
-      await loadOwnedConference(conferenceId, (socket.data as any).user);
-    } catch {
-      console.warn(`[Socket.io] Socket ${socket.id} denied initiate for conference ${conferenceId} — not the owner.`);
+      if (!(await ownsConference(socket, conferenceId)) || !(await isConferenceTarget(socket, conferenceId, String(toScreenId)))) {
+        console.warn(`[Socket.io] Dropped webrtc:signal from ${socket.id} to screen ${toScreenId} — not this caller's call.`);
+        return;
+      }
+      io.to(`screen-${toScreenId}`).emit('webrtc:signal', { conferenceId, signal });
       return;
     }
 
-    console.log(`[Socket.io] Conference ${conferenceId} initiated for screens:`, targetScreenIds);
+    const screenId = socketScreenIds.get(socket.id);
+    if (!screenId || !(await isConferenceTarget(socket, conferenceId, screenId))) {
+      console.warn(`[Socket.io] Dropped webrtc:signal from ${socket.id} for conference ${conferenceId} — not a display in this call.`);
+      return;
+    }
+    // screenId identifies which display this answer/candidate belongs to —
+    // required so the caller can route it to that screen's own peer
+    // connection when a conference targets more than one screen at once.
+    socket.to(`conference-${conferenceId}`).emit('webrtc:signal', { conferenceId, screenId, signal });
+  }));
 
-    targetScreenIds?.forEach((screenId: string) => {
-      io.to(`screen-${screenId}`).emit('conference:initiated', data);
-      setActiveConference(screenId, data);
-    });
+  // Handle conference initiation. Only the owner can ring screens, and only
+  // the screens that are actually part of the conference.
+  socket.on('video:initiate-conference', async (data: any) => {
+    const conferenceId = data?.conferenceId;
+    if (!(await ownsConference(socket, conferenceId))) {
+      console.warn(`[Socket.io] Socket ${socket.id} denied initiate for conference ${conferenceId} — not the owner.`);
+      return;
+    }
+    const targets = await conferenceTargets(socket, conferenceId, true);
+    const requested: string[] = Array.isArray(data?.targetScreenIds) ? data.targetScreenIds.map(String) : targets;
+    const screenIds = requested.filter(id => targets.includes(id));
+    console.log(`[Socket.io] Conference ${conferenceId} initiated for screens:`, screenIds);
+
+    const payload = { ...data, targetScreenIds: screenIds };
+    for (const screenId of screenIds) {
+      io.to(`screen-${screenId}`).emit('conference:initiated', payload);
+      await setActiveConference(screenId, payload);
+    }
   });
 
-  // Handle conference end
-  socket.on('video:end-conference', (data: any) => {
-    const { conferenceId, targetScreenIds } = data;
+  // Handle conference end (the REST /end endpoint is the usual path; this
+  // socket event is kept for older dashboards). Owner only.
+  socket.on('video:end-conference', async (data: any) => {
+    const conferenceId = data?.conferenceId;
+    if (!(await ownsConference(socket, conferenceId))) {
+      console.warn(`[Socket.io] Socket ${socket.id} denied end for conference ${conferenceId} — not the owner.`);
+      return;
+    }
+    const targets = await conferenceTargets(socket, conferenceId, true);
     console.log(`[Socket.io] Conference ${conferenceId} ended`);
 
-    targetScreenIds?.forEach((screenId: string) => {
+    for (const screenId of targets) {
       io.to(`screen-${screenId}`).emit('conference:ended', { conferenceId });
-      clearActiveConference(screenId);
-    });
+      await clearActiveConference(screenId);
+    }
     conferenceCallerSockets.delete(conferenceId);
     const pendingCleanup = pendingCallerGoneCleanup.get(conferenceId);
     if (pendingCleanup) {
@@ -429,17 +487,25 @@ io.on('connection', (socket) => {
     }
   });
 
-  // In-call text chat. Caller includes targetScreenIds (routes to the display's
-  // room); the display just has conferenceId (routes to the caller's conference room).
-  socket.on('chat:message', (data: any) => {
-    const { conferenceId, targetScreenIds } = data;
-    if (conferenceId) {
-      socket.to(`conference-${conferenceId}`).emit('chat:message', data);
+  // In-call text chat, sent by the caller. Owner only, and only to screens
+  // in the call; the conference room echo reaches the caller's other tabs.
+  socket.on('chat:message', (data: any) => inOrder(socket, async () => {
+    const conferenceId = data?.conferenceId;
+    if (!(await ownsConference(socket, conferenceId))) return;
+    const message = {
+      conferenceId,
+      senderName: String(data?.senderName || '').slice(0, 80),
+      text: String(data?.text || '').slice(0, 1000),
+      ts: Number(data?.ts) || Date.now()
+    };
+    if (!message.text) return;
+    socket.to(`conference-${conferenceId}`).emit('chat:message', message);
+    const targets = await conferenceTargets(socket, conferenceId);
+    const requested: string[] = Array.isArray(data?.targetScreenIds) ? data.targetScreenIds.map(String) : targets;
+    for (const screenId of requested) {
+      if (targets.includes(screenId)) io.to(`screen-${screenId}`).emit('chat:message', message);
     }
-    targetScreenIds?.forEach((screenId: string) => {
-      io.to(`screen-${screenId}`).emit('chat:message', data);
-    });
-  });
+  }));
 
   socket.on('disconnect', () => {
     console.log(`[Socket.io] Client disconnected: ${socket.id}`);

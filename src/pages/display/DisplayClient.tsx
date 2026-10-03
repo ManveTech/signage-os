@@ -30,6 +30,9 @@ export default function DisplayClient() {
   const { socket, onConferenceInitiated, onWebRTCSignal, onConferenceEnded, onChatMessage } = useVideoConferencing();
   const [searchParams] = useSearchParams();
   const screenId = searchParams.get('screenId') || '';
+  // The server only lets a display into a screen's room if it presents that
+  // screen's hardware id (shown on the screen's details in the dashboard).
+  const hardwareUuid = searchParams.get('hardwareUuid') || '';
 
   const [isInCall, setIsInCall] = useState(false);
   const [conferenceState, setConferenceState] = useState<ConferenceState | null>(null);
@@ -52,8 +55,11 @@ export default function DisplayClient() {
   // Join this screen's room so the server can route calls to it
   useEffect(() => {
     if (!socket || !screenId) return;
-    socket.emit('register-display', screenId);
-  }, [socket, screenId]);
+    const refused = () => setError('This display could not be verified for that screen. Check the screenId and hardwareUuid in the address.');
+    socket.on('register-display:refused', refused);
+    socket.emit('register-display', { screenId, hardwareUuid });
+    return () => { socket.off('register-display:refused', refused); };
+  }, [socket, screenId, hardwareUuid]);
 
   // Keep the <video> element's actual volume in sync with the `volume` state —
   // without this, setting defaultVolume on the caller's side only updated this

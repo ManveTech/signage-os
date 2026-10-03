@@ -4,7 +4,7 @@ import { logAudit, getClientIp } from '../services/auditLog';
 
 // targetScreenIds is stored as a JSON-encoded string (PocketBase text field),
 // not a native array — every read/write must go through these helpers.
-function parseTargetScreenIds(value: any): string[] {
+export function parseTargetScreenIds(value: any): string[] {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string' && value) {
     try {
