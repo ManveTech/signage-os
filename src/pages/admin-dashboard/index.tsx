@@ -107,15 +107,19 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
 
   // Active view is derived directly from the URL pathname
   const activeView = getAdminViewFromPath(location.pathname);
+  // The sidebar only exists on tablet/desktop (phones use the bottom dock),
+  // so this is purely the desktop preference: your saved choice, or
+  // collapsed by default on narrower screens.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) return true;
-    return localStorage.getItem('signageos_sidebar_collapsed') === 'true';
+    const saved = localStorage.getItem('signageos_sidebar_collapsed_v2');
+    if (saved !== null) return saved === 'true';
+    return typeof window !== 'undefined' && window.innerWidth < 1024;
   });
 
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => {
       const next = !prev;
-      localStorage.setItem('signageos_sidebar_collapsed', String(next));
+      localStorage.setItem('signageos_sidebar_collapsed_v2', String(next));
       return next;
     });
   };
@@ -129,10 +133,6 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
   const handleNavigate = (targetView: string) => {
     const targetPath = ADMIN_ROUTES[targetView] || `/admin/${targetView}`;
     navigate(targetPath);
-    // Auto-close sidebar on mobile after navigation
-    if (isMobile) {
-      setSidebarCollapsed(true);
-    }
   };
 
   // Pull to refresh handler
@@ -237,13 +237,6 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
       {/* Offline Indicator */}
       <OfflineIndicator onRetry={handleRefresh} />
 
-      {/* Sidebar Overlay for Mobile */}
-      {!sidebarCollapsed && (
-        <div
-          onClick={toggleSidebar}
-          className="fixed inset-0 bg-black/40 z-40 md:hidden animate-fadeIn"
-        />
-      )}
 
       <Sidebar
         activeView={activeView}

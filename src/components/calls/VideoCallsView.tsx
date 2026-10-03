@@ -586,7 +586,7 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
       )}
 
       {callableGroups.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 md:flex-wrap md:overflow-visible">
           {callableGroups.map(g => {
             const active = selectedGroup === g.id;
             return (
@@ -594,12 +594,14 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
                 key={g.id}
                 type="button"
                 onClick={() => pickGroup(g)}
-                className={`shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold ${
+                title={g.name}
+                className={`shrink-0 max-w-[16rem] flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold ${
                   active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
                 }`}
               >
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: active ? '#fff' : (g.color || '#94a3b8') }} />
-                {g.name} · {g.members.length}
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: active ? '#fff' : (g.color || '#94a3b8') }} />
+                <span className="truncate">{g.name}</span>
+                <span className="shrink-0">· {g.members.length}</span>
               </button>
             );
           })}

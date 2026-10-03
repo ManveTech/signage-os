@@ -286,7 +286,7 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
 
       {users.length > 0 && (
         <div className="flex flex-col md:flex-row md:items-center gap-3">
-          <div className="relative md:w-80 md:order-2 md:ml-auto">
+          <div className="relative md:w-60 lg:w-80 md:shrink-0 md:order-2 md:ml-auto">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               value={search}
@@ -295,7 +295,7 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
               className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 md:order-1">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 md:order-1 md:flex-wrap md:overflow-visible md:min-w-0">
             {([
               { key: 'all', label: 'All', count: users.length },
               { key: 'active', label: 'Active', count: counts.active },

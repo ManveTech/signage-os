@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import {
   LayoutDashboard, MonitorPlay, Tv, Key, Menu, LogOut, Film, Users, Building2, BarChart3,
   Settings as SettingsIcon, ScanLine, Plus, FileText, Plug, HelpCircle, Layers, Monitor,
-  CalendarDays, Video, ChevronRight, ListVideo, Receipt,
+  CalendarDays, Video, ChevronRight, ListVideo,
 } from 'lucide-react';
 import { licensingStore } from '../lib/licensingStore';
 import { supportStore } from '../lib/supportStore';
@@ -153,7 +153,6 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
             { id: 'reports-overview', label: 'Reports', icon: BarChart3 },
             { id: 'support-tickets', label: 'Help & Support', icon: HelpCircle, badge: badges.more },
             { id: 'video-conferencing', label: 'Video calls', icon: Video },
-            { id: 'license-billing', label: 'Invoices', icon: Receipt },
             { id: 'settings-general', label: 'Settings', icon: SettingsIcon },
           ] },
         ],
@@ -168,9 +167,12 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
   ];
 
   const inSection = (key: 'screens' | 'playlists' | 'more') => sections[key].some(s => s.items.some(i => i.id === activeView));
+  const licensesView = activeView.startsWith('licenses-') && activeView !== 'licenses-code' || activeView === 'license-billing';
   const isActive = (id: TabId) => {
     if (id === 'dashboard') return activeView === 'dashboard';
-    if (id === 'licenses') return activeView.startsWith('licenses-') && activeView !== 'licenses-code' || activeView === 'license-billing';
+    if (id === 'licenses') return licensesView;
+    // A page belongs to one tab only — never light up More as well.
+    if (id === 'more' && (licensesView || activeView === 'dashboard')) return false;
     if (id === 'screens') return inSection('screens') || activeView.startsWith('screens-');
     if (id === 'playlists') return inSection('playlists');
     return inSection('more') || ['profile', 'support', 'support-faq', 'support-docs', 'support-help', 'reports-screens', 'reports-media', 'reports-logs'].includes(activeView);
