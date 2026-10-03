@@ -356,7 +356,7 @@ export function createCrudRouter(collectionName: string) {
           if (licenseItems.length > 0) {
             const totalAllowed = licenseItems.reduce((sum: number, lic: any) => sum + (lic.deviceLimit || 0), 0);
             const activeScreensResult = await pb.collection('screens').getList(1, 500, {
-              filter: pb.filter('assignedToUserEmail = {:email} && status != "pairing"', { email: req.user?.email })
+              filter: pb.filter('assignedToUserEmail = {:email} && status != "pairing" && status != "unlinked"', { email: req.user?.email })
             }).catch(() => ({ items: [] as any[] }));
             const activeScreenItems: any[] = activeScreensResult.items;
             if (activeScreenItems.length >= totalAllowed) {

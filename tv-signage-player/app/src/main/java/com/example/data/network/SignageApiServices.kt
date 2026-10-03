@@ -25,7 +25,9 @@ data class PairingResponse(
 data class HeartbeatRequest(
     val hardwareUuid: String,
     val screenId: String? = null,
-    val cpuTemp: Double,
+    // Null when the device has no readable temperature sensor (it used to
+    // send a made-up 45–53°C value instead).
+    val cpuTemp: Double? = null,
     val currentPlayingAsset: String?,
     val storageUsedBytes: Long,
     val storageAvailableBytes: Long
@@ -183,6 +185,13 @@ interface SignageApiService {
     suspend fun getMediaItemRecord(
         @Url url: String
     ): PocketBaseMediaItemResponse
+
+    /** Tells the server which one-shot commands / changes this device has handled (POST /devices/ack). */
+    @POST
+    suspend fun acknowledge(
+        @Url url: String,
+        @Body body: @JvmSuppressWildcards Map<String, Any?>
+    ): Response<Unit>
 
     @POST
     suspend fun disconnectScreen(

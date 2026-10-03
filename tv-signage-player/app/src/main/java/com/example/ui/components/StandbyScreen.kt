@@ -42,9 +42,9 @@ fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
             ) {
                 Text(
                     text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
-                        "READY FOR ${uiState.whiteLabelName.uppercase()} CONTENT"
+                        "CONNECTED · WAITING FOR CONTENT"
                     } else {
-                        "READY FOR SYNCED CONTENT"
+                        "CONNECTED · WAITING FOR CONTENT"
                     },
                     color = Color(0xFF81C784),
                     fontSize = 12.sp,
@@ -56,9 +56,9 @@ fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
 
                 Text(
                     text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
-                        "${uiState.whiteLabelName} Signage Client"
+                        uiState.screenName.ifBlank { "This screen" }
                     } else {
-                        "Bluestar Signage Client"
+                        uiState.screenName.ifBlank { "This screen" }
                     },
                     color = Color.White,
                     fontSize = 24.sp,
@@ -69,9 +69,9 @@ fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
 
                 Text(
                     text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
-                        "To stream promos, assign a playlist schedule of active photos or videos on your ${uiState.whiteLabelName} CMS."
+                        "Nothing is assigned to play yet. Choose a playlist for this screen in your ${uiState.whiteLabelName} dashboard and it will start here automatically."
                     } else {
-                        "To stream promos, assign a playlist schedule of active photos or videos on the Node.js / Pocketbase CMS."
+                        "Nothing is assigned to play yet. Choose a playlist for this screen in your dashboard and it will start here automatically."
                     },
                     color = Color.White.copy(alpha = 0.5f),
                     fontSize = 12.sp,
@@ -96,9 +96,9 @@ fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
 
             Text(
                 text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
-                    "READY FOR ${uiState.whiteLabelName.uppercase()} CONTENT"
+                    "CONNECTED · WAITING FOR CONTENT"
                 } else {
-                    "READY FOR SYNCED CONTENT"
+                    "CONNECTED · WAITING FOR CONTENT"
                 },
                 color = Color(0xFF81C784),
                 fontSize = 12.sp,
@@ -110,9 +110,9 @@ fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
 
             Text(
                 text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
-                    "${uiState.whiteLabelName} Signage Client"
+                    uiState.screenName.ifBlank { "This screen" }
                 } else {
-                    "Bluestar Signage Client"
+                    uiState.screenName.ifBlank { "This screen" }
                 },
                 color = Color.White,
                 fontSize = 24.sp,
@@ -123,9 +123,9 @@ fun StandbyScreen(uiState: SignageUiState, onOpenAdmin: () -> Unit) {
 
             Text(
                 text = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
-                    "To stream promos, assign a playlist schedule of active photos or videos on your ${uiState.whiteLabelName} CMS."
+                    "Nothing is assigned to play yet. Choose a playlist for this screen in your ${uiState.whiteLabelName} dashboard and it will start here automatically."
                 } else {
-                    "To stream promos, assign a playlist schedule of active photos or videos on the Node.js / Pocketbase CMS."
+                    "Nothing is assigned to play yet. Choose a playlist for this screen in your dashboard and it will start here automatically."
                 },
                 color = Color.White.copy(alpha = 0.5f),
                 fontSize = 12.sp,

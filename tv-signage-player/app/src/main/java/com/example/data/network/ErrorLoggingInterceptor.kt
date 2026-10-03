@@ -52,7 +52,7 @@ class ErrorLoggingInterceptor(private val context: Context) : Interceptor {
                 val client = sharedClient
                 val fields = mapOf(
                     "screenId" to config.screenId,
-                    "screenName" to config.screenName,
+                    "hardwareUuid" to config.hardwareUuid,
                     "event" to redactText("Request Failure: ${request.method} ${request.url}", config.pocketbaseUrl, config.serverUrl),
                     "type" to "error",
                     "detail" to redactText(errorMsg, config.pocketbaseUrl, config.serverUrl)
@@ -66,7 +66,7 @@ class ErrorLoggingInterceptor(private val context: Context) : Interceptor {
 
                 val body = json.toRequestBody("application/json".toMediaTypeOrNull())
                 val logRequest = Request.Builder()
-                    .url("${config.serverUrl}/api/v1/screen_logs")
+                    .url("${config.serverUrl}/api/v1/devices/log")
                     .post(body)
                     .build()
 

@@ -26,6 +26,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +72,40 @@ private data class AssetRow(val asset: PlaylistAsset, val status: AssetSyncStatu
 
 private fun formatMb(bytes: Long): String = String.format("%.1f MB", bytes / (1024.0 * 1024.0))
 
+/** "450 MB", "1.2 GB" */
+internal fun formatSize(bytes: Long): String = when {
+    bytes >= 1024L * 1024 * 1024 -> String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024))
+    bytes >= 10L * 1024 * 1024 -> String.format("%.0f MB", bytes / (1024.0 * 1024))
+    else -> String.format("%.1f MB", bytes / (1024.0 * 1024))
+}
+
+private fun formatSpeed(bytesPerSecond: Long): String = when {
+    bytesPerSecond >= 1024L * 1024 -> String.format("%.1f MB/s", bytesPerSecond / (1024.0 * 1024))
+    else -> String.format("%.0f KB/s", bytesPerSecond / 1024.0)
+}
+
+private fun formatTimeLeft(seconds: Long): String = when {
+    seconds < 45 -> "Less than a minute left"
+    seconds < 90 * 60 -> "About ${(seconds + 30) / 60} min left"
+    else -> "About ${(seconds + 1800) / 3600} h left"
+}
+
+/**
+ * Readable name for a stored file: "diwali_banner_k2j9x0q1zz.png" -> "Diwali banner".
+ * Strips the extension, PocketBase's random suffix, hash prefixes and
+ * underscores — the raw storage names meant nothing to whoever is at the TV.
+ */
+internal fun friendlyMediaName(filename: String): String {
+    var name = filename.substringAfterLast('/').substringBeforeLast('.')
+    name = name.replace(Regex("^[0-9a-fA-F]{24,}_"), "")
+    // PocketBase suffix: 10 lowercase letters/digits, containing a digit
+    // (so a real word like "_collection" is kept).
+    name = name.replace(Regex("_(?=[a-z]*[0-9])[a-z0-9]{10}$"), "")
+    name = name.replace('_', ' ').replace('-', ' ').replace(Regex("\\s+"), " ").trim()
+    if (name.isEmpty()) return "Untitled"
+    return name.replaceFirstChar { it.uppercase() }
+}
+
 private fun typeLabel(asset: PlaylistAsset): String = when {
     asset.mediaType.equals("youtube", ignoreCase = true) -> "YouTube"
     asset.mediaType.equals("video", ignoreCase = true) -> "Video"
@@ -100,7 +136,7 @@ fun DownloadProgressScreen(
         }
     }
     val readyCount = rows.count { it.status == AssetSyncStatus.READY }
-    val isPaused = !uiState.isDownloading
+    val phase = phaseOf(uiState)
 
     val animatedProgress by animateFloatAsState(
         targetValue = uiState.downloadProgressFraction.coerceIn(0f, 1f),
@@ -115,7 +151,7 @@ fun DownloadProgressScreen(
                     .fillMaxSize()
                     .padding(horizontal = 56.dp, vertical = 40.dp)
             ) {
-                TopBar(uiState = uiState, isPaused = isPaused)
+                TopBar(uiState = uiState, phase = phase)
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
@@ -127,7 +163,7 @@ fun DownloadProgressScreen(
                 ) {
                     ProgressColumn(
                         uiState = uiState,
-                        isPaused = isPaused,
+                        phase = phase,
                         progress = animatedProgress,
                         readyCount = readyCount,
                         totalCount = rows.size,
@@ -150,7 +186,7 @@ fun DownloadProgressScreen(
                     .fillMaxSize()
                     .padding(horizontal = 32.dp, vertical = 36.dp)
             ) {
-                TopBar(uiState = uiState, isPaused = isPaused)
+                TopBar(uiState = uiState, phase = phase)
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Column(
@@ -161,7 +197,7 @@ fun DownloadProgressScreen(
                 ) {
                     ProgressColumn(
                         uiState = uiState,
-                        isPaused = isPaused,
+                        phase = phase,
                         progress = animatedProgress,
                         readyCount = readyCount,
                         totalCount = rows.size,
@@ -183,8 +219,16 @@ fun DownloadProgressScreen(
     }
 }
 
+private enum class SyncPhase { DOWNLOADING, OFFLINE, RETRYING }
+
+private fun phaseOf(uiState: SignageUiState): SyncPhase = when {
+    uiState.isDownloading -> SyncPhase.DOWNLOADING
+    uiState.downloadOffline -> SyncPhase.OFFLINE
+    else -> SyncPhase.RETRYING
+}
+
 @Composable
-private fun TopBar(uiState: SignageUiState, isPaused: Boolean) {
+private fun TopBar(uiState: SignageUiState, phase: SyncPhase) {
     val whiteLabelName = uiState.whiteLabelName
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -204,12 +248,25 @@ private fun TopBar(uiState: SignageUiState, isPaused: Boolean) {
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-        StatusPill(isPaused = isPaused)
+        // Which screen this is — handy for whoever is installing a row of TVs.
+        if (uiState.screenName.isNotBlank()) {
+            Text(
+                text = uiState.screenName,
+                color = TextMuted,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 260.dp)
+            )
+            Spacer(modifier = Modifier.width(14.dp))
+        }
+        StatusPill(phase = phase)
     }
 }
 
 @Composable
-private fun StatusPill(isPaused: Boolean) {
+private fun StatusPill(phase: SyncPhase) {
     val pulse = rememberInfiniteTransition(label = "statusPulse")
     val dotAlpha by pulse.animateFloat(
         initialValue = 1f,
@@ -217,7 +274,11 @@ private fun StatusPill(isPaused: Boolean) {
         animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
         label = "statusDot"
     )
-    val color = if (isPaused) SyncAmber else SyncBlue
+    val (color, label) = when (phase) {
+        SyncPhase.DOWNLOADING -> SyncBlue to "DOWNLOADING"
+        SyncPhase.OFFLINE -> SyncRed to "NO CONNECTION"
+        SyncPhase.RETRYING -> SyncAmber to "RETRYING"
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -229,12 +290,12 @@ private fun StatusPill(isPaused: Boolean) {
         Box(
             modifier = Modifier
                 .size(7.dp)
-                .alpha(if (isPaused) 1f else dotAlpha)
+                .alpha(if (phase == SyncPhase.DOWNLOADING) dotAlpha else 1f)
                 .background(color, CircleShape)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = if (isPaused) "PAUSED" else "SYNCING",
+            text = label,
             color = color,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -246,7 +307,7 @@ private fun StatusPill(isPaused: Boolean) {
 @Composable
 private fun ProgressColumn(
     uiState: SignageUiState,
-    isPaused: Boolean,
+    phase: SyncPhase,
     progress: Float,
     readyCount: Int,
     totalCount: Int,
@@ -258,9 +319,21 @@ private fun ProgressColumn(
     // the full-size stack — and Compose silently drops whatever doesn't fit,
     // which would be the Retry button. Tighten type and gaps instead.
     val compact = maxHeight != Dp.Infinity && maxHeight < 330.dp
+    val isPaused = phase != SyncPhase.DOWNLOADING
+
+    // Seconds until the automatic retry, ticking once a second.
+    var now by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(uiState.downloadRetryAt) {
+        while (uiState.downloadRetryAt > 0) {
+            now = android.os.SystemClock.elapsedRealtime()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val retryIn = if (uiState.downloadRetryAt > 0) ((uiState.downloadRetryAt - now) / 1000).coerceAtLeast(0) else -1L
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "PREPARING PLAYLIST",
+            text = "SETTING UP THIS SCREEN",
             color = SyncBlue,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -268,26 +341,30 @@ private fun ProgressColumn(
         )
         Spacer(modifier = Modifier.height(if (compact) 6.dp else 10.dp))
         Text(
-            text = if (isPaused) "Download paused" else "Getting your content ready",
+            text = when (phase) {
+                SyncPhase.DOWNLOADING -> "Getting your content ready"
+                SyncPhase.OFFLINE -> "Waiting for an internet connection"
+                SyncPhase.RETRYING -> "A few files need another try"
+            },
             color = TextPrimary,
             fontSize = if (compact) 26.sp else 32.sp,
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(if (compact) 6.dp else 10.dp))
         Text(
-            text = when {
-                isPaused && uiState.errorMessage != null -> uiState.errorMessage
-                isPaused -> "Some files couldn't be downloaded. Check this display's internet connection, then retry."
-                else -> "Media is being saved to this display so playback stays smooth, even offline."
+            text = when (phase) {
+                SyncPhase.DOWNLOADING -> "Your media is being saved to this display, so it keeps playing smoothly — even if the internet drops later."
+                SyncPhase.OFFLINE -> uiState.errorMessage ?: "This display can't reach the internet. Check its network cable or Wi-Fi."
+                SyncPhase.RETRYING -> uiState.errorMessage ?: "Some files couldn't be downloaded. They'll be tried again automatically."
             },
-            color = if (isPaused && uiState.errorMessage != null) SyncRed else TextMuted,
+            color = if (isPaused) (if (phase == SyncPhase.OFFLINE) SyncRed else SyncAmber) else TextMuted,
             fontSize = if (compact) 13.sp else 15.sp,
             lineHeight = if (compact) 18.sp else 21.sp,
             maxLines = if (compact) 2 else 3,
             overflow = TextOverflow.Ellipsis
         )
 
-        Spacer(modifier = Modifier.height(if (compact) 16.dp else 36.dp))
+        Spacer(modifier = Modifier.height(if (compact) 16.dp else 32.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -308,52 +385,56 @@ private fun ProgressColumn(
                 modifier = Modifier.padding(start = 4.dp, bottom = if (compact) 6.dp else 10.dp)
             )
             Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = "$readyCount of $totalCount ready",
-                color = TextMuted,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(bottom = if (compact) 8.dp else 12.dp)
-            )
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(bottom = if (compact) 8.dp else 12.dp)) {
+                Text(
+                    text = "$readyCount of $totalCount files ready",
+                    color = TextPrimary.copy(alpha = 0.9f),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                if (uiState.downloadBytesTotal > 0) {
+                    Text(
+                        text = "${formatSize(uiState.downloadBytesDone)} of ${formatSize(uiState.downloadBytesTotal)}",
+                        color = TextMuted,
+                        fontSize = 13.sp
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
         SyncProgressBar(progress = progress, isPaused = isPaused)
         Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
 
-        if (!isPaused && uiState.downloadCurrentFile.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Downloading", color = TextFaint, fontSize = 13.sp)
-                Spacer(modifier = Modifier.width(8.dp))
+        if (!isPaused) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = uiState.downloadCurrentFile,
+                    text = if (uiState.downloadCurrentFile.isNotEmpty()) friendlyMediaName(uiState.downloadCurrentFile) else "Checking files…",
                     color = TextPrimary.copy(alpha = 0.85f),
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                if (uiState.downloadCurrentBytes > 0) {
+                val details = listOfNotNull(
+                    if (uiState.downloadBytesPerSecond > 0) formatSpeed(uiState.downloadBytesPerSecond) else null,
+                    if (uiState.downloadSecondsLeft >= 0) formatTimeLeft(uiState.downloadSecondsLeft) else null
+                )
+                if (details.isNotEmpty()) {
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = if (uiState.downloadCurrentTotalBytes > 0) {
-                            "${formatMb(uiState.downloadCurrentBytes)} / ${formatMb(uiState.downloadCurrentTotalBytes)}"
-                        } else {
-                            formatMb(uiState.downloadCurrentBytes)
-                        },
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
+                    Text(details.joinToString("  ·  "), color = TextMuted, fontSize = 13.sp)
                 }
             }
-        } else if (isPaused) {
-            if (!compact) Spacer(modifier = Modifier.height(8.dp))
-            RetryButton(onClick = onRetry, compact = compact)
         } else {
-            Text("Checking files…", color = TextFaint, fontSize = 13.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RetryButton(onClick = onRetry, compact = compact)
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = if (retryIn >= 0) "Trying again automatically in ${retryIn / 60}:${String.format("%02d", retryIn % 60)}" else "Will try again automatically",
+                    color = TextMuted,
+                    fontSize = 13.sp
+                )
+            }
         }
     }
   }
@@ -427,7 +508,7 @@ private fun RetryButton(onClick: () -> Unit, compact: Boolean = false) {
         contentPadding = PaddingValues(horizontal = 28.dp, vertical = if (compact) 8.dp else 12.dp),
         modifier = Modifier.focusRequester(focusRequester)
     ) {
-        Text("Retry download", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text("Retry now", fontSize = 14.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -513,7 +594,7 @@ private fun AssetRowView(row: AssetRow, uiState: SignageUiState) {
         StatusIcon(status = row.status, size = 16.dp)
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = row.asset.filename.ifEmpty { "Untitled" },
+            text = friendlyMediaName(row.asset.filename),
             color = when (row.status) {
                 AssetSyncStatus.READY, AssetSyncStatus.DOWNLOADING -> TextPrimary
                 else -> TextMuted
@@ -530,8 +611,11 @@ private fun AssetRowView(row: AssetRow, uiState: SignageUiState) {
                     if (uiState.downloadCurrentTotalBytes > 0) {
                         "${Math.round(100.0 * uiState.downloadCurrentBytes / uiState.downloadCurrentTotalBytes)}%"
                     } else "…"
-                AssetSyncStatus.MISSING -> "Not downloaded"
-                else -> typeLabel(row.asset)
+                AssetSyncStatus.MISSING -> "Waiting to retry"
+                else -> {
+                    val size = row.asset.fileSizeBytes ?: 0L
+                    if (size > 0) "${typeLabel(row.asset)} · ${formatSize(size)}" else typeLabel(row.asset)
+                }
             },
             color = when (row.status) {
                 AssetSyncStatus.DOWNLOADING -> SyncCyan
@@ -576,8 +660,42 @@ private fun StatusIcon(status: AssetSyncStatus, size: Dp) {
 private fun Footer() {
     Spacer(modifier = Modifier.height(16.dp))
     Text(
-        text = "Playback starts automatically once everything is downloaded.",
+        text = "Your playlist starts playing automatically as soon as it's ready.",
         color = TextFaint,
         fontSize = 12.sp
     )
+}
+
+/**
+ * Shown in a corner over playing content while new media downloads in the
+ * background. Deliberately small and quiet — this is a customer-facing
+ * display.
+ */
+@Composable
+fun UpdatingContentPill(progress: Float, modifier: Modifier = Modifier) {
+    val animated by animateFloatAsState(progress.coerceIn(0f, 1f), tween(700), label = "pill")
+    Box(modifier = modifier, contentAlignment = Alignment.BottomEnd) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.45f))
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            CircularProgressIndicator(
+                progress = { animated },
+                modifier = Modifier.size(12.dp),
+                color = Color.White.copy(alpha = 0.85f),
+                strokeWidth = 1.5.dp,
+                trackColor = Color.White.copy(alpha = 0.2f)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Text(
+                text = "Updating content",
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
 }

@@ -98,6 +98,25 @@ async function getScreenPlaylistLength(latestScreen: any): Promise<number> {
 }
 
 
+const PAIRING_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I, O, 1, 0
+
+/**
+ * A 6-character code no other TV is currently showing. Codes were random
+ * with no check, so two TVs could show the same code and "Add screen" would
+ * pair whichever record PocketBase returned first.
+ */
+async function generateUniquePairingCode(): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    let code = '';
+    for (let i = 0; i < 6; i++) code += PAIRING_CHARS.charAt(Math.floor(Math.random() * PAIRING_CHARS.length));
+    const clash = await pb.collection('screens').getList(1, 1, {
+      filter: pb.filter('pairing_code = {:code}', { code })
+    }).then(r => r.items.length > 0).catch(() => false);
+    if (!clash) return code;
+  }
+  throw new Error('Could not generate a unique pairing code');
+}
+
 export async function getPairingCode(req: any, res: any) {
   try {
     const { hardwareUuid } = req.body;
@@ -105,12 +124,7 @@ export async function getPairingCode(req: any, res: any) {
       return res.status(400).json({ message: 'hardwareUuid is required.' });
     }
 
-    // Generate a random 6-character alphanumeric pairing code (uppercase)
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // omit ambiguous chars like I, O, 1, 0
-    let pairingCode = '';
-    for (let i = 0; i < 6; i++) {
-      pairingCode += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    const pairingCode = await generateUniquePairingCode();
 
     // Set expiration to 10 minutes in the future
     const pairingCodeExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -214,9 +228,11 @@ export async function pairScreen(req: any, res: any) {
         return res.status(400).json({ message: 'No active license found for this user.' });
       }
 
-      // Count currently active/paired screens for this user (status != 'pairing')
+      // Count screens that hold a TV. Unlinked screens are kept in the
+      // account for re-pairing but have no TV, so they don't use a slot —
+      // they used to, which blocked pairing a replacement after an unlink.
       const activeScreens = await pb.collection('screens').getList(1, 500, {
-        filter: pb.filter('assignedToUserEmail = {:clientEmail} && status != "pairing"', { clientEmail })
+        filter: pb.filter('assignedToUserEmail = {:clientEmail} && status != "pairing" && status != "unlinked"', { clientEmail })
       });
 
       const totalAllowed = licensesResult.items.reduce((sum, lic) => sum + (lic.deviceLimit || 0), 0);
@@ -504,8 +520,12 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
             }));
 
             // Clear cache keys
+            // Heartbeats cache under the screen id (the TV sends it), so clear
+            // that key too — leaving it made the next heartbeat think the
+            // screen was still online and skip the "came online" transition.
             await redis.pipeline()
               .del(`cache:screen:${screenId}`)
+              .del(`cache:screen_uuid:${screenId}`)
               .del(`cache:screen_uuid:${latestScreen.hardware_uuid || ''}`)
               .exec();
 
@@ -641,7 +661,8 @@ export async function touchScreenPresence(screenId: string) {
     if (now - lastTouch > 10000) { // Throttled to once every 10 seconds per screen
       lastBrandingSync.set(lastTouchKey, now);
       pb.collection('screens').getOne(screenId).then(screen => {
-        if (screen && (screen.status === 'offline' || screen.status === 'pairing' || !screen.onlineSince)) {
+        if (screen && screen.status !== 'pairing' && screen.status !== 'unlinked' &&
+            (screen.status === 'offline' || screen.status === 'warning' || !screen.onlineSince)) {
           const updateObj: any = {
             status: 'online',
             lastHeartbeat: new Date().toISOString()
@@ -700,6 +721,14 @@ export async function getScreenStatusForDevice(req: any, res: any) {
     // app build send their own hardwareUuid alongside screenId, so mismatches
     // are rejected. Older builds that don't send it yet are let through
     // unverified during rollout — drop that fallback once the fleet updates.
+    // Without a hardware id there's no way to tell the real TV from anyone
+    // who guessed a screen id, so a paired screen's record isn't returned.
+    // (No `unpaired` flag: an old build that omits it keeps playing its
+    // cached content rather than wiping itself.)
+    if (!hardwareUuid && screenRecord.hardware_uuid) {
+      return res.status(400).json({ message: 'hardwareUuid is required. Please update the TV app.' });
+    }
+
     if (hardwareUuid && screenRecord.hardware_uuid && screenRecord.hardware_uuid !== hardwareUuid) {
       // This screen slot now belongs to a different physical device.
       return res.status(403).json({ message: 'hardwareUuid does not match this screen.', unpaired: true });
@@ -788,6 +817,16 @@ export async function recordHeartbeat(req: any, res: any) {
         return res.status(403).json({ message: 'This TV was unlinked from the screen.', unpaired: true });
       }
 
+      // A record that's (back) in pairing isn't a live screen: either the TV
+      // hasn't been added yet, or it was removed from its owner's account.
+      // Heartbeats used to flip these straight to "online" — undoing a
+      // removal if the TV heartbeated before its next sync noticed it.
+      if (screenRecord.status === 'pairing') {
+        screenId = screenRecord.id;
+        transitionStatus = 'UNKNOWN_DEVICE';
+        return res.status(204).end();
+      }
+
       screenId = screenRecord.id;
       const storageUsed = storageAvailableBytes
         ? Math.round((storageUsedBytes / (storageUsedBytes + storageAvailableBytes)) * 100) 
@@ -798,7 +837,7 @@ export async function recordHeartbeat(req: any, res: any) {
       if (isRedisReady()) {
         // --- REDIS PATH ---
         const presenceKey = `presence:screen:${screenId}`;
-        const wasOffline = screenRecord.status === 'offline' || screenRecord.status === 'pairing';
+        const wasOffline = screenRecord.status !== 'online' && screenRecord.status !== 'active';
 
         // Pipeline standard diagnostics update
         const pipeline = redis.pipeline();
@@ -806,7 +845,7 @@ export async function recordHeartbeat(req: any, res: any) {
         pipeline.zadd('presence:active_screens', now, screenId);
         pipeline.hmset(`heartbeat:screen:${screenId}`, {
           lastHeartbeat: now.toString(),
-          cpuTemp: String(cpuTemp || 0),
+          cpuTemp: typeof cpuTemp === 'number' && cpuTemp > 0 ? String(cpuTemp) : '',
           currentPlayingAsset: currentPlayingAsset || 'None',
           storageUsed: String(storageUsed || 15)
         });
@@ -836,12 +875,24 @@ export async function recordHeartbeat(req: any, res: any) {
           // this one process.
           await withScreenLock(screenId, async () => {
             const latest = await pb.collection('screens').getOne(screenId).catch(() => screenRecord);
+            // The cached record can be up to an hour old. Re-check the real
+            // one: if the screen was unlinked, removed (back to pairing) or
+            // handed to another TV since, this heartbeat must not revive it.
+            if (latest.status === 'unlinked' || latest.status === 'pairing' ||
+                (latest.hardware_uuid && latest.hardware_uuid !== hardwareUuid)) {
+              await redis.pipeline()
+                .del(cacheKey).del(`cache:screen:${screenId}`)
+                .del(`presence:screen:${screenId}`).zrem('presence:active_screens', screenId)
+                .exec();
+              return;
+            }
+            const cameOnline = latest.status !== 'online' && latest.status !== 'active';
             const updateData: any = {
               status: 'online',
               lastHeartbeat: new Date().toISOString(),
               storageUsed: storageUsed
             };
-            if (wasOffline || !latest.onlineSince) {
+            if (cameOnline || !latest.onlineSince) {
               updateData.onlineSince = new Date().toISOString();
             }
 
@@ -852,7 +903,8 @@ export async function recordHeartbeat(req: any, res: any) {
             await redis.set(cacheKey, JSON.stringify(updated), 'EX', 3600);
             await redis.set(`cache:screen:${screenId}`, JSON.stringify(updated), 'EX', 3600);
 
-            if (wasOffline) {
+            if (cameOnline) {
+              transitionStatus = 'CAME_ONLINE';
               const metrics = await getLiveScreenMetrics(latest);
               retryWithBackoff(async () => pb.collection('screen_logs').create(
                 await buildScreenLog(screenRecord, {
@@ -871,7 +923,11 @@ export async function recordHeartbeat(req: any, res: any) {
         const release = await getScreenLock(screenRecord.id).acquire();
         try {
           const latestScreen = await retryWithBackoff(() => pb.collection('screens').getOne(screenRecord.id));
-          const wasOffline = latestScreen.status === 'offline' || latestScreen.status === 'pairing';
+          if (latestScreen.status === 'unlinked' || latestScreen.status === 'pairing' ||
+              (latestScreen.hardware_uuid && latestScreen.hardware_uuid !== hardwareUuid)) {
+            return res.status(204).end();
+          }
+          const wasOffline = latestScreen.status !== 'online' && latestScreen.status !== 'active';
           const lastHeartbeatTime = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : 0;
 
           const updateData: any = {
@@ -1515,11 +1571,7 @@ export async function disconnectScreen(req: any, res: any) {
       return res.status(404).json({ message: 'Screen record not found.' });
     }
 
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let pairingCode = '';
-    for (let i = 0; i < 6; i++) {
-      pairingCode += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    const pairingCode = await generateUniquePairingCode();
     const pairingCodeExpires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
     // Every other offline transition (reportOffline, checkDeviceStatuses)

@@ -14,14 +14,43 @@ window.SignageApi = (function () {
         ]);
     }
 
+    /**
+     * This TV's own screen record, through the server (verified by hardware
+     * id). The player used to read it straight from PocketBase, which only
+     * admins can read — so every read failed, and a failure was treated as
+     * "removed": TVs being paired kept discarding their code, and paired TVs
+     * disconnected themselves.
+     *   { ok: true, data }   — the record
+     *   { unpaired: true }   — the server says this TV no longer owns a screen
+     *   { ok: false }        — temporary problem; keep going as before
+     */
+    async function fetchDeviceScreen(state) {
+        try {
+            const res = await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ screenId: state.screenId, hardwareUuid: state.uuid })
+            }, 5000);
+            const body = await res.json().catch(() => ({}));
+            if (res.ok) return { ok: true, data: body };
+            if ((res.status === 404 || res.status === 403) && body && body.unpaired === true) return { unpaired: true };
+            return { ok: false };
+        } catch (e) {
+            return { ok: false };
+        }
+    }
+
     async function clearScreenCommandOnServer(screenId, command) {
         try {
-            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/clear-command`, {
+            // /devices/clear-command was removed from the server; /devices/ack
+            // is the verified replacement.
+            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/ack`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     screenId: screenId,
-                    command: command
+                    hardwareUuid: localStorage.getItem(KEYS.UUID) || '',
+                    clear: [command]
                 })
             }, 3000);
         } catch (e) {
@@ -68,33 +97,27 @@ window.SignageApi = (function () {
         if (!state.screenId) return;
         if (window.navigator && window.navigator.onLine === false) return;
 
-        try {
-            const POCKETBASE_URL = getPocketBaseUrl();
-            const url = `${POCKETBASE_URL}/api/collections/screens/records/${state.screenId}`;
-            const res = await fetchWithTimeout(url, {}, 2500);
-            if (res.ok) {
-                const data = await res.json();
-                if (data.pairing_code && data.pairing_code !== state.pairingCode) {
-                    state.pairingCode = data.pairing_code;
-                    localStorage.setItem(KEYS.PAIRING_CODE, state.pairingCode);
-                    if (updateUICallback) updateUICallback();
-                }
-                if (data.status && data.status !== 'pairing') {
-                    console.log("Device paired successfully!");
-                    state.status = data.status;
-                    localStorage.setItem(KEYS.STATUS, state.status);
-                    if (updateUICallback) updateUICallback();
-                }
-            } else if (res.status === 404 || res.status === 403) {
-                console.warn("Screen record missing on server. Resetting pairing.");
-                state.screenId = '';
-                state.pairingCode = '';
-                localStorage.removeItem(KEYS.SCREEN_ID);
-                localStorage.removeItem(KEYS.PAIRING_CODE);
-                requestPairingCode(state, window.viewsRef || {}, updateUICallback, true);
+        const result = await fetchDeviceScreen(state);
+        if (result.ok) {
+            const data = result.data;
+            if (data.pairing_code && data.pairing_code !== state.pairingCode) {
+                state.pairingCode = data.pairing_code;
+                localStorage.setItem(KEYS.PAIRING_CODE, state.pairingCode);
+                if (updateUICallback) updateUICallback();
             }
-        } catch (err) {
-            console.error("Error checking pairing status:", err);
+            if (data.status && data.status !== 'pairing') {
+                console.log("Device paired successfully!");
+                state.status = data.status;
+                localStorage.setItem(KEYS.STATUS, state.status);
+                if (updateUICallback) updateUICallback();
+            }
+        } else if (result.unpaired) {
+            console.warn("Screen record gone on server. Requesting a new pairing code.");
+            state.screenId = '';
+            state.pairingCode = '';
+            localStorage.removeItem(KEYS.SCREEN_ID);
+            localStorage.removeItem(KEYS.PAIRING_CODE);
+            requestPairingCode(state, window.viewsRef || {}, updateUICallback, true);
         }
     }
 
@@ -157,7 +180,8 @@ window.SignageApi = (function () {
             const payload = {
                 hardwareUuid: state.uuid,
                 screenId: state.screenId || null,
-                cpuTemp: state.cpuTemp || 42,
+                // Only real readings — this used to report a made-up 42°C.
+                cpuTemp: state.cpuTemp || null,
                 currentPlayingAsset: currentAsset,
                 storageUsedBytes: storageUsedBytes,
                 storageAvailableBytes: storageAvailableBytes
@@ -176,17 +200,17 @@ window.SignageApi = (function () {
     async function logDeviceEvent(state, event, type, detail) {
         if (!state || !state.screenId) return;
         try {
-            const POCKETBASE_URL = getPocketBaseUrl();
+            // screen_logs isn't writable from a device; /devices/log is the
+            // verified endpoint (these posts used to be rejected).
             const payload = {
                 screenId: state.screenId,
-                screenName: state.screenName || state.name || 'Tizen TV Display',
-                assignedToUserEmail: state.assignedToUserEmail || '',
+                hardwareUuid: state.uuid,
                 event: event,
-                type: type || 'info',
+                type: ['error', 'sync', 'other'].includes(type) ? type : 'other',
                 detail: detail || ''
             };
 
-            await fetchWithTimeout(`${POCKETBASE_URL}/api/collections/screen_logs/records`, {
+            await fetchWithTimeout(`${SERVER_URL}/api/v1/devices/log`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -198,6 +222,7 @@ window.SignageApi = (function () {
 
     return {
         fetchWithTimeout,
+        fetchDeviceScreen,
         clearScreenCommandOnServer,
         clearGroupCommandOnServer,
         requestPairingCode,

@@ -58,7 +58,15 @@ function isVisible(el: Element | null | undefined): el is Element {
   // section replacing it — and ahead of it in document order.
   if (el.closest('[data-leaving]')) return false;
   const rect = el.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0;
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  // On phones the sidebar is an off-canvas drawer: full-size, but slid off
+  // the left edge (x ≈ -272). It passed the size check, so the tour
+  // spotlighted invisible sidebar items off-screen instead of falling back
+  // to the dock tabs. Horizontally outside the window means not visible.
+  // (Vertical position isn't checked — driver scrolls to the element.)
+  if (rect.right <= 0 || rect.left >= window.innerWidth) return false;
+  const style = window.getComputedStyle(el);
+  return style.visibility !== 'hidden' && style.display !== 'none';
 }
 
 /**

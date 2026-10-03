@@ -40,7 +40,7 @@ class CrashReportingHandler(
 
                 val fields = mapOf(
                     "screenId" to config.screenId,
-                    "screenName" to config.screenName,
+                    "hardwareUuid" to config.hardwareUuid,
                     "event" to event,
                     "type" to type,
                     "detail" to redactedDetail
@@ -55,7 +55,7 @@ class CrashReportingHandler(
                 val mediaType = "application/json".toMediaTypeOrNull()
                 val body = json.toRequestBody(mediaType)
                 val request = Request.Builder()
-                    .url("${config.serverUrl}/api/v1/screen_logs")
+                    .url("${config.serverUrl}/api/v1/devices/log")
                     .post(body)
                     .build()
 

@@ -14,6 +14,7 @@ import { clearAllScreenLogs } from '../controllers/screens';
 import { postTicketMessage } from '../controllers/tickets';
 import { getBusinessDetails, putBusinessDetails } from '../controllers/businessDetails';
 import { Readable } from 'stream';
+import { mediaLimiter } from '../middleware/rateLimiter';
 import { isAllowedMediaUrl, getImageThumb, getVideoPoster } from '../services/mediaThumbs';
 
 const apiRouter = express.Router();
@@ -72,7 +73,7 @@ apiRouter.get('/public/tenant-branding', async (req, res) => {
 //
 // Only our own media hosts (R2 / PocketBase) are allowed — this endpoint is
 // unauthenticated, so without the allowlist it would be an open SSRF.
-apiRouter.get('/public/proxy-media', async (req, res) => {
+apiRouter.get('/public/proxy-media', mediaLimiter, async (req, res) => {
   const mediaUrl = req.query.url;
   if (!mediaUrl || typeof mediaUrl !== 'string') {
     return res.status(400).send('Missing url parameter');
@@ -119,7 +120,7 @@ apiRouter.get('/public/proxy-media', async (req, res) => {
 // Poster frame for a video, used by dashboard tiles instead of loading the
 // whole video into a <video> element. 404 when no frame can be produced
 // (e.g. ffmpeg missing) — the dashboard then falls back to the video itself.
-apiRouter.get('/public/video-poster', async (req, res) => {
+apiRouter.get('/public/video-poster', mediaLimiter, async (req, res) => {
   const mediaUrl = req.query.url;
   if (!mediaUrl || typeof mediaUrl !== 'string') {
     return res.status(400).send('Missing url parameter');

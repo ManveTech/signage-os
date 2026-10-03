@@ -276,7 +276,22 @@ io.on('connection', (socket) => {
   console.log(`[Socket.io] Client connected: ${socket.id}`);
 
   // Display joins a room by display ID
-  socket.on('register-display', async (displayId: string) => {
+  socket.on('register-display', async (payload: any) => {
+    // Current TV builds send { screenId, hardwareUuid } and are checked
+    // against the screen record, so another client can't join a screen's
+    // room and answer its status checks. Older builds send just the id.
+    const displayId: string = typeof payload === 'string' ? payload : String(payload?.screenId || '');
+    if (!displayId) return;
+    if (typeof payload === 'object' && payload?.hardwareUuid) {
+      try {
+        const { pb } = await import('./db');
+        const record: any = await pb.collection('screens').getOne(displayId).catch(() => null);
+        if (record && record.hardware_uuid && record.hardware_uuid !== payload.hardwareUuid) {
+          console.warn(`[Socket.io] Refused register-display for ${displayId}: hardwareUuid mismatch`);
+          return;
+        }
+      } catch { /* fall through and allow */ }
+    }
     socket.join(`screen-${displayId}`);
     socketScreenIds.set(socket.id, displayId);
     console.log(`[Socket.io] Display ${displayId} registered (socket: ${socket.id})`);

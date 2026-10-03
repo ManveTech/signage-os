@@ -108,6 +108,16 @@ export const apiLimiter = rateLimit({
     error: 'Too many requests from this IP, please try again later.',
     retryAfter: 60
   },
+  // TVs have their own per-device limiter (deviceLimiter), and media
+  // thumbnails/posters are cached and fetched in bursts by every gallery
+  // page. Counting either here meant one site with many TVs — or one
+  // dashboard tab opening a media library — got 429s for everything.
+  skip: (req) => {
+    const path = req.originalUrl || req.url || '';
+    return path.startsWith('/api/v1/devices/') ||
+      path.startsWith('/api/v1/public/proxy-media') ||
+      path.startsWith('/api/v1/public/video-poster');
+  },
   // Use Redis store if available
   ...(isRedisReady() ? { store: new RedisStore('api:') as any } : {})
 });
@@ -163,7 +173,9 @@ export const paymentLimiter = rateLimit({
  */
 export const deviceLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 30,
+  // Per device. A healthy TV makes ~3 requests a minute (sync, heartbeat,
+  // occasional ack); pairing TVs poll every 7.5s. 60 leaves room for bursts.
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -171,8 +183,25 @@ export const deviceLimiter = rateLimit({
     retryAfter: 60
   },
   keyGenerator: (req) => {
-    // Use device ID or screen ID if available, otherwise IP
-    return (req.headers['x-screen-id'] as string) || req.ip || '127.0.0.1';
+    // Every device request carries the TV's own hardware id in its body.
+    // This used to key on an x-screen-id header the TV never sends, so all
+    // TVs behind one office/shop router shared a single 30/min allowance.
+    const body: any = (req as any).body || {};
+    const id = (req.headers['x-device-id'] as string) || body.hardwareUuid || body.screenId || (req.headers['x-screen-id'] as string);
+    return id ? `device:${String(id).slice(0, 64)}` : (req.ip || '127.0.0.1');
   },
   ...(isRedisReady() ? { store: new RedisStore('device:') as any } : {})
+});
+
+/**
+ * Public media proxy / video posters — a gallery page loads dozens at once,
+ * and results are cached, so this is generous; it only stops abuse.
+ */
+export const mediaLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many media requests, please slow down.', retryAfter: 60 },
+  ...(isRedisReady() ? { store: new RedisStore('media:') as any } : {})
 });

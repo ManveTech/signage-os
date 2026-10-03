@@ -193,6 +193,9 @@ export async function syncPlaylistDeletion(playlistName: string, playlistId?: st
           restart_playlist: true
         });
         syncScreenSchedule(updatedScreen);
+        // Tell the TV now; otherwise it kept playing the deleted playlist
+        // until its next background poll (up to ~75s).
+        notifyScreenConfigChanged(screen.id);
       }
     }
 
