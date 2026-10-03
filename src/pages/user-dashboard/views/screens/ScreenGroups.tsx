@@ -393,7 +393,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
           <h1 className="display text-2xl sm:text-3xl text-ink-950">Screen Groups</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage bulk screen assignments and actions</p>
         </div>
-        <button onClick={() => setShowNewGroup(true)} className="whitespace-nowrap shrink-0 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+        <button data-tour="groups-new" onClick={() => setShowNewGroup(true)} className="whitespace-nowrap shrink-0 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
           <Plus size={16} /> New Group
         </button>
       </div>
@@ -409,6 +409,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
             <button
               key={group.id}
               type="button"
+              data-tour="group-card"
               onClick={() => setOpenGroupId(group.id)}
               className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 hover:shadow-sm p-3 flex items-center gap-3 transition-colors"
             >

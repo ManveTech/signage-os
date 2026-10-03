@@ -793,7 +793,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* ================= LEFT COLUMN: MEDIA ASSETS POOL & UPLOAD ================= */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-4 space-y-4 shadow-xs">
+        <div data-tour="create-media" className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-4 space-y-4 shadow-xs">
           <div>
             <h2 className="text-xs font-bold uppercase text-slate-800 tracking-wider flex items-center justify-between">
               <span>Media Assets</span>
@@ -865,6 +865,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
           {/* Timeline Drop Zone Container */}
           <div 
             onDragOver={e => e.preventDefault()}
+            data-tour="create-timeline"
             onDrop={handleTimelineDrop}
             className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 min-h-[300px] shadow-xs"
           >
@@ -1094,7 +1095,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
           </div>
 
           {/* Playlist Settings Form */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5 shadow-xs">
+          <div data-tour="create-settings" className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5 shadow-xs">
             <h3 className="text-xs font-bold uppercase text-slate-800 tracking-wider">Broadcasting Settings</h3>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -1398,7 +1399,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               )}
             </div>
 
-            <div className="hidden md:flex flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100 w-full">
+            <div data-tour="create-save" className="hidden md:flex flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100 w-full">
               <button 
                 type="button"
                 onClick={openPreview}
@@ -1434,7 +1435,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
             {playlistItems.length === 0 ? 'Add at least one slide' : 'Give the playlist a name'} to save
           </p>
         )}
-        <div className="flex gap-2">
+        <div data-tour="create-save" className="flex gap-2">
           <button
             type="button"
             onClick={openPreview}

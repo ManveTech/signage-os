@@ -384,7 +384,8 @@ export default function MediaLibrary({ userEmail }: Props) {
               )}
             </div>
           )}
-          <button 
+          <button
+            data-tour="media-upload"
             onClick={() => setIsUploadOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
           >
@@ -432,7 +433,7 @@ export default function MediaLibrary({ userEmail }: Props) {
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
         {filtered.map(media => (
-          <div key={media.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-md transition-all group flex flex-col justify-between relative">
+          <div key={media.id} data-tour="media-card" className="bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-md transition-all group flex flex-col justify-between relative">
             {isSelectionMode && (
               <div 
                 className="absolute inset-0 bg-slate-900/[0.02] hover:bg-slate-900/[0.05] z-45 rounded-2xl cursor-pointer flex items-start p-3"

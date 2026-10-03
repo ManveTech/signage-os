@@ -248,7 +248,7 @@ export default function LogsView({
           )}
         </div>
 
-        <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 no-scrollbar">
+        <div data-tour="logs-filters" className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 no-scrollbar">
           {FILTERS.map(f => (
             <button
               key={f.key}

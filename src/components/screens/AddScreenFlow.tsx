@@ -227,7 +227,7 @@ export default function AddScreenFlow({
   return (
     <div>
       {/* Progress */}
-      <ol className="flex items-center gap-2 mb-5" aria-label="Progress">
+      <ol data-tour="add-steps" className="flex items-center gap-2 mb-5" aria-label="Progress">
         {STEPS.map((label, i) => (
           <li key={label} className="flex-1">
             <div className={`h-1.5 rounded-full ${i <= step ? 'bg-blue-600' : 'bg-slate-200'}`} />
@@ -239,7 +239,7 @@ export default function AddScreenFlow({
       </ol>
       <p className="sm:hidden text-xs font-semibold text-slate-500 mb-4">Step {step + 1} of {STEPS.length} · {STEPS[step]}</p>
 
-      <div className="bg-white rounded-3xl border border-slate-100 p-5 sm:p-7">
+      <div data-tour="add-form" className="bg-white rounded-3xl border border-slate-100 p-5 sm:p-7">
         {step === 0 && (
           <Section title="Name your screen" hint="Pick something people will recognise, like where it's mounted.">
             <div>

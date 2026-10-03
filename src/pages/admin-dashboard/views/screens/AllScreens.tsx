@@ -402,7 +402,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
               )}
             </div>
           )}
-          <button onClick={() => onNavigate('screens-add')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors cursor-pointer">
+          <button data-tour="screens-add" onClick={() => onNavigate('screens-add')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors cursor-pointer">
             <Plus size={16} />
             Add Screen
           </button>
@@ -416,6 +416,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
           value={search}
           onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
           placeholder="Search screens"
+          data-tour="screens-search"
           className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
         />
       </div>
@@ -438,7 +439,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
       {!showPairing && (
         <div className="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-3">
         {/* Status chips double as the counts; tap the active one again to clear it. */}
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <div data-tour="screens-filters" className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
           {([
             { key: 'online', label: 'Online', count: statusCount('online'), dot: 'bg-emerald-500' },
             { key: 'offline', label: 'Offline', count: statusCount('offline'), dot: 'bg-rose-500' },

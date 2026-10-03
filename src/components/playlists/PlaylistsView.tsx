@@ -219,6 +219,7 @@ export default function PlaylistsView({
           )}
           {!selectionMode && (
             <button
+              data-tour="playlists-new"
               onClick={startCreate}
               className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium"
             >
@@ -267,6 +268,7 @@ export default function PlaylistsView({
             <button
               key={p.id}
               type="button"
+              data-tour="playlist-card"
               onClick={() => (selectionMode
                 ? setSelectedIds(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])
                 : setOpenId(p.id))}

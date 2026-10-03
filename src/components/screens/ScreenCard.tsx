@@ -32,6 +32,7 @@ export default function ScreenCard({
   return (
     <button
       type="button"
+      data-tour="screen-card"
       onClick={onClick}
       className={`w-full text-left bg-white rounded-2xl border p-3 flex items-center gap-3 transition-colors cursor-pointer ${
         selected ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100 hover:border-slate-200 hover:shadow-sm'

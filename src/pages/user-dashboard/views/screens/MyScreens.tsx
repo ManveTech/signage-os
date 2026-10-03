@@ -557,6 +557,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
             </div>
           )}
           <button
+            data-tour="screens-add"
             onClick={() => onNavigate('screens-add')}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
           >
@@ -577,6 +578,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search screens"
+            data-tour="screens-search"
             className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
           />
         </div>
@@ -604,7 +606,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
           that repeated the same numbers above a second row of filter chips. */}
       <div className="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-3">
         {/* No "All" chip: tapping the active filter again clears it. */}
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <div data-tour="screens-filters" className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
           {([
             { key: 'online', label: 'Online', count: stats[1].count, dot: 'bg-emerald-500' },
             { key: 'offline', label: 'Offline', count: stats[2].count, dot: 'bg-rose-500' },
@@ -662,6 +664,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
               <button
                 key={screen.id}
                 type="button"
+                data-tour="screen-card"
                 onClick={() => (isSelectionMode ? toggleSelect(screen.id) : setDetailsScreenId(screen.id))}
                 className={`w-full text-left bg-white rounded-2xl border p-3 flex items-center gap-3 transition-colors cursor-pointer ${
                   selected ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100 hover:border-slate-200 hover:shadow-sm'

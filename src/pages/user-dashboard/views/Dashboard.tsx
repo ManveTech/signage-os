@@ -201,7 +201,7 @@ export default function Dashboard({
   );
 
   const quickActionsSection = (
-    <section>
+    <section data-tour="quick-actions">
       <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">Quick actions</h2>
       <div className="grid grid-cols-3 lg:grid-cols-1 gap-2">
         {quickActions.map(a => (
@@ -220,7 +220,7 @@ export default function Dashboard({
   );
 
   const attentionSection = attention.length > 0 ? (
-    <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+    <section data-tour="attention" className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
       <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-2">
         <h2 className="text-sm font-semibold text-ink-950">Needs attention</h2>
         <span className="text-xs font-semibold bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full">{attention.length}</span>
