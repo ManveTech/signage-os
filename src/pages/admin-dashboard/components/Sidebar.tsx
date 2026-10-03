@@ -69,14 +69,8 @@ const navSections: NavSection[] = [
       { id: 'reports-logs', label: 'Device Logs' },
     ]
   },
-  {
-    id: 'support', label: 'Support', icon: <MessageSquare size={18} />,
-    children: [
-      { id: 'support-issues', label: 'Ongoing Issues' },
-      { id: 'support-faq', label: 'FAQ Management' },
-      { id: 'support-docs', label: 'Support Documents' },
-    ]
-  },
+  // Tickets, FAQs and guides are sections inside the Helpdesk page itself.
+  { id: 'support', label: 'Helpdesk', icon: <MessageSquare size={18} /> },
   {
     id: 'settings', label: 'Settings', icon: <Settings size={18} />,
     children: [

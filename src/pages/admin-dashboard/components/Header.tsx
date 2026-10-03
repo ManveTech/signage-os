@@ -1,63 +1,74 @@
-import { useState, useEffect } from 'react';
-import {
-  Search, ChevronDown, User, LogOut, Home, Settings, Play, Film, HelpCircle, Users, Activity, Menu
-} from 'lucide-react';
-import logoImg from '../../../assets/bluestar-icon.png';
+import { useEffect, useState } from 'react';
+import AppHeader, { HeaderSearchItem } from '../../../components/AppHeader';
 import { mediaStore } from '../../../lib/mediaStore';
 
 const breadcrumbMap: Record<string, string[]> = {
   dashboard: ['Dashboard'],
-  'screens-all': ['Screens', 'All Screens'],
-  'screens-add': ['Screens', 'Add Screen'],
-  'screens-groups': ['Screens', 'Screen Groups'],
-  'screens-logs': ['Screens', 'Logs'],
-  'screens-logs-all': ['Screens', 'All Logs'],
-  'media-library': ['Media', 'Library'],
-  'media-tags': ['Media', 'Tags'],
-  'playlists-all': ['Playlists', 'All Playlists'],
-  'playlists-create': ['Playlists', 'Create Playlist'],
-  'playlists-scheduler': ['Playlists', 'Scheduler'],
-  'reports-overview': ['Reports', 'Overview'],
-  'reports-screens': ['Reports', 'Screen Reports'],
-  'reports-media': ['Reports', 'Media Reports'],
-  'reports-logs': ['Reports', 'Device Logs'],
-  users: ['Users'],
-  'licenses-pool': ['Licenses', 'License Pool'],
-  'licenses-assign': ['Licenses', 'Assign License'],
-  'licenses-history': ['Licenses', 'History'],
-  organizations: ['Organizations'],
-  'settings-general': ['Settings', 'General'],
-  'settings-storage': ['Settings', 'Storage'],
-  'settings-player': ['Settings', 'Player Settings'],
-  'settings-notifications': ['Settings', 'Notifications'],
-  support: ['Support'],
-  profile: ['Profile'],
-  'client-screens': ['Screens', 'Client Screens'],
+  'my-screens-list': ['My Screens', 'Screens'],
+  'screens-groups-my': ['My Screens', 'Groups'],
+  'screens-logs': ['My Screens', 'Logs'],
+  'screens-add-my': ['My Screens', 'Add screen'],
+  'screens-all': ['Client Screens', 'All screens'],
+  'screens-manage': ['Client Screens', 'All screens'],
+  'screens-add-client': ['Client Screens', 'Add screen'],
+  'screens-add': ['Client Screens', 'Add screen'],
+  'screens-groups-all': ['Client Screens', 'Groups'],
+  'screens-groups': ['Client Screens', 'Groups'],
+  'screens-logs-all': ['Client Screens', 'Logs'],
   'my-media': ['My Channel', 'Media'],
+  'media-library': ['My Channel', 'Media'],
   'my-playlists': ['My Channel', 'Playlists'],
-  'my-create-playlist': ['My Channel', 'Create Playlist'],
+  'playlists-all': ['My Channel', 'Playlists'],
+  'my-create-playlist': ['My Channel', 'Create playlist'],
+  'playlists-create': ['Client Assets', 'Create playlist'],
+  'playlists-scheduler': ['My Channel', 'Scheduler'],
   'client-media': ['Client Assets', 'Media'],
   'client-playlists': ['Client Assets', 'Playlists'],
-  'my-screens-list': ['Screens', 'My Screens'],
-  'screens-add-client': ['Screens', 'Add Client Screen'],
-  'screens-add-my': ['Screens', 'Add My Screen'],
-  'screens-manage': ['Screens', 'Manage'],
-  'screens-groups-my': ['Screens', 'My Groups'],
-  'screens-groups-all': ['Screens', 'All Groups'],
-  'licenses': ['Licenses'],
-  'licenses-management': ['Licenses', 'Management'],
-  'licenses-payments': ['Licenses', 'Payments'],
-  'licenses-expirations': ['Licenses', 'Expirations'],
-  'licenses-invoices': ['Licenses', 'Invoices'],
-  'licenses-code': ['Licenses', 'License Decoder'],
-  'video-conferencing': ['Video Conferencing'],
-  'integrations': ['Integrations'],
-  'support-issues': ['Support', 'Issues'],
-  'support-faq': ['Support', 'FAQ'],
-  'support-docs': ['Support', 'Docs'],
+  users: ['Clients'],
+  organizations: ['Organizations'],
+  'licenses-management': ['Licensing', 'Licenses'],
+  'licenses-expirations': ['Licensing', 'Expiring'],
+  'licenses-invoices': ['Licensing', 'Invoices'],
+  'licenses-payments': ['Licensing', 'Payments'],
+  'licenses-code': ['Licensing', 'License decoder'],
+  'reports-overview': ['Reports'],
+  'reports-screens': ['Reports', 'Screens'],
+  'reports-media': ['Reports', 'Media'],
+  'reports-logs': ['Reports', 'Activity'],
+  support: ['Helpdesk'],
+  'support-issues': ['Helpdesk', 'Tickets'],
+  'support-faq': ['Helpdesk', 'FAQs'],
+  'support-docs': ['Helpdesk', 'Guides'],
+  integrations: ['Integrations'],
+  'settings-general': ['Settings'],
+  'video-conferencing': ['Video calls'],
+  profile: ['Profile'],
 };
 
-type Props = { 
+const PAGES: HeaderSearchItem[] = [
+  { title: 'Dashboard', type: 'Page', view: 'dashboard' },
+  { title: 'My screens', type: 'Page', view: 'my-screens-list' },
+  { title: 'Client screens', type: 'Page', view: 'screens-all' },
+  { title: 'Add a screen', type: 'Page', view: 'screens-add-my' },
+  { title: 'Screen groups', type: 'Page', view: 'screens-groups-all' },
+  { title: 'Screen logs', type: 'Page', view: 'screens-logs-all' },
+  { title: 'My playlists', type: 'Page', view: 'my-playlists' },
+  { title: 'Create a playlist', type: 'Page', view: 'my-create-playlist' },
+  { title: 'My media library', type: 'Page', view: 'my-media' },
+  { title: 'Client playlists', type: 'Page', view: 'client-playlists' },
+  { title: 'Client media', type: 'Page', view: 'client-media' },
+  { title: 'Clients', type: 'Page', view: 'users' },
+  { title: 'Organizations', type: 'Page', view: 'organizations' },
+  { title: 'Licenses', subtitle: 'Licensing', type: 'Page', view: 'licenses-management' },
+  { title: 'Invoices', subtitle: 'Licensing', type: 'Page', view: 'licenses-invoices' },
+  { title: 'Payments', subtitle: 'Licensing', type: 'Page', view: 'licenses-payments' },
+  { title: 'Reports', type: 'Page', view: 'reports-overview' },
+  { title: 'Helpdesk', subtitle: 'Tickets, FAQs and guides', type: 'Page', view: 'support-issues' },
+  { title: 'Integrations', subtitle: 'Storage, email, Google sign-in', type: 'Page', view: 'integrations' },
+  { title: 'Profile & password', type: 'Page', view: 'profile' },
+];
+
+type Props = {
   activeView: string;
   onNavigate?: (view: string) => void;
   onLogout?: () => void;
@@ -65,261 +76,63 @@ type Props = {
   onSwitchToClient?: () => void;
 };
 
-type SearchItem = {
-  title: string;
-  type: 'Screen' | 'Playlist' | 'Media' | 'Page' | 'User' | 'Support';
-  view: string;
-};
-
-// Static page shortcuts — real routes, always searchable regardless of
-// whether any data has loaded yet.
-const pageSearchEntries: SearchItem[] = [
-  { title: 'Dashboard Analytics', type: 'Page', view: 'dashboard' },
-  { title: 'All screens list', type: 'Page', view: 'screens-all' },
-  { title: 'Screen groups (Manage / Create)', type: 'Page', view: 'screens-groups' },
-  { title: 'Device system logs', type: 'Page', view: 'screens-logs' },
-  { title: 'All media items library', type: 'Page', view: 'my-media' },
-  { title: 'Playlists catalog', type: 'Page', view: 'my-playlists' },
-  { title: 'Create new playlist template', type: 'Page', view: 'my-create-playlist' },
-  { title: 'Client playlist and media assets oversight', type: 'Page', view: 'client-media' },
-  { title: 'User organization accounts', type: 'Page', view: 'users' },
-  { title: 'Organizations list & details', type: 'Page', view: 'organizations' },
-  { title: 'Licenses Pool and Invoice management', type: 'Page', view: 'licenses-management' },
-  { title: 'FAQ & Ongoing issues support', type: 'Page', view: 'support-issues' },
-  { title: 'Profile settings & Razorpay keys', type: 'Page', view: 'profile' },
-];
-
-// Screens/playlists/media/users used to be hardcoded fake demo entries
-// ("Cafe Screen 1", "Priya Sharma (Phoenix Mall)", etc.) that always showed
-// up in search results regardless of what actually existed — this builds
-// the same shape from the real, already-synced data instead.
-function buildLiveSearchEntries(): SearchItem[] {
-  const entries: SearchItem[] = [];
-
-  mediaStore.getScreens().forEach(s => {
-    entries.push({ title: `${s.name} (${s.status})`, type: 'Screen', view: 'screens-all' });
+export default function Header({ activeView, onNavigate, onLogout, onSwitchToClient }: Props) {
+  const read = () => ({
+    name: localStorage.getItem('signageos_admin_name') || 'Administrator',
+    email: localStorage.getItem('signageos_admin_email') || localStorage.getItem('signageos_user_email') || '',
+    avatar: localStorage.getItem('signageos_admin_avatar') || '',
   });
-  mediaStore.getPlaylists().forEach(p => {
-    entries.push({ title: `${p.name} (${p.scheduleStatus})`, type: 'Playlist', view: 'my-playlists' });
+  const [profile, setProfile] = useState(read);
+  const readBrand = () => ({
+    name: localStorage.getItem('signageos_custom_company') || localStorage.getItem('signageos_client_name') || '',
+    logo: localStorage.getItem('signageos_custom_logo') || localStorage.getItem('signageos_client_logo') || '',
   });
-  mediaStore.getMedia().forEach(m => {
-    entries.push({ title: `${m.title} (${m.type})`, type: 'Media', view: 'my-media' });
-  });
+  const [brand, setBrand] = useState(readBrand);
 
-  try {
-    const users = JSON.parse(localStorage.getItem('signageos_users') || '[]');
-    users.forEach((u: any) => {
-      if (u?.name) entries.push({ title: `${u.name}${u.company ? ` (${u.company})` : ''}`, type: 'User', view: 'users' });
-    });
-  } catch { /* ignore malformed cache */ }
-
-  return entries;
-}
-
-export default function Header({ activeView, onNavigate, onLogout, onToggleSidebar, onSwitchToClient }: Props) {
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
-  
-  // Dynamic admin details
-  const [adminName, setAdminName] = useState(() => localStorage.getItem('signageos_admin_name') || 'Super Admin');
-  const [adminAvatar, setAdminAvatar] = useState(() => localStorage.getItem('signageos_admin_avatar') || '');
-  const [profileName, setProfileName] = useState(adminName);
-  const [profileAvatar, setProfileAvatar] = useState(adminAvatar);
-
-  // Search states
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchItem[]>([]);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [companyName, setCompanyName] = useState<string>('SignageOS');
-
-  const updateBranding = () => {
-    const customLogo = localStorage.getItem('signageos_custom_logo') || localStorage.getItem('signageos_client_logo');
-    const customCompany = localStorage.getItem('signageos_custom_company') || localStorage.getItem('signageos_client_name');
-    setLogoUrl(customLogo || null);
-    setCompanyName(customCompany || 'SignageOS');
-  };
-
+  // The old header listened for this event but kept rendering its first
+  // snapshot, so a new photo or name only showed after a reload.
   useEffect(() => {
-    updateBranding();
-    window.addEventListener('signageos_branding_updated', updateBranding);
-    return () => window.removeEventListener('signageos_branding_updated', updateBranding);
-  }, []);
-
-  const updateProfileDetails = () => {
-    const stored = localStorage.getItem('signageos_admin_name');
-    if (stored) setProfileName(stored);
-    setProfileAvatar(localStorage.getItem('signageos_admin_avatar') || '');
-  };
-
-  useEffect(() => {
-    updateProfileDetails();
-    window.addEventListener('signageos_admin_profile_updated', updateProfileDetails);
-    return () => window.removeEventListener('signageos_admin_profile_updated', updateProfileDetails);
-  }, []);
-
-  // Handle outside click to close dropdowns
-  useEffect(() => {
-    const handleClose = () => {
-      setShowUserDropdown(false);
+    const onProfile = () => setProfile(read());
+    const onBrand = () => setBrand(readBrand());
+    window.addEventListener('signageos_admin_profile_updated', onProfile);
+    window.addEventListener('signageos_branding_updated', onBrand);
+    return () => {
+      window.removeEventListener('signageos_admin_profile_updated', onProfile);
+      window.removeEventListener('signageos_branding_updated', onBrand);
     };
-    window.addEventListener('click', handleClose);
-    return () => window.removeEventListener('click', handleClose);
   }, []);
 
-  const crumbs = breadcrumbMap[activeView] ?? ['Dashboard'];
-
-  // Handle Centralized search query
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    const searchDatabase = [...pageSearchEntries, ...buildLiveSearchEntries()];
-    const filtered = searchDatabase.filter(item =>
-      item.title.toLowerCase().includes(query.toLowerCase()) ||
-      item.type.toLowerCase().includes(query.toLowerCase())
-    );
-    setSearchResults(filtered);
-  };
-
-  const handleSearchResultClick = (view: string) => {
-    if (onNavigate) {
-      onNavigate(view);
-    }
-    setSearchQuery('');
-    setSearchResults([]);
+  const buildSearch = (): HeaderSearchItem[] => {
+    const items = [...PAGES];
+    mediaStore.getScreens().filter(s => s.status !== 'pairing' && s.status !== 'unlinked').forEach(s => {
+      items.push({ title: s.name, subtitle: s.assignedToUserEmail || s.location, type: 'Screen', view: 'screens-all' });
+    });
+    mediaStore.getPlaylists().forEach(p => {
+      items.push({ title: p.name, subtitle: p.createdBy, type: 'Playlist', view: 'my-playlists' });
+    });
+    mediaStore.getMedia().forEach(m => {
+      items.push({ title: m.title, subtitle: m.uploadedBy, type: 'Media', view: 'my-media' });
+    });
+    try {
+      JSON.parse(localStorage.getItem('signageos_users') || '[]')
+        .filter((u: any) => u?.name && u.role !== 'admin' && u.role !== 'super_admin')
+        .forEach((u: any) => items.push({ title: u.company || u.name, subtitle: `${u.name} · ${u.email}`, type: 'Client', view: 'users' }));
+    } catch { /* ignore malformed cache */ }
+    return items;
   };
 
   return (
-    <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-4 sm:px-6 flex-shrink-0 z-40 relative">
-      <div className="flex items-center gap-2 text-sm">
-        <div className="flex items-center gap-2 md:hidden">
-          <img src={logoUrl || logoImg} className="w-7 h-7 object-contain shrink-0 rounded-md" alt={companyName} />
-          <span className="font-extrabold text-slate-900 text-sm truncate max-w-[160px]">
-            {companyName !== 'SignageOS' ? companyName : crumbs[crumbs.length - 1]}
-          </span>
-        </div>
-        {/* Desktop Breadcrumbs */}
-        <div className="hidden sm:flex items-center gap-2">
-          {crumbs.map((crumb, i) => (
-            <span key={crumb} className="flex items-center gap-2">
-              {i > 0 && <ChevronDown size={12} className="text-gray-400 rotate-[-90deg]" />}
-              <span className={i === crumbs.length - 1 ? 'text-gray-900 font-semibold' : 'text-gray-400'}>
-                {crumb}
-              </span>
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        {/* Centralized Search Bar */}
-        <div className="relative hidden md:block z-50">
-          <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
-          <input
-            value={searchQuery}
-            onChange={e => handleSearchChange(e.target.value)}
-            placeholder="Central search (screens, playlists, users...)"
-            className="pl-9 pr-4 py-2 text-xs bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 w-64 focus:bg-white transition-colors"
-          />
-          {searchResults.length > 0 && (
-            <div className="absolute right-0 top-11 w-80 bg-white border border-gray-200 rounded-xl shadow-xl max-h-80 overflow-y-auto py-2 z-50 animate-fadeIn">
-              <div className="px-3.5 py-1 text-[10px] font-bold uppercase text-slate-400 tracking-wider border-b border-slate-50 mb-1">
-                Search Results ({searchResults.length})
-              </div>
-              {searchResults.map((item, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSearchResultClick(item.view)}
-                  className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors flex items-center justify-between group border-b border-slate-50 last:border-0 cursor-pointer"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-slate-700 truncate group-hover:text-blue-600">{item.title}</p>
-                    <p className="text-[9px] text-slate-400 font-mono mt-0.5">{item.type} View</p>
-                  </div>
-                  <span className="text-[9px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
-                    {item.type}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* User Dropdown replaces Notifications */}
-        <div className="relative" onClick={e => e.stopPropagation()}>
-          <button
-            onClick={() => setShowUserDropdown(!showUserDropdown)}
-            className="flex items-center gap-1.5 p-1 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer select-none"
-          >
-            {adminAvatar ? (
-              <img src={adminAvatar} className="w-8 h-8 rounded-full object-cover border border-slate-200" alt="Avatar" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-semibold">
-                {adminName.substring(0, 2).toUpperCase()}
-              </div>
-            )}
-            <ChevronDown size={14} className="text-gray-400" />
-          </button>
-
-          {showUserDropdown && (
-            <div className="absolute right-0 top-11 w-52 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden text-xs py-1.5 animate-scaleIn">
-              <div className="px-3.5 py-2 border-b border-gray-100 bg-slate-50/50">
-                <p className="font-bold text-gray-900 truncate">{adminName}</p>
-                <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">Super Admin Role</p>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowUserDropdown(false);
-                  if (onNavigate) onNavigate('dashboard');
-                }}
-                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors flex items-center gap-2 cursor-pointer font-bold text-slate-700"
-              >
-                <Home size={14} className="text-slate-400" />
-                Go to Homepage
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowUserDropdown(false);
-                  if (onNavigate) onNavigate('profile');
-                }}
-                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors flex items-center gap-2 cursor-pointer font-bold text-slate-700"
-              >
-                <Settings size={14} className="text-slate-400" />
-                View Profile
-              </button>
-
-              {onSwitchToClient && (
-                <button
-                  onClick={() => {
-                    setShowUserDropdown(false);
-                    onSwitchToClient();
-                  }}
-                  className="w-full px-3.5 py-2.5 text-left hover:bg-sky-50 text-sky-700 transition-colors flex items-center gap-2 cursor-pointer font-bold"
-                >
-                  <Users size={14} className="text-sky-500" />
-                  Switch to Client Portal
-                </button>
-              )}
-
-              <hr className="border-gray-100 my-1" />
-
-              <button
-                onClick={() => {
-                  setShowUserDropdown(false);
-                  if (onLogout) onLogout();
-                }}
-                className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50 text-rose-600 transition-colors flex items-center gap-2 cursor-pointer font-bold"
-              >
-                <LogOut size={14} />
-                Logout
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </header>
+    <AppHeader
+      crumbs={breadcrumbMap[activeView] ?? ['Dashboard']}
+      brandName={brand.name && brand.name !== 'SignageOS' ? brand.name : 'BlueStar DigiTech'}
+      brandLogo={brand.logo}
+      profile={profile}
+      roleLabel="Administrator"
+      buildSearch={buildSearch}
+      onNavigate={onNavigate}
+      onLogout={onLogout}
+      switchLabel={onSwitchToClient ? 'Switch to client view' : undefined}
+      onSwitch={onSwitchToClient}
+    />
   );
 }

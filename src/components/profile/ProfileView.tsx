@@ -5,6 +5,7 @@ import { getAuthToken } from '../../lib/authStorage';
 import { pushToDatabase, syncCollection } from '../../lib/syncHelper';
 import { licensingStore, License } from '../../lib/licensingStore';
 import { toast } from '../Toast';
+import AvatarCropper from './AvatarCropper';
 import { licenseState, formatDate, planLabel } from '../licenses/licenseStatus';
 
 // Matches the server's mask for a saved Razorpay secret (controllers/payments.ts).
@@ -55,6 +56,7 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
   const [saved, setSaved] = useState(() => ({ name: localStorage.getItem(key('name')) || '', mobile: localStorage.getItem(key('mobile')) || '' }));
   const [savingDetails, setSavingDetails] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
 
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [showPw, setShowPw] = useState(false);
@@ -113,28 +115,35 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
   }, [userEmail]);
 
   // ── Photo ────────────────────────────────────────────────────────────────
-  const uploadAvatar = async (file?: File) => {
-    if (!file || !userId) return;
+  // Picking a photo opens the cropper; the cropped 512×512 JPEG is what's uploaded.
+  const pickAvatar = (file?: File) => {
+    if (!file) return;
     if (!file.type.startsWith('image/')) { toast.warning('Pick an image file'); return; }
-    if (file.size > 2 * 1024 * 1024) { toast.warning('Photo must be under 2 MB'); return; }
+    if (file.size > 25 * 1024 * 1024) { toast.warning('That image is too large (max 25 MB)'); return; }
+    setCropFile(file);
+  };
+
+  const uploadAvatar = async (blob: Blob) => {
+    if (!userId) return;
     setAvatarBusy(true);
     try {
       const dataUrl: string = await new Promise((resolve, reject) => {
         const r = new FileReader();
         r.onloadend = () => resolve(r.result as string);
         r.onerror = reject;
-        r.readAsDataURL(file);
+        r.readAsDataURL(blob);
       });
       const res = await fetch(`${API_BASE}/users/${userId}/avatar`, {
         method: 'PUT',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatarData: dataUrl.split(',')[1], mimeType: file.type, fileName: file.name }),
+        body: JSON.stringify({ avatarData: dataUrl.split(',')[1], mimeType: 'image/jpeg', fileName: 'avatar.jpg' }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(data.error || 'Could not upload the photo'); return; }
       setAvatar(data.avatarUrl || '');
       localStorage.setItem(key('avatar'), data.avatarUrl || '');
       window.dispatchEvent(new Event(profileEvent));
+      setCropFile(null);
       toast.success('Photo updated');
     } catch {
       toast.error("Can't reach the server");
@@ -260,27 +269,37 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
       </div>
 
       {/* Identity */}
-      <section className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-6 flex items-center gap-4">
-        <label className={`relative w-20 h-20 shrink-0 rounded-2xl overflow-hidden cursor-pointer group ${avatarBusy ? 'opacity-60' : ''}`}>
-          {avatar
-            ? <img src={avatar} alt="" className="w-full h-full object-cover" />
-            : <span className="w-full h-full bg-gradient-to-br from-blue-600 to-teal-500 text-white text-2xl font-semibold flex items-center justify-center">{initials || '?'}</span>}
-          <span className="absolute inset-x-0 bottom-0 h-7 bg-black/55 text-white flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-            <Camera size={14} />
+      <section className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-5 text-center sm:text-left">
+        <label className="relative shrink-0 cursor-pointer group" aria-label="Change photo">
+          <span className={`block w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden ring-4 ring-white shadow-md ${avatarBusy ? 'opacity-60' : ''}`}>
+            {avatar
+              ? <img src={avatar} alt="" className="w-full h-full object-cover" />
+              : <span className="w-full h-full bg-gradient-to-br from-blue-600 to-teal-500 text-white text-3xl font-semibold flex items-center justify-center">{initials || '?'}</span>}
           </span>
-          <input type="file" accept="image/*" className="hidden" disabled={avatarBusy} onChange={e => { uploadAvatar(e.target.files?.[0]); e.target.value = ''; }} />
+          <span className="absolute bottom-0.5 right-0.5 w-9 h-9 rounded-full bg-blue-600 group-hover:bg-blue-700 text-white flex items-center justify-center ring-4 ring-white shadow">
+            <Camera size={16} />
+          </span>
+          <input type="file" accept="image/*" className="hidden" disabled={avatarBusy} onChange={e => { pickAvatar(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
         <div className="flex-1 min-w-0">
           <p className="text-lg font-semibold text-slate-900 truncate">{name || 'Your name'}</p>
           <p className="text-sm text-slate-500 truncate">{email}</p>
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-medium">{admin ? 'Administrator' : 'Client account'}</span>
+          <span className="inline-block mt-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-medium">{admin ? 'Administrator' : 'Client account'}</span>
+          <div className="flex items-center justify-center sm:justify-start gap-2 mt-3">
+            <label className={`h-9 px-4 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer ${avatarBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+              <Camera size={14} /> {avatar ? 'Change photo' : 'Add photo'}
+              <input type="file" accept="image/*" className="hidden" onChange={e => { pickAvatar(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
             {avatar && (
-              <button type="button" onClick={removeAvatar} disabled={avatarBusy} className="text-xs text-rose-600 font-medium disabled:opacity-50">Remove photo</button>
+              <button type="button" onClick={removeAvatar} disabled={avatarBusy} className="h-9 px-3 rounded-xl text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50">Remove</button>
             )}
           </div>
         </div>
       </section>
+
+      {cropFile && (
+        <AvatarCropper file={cropFile} saving={avatarBusy} onCancel={() => setCropFile(null)} onSave={uploadAvatar} />
+      )}
 
       {/* Plan (client) */}
       {!admin && license && st && (

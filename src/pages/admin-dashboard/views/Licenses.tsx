@@ -190,7 +190,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       licenseName: form.name,
       clientName: user?.name || orgFor(email).name || 'Client',
       clientEmail: email,
-      amount: Math.round(Number(form.price) * 1.18),
+      // Prices include GST — the invoice total is what Razorpay charges.
+      amount: Math.round(Number(form.price)),
       dueDate: form.expiry,
       status: 'unpaid',
       issuedDate: new Date().toISOString().split('T')[0],
@@ -744,7 +745,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>Price (₹, before GST)</label>
+                  <label className={labelCls}>Price (₹, incl. GST)</label>
                   <input type="number" inputMode="numeric" min={0} value={form.price} onChange={e => setF('price', Number(e.target.value))} className={inputCls} />
                 </div>
                 <div>
@@ -779,7 +780,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   buttonClassName="h-11 text-sm px-3"
                 />
                 {formMode === 'create' && form.email && (
-                  <p className="text-xs text-slate-500 mt-1.5">They'll get an invoice for {formatInr(Math.round(Number(form.price) * 1.18))} (incl. GST); the license activates once it's paid.</p>
+                  <p className="text-xs text-slate-500 mt-1.5">They'll get an invoice for {formatInr(Number(form.price))} (incl. {formatInr(Number(form.price) - Math.round(Number(form.price) / 1.18))} GST); the license activates once it's paid.</p>
                 )}
               </div>
 

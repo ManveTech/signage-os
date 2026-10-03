@@ -516,3 +516,8 @@
   html.print-invoice #invoice-print-area * { visibility: visible !important; }
   html.print-invoice #invoice-print-area { position: fixed; inset: 0 auto auto 0; width: 100%; border: 0; }
 }
+
+/* Bottom sheets from the phone dock: quick slide from the bottom edge. */
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.animate-sheetUp { animation: sheetUp 0.28s cubic-bezier(0.32, 0.72, 0, 1) both; }
+@media (prefers-reduced-motion: reduce) { .animate-sheetUp { animation: none; } }

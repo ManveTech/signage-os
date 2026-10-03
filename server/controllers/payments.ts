@@ -229,8 +229,9 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     filter: pb.filter('licenseId = {:licenseId} && status = "unpaid"', { licenseId })
   }).catch(() => [] as any[]);
   if (unpaid.length > 0) {
-    for (const inv of unpaid) {
-      await pb.collection('invoices').update(inv.id, { status: 'paid' }).catch(() => {});
+    // The settled invoice shows what was actually charged (prices include GST).
+    for (const [i, inv] of unpaid.entries()) {
+      await pb.collection('invoices').update(inv.id, i === 0 ? { status: 'paid', amount: Math.round(amount) } : { status: 'paid' }).catch(() => {});
     }
   } else {
     await pb.collection('invoices').create({

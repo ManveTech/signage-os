@@ -1320,6 +1320,25 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to add business integration type:', bizErr.message);
     }
 
+    // License prices include GST. Older invoices were issued at price + 18%
+    // while Razorpay charged the bare price, so clients saw e.g. "₹1,180 due"
+    // next to a "Pay ₹1,000" button. Bring unpaid invoices that match that
+    // exact pattern back to the license price. Paid invoices are left alone.
+    try {
+      const unpaidInvoices: any[] = await pb.collection('invoices').getFullList({ filter: 'status = "unpaid"' });
+      for (const inv of unpaidInvoices) {
+        if (!inv.licenseId) continue;
+        const lic: any = await pb.collection('licenses').getOne(inv.licenseId).catch(() => null);
+        const price = Number(lic?.price);
+        if (price > 0 && Number(inv.amount) === Math.round(price * 1.18)) {
+          await pb.collection('invoices').update(inv.id, { amount: Math.round(price) });
+          console.log(`Corrected GST-inclusive amount on unpaid invoice ${inv.id}: ${inv.amount} -> ${Math.round(price)}`);
+        }
+      }
+    } catch (invErr: any) {
+      console.warn('Failed to correct unpaid invoice amounts:', invErr.message);
+    }
+
     // Ensure organizations collection schema is up to date
     try {
       console.log('Ensuring organizations collection schema is up to date...');
