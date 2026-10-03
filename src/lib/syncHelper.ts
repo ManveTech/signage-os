@@ -78,7 +78,8 @@ export function generateClientPassword(clientName: string): string {
 }
 export let memoryMedia: any[] = [];
 export function setMemoryMedia(media: any[]) {
-  memoryMedia = media;
+  // Always keep an array — every media screen calls .filter/.map on this.
+  memoryMedia = Array.isArray(media) ? media : [];
 }
 
 export type PushResult =

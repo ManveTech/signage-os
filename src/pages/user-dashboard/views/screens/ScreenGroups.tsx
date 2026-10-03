@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, AlertCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser } from 'lucide-react';
+import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, AlertCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser , Layers, ChevronRight, RotateCcw } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import { licensingStore } from '../../../../lib/licensingStore';
 import CustomSelect from '../../../../components/CustomSelect';
 import ScreenSubNav from '../../../../components/ScreenSubNav';
+import ScreenDetailsSheet from '../../../../components/screens/ScreenDetailsSheet';
+import { getEffectiveStatus } from './MyScreens';
 import type { Screen, ScreenGroup } from '../../types';
 
 const COLOR_OPTIONS = [
@@ -38,6 +40,8 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
   });
   const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens());
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  // Group whose details sheet is open (tapping a group card opens it).
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [userPlaylists, setUserPlaylists] = useState<any[]>(() =>
     mediaStore.getPlaylists().filter((p: any) => p.createdBy === userEmail)
   );
@@ -389,111 +393,201 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
           <h1 className="display text-2xl sm:text-3xl text-ink-950">Screen Groups</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage bulk screen assignments and actions</p>
         </div>
-        <button onClick={() => setShowNewGroup(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+        <button onClick={() => setShowNewGroup(true)} className="whitespace-nowrap shrink-0 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
           <Plus size={16} /> New Group
         </button>
       </div>
 
-      {/* Groups */}
-      <div className="space-y-4">
+      {/* Groups — compact cards; tapping one opens its details sheet. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {filteredGroups.map(group => {
           const c = colorMap[group.color] ?? colorMap.blue;
           const groupScreens = screensInGroup(group.id);
-          const isExpanded = expandedGroup === group.id;
-
+          const online = groupScreens.filter(s => { const e = getEffectiveStatus(s); return e === 'online' || e === 'active'; }).length;
+          const orgName = undefined as string | undefined;
           return (
-            <div key={group.id} className={`bg-white rounded-xl border transition-all ${isExpanded ? 'border-blue-200 shadow-sm' : 'border-gray-100'}`}>
-              {/* Group header */}
-              <div className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-xl ${c.icon} flex items-center justify-center flex-shrink-0`}>
-                      <Building size={18} className="text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-gray-900">{group.name}</h3>
-                      <p className="text-xs text-gray-500 truncate">{group.desc}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
-                    <button onClick={() => handleStartEdit(group)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit group"><Edit size={14} /></button>
-                    <button onClick={() => setDeleteGroup(group)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete group"><Trash2 size={14} /></button>
-                    <button onClick={() => setExpandedGroup(isExpanded ? null : group.id)} className={`p-1.5 rounded-lg transition-all ${isExpanded ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:bg-gray-100'}`}>
-                      <ChevronDown size={14} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 mt-4">
-                  <span className={`flex items-center gap-1.5 text-xs ${c.text} ${c.bg} px-2.5 py-1 rounded-full border ${c.border} font-medium`}>
-                    <Monitor size={11} /> {groupScreens.length} screens
-                  </span>
-                  {group.playlist && (
-                    <span className="flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 px-2.5 py-1 rounded-full border border-gray-100">
-                      <List size={11} /> {group.playlist}
-                    </span>
-                  )}
-                  {group.schedulePlaylist && (
-                    <span className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60 font-medium">
-                      <Calendar size={11} className="text-amber-500" />
-                      Scheduled: {group.schedulePlaylist} on {group.scheduleDate} at {group.scheduleTime}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100">
-                  <button onClick={() => setAddScreensTo(group.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium">
-                    <UserPlus size={12} /> Add Screens
-                  </button>
-                  <button onClick={() => handleBulkClearCache(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors font-medium">
-                    <Eraser size={12} /> Bulk Clear Cache
-                  </button>
-                  <button onClick={() => handleBulkForceSync(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors font-medium">
-                    <RefreshCw size={12} /> Bulk Force Sync
-                  </button>
-                  <button onClick={() => handleStartPlaylistAssignDirect(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium">
-                    <List size={12} /> Assign Playlist
-                  </button>
-                  <button onClick={() => handleStartPlaylistSchedule(group)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                    <Calendar size={12} className="text-amber-500" /> Schedule Playlist
-                  </button>
-                </div>
-              </div>
-
-              {/* Expanded screen list */}
-              {isExpanded && (
-                <div className="border-t border-gray-100 px-5 py-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Screens in this group</p>
-                  {groupScreens.length === 0 ? (
-                    <div className="py-6 text-center">
-                      <Monitor size={24} className="mx-auto text-gray-300 mb-1.5" />
-                      <p className="text-xs text-gray-400">No screens assigned yet</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {groupScreens.map(screen => (
-                        <div key={screen.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg group/row">
-                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            screen.status === 'online' ? 'bg-emerald-500' :
-                            screen.status === 'offline' ? 'bg-red-500' : 'bg-yellow-400'
-                          }`} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-gray-800 truncate">{screen.name}</p>
-                            <p className="text-xs text-gray-400 truncate">{screen.location}</p>
-                          </div>
-                          <button onClick={() => handleRemoveScreen(screen.id, group.name)} className="p-1 text-gray-300 hover:text-red-500 rounded opacity-0 group-hover/row:opacity-100 transition-all flex-shrink-0" title="Remove from group">
-                            <UserMinus size={13} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <button
+              key={group.id}
+              type="button"
+              onClick={() => setOpenGroupId(group.id)}
+              className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 hover:shadow-sm p-3 flex items-center gap-3 transition-colors"
+            >
+              <span className={`w-12 h-12 rounded-xl ${c.icon} flex items-center justify-center shrink-0`}>
+                <Layers size={20} className="text-white" />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-sm font-semibold text-slate-900 truncate">{group.name}</span>
+                  {orgName && <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold truncate max-w-[100px]">{orgName}</span>}
+                </span>
+                <span className="block text-xs text-slate-500 mt-0.5">
+                  {groupScreens.length} screen{groupScreens.length === 1 ? '' : 's'}
+                  {groupScreens.length > 0 && <> · <span className={online === groupScreens.length ? 'text-emerald-700' : online === 0 ? 'text-rose-600' : 'text-amber-700'}>{online} online</span></>}
+                </span>
+                <span className={`block text-xs mt-0.5 truncate ${group.playlist ? 'text-slate-600' : 'text-slate-400'}`}>
+                  {group.playlist ? `▶ ${group.playlist}` : 'No playlist'}
+                  {group.schedulePlaylist && <span className="text-amber-700"> · then {group.schedulePlaylist}</span>}
+                </span>
+              </span>
+              <ChevronRight size={18} className="text-slate-300 shrink-0" />
+            </button>
           );
         })}
       </div>
+
+      {filteredGroups.length === 0 && (
+        <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+          <Layers size={30} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-sm font-medium text-gray-700">No groups yet</p>
+          <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">Groups let you give several screens the same playlist and control them together.</p>
+          <button onClick={() => setShowNewGroup(true)} className="mt-4 inline-flex items-center gap-2 h-10 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium">
+            <Plus size={16} /> New group
+          </button>
+        </div>
+      )}
+
+      {(() => {
+        const group = openGroupId ? groups.find(g => g.id === openGroupId) : null;
+        if (!group) return null;
+        const c = colorMap[group.color] ?? colorMap.blue;
+        const groupScreens = screensInGroup(group.id);
+        const online = groupScreens.filter(s => { const e = getEffectiveStatus(s); return e === 'online' || e === 'active'; }).length;
+        const statusDot = (s: Screen) => {
+          const e = getEffectiveStatus(s);
+          return e === 'online' || e === 'active' ? 'bg-emerald-500' : e === 'offline' ? 'bg-rose-500' : e === 'unlinked' ? 'bg-slate-300' : 'bg-amber-400';
+        };
+        return (
+          <ScreenDetailsSheet
+            open
+            onClose={() => setOpenGroupId(null)}
+            title={group.name}
+            subtitle={group.desc || undefined}
+            badge={<span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${c.bg} ${c.text} ${c.border}`}>{groupScreens.length} screen{groupScreens.length === 1 ? '' : 's'}</span>}
+            hero={
+              <div className="rounded-2xl border border-slate-100 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50">
+                  <span className="text-xs font-semibold text-slate-600">Screens in this group</span>
+                  <button
+                    onClick={() => { setOpenGroupId(null); setTimeout(() => setAddScreensTo(group.id), 0); }}
+                    className="flex items-center gap-1 text-xs font-semibold text-blue-600"
+                  >
+                    <UserPlus size={13} /> Add
+                  </button>
+                </div>
+                {groupScreens.length === 0 ? (
+                  <p className="px-4 py-4 text-sm text-slate-400">No screens in this group yet.</p>
+                ) : (
+                  <ul className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                    {groupScreens.map(s => (
+                      <li key={s.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(s)}`} />
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm text-slate-800 truncate">{s.name}</span>
+                          {s.location && s.location !== 'Not Specified' && <span className="block text-xs text-slate-400 truncate">{s.location}</span>}
+                        </span>
+                        <button
+                          onClick={() => handleRemoveScreen(s.id, group.name)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 shrink-0"
+                          title="Remove from group"
+                          aria-label={`Remove ${s.name} from group`}
+                        >
+                          <UserMinus size={15} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            }
+            details={[
+              { label: 'Playlist', value: group.playlist || <span className="text-slate-400">None</span> },
+              ...(group.schedulePlaylist ? [{ label: 'Next scheduled', value: `${group.schedulePlaylist} · ${group.scheduleDate || ''} ${group.scheduleTime || ''}`.trim() }] : []),
+              ...(groupScreens.length ? [{ label: 'Online now', value: `${online} of ${groupScreens.length}` }] : []),
+            ]}
+            groups={[
+              {
+                title: 'Content',
+                actions: [
+                  {
+                    key: 'playlist',
+                    label: 'Change playlist',
+                    description: 'Every screen in the group plays it',
+                    icon: <List size={17} />,
+                    onClick: () => handleStartPlaylistAssignDirect(group)
+                  },
+                  {
+                    key: 'schedule',
+                    label: group.schedulePlaylist ? 'Edit schedule' : 'Schedule a playlist',
+                    description: 'Switch the whole group at a set time',
+                    icon: <Calendar size={17} />,
+                    onClick: () => handleStartPlaylistSchedule(group)
+                  },
+                  {
+                    key: 'restart',
+                    label: 'Restart playlist',
+                    description: 'Play again from the first slide on all its screens',
+                    icon: <RotateCcw size={17} />,
+                    disabled: groupScreens.length === 0,
+                    disabledReason: 'No screens in this group',
+                    onClick: () => handleBulkRestartPlaylist(group)
+                  }
+                ]
+              },
+              {
+                title: 'Screens',
+                actions: [
+                  {
+                    key: 'add',
+                    label: 'Add screens',
+                    description: 'Choose screens to join this group',
+                    icon: <UserPlus size={17} />,
+                    onClick: () => setAddScreensTo(group.id)
+                  },
+                  {
+                    key: 'sync',
+                    label: 'Sync all screens',
+                    description: 'Re-download content; keeps playing meanwhile',
+                    icon: <RefreshCw size={17} />,
+                    disabled: groupScreens.length === 0,
+                    disabledReason: 'No screens in this group',
+                    onClick: () => handleBulkForceSync(group)
+                  },
+                  {
+                    key: 'cache',
+                    label: 'Clear cache on all screens',
+                    description: 'Delete downloaded media and fetch it again — blank until done',
+                    icon: <Eraser size={17} />,
+                    disabled: groupScreens.length === 0,
+                    disabledReason: 'No screens in this group',
+                    onClick: () => handleBulkClearCache(group)
+                  }
+                ]
+              },
+              {
+                title: 'Group',
+                actions: [{
+                  key: 'edit',
+                  label: 'Edit group',
+                  description: 'Name, colour and description',
+                  icon: <Edit size={17} />,
+                  onClick: () => handleStartEdit(group)
+                }]
+              },
+              {
+                title: 'Danger zone',
+                actions: [{
+                  key: 'delete',
+                  label: 'Delete group',
+                  description: groupScreens.length ? `Its ${groupScreens.length} screen${groupScreens.length === 1 ? '' : 's'} stay, just ungrouped` : 'This can\'t be undone',
+                  icon: <Trash2 size={17} />,
+                  tone: 'danger' as const,
+                  onClick: () => setDeleteGroup(group)
+                }]
+              }
+            ]}
+          />
+        );
+      })()}
 
       {/* Add Screens Modal */}
       {addScreensTo && (() => {
@@ -856,46 +950,47 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
 
       {/* Ungrouped screens */}
       {ungroupedScreens.length > 0 && (
-        <div className="bg-white rounded-xl border border-dashed border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Users size={14} className="text-gray-400" />
-            <p className="text-sm font-medium text-gray-700">Ungrouped Screens</p>
-            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{ungroupedScreens.length}</span>
+        <section className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100">
+            <p className="text-sm font-semibold text-slate-800">Not in a group</p>
+            <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{ungroupedScreens.length}</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {ungroupedScreens.map(screen => (
-              <div key={screen.id} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    screen.status === 'online' ? 'bg-emerald-500' :
-                    screen.status === 'offline' ? 'bg-red-500' : 'bg-yellow-400'
-                  }`} />
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-gray-800 truncate">{screen.name}</p>
-                    <p className="text-xs text-gray-400 truncate">{screen.location}</p>
-                  </div>
-                </div>
-                
-                <CustomSelect 
-                  value=""
-                  onChange={val => {
-                    if (val) {
-                      handleAddScreen(screen.id, val);
-                      const targetGroup = groups.find(g => g.id === val);
-                      addToast(`"${screen.name}" assigned to "${targetGroup?.name}"`);
-                    }
-                  }}
-                  placeholder="Assign to group..."
-                  options={[
-                    { value: '', label: 'Assign to group...' },
-                    ...filteredGroups.map(g => ({ value: g.id, label: g.name }))
-                  ]}
-                  buttonClassName="text-xs py-1 px-2 border-gray-200 min-h-[32px] max-w-[150px]"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
+          <ul className="divide-y divide-slate-100">
+            {ungroupedScreens.map(screen => {
+              const e = getEffectiveStatus(screen);
+              const dot = e === 'online' || e === 'active' ? 'bg-emerald-500' : e === 'offline' ? 'bg-rose-500' : e === 'unlinked' ? 'bg-slate-300' : 'bg-amber-400';
+              return (
+                <li key={screen.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm text-slate-800 truncate">{screen.name}</span>
+                    {screen.location && screen.location !== 'Not Specified' && <span className="block text-xs text-slate-400 truncate">{screen.location}</span>}
+                  </span>
+                  {filteredGroups.length > 0 && (
+                    <div className="w-36 shrink-0">
+                      <CustomSelect
+                        value=""
+                        onChange={val => {
+                          if (val) {
+                            handleAddScreen(screen.id, val);
+                            const targetGroup = groups.find(g => g.id === val);
+                            addToast(`"${screen.name}" added to "${targetGroup?.name}"`);
+                          }
+                        }}
+                        placeholder="Add to group"
+                        options={[
+                          { value: '', label: 'Add to group' },
+                          ...filteredGroups.map(g => ({ value: g.id, label: g.name }))
+                        ]}
+                        buttonClassName="text-xs py-1.5 px-2.5 min-h-[34px]"
+                      />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
       {/* Assign Playlist Modal (Direct) */}
       {assignPlaylistDirectTo && (

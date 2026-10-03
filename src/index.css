@@ -499,3 +499,12 @@
     transform: none;
   }
 }
+
+/* Horizontally scrolling chip rows: keep them swipeable but without a
+   visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

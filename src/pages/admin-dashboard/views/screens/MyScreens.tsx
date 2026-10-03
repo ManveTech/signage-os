@@ -262,7 +262,9 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
 
   const filtered = screens.filter(s => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.location.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || s.status === statusFilter;
+    // Same heartbeat-aware status the cards and chips show.
+    const eff = getEffectiveStatus(s);
+    const matchStatus = statusFilter === 'all' || (statusFilter === 'online' ? (eff === 'online' || eff === 'active') : eff === statusFilter);
     return matchSearch && matchStatus;
   });
 
@@ -453,9 +455,9 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
 
   const stats = [
     { label: 'Total', count: screens.length, color: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200' },
-    { label: 'Online', count: screens.filter(s => s.status === 'online').length, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-    { label: 'Offline', count: screens.filter(s => s.status === 'offline').length, color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-100' },
-    { label: 'Warning', count: screens.filter(s => s.status === 'warning').length, color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-100' },
+    { label: 'Online', count: screens.filter(s => { const e = getEffectiveStatus(s); return e === 'online' || e === 'active'; }).length, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+    { label: 'Offline', count: screens.filter(s => getEffectiveStatus(s) === 'offline').length, color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-100' },
+    { label: 'Warning', count: screens.filter(s => getEffectiveStatus(s) === 'warning').length, color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-100' },
   ];
 
   return (
