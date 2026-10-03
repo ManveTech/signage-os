@@ -9,6 +9,7 @@ import com.example.data.database.ScreenConfig
 import com.example.data.network.ErrorLoggingInterceptor
 import com.example.data.network.redactText
 import com.example.data.network.HeartbeatRequest
+import com.example.data.network.PocketBasePlaylistResponse
 import com.example.data.network.PairingRequest
 import com.example.data.network.PocketBasePlaylistAsset
 import com.example.data.network.SignageApiService
@@ -419,7 +420,7 @@ class SignageRepository(private val context: Context) {
             // If active or online, sync the actual playlist assets
             if (response.status == "active" || response.status == "online") {
                 if (!activePlaylistId.isNullOrEmpty()) {
-                    syncPlaylist(currentConfig.pocketbaseUrl, activePlaylistId)
+                    syncPlaylist(currentConfig.pocketbaseUrl, activePlaylistId, fullRefresh = forceRedownload)
                     if (forceRedownload) {
                         startDownloadingPendingAssets(forceAll = true)
                     }
@@ -682,7 +683,25 @@ class SignageRepository(private val context: Context) {
         null
     }
 
-    private suspend fun syncPlaylist(pocketbaseUrl: String, playlistId: String) = withContext(Dispatchers.IO) {
+    /**
+     * Fingerprint of the last playlist whose slides were all fetched and
+     * applied. Every sync (about once a minute) used to re-fetch every media
+     * record in the playlist — ~11 requests per TV per minute for a 10-slide
+     * playlist, most of a fleet's server traffic. If the playlist record hasn't
+     * changed since, the slides are reused; a full refresh still happens every
+     * 30 minutes and on a "Sync" command from the dashboard.
+     */
+    private fun playlistFingerprint(id: String, r: PocketBasePlaylistResponse): String =
+        listOf(
+            id,
+            r.updated ?: "",
+            r.slides?.joinToString(",") { "${it.id}:${it.mediaId}:${it.secondMediaId ?: ""}:${it.duration}:${it.layoutType}:${it.objectFit ?: ""}:${it.scalePercent ?: ""}" } ?: "",
+            r.mediaIds?.joinToString(",") ?: "",
+            r.assetsJson ?: "",
+            r.files?.size?.toString() ?: ""
+        ).joinToString("|")
+
+    private suspend fun syncPlaylist(pocketbaseUrl: String, playlistId: String, fullRefresh: Boolean = false) = withContext(Dispatchers.IO) {
         val config = getOrCreateConfig()
         val serverUrl = config.serverUrl
         try {
@@ -748,6 +767,18 @@ class SignageRepository(private val context: Context) {
             )
             configDao.saveConfig(updatedConfig)
 
+            val fingerprint = playlistFingerprint(actualId, response)
+            val lastFingerprint = prefs.getString("playlist_fp", null)
+            val lastFullAt = prefs.getLong("playlist_fp_at", 0L)
+            val unchanged = !fullRefresh && fingerprint == lastFingerprint &&
+                System.currentTimeMillis() - lastFullAt < 30 * 60 * 1000L &&
+                assetDao.getAllAssets().isNotEmpty()
+            if (unchanged) {
+                if (wasWhiteLabelLogoMissing) startDownloadingPendingAssets()
+                return@withContext
+            }
+            var allSlidesResolved = true
+
             // Map response assets to local PlaylistAssets configuration
             val newAssets = mutableListOf<PlaylistAsset>()
             val cacheDir = File(context.filesDir, "signage_cache")
@@ -809,6 +840,7 @@ class SignageRepository(private val context: Context) {
                         }
                     }.awaitAll().filterNotNull()
                 }
+                if (slideAssets.size != response.slides.size) allSlidesResolved = false
                 newAssets.addAll(slideAssets)
             }
 
@@ -916,6 +948,7 @@ class SignageRepository(private val context: Context) {
                         }
                     }.awaitAll().filterNotNull()
                 }
+                if (mediaAssets.size != response.mediaIds.size) allSlidesResolved = false
                 newAssets.addAll(mediaAssets)
             }
 
@@ -980,6 +1013,14 @@ class SignageRepository(private val context: Context) {
                 if (wasWhiteLabelLogoMissing) {
                     startDownloadingPendingAssets()
                 }
+            }
+
+            // Only remember this playlist as applied if every slide resolved —
+            // otherwise the next sync tries the missing ones again.
+            if (allSlidesResolved) {
+                prefs.edit().putString("playlist_fp", fingerprint).putLong("playlist_fp_at", System.currentTimeMillis()).apply()
+            } else {
+                prefs.edit().remove("playlist_fp").apply()
             }
         } catch (e: Exception) {
             Log.e("SignageRepository", "Failed to sync playlist details", e)

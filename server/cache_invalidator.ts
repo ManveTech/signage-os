@@ -12,7 +12,6 @@ export function listenToCollectionChanges() {
         const screenId = e.record.id;
         const uuid = e.record.hardware_uuid || '';
 
-        console.log(`[Cache Invalidator] Screen changed: ${screenId}. Evicting cache.`);
 
         const pipeline = redis.pipeline();
         pipeline.del(`cache:screen:${screenId}`);

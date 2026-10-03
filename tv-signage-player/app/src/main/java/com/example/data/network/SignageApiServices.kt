@@ -111,7 +111,9 @@ data class PocketBasePlaylistResponse(
     val widgetLink: String? = null,
     val whiteLabel: Boolean? = null,
     val websiteLogo: String? = null,
-    val websiteName: String? = null
+    val websiteName: String? = null,
+    // PocketBase's last-modified time; lets the TV skip re-fetching an unchanged playlist.
+    val updated: String? = null
 )
 
 @JsonClass(generateAdapter = true)

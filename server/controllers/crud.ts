@@ -1,6 +1,6 @@
 import express from 'express';
 import { pb, ensurePBAuth } from '../db';
-import { checkDeviceStatuses, getLiveScreenMetrics } from './screens';
+import { refreshDeviceStatusesForList, getLiveScreenMetrics } from './screens';
 import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '../scheduler';
 import { isRedisReady, redis } from '../redis';
 import { logAudit, getClientIp } from '../services/auditLog';
@@ -135,7 +135,9 @@ export function createCrudRouter(collectionName: string) {
   router.get('/', async (req: any, res: any) => {
     try {
       if (collectionName === 'screens' || collectionName === 'screen_logs') {
-        await checkDeviceStatuses({ silentIfNoChanges: true });
+        // Never hold a dashboard request for long: during a big outage the
+        // check can take a while, and the next refresh will show its result.
+        await Promise.race([refreshDeviceStatusesForList(), new Promise(r => setTimeout(r, 300))]);
       }
       
       const filters: string[] = [];
@@ -247,14 +249,24 @@ export function createCrudRouter(collectionName: string) {
       if (collectionName === 'screens' && Array.isArray(records) && records.length > 0) {
         if (isRedisReady()) {
           try {
+            // Presence plus the live last-heartbeat time: the database copy is
+            // only written every few minutes to keep write load down, so
+            // "last seen" comes from Redis, which every heartbeat updates.
             const pipeline = redis.pipeline();
-            records.forEach((s: any) => pipeline.exists(`presence:screen:${s.id}`));
-            const presenceResults = await pipeline.exec();
-            if (presenceResults) {
+            records.forEach((s: any) => {
+              pipeline.exists(`presence:screen:${s.id}`);
+              pipeline.hget(`heartbeat:screen:${s.id}`, 'lastHeartbeat');
+            });
+            const results = await pipeline.exec();
+            if (results) {
               records.forEach((s: any, idx: number) => {
-                const isOnlineInRedis = presenceResults[idx] && presenceResults[idx][1] === 1;
+                const isOnlineInRedis = results[idx * 2] && results[idx * 2][1] === 1;
                 if (isOnlineInRedis) {
                   s.status = 'online';
+                }
+                const liveHb = Number(results[idx * 2 + 1]?.[1]);
+                if (liveHb > 0 && (!s.lastHeartbeat || liveHb > new Date(s.lastHeartbeat).getTime())) {
+                  s.lastHeartbeat = new Date(liveHb).toISOString();
                 }
               });
             }

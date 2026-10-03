@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import PocketBase from 'pocketbase';
 import { MAX_VIDEO_UPLOAD_BYTES } from './uploadLimits';
 import { 
@@ -13,6 +14,31 @@ import {
 } from './config';
 
 export const pb = new PocketBase(PB_URL);
+
+/**
+ * Caps how many requests this server has open to PocketBase at once. Without
+ * it, a burst (e.g. thousands of TVs reconnecting after an outage) opened a
+ * new connection per request — thousands at a time — until the process ran
+ * out of file handles and requests failed. Extra requests now wait their
+ * turn. Calls made from inside a request (e.g. an auth refresh) bypass the
+ * queue, so it can't deadlock.
+ */
+const PB_MAX_CONCURRENT = Number(process.env.PB_MAX_CONCURRENT) || 48;
+const pbSlot = new AsyncLocalStorage<boolean>();
+let pbActive = 0;
+const pbWaiting: (() => void)[] = [];
+const originalSend = pb.send.bind(pb);
+pb.send = (async (path: string, options: any) => {
+  if (pbSlot.getStore()) return originalSend(path, options);
+  if (pbActive >= PB_MAX_CONCURRENT) await new Promise<void>(resolve => pbWaiting.push(resolve));
+  pbActive++;
+  try {
+    return await pbSlot.run(true, () => originalSend(path, options));
+  } finally {
+    pbActive--;
+    pbWaiting.shift()?.();
+  }
+}) as typeof pb.send;
 pb.autoCancellation(false);
 
 export function redactSensitiveData(text: string): string {

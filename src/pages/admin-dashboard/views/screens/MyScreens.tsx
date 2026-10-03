@@ -118,7 +118,10 @@ export const getEffectiveStatus = (screen: any): string => {
       }
     }
 
-    if (isNaN(hbTime) || (Date.now() - hbTime > 90000)) {
+    // Fallback only — the server decides online/offline (a TV is marked
+    // offline ~3 min after its last heartbeat). 90s here made healthy
+    // screens flicker to "offline" between heartbeats.
+    if (isNaN(hbTime) || (Date.now() - hbTime > 4 * 60 * 1000)) {
       return 'offline';
     }
   }

@@ -452,8 +452,30 @@ async function runWithConcurrencyLimit<T>(
 // scale this is the actual lever that caps PocketBase write load independent
 // of whatever interval the TV app heartbeats at — presence/diagnostics still
 // update in Redis every heartbeat regardless, only the DB write is throttled.
-const DB_WRITE_THROTTLE_MS = 90000; // 90 seconds
+// Presence and "last seen" live in Redis (updated every heartbeat); the
+// database copy only needs refreshing occasionally. Every 90s was ~50
+// writes/second at 5,000 TVs — PocketBase's biggest steady load.
+const DB_WRITE_THROTTLE_MS = 5 * 60 * 1000;
 const STATUS_CHECK_CONCURRENCY = 10;
+
+/**
+ * Status check run when a dashboard lists screens. Every open Screens page
+ * refreshes every ~20s, so with many dashboards this used to run the full
+ * check several times a second. Now one check runs at a time (callers share
+ * it) and dashboards reuse a result less than 10 seconds old. The scheduler's
+ * 2-minute check still always runs.
+ */
+let statusCheckInFlight: Promise<void> | null = null;
+let statusCheckFinishedAt = 0;
+const STATUS_CHECK_REUSE_MS = 10000;
+
+export async function refreshDeviceStatusesForList(): Promise<void> {
+  if (statusCheckInFlight) return statusCheckInFlight;
+  if (Date.now() - statusCheckFinishedAt < STATUS_CHECK_REUSE_MS) return;
+  statusCheckInFlight = checkDeviceStatuses({ silentIfNoChanges: true })
+    .finally(() => { statusCheckFinishedAt = Date.now(); statusCheckInFlight = null; });
+  return statusCheckInFlight;
+}
 
 export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolean }) {
   const startTime = Date.now();
@@ -471,7 +493,6 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
       devicesCheckedCount = staleScreenIds.length;
 
       if (devicesCheckedCount > 0) {
-        console.log(`[Status Checker] Redis found ${devicesCheckedCount} stale screens. Transitioning to offline...`);
 
         await runWithConcurrencyLimit(STATUS_CHECK_CONCURRENCY, staleScreenIds, async (screenId) => {
           // Shared resource name with withScreenLock() below — this bulk
@@ -523,7 +544,9 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
               status: 'offline',
               cumulativeUptime: updatedCumulativeUptime,
               cumulativeLoops: updatedCumulativeLoops,
-              onlineSince: ""
+              onlineSince: "",
+              // Exact time it was last heard from (the stored one is throttled).
+              ...(lastHeartbeatTime > 0 ? { lastHeartbeat: new Date(lastHeartbeatTime).toISOString() } : {})
             }));
 
             // Clear cache keys
@@ -647,7 +670,7 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
     console.error('Error in checkDeviceStatuses:', err);
   } finally {
     const duration = Date.now() - startTime;
-    if (!options?.silentIfNoChanges || devicesCheckedCount > 0 || markedOfflineCount > 0) {
+    if (!options?.silentIfNoChanges || markedOfflineCount > 0) {
       console.log(`[Status Checker] Checked ${devicesCheckedCount} stale screens. Marked ${markedOfflineCount} offline. Duration: ${duration}ms`);
     }
   }
@@ -952,20 +975,18 @@ export async function recordHeartbeat(req: any, res: any) {
     await logServerError(screenId || 'system', 'System', '', 'Heartbeat recording error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error recording heartbeat' });
   } finally {
+    // Only log what's worth reading: a screen coming (back) online, an
+    // unknown device, or a slow heartbeat. Logging every routine heartbeat
+    // was ~100 lines/second at 5,000 TVs.
     const duration = Date.now() - startTime;
-    let logMsg = '';
+    const who = `"${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid})`;
     if (transitionStatus === 'CAME_ONLINE') {
-      logMsg = `[Heartbeat] 🟢 ONLINE (TRANSITION): Screen "${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid}) reconnected.`;
-    } else if (transitionStatus === 'ALREADY_ONLINE') {
-      logMsg = `[Heartbeat] 🟢 ONLINE (ACTIVE): Screen "${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid}) sent heartbeat.`;
-    } else if (transitionStatus === 'THROTTLED') {
-      logMsg = `[Heartbeat] 🟢 ONLINE (THROTTLED): Screen "${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid}) sent heartbeat (DB write throttled).`;
+      console.log(`[Heartbeat] 🟢 ONLINE: Screen ${who} reconnected. Duration: ${duration}ms`);
     } else if (transitionStatus === 'UNKNOWN_DEVICE') {
-      logMsg = `[Heartbeat] ⚠️ UNKNOWN: Heartbeat received for unregistered hardwareUuid: ${hardwareUuid}.`;
-    } else {
-      logMsg = `[Heartbeat] Processed heartbeat for screen "${screenRecord?.name || 'unknown'}" (ID: ${screenId || 'unknown'}, hardwareUuid: ${hardwareUuid}). Status: ${transitionStatus}.`;
+      console.log(`[Heartbeat] ⚠️ UNKNOWN: Heartbeat received for unregistered hardwareUuid: ${hardwareUuid}.`);
+    } else if (duration > 1000) {
+      console.log(`[Heartbeat] Slow heartbeat for screen ${who}: ${duration}ms (${transitionStatus}).`);
     }
-    console.log(`${logMsg} Duration: ${duration}ms`);
   }
 }
 
@@ -1233,7 +1254,11 @@ export async function reportOffline(req: any, res: any) {
  */
 export async function markScreenOffline(screenId: string, detail: string): Promise<boolean> {
   let changed = false;
+  // The stored lastHeartbeat is only refreshed every few minutes; Redis has
+  // the exact time. Read it before the presence keys are cleared below.
+  let liveLastHeartbeat = 0;
   if (isRedisReady()) {
+    liveLastHeartbeat = Number(await redis.hget(`heartbeat:screen:${screenId}`, 'lastHeartbeat').catch(() => 0)) || 0;
     const current = await pb.collection('screens').getOne(screenId).catch(() => null);
     await redis.pipeline()
       .del(`presence:screen:${screenId}`)
@@ -1250,7 +1275,8 @@ export async function markScreenOffline(screenId: string, detail: string): Promi
 
     let additionalUptime = 0;
     let additionalLoops = 0;
-    const sessionEnd = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : Date.now();
+    const storedHb = latestScreen.lastHeartbeat ? new Date(latestScreen.lastHeartbeat).getTime() : 0;
+    const sessionEnd = Math.max(storedHb, liveLastHeartbeat) || Date.now();
     if (latestScreen.onlineSince) {
       const onlineTime = new Date(latestScreen.onlineSince).getTime();
       if (onlineTime > 0 && sessionEnd > onlineTime) {
@@ -1266,7 +1292,8 @@ export async function markScreenOffline(screenId: string, detail: string): Promi
       status: 'offline',
       cumulativeUptime: updatedCumulativeUptime,
       cumulativeLoops: updatedCumulativeLoops,
-      onlineSince: ""
+      onlineSince: "",
+      ...(liveLastHeartbeat > storedHb ? { lastHeartbeat: new Date(liveLastHeartbeat).toISOString() } : {})
     }));
     changed = true;
 
