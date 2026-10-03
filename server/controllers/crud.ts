@@ -1,6 +1,6 @@
 import express from 'express';
 import { pb, ensurePBAuth } from '../db';
-import { checkDeviceStatuses, getLiveScreenMetrics, touchScreenPresence } from './screens';
+import { checkDeviceStatuses, getLiveScreenMetrics } from './screens';
 import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '../scheduler';
 import { isRedisReady, redis } from '../redis';
 import { logAudit, getClientIp } from '../services/auditLog';
@@ -271,9 +271,6 @@ export function createCrudRouter(collectionName: string) {
   // GET ONE
   router.get('/:id', async (req: any, res: any) => {
     try {
-      if (collectionName === 'screens') {
-        touchScreenPresence(req.params.id);
-      }
       const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
 
       const isAdmin = isAdminUser(req.user);

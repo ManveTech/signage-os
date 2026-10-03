@@ -644,39 +644,6 @@ export async function checkDeviceStatuses(options?: { silentIfNoChanges?: boolea
   }
 }
 
-export async function touchScreenPresence(screenId: string) {
-  try {
-    const now = Date.now();
-    if (isRedisReady()) {
-      const presenceKey = `presence:screen:${screenId}`;
-      const pipeline = redis.pipeline();
-      pipeline.set(presenceKey, 'online', 'EX', 180);
-      pipeline.zadd('presence:active_screens', now, screenId);
-      await pipeline.exec();
-    }
-
-    // Sync PocketBase status if currently offline or missing onlineSince
-    const lastTouchKey = `touch:${screenId}`;
-    const lastTouch = lastBrandingSync.get(lastTouchKey) || 0;
-    if (now - lastTouch > 10000) { // Throttled to once every 10 seconds per screen
-      lastBrandingSync.set(lastTouchKey, now);
-      pb.collection('screens').getOne(screenId).then(screen => {
-        if (screen && screen.status !== 'pairing' && screen.status !== 'unlinked' &&
-            (screen.status === 'offline' || screen.status === 'warning' || !screen.onlineSince)) {
-          const updateObj: any = {
-            status: 'online',
-            lastHeartbeat: new Date().toISOString()
-          };
-          if (!screen.onlineSince) updateObj.onlineSince = new Date().toISOString();
-          pb.collection('screens').update(screenId, updateObj).catch(() => {});
-        }
-      }).catch(() => {});
-    }
-  } catch (e) {
-    // Ignore presence touch errors
-  }
-}
-
 /**
  * Device-facing alternative to the TV app hitting PocketBase's own REST API
  * directly for its status-sync poll. Deliberately NOT cached: an earlier
