@@ -29,11 +29,18 @@ export function relativeDays(days: number | null): string {
 }
 
 /** Expiry date a new license gets when none is picked: one billing period from today. */
+/** YYYY-MM-DD in the user's own time zone (toISOString is UTC — before
+ * 5:30 am in India it gave yesterday's date). */
+export function localDate(d = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function defaultExpiry(tenure: 'monthly' | 'yearly', from = new Date()): string {
   const d = new Date(from);
   if (tenure === 'yearly') d.setFullYear(d.getFullYear() + 1);
   else d.setMonth(d.getMonth() + 1);
-  return d.toISOString().split('T')[0];
+  return localDate(d);
 }
 
 /**

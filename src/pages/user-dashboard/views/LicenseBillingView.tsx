@@ -173,9 +173,9 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
   const attention = (() => {
     if (!main) return null;
     const st = licenseState(main);
-    if (st.key === 'expired') return { tone: 'rose', title: 'Your plan has expired', body: 'Your screens have stopped playing. Renew to bring them back right away.', lic: main };
+    if (st.key === 'expired') return { tone: 'rose', title: 'Your plan has expired', body: 'You can still see everything, but changes are paused until you renew. Renewing starts a new period from today.', lic: main };
     if (st.key === 'pending') return { tone: 'amber', title: 'Payment needed to activate your plan', body: unpaid.length ? `You have ${unpaid.length} unpaid invoice${unpaid.length === 1 ? '' : 's'}.` : 'Complete the payment to start using your plan.', lic: main };
-    if (st.days !== null && st.days <= 14) return { tone: 'amber', title: `Your plan renews in ${st.days} day${st.days === 1 ? '' : 's'}`, body: 'Renew now so your screens keep playing without a gap — the new period starts after the current one ends.', lic: main };
+    if (st.days !== null && st.days <= 14) return { tone: 'amber', title: `Your plan renews in ${st.days} day${st.days === 1 ? '' : 's'}`, body: 'Renew now to avoid a gap — paying early adds the new period after the current one ends, so you lose nothing.', lic: main };
     return null;
   })();
 

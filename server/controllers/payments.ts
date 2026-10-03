@@ -180,6 +180,35 @@ async function processPaymentOnce(licenseId: string, paymentId: string, orderId:
   }
 }
 
+/** "YYYY-MM-DD HH:MM" in India time, for payment/invoice dates shown to people. */
+function istStamp(d = new Date()): string {
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(d).reduce((acc: Record<string, string>, x) => { acc[x.type] = x.value; return acc; }, {});
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+/**
+ * The paid period starts from whichever is later: today, or the current
+ * expiry. Renewing early adds a period after the paid one; a licence that
+ * lapsed (or a new one waiting for its first payment) runs from today — it
+ * used to extend from the old date, so a plan two months overdue stayed
+ * expired after paying. Calendar months/years, not 30/365 days.
+ */
+export function nextExpiryAfterPayment(expiryDate: string | undefined, tenure: string, now = new Date()): string {
+  // "Today" in India (the business's time zone), not UTC — before 5:30 am
+  // IST the UTC date is still yesterday.
+  const [ty, tm, td] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(now).split('-').map(Number);
+  const today = new Date(Date.UTC(ty, tm - 1, td));
+  const current = expiryDate ? new Date(`${String(expiryDate).slice(0, 10)}T00:00:00Z`) : null;
+  const from = current && !isNaN(current.getTime()) && current > today ? current : today;
+  const months = tenure === 'yearly' ? 12 : 1;
+  const y = from.getUTCFullYear(), m = from.getUTCMonth() + months, d = from.getUTCDate();
+  // Clamp to the target month's last day (31 Jan + 1 month = 28/29 Feb).
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m, Math.min(d, lastDay))).toISOString().slice(0, 10);
+}
+
 async function verifyAndProcessPayment(licenseId: string, paymentId: string, orderId: string, chargedAmount?: number) {
   // Shared by both the /verify REST endpoint and the webhook handler — this
   // dedup check has to live here, not just in one caller, so a payment id
@@ -200,10 +229,7 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
   // customer actually paid, not whatever the price happens to be now.
   const amount = typeof chargedAmount === 'number' && chargedAmount > 0 ? chargedAmount : license.price;
 
-  const currentExpiry = license.expiryDate ? new Date(license.expiryDate) : new Date();
-  const daysToAdd = license.tenure === 'yearly' ? 365 : 30;
-  currentExpiry.setDate(currentExpiry.getDate() + daysToAdd);
-  const newExpiryStr = currentExpiry.toISOString().split('T')[0];
+  const newExpiryStr = nextExpiryAfterPayment(license.expiryDate, license.tenure);
 
   await pb.collection('licenses').update(licenseId, {
     status: 'active',
@@ -216,7 +242,7 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     clientName: license.assignedOrgName || 'Client',
     clientEmail: license.assignedUserEmail || '',
     amount,
-    paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    paymentDate: istStamp(),
     status: 'success',
     razorpayPaymentId: paymentId,
     razorpayOrderId: orderId
@@ -242,7 +268,7 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
       amount: Math.round(amount),
       dueDate: newExpiryStr,
       status: 'paid',
-      issuedDate: new Date().toISOString().split('T')[0]
+      issuedDate: istStamp().slice(0, 10)
     });
   }
 }
@@ -442,7 +468,7 @@ export async function handleWebhook(req: any, res: any) {
             clientName: email.split('@')[0],
             clientEmail: email,
             amount: amountRupees || 5000,
-            paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
+            paymentDate: istStamp(),
             status: 'success',
             razorpayPaymentId: paymentId,
             razorpayOrderId: orderId
@@ -456,7 +482,7 @@ export async function handleWebhook(req: any, res: any) {
           clientName: email.split('@')[0],
           clientEmail: email,
           amount: amountRupees || 5000,
-          paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
+          paymentDate: istStamp(),
           status: 'failed',
           razorpayPaymentId: paymentId,
           razorpayOrderId: orderId

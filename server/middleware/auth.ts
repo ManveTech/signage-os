@@ -143,7 +143,8 @@ export async function enforceLicense(req: any, res: any, next: any) {
     }
 
     const license = licenses[0];
-    const today = new Date().toISOString().split('T')[0];
+    // India time, matching how renewal dates are set (UTC lagged until 5:30 am).
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
     // Check if license is expired or payment pending
     const isExpired =

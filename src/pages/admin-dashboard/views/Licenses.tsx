@@ -13,7 +13,7 @@ import CustomSelect from '../../../components/CustomSelect';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import ConfirmDialog from '../../../components/screens/ConfirmDialog';
 import {
-  licenseState, LicenseStateKey, daysUntil, formatDate, formatInr, relativeDays, defaultExpiry, planLabel
+  licenseState, LicenseStateKey, daysUntil, formatDate, formatInr, relativeDays, defaultExpiry, planLabel, localDate
 } from '../../../components/licenses/licenseStatus';
 
 type Tab = 'management' | 'expirations' | 'invoices' | 'payments';
@@ -60,11 +60,13 @@ type FormState = {
   whiteLabel: boolean;
   videoConferencing: boolean;
   status: License['status'];
+  /** New licence for a client: invoice now, or the first period came with the sale. */
+  firstPayment: 'now' | 'included';
 };
 
 const emptyForm = (): FormState => ({
   name: '', price: 1000, tenure: 'monthly', email: '', expiry: defaultExpiry('monthly'), expiryTouched: false,
-  storage: 5, devices: 5, whiteLabel: false, videoConferencing: false, status: 'active'
+  storage: 5, devices: 5, whiteLabel: false, videoConferencing: false, status: 'active', firstPayment: 'now'
 });
 
 export default function Licenses({ activeTab: initTab = 'management', onNavigate }: { activeTab?: Tab; onNavigate?: (view: string) => void }) {
@@ -174,6 +176,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       whiteLabel: !!lic.whiteLabel,
       videoConferencing: !!lic.enableVideoConferencing,
       status: lic.status,
+      firstPayment: 'now',
     });
     setFormMode('edit');
   };
@@ -182,7 +185,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
   const pricingChanged = !!editing && (Number(form.price) !== editing.price || form.tenure !== editing.tenure);
 
-  const issueInvoice = (licenseId: string, email: string) => {
+  const issueInvoice = (licenseId: string, email: string, dueDate: string) => {
     const user = clients.find(u => u.email === email);
     licensingStore.addInvoice({
       id: '',
@@ -192,9 +195,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       clientEmail: email,
       // Prices include GST — the invoice total is what Razorpay charges.
       amount: Math.round(Number(form.price)),
-      dueDate: form.expiry,
+      dueDate,
       status: 'unpaid',
-      issuedDate: new Date().toISOString().split('T')[0],
+      issuedDate: localDate(),
     });
   };
 
@@ -205,9 +208,14 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     const org = form.email ? orgFor(form.email) : { id: undefined, name: undefined };
 
     if (formMode === 'create') {
-      // The typed "License ID" used to be discarded (records get a database
-      // id) while the auto-invoice pointed at the typed one, so invoices never
-      // matched their license. The real id is used for both now.
+      // Charge now: the licence waits for the first payment, and its period
+      // starts the day they pay (the server adds one period from then). It
+      // used to start with a year already on it and then add another year on
+      // payment — the first payment bought two years.
+      // Included with the sale: active right away until the chosen date; the
+      // first invoice comes at renewal.
+      const chargeNow = !!form.email && form.firstPayment === 'now';
+      const today = localDate();
       const created = licensingStore.createLicense({
         id: '',
         name: form.name.trim(),
@@ -216,19 +224,28 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         assignedOrgId: org.id,
         assignedOrgName: org.name,
         assignedUserEmail: form.email || undefined,
-        expiryDate: form.expiry,
-        status: form.email ? 'pending_payment' : 'active',
+        expiryDate: chargeNow ? today : form.expiry,
+        status: chargeNow ? 'pending_payment' : 'active',
         storageLimit: Number(form.storage),
         deviceLimit: Number(form.devices),
         whiteLabel: form.whiteLabel,
         enableVideoConferencing: form.videoConferencing,
       });
-      if (form.email) issueInvoice(created.id, form.email);
-      toast.success(form.email ? `License created — invoice issued to ${form.email}` : 'License added to the pool');
+      if (chargeNow) issueInvoice(created.id, form.email, today);
+      toast.success(
+        chargeNow ? `License created — invoice sent to ${form.email}`
+          : form.email ? `License active until ${formatDate(form.expiry)} — first invoice at renewal`
+          : 'License added to the pool'
+      );
     } else if (editing) {
-      // Changing the price or billing period is a new deal: the license waits
-      // for payment and a fresh invoice is issued.
-      const status = pricingChanged && form.email ? 'pending_payment' : form.status;
+      // A new price or billing period applies from the next renewal: the
+      // client keeps the time they've already paid for, and gets an invoice
+      // at the new price due on the renewal date. (This used to put the
+      // licence on hold immediately, blocking a client with months paid.)
+      // A licence that has already lapsed waits for payment now.
+      const today = localDate();
+      const lapsed = !form.expiry || form.expiry < today || form.status === 'expired';
+      const status = pricingChanged && form.email && lapsed ? 'pending_payment' : form.status;
       const res = await licensingStore.updateLicense(editing.id, {
         name: form.name.trim(),
         price: Number(form.price),
@@ -248,8 +265,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         return;
       }
       if (pricingChanged && form.email) {
-        issueInvoice(editing.id, form.email);
-        toast.success('Saved — new pricing sent as an invoice');
+        issueInvoice(editing.id, form.email, lapsed ? today : form.expiry);
+        toast.success(lapsed ? 'Saved — invoice at the new price sent' : `Saved — new price applies from ${formatDate(form.expiry)}`);
       } else {
         toast.success('License updated');
       }
@@ -434,7 +451,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                     </span>
                     <span className="text-sm text-slate-700">{formatInr(lic.price)}<span className="text-slate-400">/{lic.tenure === 'yearly' ? 'yr' : 'mo'}</span></span>
                     <span className="text-sm text-slate-700">{lic.assignedUserEmail ? `${screensUsed(lic.assignedUserEmail)} / ${lic.deviceLimit || 5}` : lic.deviceLimit || 5}</span>
-                    <span className={`text-sm ${state.key === 'expired' ? 'text-rose-600' : state.key === 'expiring' ? 'text-orange-600' : 'text-slate-700'}`}>{formatDate(lic.expiryDate)}</span>
+                    <span className={`text-sm ${state.key === 'expired' ? 'text-rose-600' : state.key === 'expiring' ? 'text-orange-600' : 'text-slate-700'}`}>{state.key === 'pending' ? 'Starts when paid' : formatDate(lic.expiryDate)}</span>
                     <span className="flex justify-end">{pill(state.label, state.className)}</span>
                   </button>
                 ))}
@@ -474,9 +491,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                     </span>
                   </span>
                   <span>
-                    <span className="block text-slate-400">Expires</span>
+                    <span className="block text-slate-400">{state.key === 'pending' ? 'Starts' : 'Expires'}</span>
                     <span className={`block font-semibold truncate ${state.key === 'expired' ? 'text-rose-600' : state.key === 'expiring' ? 'text-orange-600' : 'text-slate-800'}`}>
-                      {formatDate(lic.expiryDate)}
+                      {state.key === 'pending' ? 'When paid' : formatDate(lic.expiryDate)}
                     </span>
                   </span>
                 </span>
@@ -644,7 +661,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             details={[
               ...(email ? [{ label: 'Client', value: email }] : []),
               { label: 'Plan', value: planLabel(openLicense) },
-              { label: 'Expires', value: <span className={state.key === 'expired' ? 'text-rose-600' : ''}>{formatDate(openLicense.expiryDate)} · {relativeDays(state.days)}</span> },
+              state.key === 'pending'
+                ? { label: 'Period', value: `Starts when paid · runs 1 ${openLicense.tenure === 'yearly' ? 'year' : 'month'}` }
+                : { label: 'Expires', value: <span className={state.key === 'expired' ? 'text-rose-600' : ''}>{formatDate(openLicense.expiryDate)} · {relativeDays(state.days)}</span> },
               { label: 'Screens', value: email ? `${used} of ${openLicense.deviceLimit || 5} in use` : `Up to ${openLicense.deviceLimit || 5}` },
               { label: 'Storage', value: `${openLicense.storageLimit || 5} GB` },
               { label: 'Features', value: [openLicense.enableVideoConferencing && 'Video calls', openLicense.whiteLabel && 'White label'].filter(Boolean).join(', ') || <span className="text-slate-400">Standard</span> },
@@ -779,10 +798,38 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   ]}
                   buttonClassName="h-11 text-sm px-3"
                 />
-                {formMode === 'create' && form.email && (
-                  <p className="text-xs text-slate-500 mt-1.5">They'll get an invoice for {formatInr(Number(form.price))} (incl. {formatInr(Number(form.price) - Math.round(Number(form.price) / 1.18))} GST); the license activates once it's paid.</p>
-                )}
               </div>
+
+              {formMode === 'create' && form.email && (
+                <div>
+                  <label className={labelCls}>First payment</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { key: 'now', title: 'Charge now', hint: 'Invoice today' },
+                      { key: 'included', title: 'Included with sale', hint: 'First bill at renewal' },
+                    ] as const).map(o => {
+                      const active = form.firstPayment === o.key;
+                      return (
+                        <button
+                          key={o.key}
+                          type="button"
+                          onClick={() => setF('firstPayment', o.key)}
+                          aria-pressed={active}
+                          className={`text-left rounded-xl border px-3 py-2.5 ${active ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                        >
+                          <span className="block text-sm font-semibold text-slate-900">{o.title}</span>
+                          <span className="block text-xs text-slate-500 mt-0.5">{o.hint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1.5">
+                    {form.firstPayment === 'now'
+                      ? `They get an invoice for ${formatInr(Number(form.price))} (incl. ${formatInr(Number(form.price) - Math.round(Number(form.price) / 1.18))} GST). The licence starts the day they pay and runs one ${form.tenure === 'yearly' ? 'year' : 'month'}.`
+                      : `Active right away until the date below, nothing to pay now. Their first invoice (${formatInr(Number(form.price))}) is for the renewal on that date.`}
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -796,10 +843,12 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div className={formMode === 'edit' ? 'grid grid-cols-2 gap-3' : ''}>
-                <div>
-                  <label className={labelCls}>Expires on</label>
-                  <input type="date" value={form.expiry} onChange={e => setForm(f => ({ ...f, expiry: e.target.value, expiryTouched: true }))} className={inputCls} />
-                </div>
+                {!(formMode === 'create' && form.email && form.firstPayment === 'now') && (
+                  <div>
+                    <label className={labelCls}>{formMode === 'create' && form.email ? 'Paid until (first renewal)' : 'Expires on'}</label>
+                    <input type="date" value={form.expiry} onChange={e => setForm(f => ({ ...f, expiry: e.target.value, expiryTouched: true }))} className={inputCls} />
+                  </div>
+                )}
                 {formMode === 'edit' && (
                   <div>
                     <label className={labelCls}>Status</label>
@@ -816,7 +865,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   </div>
                 )}
               </div>
-              {formMode === 'create' && !form.expiryTouched && (
+              {formMode === 'create' && !form.expiryTouched && !(form.email && form.firstPayment === 'now') && (
                 <p className="text-xs text-slate-500 -mt-2">One {form.tenure === 'yearly' ? 'year' : 'month'} from today.</p>
               )}
 
@@ -828,7 +877,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               {pricingChanged && form.email && (
                 <p className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
                   <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  New pricing: the license will wait for payment and {form.email} gets a new invoice.
+                  {form.expiry && form.expiry >= localDate() && form.status !== 'expired'
+                    ? <>New price applies from the renewal on {formatDate(form.expiry)} — {form.email} keeps the time already paid and gets an invoice due that day.</>
+                    : <>This licence has lapsed: it waits for payment and {form.email} gets an invoice at the new price.</>}
                 </p>
               )}
             </div>
@@ -837,7 +888,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             <div className="flex gap-2">
               <button type="button" onClick={() => setFormMode(null)} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700">Cancel</button>
               <button type="button" onClick={saveForm} className="flex-[2] h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">
-                {formMode === 'create' ? (form.email ? 'Create & send invoice' : 'Create license') : 'Save changes'}
+                {formMode === 'create' ? (form.email && form.firstPayment === 'now' ? 'Create & send invoice' : 'Create license') : 'Save changes'}
               </button>
             </div>
           }
