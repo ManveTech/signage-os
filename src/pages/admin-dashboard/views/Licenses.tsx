@@ -215,6 +215,10 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       // Included with the sale: active right away until the chosen date; the
       // first invoice comes at renewal.
       const chargeNow = !!form.email && form.firstPayment === 'now';
+      // Pay later: the first month/year is free — first payment due exactly
+      // one period from today. No date to pick.
+      const payLater = !!form.email && form.firstPayment === 'included';
+      const firstDue = defaultExpiry(form.tenure);
       const today = localDate();
       const created = licensingStore.createLicense({
         id: '',
@@ -224,7 +228,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         assignedOrgId: org.id,
         assignedOrgName: org.name,
         assignedUserEmail: form.email || undefined,
-        expiryDate: chargeNow ? today : form.expiry,
+        expiryDate: chargeNow ? today : payLater ? firstDue : form.expiry,
         status: chargeNow ? 'pending_payment' : 'active',
         storageLimit: Number(form.storage),
         deviceLimit: Number(form.devices),
@@ -234,7 +238,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       if (chargeNow) issueInvoice(created.id, form.email, today);
       toast.success(
         chargeNow ? `License created — invoice sent to ${form.email}`
-          : form.email ? `License active until ${formatDate(form.expiry)} — first invoice at renewal`
+          : payLater ? `License active — first payment due ${formatDate(firstDue)}`
           : 'License added to the pool'
       );
     } else if (editing) {
@@ -806,7 +810,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   <div className="grid grid-cols-2 gap-2">
                     {([
                       { key: 'now', title: 'Charge now', hint: 'Invoice today' },
-                      { key: 'included', title: 'Included with sale', hint: 'First bill at renewal' },
+                      { key: 'included', title: 'Pay later', hint: `First ${form.tenure === 'yearly' ? 'year' : 'month'} free` },
                     ] as const).map(o => {
                       const active = form.firstPayment === o.key;
                       return (
@@ -826,7 +830,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   <p className="text-xs text-slate-500 mt-1.5">
                     {form.firstPayment === 'now'
                       ? `They get an invoice for ${formatInr(Number(form.price))} (incl. ${formatInr(Number(form.price) - Math.round(Number(form.price) / 1.18))} GST). The licence starts the day they pay and runs one ${form.tenure === 'yearly' ? 'year' : 'month'}.`
-                      : `Active right away until the date below, nothing to pay now. Their first invoice (${formatInr(Number(form.price))}) is for the renewal on that date.`}
+                      : `Active right away, nothing to pay now. Their first payment (${formatInr(Number(form.price))}) is due on ${formatDate(defaultExpiry(form.tenure))} — exactly one ${form.tenure === 'yearly' ? 'year' : 'month'} from today.`}
                   </p>
                 </div>
               )}
@@ -843,9 +847,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               </div>
 
               <div className={formMode === 'edit' ? 'grid grid-cols-2 gap-3' : ''}>
-                {!(formMode === 'create' && form.email && form.firstPayment === 'now') && (
+                {!(formMode === 'create' && form.email) && (
                   <div>
-                    <label className={labelCls}>{formMode === 'create' && form.email ? 'Paid until (first renewal)' : 'Expires on'}</label>
+                    <label className={labelCls}>Expires on</label>
                     <input type="date" value={form.expiry} onChange={e => setForm(f => ({ ...f, expiry: e.target.value, expiryTouched: true }))} className={inputCls} />
                   </div>
                 )}
@@ -865,7 +869,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   </div>
                 )}
               </div>
-              {formMode === 'create' && !form.expiryTouched && !(form.email && form.firstPayment === 'now') && (
+              {formMode === 'create' && !form.expiryTouched && !form.email && (
                 <p className="text-xs text-slate-500 -mt-2">One {form.tenure === 'yearly' ? 'year' : 'month'} from today.</p>
               )}
 

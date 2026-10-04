@@ -36,11 +36,12 @@ export function localDate(d = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Exactly one month/year after `from` (31 Jan + 1 month = 28/29 Feb, like the server). */
 export function defaultExpiry(tenure: 'monthly' | 'yearly', from = new Date()): string {
-  const d = new Date(from);
-  if (tenure === 'yearly') d.setFullYear(d.getFullYear() + 1);
-  else d.setMonth(d.getMonth() + 1);
-  return localDate(d);
+  const months = tenure === 'yearly' ? 12 : 1;
+  const y = from.getFullYear(), m = from.getMonth() + months, d = from.getDate();
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  return localDate(new Date(y, m, Math.min(d, lastDay)));
 }
 
 /**
