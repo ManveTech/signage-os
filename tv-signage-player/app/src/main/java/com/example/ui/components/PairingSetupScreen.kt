@@ -89,14 +89,8 @@ fun PairingSetupScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    val brandName = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
-        uiState.whiteLabelName
-    } else {
-        "Bluestar OS"
-    }
-
     // The CMS a customer logs into to actually complete pairing is a
-    // separate product from this player (brandName above, "Bluestar OS")
+    // separate product from this player (the brand in the corner)
     // — a white-label customer's own name applies to both, but the
     // non-white-label default names the CMS specifically, not the player.
     val cmsName = if (uiState.isWhiteLabel && !uiState.whiteLabelName.isNullOrEmpty()) {
@@ -114,13 +108,7 @@ fun PairingSetupScreen(
             ) {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = brandName,
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
+                    BrandMark(uiState, height = 44.dp)
                 }
 
                 Column(
@@ -220,13 +208,7 @@ fun PairingSetupScreen(
             ) {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = brandName,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
+                    BrandMark(uiState, height = 36.dp)
                 }
 
                 Column(
