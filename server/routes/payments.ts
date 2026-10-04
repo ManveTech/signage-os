@@ -5,7 +5,8 @@ import {
   handleWebhook,
   getRazorpayConfig,
   saveRazorpayConfig,
-  getPaymentHistory
+  getPaymentHistory,
+  markInvoicePaid
 } from '../controllers/payments';
 import { sendBillingReminder } from '../controllers/reminders';
 import { createCrudRouter } from '../controllers/crud';
@@ -27,6 +28,8 @@ router.post('/verify', paymentLimiter, verifyPayment);
 router.post('/webhook', handleWebhook);
 // Admin-only renewal / unpaid-invoice reminder email.
 router.post('/remind', sendBillingReminder);
+// Admin records an invoice paid outside Razorpay (renews the licence).
+router.post('/invoices/:id/mark-paid', markInvoicePaid);
 
 // Mount CRUD router for generic list/get/create/update/delete operations on payments collection (e.g. GET /)
 router.use('/', createCrudRouter('payments'));

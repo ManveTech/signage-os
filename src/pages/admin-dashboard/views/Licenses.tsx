@@ -185,9 +185,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
   const pricingChanged = !!editing && (Number(form.price) !== editing.price || form.tenure !== editing.tenure);
 
-  const issueInvoice = (licenseId: string, email: string, dueDate: string) => {
+  const issueInvoice = async (licenseId: string, email: string, dueDate: string) => {
     const user = clients.find(u => u.email === email);
-    licensingStore.addInvoice({
+    const res = await licensingStore.addInvoice({
       id: '',
       licenseId,
       licenseName: form.name,
@@ -199,6 +199,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       status: 'unpaid',
       issuedDate: localDate(),
     });
+    if (res.ok === false) toast.error(`The invoice couldn't be saved: ${res.error || 'please try again'}`);
   };
 
   const saveForm = async () => {
@@ -220,7 +221,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       const payLater = !!form.email && form.firstPayment === 'included';
       const firstDue = defaultExpiry(form.tenure);
       const today = localDate();
-      const created = licensingStore.createLicense({
+      const { license: created, result } = await licensingStore.createLicense({
         id: '',
         name: form.name.trim(),
         price: Number(form.price),
@@ -235,7 +236,12 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         whiteLabel: form.whiteLabel,
         enableVideoConferencing: form.videoConferencing,
       });
-      if (chargeNow) issueInvoice(created.id, form.email, today);
+      if (result.ok === false) {
+        toast.error(`Couldn't save: ${result.error || 'please try again'}`);
+        load();
+        return;
+      }
+      if (chargeNow) await issueInvoice(created.id, form.email, today);
       toast.success(
         chargeNow ? `License created — invoice sent to ${form.email}`
           : payLater ? `License active — first payment due ${formatDate(firstDue)}`
@@ -269,7 +275,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         return;
       }
       if (pricingChanged && form.email) {
-        issueInvoice(editing.id, form.email, lapsed ? today : form.expiry);
+        await issueInvoice(editing.id, form.email, lapsed ? today : form.expiry);
         toast.success(lapsed ? 'Saved — invoice at the new price sent' : `Saved — new price applies from ${formatDate(form.expiry)}`);
       } else {
         toast.success('License updated');
@@ -287,12 +293,22 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     load();
   };
 
+  // Records a payment received outside Razorpay: the server renews the
+  // licence exactly as an online payment would (it used to only flip the
+  // invoice, leaving the client locked out).
   const markInvoicePaid = async (inv: Invoice) => {
-    const res = await licensingStore.updateInvoiceStatus(inv.id, 'paid');
-    if (res.ok === false) { toast.error(`Couldn't update: ${res.error || 'please try again'}`); return; }
-    toast.success('Invoice marked as paid');
-    setOpenInvoiceId(null);
-    load();
+    try {
+      const res = await apiPost(`/payments/invoices/${inv.id}/mark-paid`, {});
+      await Promise.all([
+        syncCollection('licenses', 'signageos_licenses', { force: true }),
+        syncCollection('invoices', 'signageos_invoices', { force: true }),
+      ]).catch(() => {});
+      toast.success(res.expiryDate ? `Payment recorded — licence renewed to ${formatDate(res.expiryDate)}` : 'Invoice marked as paid');
+      setOpenInvoiceId(null);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Couldn't record the payment");
+    }
   };
 
   // ── Derived lists ─────────────────────────────────────────────────────────
@@ -726,7 +742,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             title: 'Collect payment',
             actions: [
               { key: 'remind', label: 'Email payment reminder', description: `Sends a pay link to ${openInvoice.clientEmail}`, icon: <Send size={17} />, onClick: () => remind({ invoiceId: openInvoice.id }, openInvoice.id) },
-              { key: 'paid', label: 'Mark as paid', description: 'For payments received outside Razorpay', icon: <CheckCircle size={17} />, onClick: () => markInvoicePaid(openInvoice) },
+              { key: 'paid', label: 'Mark as paid', description: 'Received outside Razorpay — renews the licence like an online payment', icon: <CheckCircle size={17} />, onClick: () => markInvoicePaid(openInvoice) },
             ]
           }] : []}
         />

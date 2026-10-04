@@ -110,6 +110,9 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
         description: `${lic.name} — ${lic.tenure === 'yearly' ? '1 year' : '1 month'}`,
         image: biz.logoUrl && biz.logoUrl.startsWith('https://') ? biz.logoUrl : undefined,
         order_id: order.orderId,
+        // Copied onto the payment, so Razorpay's webhook names the licence
+        // even when this tab is closed before the payment is confirmed.
+        notes: { licenseId: lic.id },
         prefill: { email: userEmail },
         theme: { color: '#2563EB' },
         handler: async (response: any) => {

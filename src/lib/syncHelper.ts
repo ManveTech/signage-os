@@ -192,6 +192,14 @@ if (typeof window !== 'undefined' && !(window as any).__sgWriteAwareFetch) {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
     const response = await originalFetch(input, init);
+    // The server pauses the dashboard (402) once a plan's grace period ends.
+    // Clients see this from their own licence; team members have none of
+    // their own, so the dashboard learns it from here.
+    if (response.status === 402) {
+      response.clone().json().then(body => {
+        if (body?.code === 'license_paused') window.dispatchEvent(new CustomEvent('signageos_license_paused', { detail: body }));
+      }).catch(() => {});
+    }
     if (method !== 'GET' && method !== 'HEAD') {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url.startsWith(API_BASE) || url.startsWith('/api/')) lastSyncedAt.clear();

@@ -5,6 +5,8 @@ import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '
 import { isRedisReady, redis } from '../redis';
 import { logAudit, getClientIp } from '../services/auditLog';
 import { notifyScreenConfigChanged, notifyScreensConfigChanged } from '../services/screenPush';
+import { resolveUserOrgId, groupBelongsTo } from '../services/ownership';
+import { loadUsablePlaylist } from '../scheduler';
 
 // --- Tenancy rules for the generic CRUD router -----------------------------
 // Every collection mounted through createCrudRouter() is covered by exactly
@@ -49,21 +51,6 @@ function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
 }
 
-// screen_groups is scoped by organization, not a direct user-email field —
-// resolve the caller's org via their license the same way the dashboard's own
-// client-side filtering already does (licensingStore lookups by assignedUserEmail).
-async function resolveUserOrgId(userEmail: string | undefined): Promise<string | null> {
-  if (!userEmail) return null;
-  try {
-    const license = await pb.collection('licenses').getFirstListItem(
-      pb.filter('assignedUserEmail = {:email}', { email: userEmail })
-    );
-    return license?.assignedOrgId || null;
-  } catch {
-    return null;
-  }
-}
-
 // The `company` field on a user's own record, used to match them against an
 // organizations.name — needed because roles like content_manager/viewer are
 // meant to share one org with its org_admin, so scoping organizations by the
@@ -85,8 +72,7 @@ async function resolveUserCompany(userEmail: string | undefined): Promise<string
 // DELETE, so all three enforce the exact same rule instead of drifting apart.
 async function isOwnRecord(collectionName: string, record: any, user: any): Promise<boolean> {
   if (collectionName === 'screen_groups') {
-    const orgId = await resolveUserOrgId(user?.email);
-    return !!record.orgId && !!orgId && record.orgId === orgId;
+    return groupBelongsTo(record, user?.email);
   }
   if (collectionName === 'organizations') {
     if (record.email && record.email === user?.email) return true;
@@ -186,13 +172,16 @@ export function createCrudRouter(collectionName: string) {
       const ownerField = OWNER_FIELD_BY_COLLECTION[collectionName];
 
       if (!isAdmin && collectionName === 'screen_groups') {
+        // Their organisation's groups plus the ones they made. (Every group
+        // with no organisation used to be visible to every client.)
         const orgId = await resolveUserOrgId(userEmail);
         if (orgId) {
-          filters.push(`(orgId = {:orgId} || orgId = "")`);
+          filters.push(`(orgId = {:orgId} || createdBy = {:groupOwner})`);
           filterParams['orgId'] = orgId;
         } else {
-          filters.push(`orgId = ""`);
+          filters.push(`createdBy = {:groupOwner}`);
         }
+        filterParams['groupOwner'] = String(userEmail);
       } else if (!isAdmin && collectionName === 'organizations') {
         // Match either the org's own primary-contact email, or the caller's
         // `company` field against the org name — covers org_admin (whose
@@ -372,6 +361,21 @@ export function createCrudRouter(collectionName: string) {
               return res.status(400).json({ error: `Device limit reached. Your active license(s) only support up to ${totalAllowed} screen(s).` });
             }
           }
+          if (body.groupId) {
+            const group = await pb.collection('screen_groups').getOne(String(body.groupId)).catch(() => null);
+            if (!(await groupBelongsTo(group, req.user?.email))) {
+              return res.status(403).json({ error: 'That group is not in this account.' });
+            }
+          }
+          if (body.playlistId) {
+            const playlist = await loadUsablePlaylist(String(body.playlistId), req.user?.email);
+            if (!playlist) return res.status(403).json({ error: 'That playlist is not in this account.' });
+            body.playlist = playlist.name;
+          }
+          // A TV only ever joins through pairing — a screen made here is a
+          // placeholder without one.
+          delete body.hardware_uuid;
+          if (body.status !== 'unlinked') body.status = 'unlinked';
         } else if (collectionName === 'playlists') {
           body.createdBy = req.user?.email;
         } else if (collectionName === 'screen_groups') {
@@ -384,10 +388,13 @@ export function createCrudRouter(collectionName: string) {
           // already deletes any client-supplied orgId outright.
           const orgId = await resolveUserOrgId(req.user?.email);
           body.orgId = orgId || '';
+          body.createdBy = req.user?.email;
         } else if (collectionName === 'tickets') {
           body.clientEmail = req.user?.email;
         }
       }
+
+      if (collectionName === 'screen_groups' && !body.createdBy) body.createdBy = req.user?.email;
 
       const record = await retryWithBackoff(() => pb.collection(collectionName).create(body));
 
@@ -428,6 +435,12 @@ export function createCrudRouter(collectionName: string) {
         delete req.body.assignedToUserEmail;
         delete req.body.createdBy;
         delete req.body.orgId;
+        // …nor what the server and the TV manage: which TV is linked, its
+        // pairing code, licence and branding. (Setting hardware_uuid could
+        // point a screen at someone else's TV.)
+        if (collectionName === 'screens') {
+          for (const f of ['hardware_uuid', 'pairing_code', 'pairing_code_expires', 'license_id', 'licenseType', 'whiteLabel', 'websiteLogo', 'websiteName', 'status']) delete req.body[f];
+        }
 
         // A screen's groupId was never validated against the target group's
         // owner — a client could PATCH their own screen (which passes the
@@ -435,12 +448,21 @@ export function createCrudRouter(collectionName: string) {
         // belonging to a different organization, and silently move their
         // screen into another tenant's group. Require the target group to
         // resolve to this caller's own org before the assignment is allowed.
-        if (collectionName === 'screens' && req.body.groupId) {
+        if (collectionName === 'screens' && req.body.groupId && req.body.groupId !== record.groupId) {
           const targetGroup = await retryWithBackoff(() => pb.collection('screen_groups').getOne(req.body.groupId)).catch(() => null);
-          const callerOrgId = await resolveUserOrgId(req.user?.email);
-          if (!targetGroup || targetGroup.orgId !== (callerOrgId || '')) {
+          if (!(await groupBelongsTo(targetGroup, req.user?.email))) {
             return res.status(403).json({ error: 'Access denied: that group does not belong to your organization.' });
           }
+        }
+        // Same for playlists: only the owner's own (or admin-made) playlists
+        // may be put on their screen. The dashboard sends the whole screen,
+        // so only a changed playlist is checked.
+        if (collectionName === 'screens' && req.body.playlistId && req.body.playlistId !== record.playlistId) {
+          const playlist = await loadUsablePlaylist(req.body.playlistId, record.assignedToUserEmail);
+          if (!playlist) {
+            return res.status(403).json({ error: 'That playlist is not in this account.' });
+          }
+          req.body.playlist = playlist.name;
         }
       }
 
@@ -452,6 +474,12 @@ export function createCrudRouter(collectionName: string) {
       delete body.createdAt;
       delete body.created;
       delete body.updated;
+      if (collectionName === 'screens') {
+        // Live values kept by heartbeats. The dashboard saves the whole
+        // screen, so these were copies from when the page loaded — saving a
+        // rename could write back an old "online" or last-seen time.
+        for (const f of ['lastHeartbeat', 'onlineSince', 'cumulativeUptime', 'cumulativeLoops', 'storageUsed']) delete body[f];
+      }
 
       // Role changes are a privilege-escalation-sensitive action — capture the
       // prior role before it's overwritten so the audit entry shows the change.

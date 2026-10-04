@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { JWT_SECRET } from '../config';
-import { licenseAccess } from '../services/licenseAccess';
+import { bestLicenseAccess } from '../services/licenseAccess';
 import { pb } from '../db';
+import { resolveUserOrgId } from '../services/ownership';
 
 export function verifyJwt(token: string): any {
   try {
@@ -88,7 +89,9 @@ export function authenticateToken(req: any, res: any, next: any) {
   }
 
   const payload = verifyJwt(token);
-  if (!payload) {
+  // Password-reset links are signed with the same key; they must only ever
+  // reset a password, never act as a login.
+  if (!payload || payload.purpose) {
     return res.status(403).json({ message: 'Invalid or expired session token.' });
   }
 
@@ -130,10 +133,21 @@ export async function enforceLicense(req: any, res: any, next: any) {
 
     const userEmail = req.user.email;
     // Fetch user's assigned license from PocketBase
-    const licenses = await pb.collection('licenses').getFullList({
+    let licenses = await pb.collection('licenses').getFullList({
       filter: pb.filter('assignedUserEmail = {:email}', { email: userEmail }),
       sort: '-created'
     });
+    // Team members (content managers, viewers) have no licence of their own
+    // — their organisation's applies, so they're paused along with it.
+    if (licenses.length === 0) {
+      const orgId = await resolveUserOrgId(userEmail);
+      if (orgId) {
+        licenses = await pb.collection('licenses').getFullList({
+          filter: pb.filter('assignedOrgId = {:orgId} && assignedUserEmail != ""', { orgId }),
+          sort: '-created'
+        });
+      }
+    }
 
     if (licenses.length === 0) {
       // No license assigned - allow access (configurable business rule)
@@ -141,8 +155,7 @@ export async function enforceLicense(req: any, res: any, next: any) {
       return next();
     }
 
-    const license = licenses[0];
-    const access = licenseAccess(license as any);
+    const { license, access } = bestLicenseAccess(licenses as any[])!;
     if (access.state === 'blocked') {
       return res.status(402).json({
         error: 'License expired or payment required',

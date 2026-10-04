@@ -15,6 +15,8 @@ export function listenToCollectionChanges() {
 
         const pipeline = redis.pipeline();
         pipeline.del(`cache:screen:${screenId}`);
+        // Heartbeats from TVs that send their screen id cache under this key.
+        pipeline.del(`cache:screen_uuid:${screenId}`);
         if (uuid) {
           pipeline.del(`cache:screen_uuid:${uuid}`);
         }

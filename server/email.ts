@@ -253,7 +253,8 @@ export async function sendCredentialsEmail({
     console.log(`To: ${toEmail}`);
     console.log(`Name: ${userName}`);
     console.log(`Role: ${role}`);
-    console.log(`Temporary Password: ${tempPassword}`);
+    // Passwords stay out of production logs.
+    if (process.env.NODE_ENV !== 'production') console.log(`Temporary Password: ${tempPassword}`);
     console.log('==================================================\n');
     return true;
   }
@@ -265,7 +266,7 @@ export async function sendCredentialsEmail({
   } catch (error: any) {
     console.error(`Failed to send credentials email to ${toEmail}:`, error.message);
     console.log('\n============================= FALLBACK LOG =============================');
-    console.log(`To: ${toEmail} | Password: ${tempPassword} | Role: ${role}`);
+    console.log(`To: ${toEmail} | Role: ${role}${process.env.NODE_ENV !== 'production' ? ` | Password: ${tempPassword}` : ''}`);
     console.log('========================================================================\n');
     return false;
   }
@@ -393,6 +394,9 @@ export async function sendPasswordResetEmail({
   };
 
   if (!transporter) {
+    // No email set up. The link is a live password-reset token, so it's
+    // only ever printed in development — never into production logs.
+    if (process.env.NODE_ENV === 'production') return false;
     console.log('\n============================= FALLBACK PASSWORD RESET =============================');
     console.log(`To: ${toEmail}`);
     console.log(`Reset Link: ${resetLink}`);

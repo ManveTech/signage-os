@@ -3,8 +3,8 @@ import {
   Monitor, Upload, Edit, Plus, ChevronRight, CheckCircle2, WifiOff, HardDrive,
   Clock, CreditCard, List, Key
 } from 'lucide-react';
-import { licensingStore } from '../../../lib/licensingStore';
-import { licenseAccess } from '../../../components/licenses/licenseStatus';
+import { licensingStore, License } from '../../../lib/licensingStore';
+import { licenseAccess, bestLicense } from '../../../components/licenses/licenseStatus';
 import { mediaStore } from '../../../lib/mediaStore';
 import { syncCollection } from '../../../lib/syncHelper';
 
@@ -91,7 +91,7 @@ export default function Dashboard({
     });
   }, [userEmail]);
 
-  const userLicense = licensingStore.getLicenses().find(l => l.assignedUserEmail === userEmail);
+  const userLicense = bestLicense(licensingStore.getLicenses().filter(l => l.assignedUserEmail === userEmail) as any[]) as License | null;
   const ownedScreens = mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail);
   // Unlinked screens have no TV attached — keep them out of the online/offline health numbers.
   const myScreens = ownedScreens.filter(s => s.status !== 'unlinked');

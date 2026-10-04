@@ -84,7 +84,8 @@ export const licensingStore = {
     localStorage.setItem('signageos_licenses', JSON.stringify(licenses));
   },
 
-  createLicense(license: Omit<License, 'createdAt' | 'status'> & { status?: License['status'] }): License {
+  /** Saves locally and waits for the server — the caller reports a failed save. */
+  async createLicense(license: Omit<License, 'createdAt' | 'status'> & { status?: License['status'] }): Promise<{ license: License; result: PushResult }> {
     const licenses = this.getLicenses();
     const newLicense: License = {
       ...license,
@@ -94,8 +95,9 @@ export const licensingStore = {
     };
     licenses.push(newLicense);
     this.saveLicenses(licenses);
-    pushToDatabase('licenses', newLicense.id, newLicense, 'POST');
-    return newLicense;
+    const result = await pushToDatabase('licenses', newLicense.id, newLicense, 'POST');
+    if (result.ok === false) this.saveLicenses(this.getLicenses().filter(l => l.id !== newLicense.id));
+    return { license: newLicense, result };
   },
 
   async updateLicense(id: string, updates: Partial<Omit<License, 'id' | 'createdAt'>>): Promise<PushResult> {
@@ -149,7 +151,7 @@ export const licensingStore = {
     localStorage.setItem('signageos_invoices', JSON.stringify(invoices));
   },
 
-  addInvoice(invoice: Invoice) {
+  async addInvoice(invoice: Invoice): Promise<PushResult> {
     const invoices = this.getInvoices();
     const newInvoice: Invoice = {
       ...invoice,
@@ -157,7 +159,9 @@ export const licensingStore = {
     };
     invoices.unshift(newInvoice);
     this.saveInvoices(invoices);
-    pushToDatabase('invoices', newInvoice.id, newInvoice, 'POST');
+    const result = await pushToDatabase('invoices', newInvoice.id, newInvoice, 'POST');
+    if (result.ok === false) this.saveInvoices(this.getInvoices().filter(i => i.id !== newInvoice.id));
+    return result;
   },
 
   /** Last known billing details (cached copy of GET /business-details). */

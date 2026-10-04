@@ -135,6 +135,18 @@ export async function createOrder(req: any, res: any) {
 // extend the license twice.
 const inFlightPayments = new Map<string, Promise<'processed' | 'already'>>();
 
+/**
+ * The record of a payment that has already renewed a licence. A failed
+ * attempt, or a payment logged before its licence could be identified, has
+ * the same Razorpay id but must not block the payment from being applied.
+ */
+async function findAppliedPayment(paymentId: string): Promise<any | null> {
+  const rows = await pb.collection('payments').getFullList({
+    filter: pb.filter('razorpayPaymentId = {:id}', { id: paymentId })
+  }).catch(() => [] as any[]);
+  return rows.find((p: any) => p.status === 'success' && p.licenseId) || null;
+}
+
 async function processPaymentOnce(licenseId: string, paymentId: string, orderId: string, chargedAmount?: number): Promise<'processed' | 'already'> {
   const existing = inFlightPayments.get(paymentId);
   if (existing) {
@@ -152,19 +164,13 @@ async function processPaymentOnce(licenseId: string, paymentId: string, orderId:
       if (!lockToken) {
         for (let i = 0; i < 30; i++) {
           await new Promise(r => setTimeout(r, 500));
-          const done = await pb.collection('payments').getFirstListItem(
-            pb.filter('razorpayPaymentId = {:id}', { id: paymentId })
-          ).catch(() => null);
-          if (done) return 'already';
+          if (await findAppliedPayment(paymentId)) return 'already';
         }
         throw new Error('This payment is still being processed. Please refresh in a moment.');
       }
     }
     try {
-      const alreadyUsed = await pb.collection('payments').getFirstListItem(
-        pb.filter('razorpayPaymentId = {:id}', { id: paymentId })
-      ).catch(() => null);
-      if (alreadyUsed) return 'already';
+      if (await findAppliedPayment(paymentId)) return 'already';
       await verifyAndProcessPayment(licenseId, paymentId, orderId, chargedAmount);
       return 'processed';
     } finally {
@@ -213,12 +219,14 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
   // Shared by both the /verify REST endpoint and the webhook handler — this
   // dedup check has to live here, not just in one caller, so a payment id
   // can never activate/extend a license more than once via either path.
-  const alreadyUsed = await pb.collection('payments').getFirstListItem(
-    pb.filter('razorpayPaymentId = {:id}', { id: paymentId })
-  ).catch(() => null);
-  if (alreadyUsed) {
+  if (await findAppliedPayment(paymentId)) {
     throw new Error('This payment has already been processed.');
   }
+  // A log of this payment made before its licence was known (see the
+  // webhook) is completed rather than duplicated.
+  const unmatched = await pb.collection('payments').getFirstListItem(
+    pb.filter('razorpayPaymentId = {:id} && licenseId = ""', { id: paymentId })
+  ).catch(() => null);
 
   const license = await pb.collection('licenses').getOne(licenseId);
 
@@ -236,7 +244,7 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     expiryDate: newExpiryStr
   });
 
-  await pb.collection('payments').create({
+  const paymentRecord = {
     licenseId,
     licenseName: license.name,
     clientName: license.assignedOrgName || 'Client',
@@ -246,7 +254,9 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     status: 'success',
     razorpayPaymentId: paymentId,
     razorpayOrderId: orderId
-  });
+  };
+  if (unmatched) await pb.collection('payments').update(unmatched.id, paymentRecord);
+  else await pb.collection('payments').create(paymentRecord);
 
   // Settle the invoice(s) this payment was for. Previously the unpaid invoice
   // stayed "unpaid" forever and a second, "paid" one was created — recorded
@@ -331,9 +341,7 @@ export async function verifyPayment(req: any, res: any) {
     if (result === 'already') {
       // Usually the webhook got there first. Fine as long as it was applied
       // to this same license.
-      const existing = await pb.collection('payments').getFirstListItem(
-        pb.filter('razorpayPaymentId = {:id}', { id: razorpayPaymentId })
-      ).catch(() => null);
+      const existing = await findAppliedPayment(razorpayPaymentId);
       if (existing && existing.licenseId !== licenseId) {
         return res.status(409).json({ message: 'This payment has already been used for a different license.' });
       }
@@ -357,6 +365,48 @@ export async function verifyPayment(req: any, res: any) {
   } catch (error: any) {
     console.error('Error verifying payment:', error);
     res.status(500).json({ message: error.message || 'Error verifying payment' });
+  }
+}
+
+/**
+ * POST /payments/invoices/:id/mark-paid — the admin received this invoice's
+ * money outside Razorpay (cash, bank transfer). Applied exactly like an
+ * online payment: the licence is activated/renewed, a payment is recorded
+ * and the invoice settled. "Mark as paid" used to flip only the invoice,
+ * leaving a "Charge now" client locked out after paying.
+ */
+export async function markInvoicePaid(req: any, res: any) {
+  try {
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+    await ensurePBAuth();
+    const invoice = await pb.collection('invoices').getOne(req.params.id).catch(() => null);
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found.' });
+    if (invoice.status === 'paid') return res.status(200).json({ status: 'already', message: 'This invoice is already paid.' });
+
+    const license = invoice.licenseId ? await pb.collection('licenses').getOne(invoice.licenseId).catch(() => null) : null;
+    if (!license) {
+      // Nothing to renew — just settle the invoice.
+      await pb.collection('invoices').update(invoice.id, { status: 'paid' });
+      return res.status(200).json({ status: 'success', message: 'Invoice marked as paid.' });
+    }
+
+    const result = await processPaymentOnce(license.id, `manual_${invoice.id}`, 'manual', Number(invoice.amount) || undefined);
+    logAudit({
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+      action: 'payment.recorded_manually',
+      targetType: 'license',
+      targetId: license.id,
+      detail: `invoice=${invoice.id}, amount=${invoice.amount}`,
+      ip: getClientIp(req)
+    });
+    const updated = await pb.collection('licenses').getOne(license.id).catch(() => license);
+    res.status(200).json({ status: result === 'already' ? 'already' : 'success', expiryDate: updated.expiryDate, message: 'Payment recorded and licence renewed.' });
+  } catch (error: any) {
+    console.error('Error marking invoice paid:', error);
+    res.status(500).json({ message: error.message || 'Could not record the payment.' });
   }
 }
 
@@ -422,33 +472,35 @@ export async function handleWebhook(req: any, res: any) {
     if (payload && payload.payment && payload.payment.entity) {
       const paymentEntity = payload.payment.entity;
       const paymentId = paymentEntity.id;
-      const orderId = paymentEntity.order_id || `ord_${paymentId}`;
+      const orderId = paymentEntity.order_id || '';
       const amountPaise = paymentEntity.amount || 0;
       const amountRupees = amountPaise > 0 ? amountPaise / 100 : 0;
-      const email = paymentEntity.email || 'client@demo.com';
-      const status = event === 'payment.failed' ? 'failed' : 'success';
+      const email = String(paymentEntity.email || '').toLowerCase().trim();
 
-      // createOrder stamps the order (and, per Razorpay, every payment
-      // captured against it) with notes.licenseId — use that to identify the
-      // exact license this payment was for. Previously this only matched by
-      // email, which silently renews/activates the WRONG license for any
-      // customer who has more than one, and finds nothing at all (payment
-      // recorded as "successful" with no license ever activated) on a
-      // case-mismatched email. Fall back to the email lookup only for orders
-      // created before this fix, which won't have notes.licenseId set.
+      // Which licence this payment was for. createOrder stamps it on the
+      // order's notes — Razorpay only copies those onto the payment when
+      // checkout passes them too, so also read the order (order.paid
+      // carries it; for payment.* events ask Razorpay). The email typed at
+      // checkout is a last resort, and only when it points at exactly one
+      // licence: it used to pick any licence for that email, or none when
+      // the payer typed a different email.
       let matchingLicense: any = null;
-      const licenseIdFromNotes = paymentEntity.notes?.licenseId;
-      if (licenseIdFromNotes) {
-        matchingLicense = await pb.collection('licenses').getOne(licenseIdFromNotes).catch(() => null);
+      const notedIds = [paymentEntity.notes?.licenseId, payload.order?.entity?.notes?.licenseId].filter(Boolean);
+      if (notedIds.length === 0 && orderId) {
+        const rzp = getRazorpayInstance();
+        const order = rzp ? await rzp.orders.fetch(orderId).catch(() => null) : null;
+        if ((order as any)?.notes?.licenseId) notedIds.push((order as any).notes.licenseId);
       }
-      if (!matchingLicense) {
-        const licensesResult = await pb.collection('licenses').getList(1, 10, {
+      for (const id of notedIds) {
+        matchingLicense = await pb.collection('licenses').getOne(String(id)).catch(() => null);
+        if (matchingLicense) break;
+      }
+      if (!matchingLicense && email) {
+        const byEmail = await pb.collection('licenses').getFullList({
           filter: pb.filter('assignedUserEmail = {:email}', { email })
-        }).catch(() => ({ items: [] }));
-        matchingLicense = licensesResult.items[0];
+        }).catch(() => [] as any[]);
+        if (byEmail.length === 1) matchingLicense = byEmail[0];
       }
-      const licenseId = matchingLicense?.id || 'LIC-GENERAL';
-      const licenseName = matchingLicense?.name || 'General License';
 
       if (event === 'order.paid' || event === 'payment.captured') {
         if (matchingLicense) {
@@ -461,27 +513,32 @@ export async function handleWebhook(req: any, res: any) {
             detail: `razorpayPaymentId=${paymentId}, razorpayOrderId=${orderId}`,
             ip: getClientIp(req)
           });
-        } else {
+          console.log(`[Razorpay Webhook] Applied "${event}" ${paymentId} to licence ${matchingLicense.id}`);
+        } else if (!(await pb.collection('payments').getFirstListItem(pb.filter('razorpayPaymentId = {:id}', { id: paymentId })).catch(() => null))) {
+          // Money arrived but the licence can't be identified yet. Logged with
+          // no licence so it shows in the admin's payments and doesn't count
+          // as applied — a later event for the same payment (e.g. order.paid
+          // with the order's notes) still renews the right licence.
           await pb.collection('payments').create({
-            licenseId,
-            licenseName,
-            clientName: email.split('@')[0],
+            licenseId: '',
+            licenseName: 'Unmatched payment — check in Razorpay',
+            clientName: email ? email.split('@')[0] : 'Unknown',
             clientEmail: email,
-            amount: amountRupees || 5000,
+            amount: amountRupees,
             paymentDate: istStamp(),
             status: 'success',
             razorpayPaymentId: paymentId,
             razorpayOrderId: orderId
-          }).catch(err => console.error('Failed to create payment log for webhook:', err.message));
+          });
+          console.warn(`[Razorpay Webhook] ${paymentId} could not be matched to a licence (email ${email || 'none'}). Logged for review.`);
         }
-        console.log(`[Razorpay Webhook] Successfully processed "${event}" for ${email}`);
       } else if (event === 'payment.failed') {
         await pb.collection('payments').create({
-          licenseId,
-          licenseName,
-          clientName: email.split('@')[0],
-          clientEmail: email,
-          amount: amountRupees || 5000,
+          licenseId: matchingLicense?.id || '',
+          licenseName: matchingLicense?.name || '',
+          clientName: matchingLicense?.assignedOrgName || (email ? email.split('@')[0] : 'Unknown'),
+          clientEmail: matchingLicense?.assignedUserEmail || email,
+          amount: amountRupees,
           paymentDate: istStamp(),
           status: 'failed',
           razorpayPaymentId: paymentId,
@@ -493,7 +550,10 @@ export async function handleWebhook(req: any, res: any) {
     res.status(200).json({ status: 'received' });
   } catch (error: any) {
     console.error('Webhook processing error:', error);
-    res.status(250).json({ status: 'error', message: error.message });
+    // A 5xx makes Razorpay retry the event (processing is idempotent). The
+    // old 250 counted as delivered, so a payment that failed to apply here
+    // (database briefly down) was never retried.
+    res.status(500).json({ status: 'error', message: error.message });
   }
 }
 

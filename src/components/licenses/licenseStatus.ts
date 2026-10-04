@@ -106,3 +106,20 @@ export function licenseAccess(lic: Pick<License, 'status' | 'expiryDate'> & { cr
     ? { state: 'grace', reason: 'expired', daysLeft, graceEnds, graceDaysLeft }
     : { state: 'blocked', reason: 'expired', daysLeft, graceEnds };
 }
+
+const RANK = { ok: 2, grace: 1, blocked: 0 } as const;
+
+/**
+ * The licence that decides a client's access when they hold several (e.g.
+ * an add-on for more screens): the best-standing one, so a paid plan keeps
+ * the dashboard open while a new add-on waits for payment. Same rule as the
+ * server's bestLicenseAccess.
+ */
+export function bestLicense<T extends Pick<License, 'status' | 'expiryDate'> & { created?: string }>(licenses: T[]): T | null {
+  let best: { lic: T; rank: number } | null = null;
+  for (const lic of licenses) {
+    const rank = RANK[licenseAccess(lic).state];
+    if (!best || rank > best.rank || (rank === best.rank && String(lic.expiryDate || '') > String(best.lic.expiryDate || ''))) best = { lic, rank };
+  }
+  return best ? best.lic : null;
+}

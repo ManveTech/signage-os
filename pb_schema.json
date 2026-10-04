@@ -1809,6 +1809,20 @@
         "type": "text"
       },
       {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "textcreatedbygroups",
+        "max": 0,
+        "min": 0,
+        "name": "createdBy",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
@@ -1836,7 +1850,7 @@
   },
   {
     "id": "colldmolhn9g9ht",
-    "listRule": "",
+    "listRule": null,
     "viewRule": "",
     "createRule": null,
     "updateRule": null,
@@ -2115,7 +2129,7 @@
   },
   {
     "id": "colldtqd7qyyetl",
-    "listRule": "",
+    "listRule": null,
     "viewRule": "",
     "createRule": null,
     "updateRule": null,

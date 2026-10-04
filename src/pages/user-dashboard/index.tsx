@@ -33,7 +33,7 @@ import Settings from './views/Settings';
 import Support from './views/Support';
 import Profile from './views/Profile';
 import { licensingStore, License } from '../../lib/licensingStore';
-import { licenseAccess, formatDate, formatInr, LicenseAccess } from '../../components/licenses/licenseStatus';
+import { licenseAccess, bestLicense, formatDate, formatInr, LicenseAccess } from '../../components/licenses/licenseStatus';
 import { syncCollection, pushToDatabase } from '../../lib/syncHelper';
 import { X, CheckCircle, Lock, Image, AlertTriangle, MonitorPlay, LifeBuoy } from 'lucide-react';
 import { getAuthToken } from '../../lib/authStorage';
@@ -188,10 +188,8 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
 
   // The newest licence decides access (same rule as the server).
   const checkLicense = () => {
-    const mine = licensingStore.getLicenses()
-      .filter(l => l.assignedUserEmail === userEmail)
-      .sort((a, b) => String((b as any).created || b.createdAt || '').localeCompare(String((a as any).created || a.createdAt || '')));
-    setClientLicense(mine[0] || null);
+    const mine = licensingStore.getLicenses().filter(l => l.assignedUserEmail === userEmail);
+    setClientLicense(bestLicense(mine as any[]) as License | null);
     setLicenseChecked(true);
   };
 
@@ -238,12 +236,22 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail]);
-  useEffect(() => { checkLicense(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeView]);
+  useEffect(() => { checkLicense(); setTeamPaused(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeView]);
+
+  // A team member (no licence of their own) whose organisation's plan is
+  // paused — learned from the server's 402.
+  const [teamPaused, setTeamPaused] = useState(false);
+  useEffect(() => {
+    const onPaused = () => setTeamPaused(true);
+    window.addEventListener('signageos_license_paused', onPaused);
+    return () => window.removeEventListener('signageos_license_paused', onPaused);
+  }, []);
 
   const access = clientLicense ? licenseAccess(clientLicense as any) : null;
   // While paused, these stay usable so the client can pay or get help.
   const OPEN_WHEN_PAUSED = ['license-billing', 'support', 'support-tickets', 'support-help', 'profile', 'settings-general'];
   const paused = !!access && access.state === 'blocked' && !OPEN_WHEN_PAUSED.includes(activeView);
+  const showTeamPaused = !clientLicense && licenseChecked && teamPaused && !OPEN_WHEN_PAUSED.includes(activeView);
 
   // First time login submit handler
   const handleFirstLoginSubmit = async (e: React.FormEvent) => {
@@ -325,9 +333,11 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
             {access && access.state !== 'ok' && activeView !== 'license-billing' && !paused && (
               <LicenseBanner access={access} price={clientLicense?.price || 0} onRenew={() => handleNavigate('license-billing')} />
             )}
-            <SectionTransition viewKey={paused ? 'paused' : activeView} scrollRoot={mainRef} className="sg-page">
+            <SectionTransition viewKey={paused ? 'paused' : showTeamPaused ? 'team-paused' : activeView} scrollRoot={mainRef} className="sg-page">
               {paused && access
                 ? <PausedScreen access={access} license={clientLicense!} onRenew={() => handleNavigate('license-billing')} onHelp={() => handleNavigate('support-tickets')} />
+                : showTeamPaused
+                ? <TeamPausedScreen onHelp={() => handleNavigate('support-tickets')} />
                 : renderView(activeView, handleNavigate, userEmail, !!clientLicense?.enableVideoConferencing, clientLicense?.assignedOrgId || '', licenseChecked)}
             </SectionTransition>
           </main>
@@ -477,6 +487,25 @@ function LicenseBanner({ access, price, onRenew }: { access: LicenseAccess; pric
       <button onClick={onRenew} className="shrink-0 h-9 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold">
         Renew{price ? ` · ${formatInr(price)}` : ''}
       </button>
+    </div>
+  );
+}
+
+/** For team members: their organisation's plan is paused; only its owner can renew. */
+function TeamPausedScreen({ onHelp }: { onHelp: () => void }) {
+  return (
+    <div className="p-4 sm:p-6">
+      <div className="max-w-md mx-auto mt-4 sm:mt-10 bg-white rounded-3xl border border-slate-100 p-6 sm:p-8 text-center">
+        <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto"><Lock size={24} /></div>
+        <h1 className="text-lg font-semibold text-slate-900 mt-4">Your organisation's plan is paused</h1>
+        <p className="text-sm text-slate-500 mt-1.5">Ask your account owner to renew it — you'll be back in as soon as they do.</p>
+        <p className="flex items-center justify-center gap-1.5 text-xs text-emerald-700 mt-3">
+          <MonitorPlay size={14} /> Your screens keep playing in the meantime.
+        </p>
+        <button onClick={onHelp} className="mt-6 w-full h-11 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-1.5">
+          <LifeBuoy size={15} /> Ask for help
+        </button>
+      </div>
     </div>
   );
 }

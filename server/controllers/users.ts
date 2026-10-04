@@ -4,6 +4,9 @@ import { PB_URL } from '../config';
 import { sendCredentialsEmail } from '../email';
 import { appBaseUrl } from '../utils/appUrl';
 import { logAudit, getClientIp } from '../services/auditLog';
+import { removeScreenSchedule } from '../scheduler';
+import { clearScreenCache } from './screens';
+import { notifyScreenConfigChanged } from '../services/screenPush';
 
 function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
@@ -394,7 +397,15 @@ export async function deleteUser(req: any, res: any) {
           groupId: null,
           playlist: '',
           playlistId: '',
+          schedulePlaylist: '',
+          scheduleDate: '',
+          scheduleTime: '',
           onlineSince: ''
+        }).then(async () => {
+          removeScreenSchedule(screen.id);
+          await clearScreenCache(screen.id, screen.hardware_uuid);
+          // The TV drops back to its pairing code now, not on its next poll.
+          notifyScreenConfigChanged(screen.id);
         }).catch(() => {});
       }));
 

@@ -1,7 +1,7 @@
 import { pb, ensurePBAuth } from '../db';
 import { sendBillingReminderEmail } from '../email';
 import { APP_URL } from '../config';
-import { GRACE_DAYS, istToday, daysBetween, addDays, licenseAccess } from './licenseAccess';
+import { GRACE_DAYS, istToday, daysBetween, addDays, licenseAccess, bestLicenseAccess } from './licenseAccess';
 
 /**
  * Automatic renewal reminders. Each licence gets at most one email per
@@ -34,11 +34,24 @@ export function reminderStage(lic: any, today = istToday()): Stage | null {
   return null;
 }
 
-function emailFor(stage: Stage, lic: any) {
+/**
+ * `covered`: the client has another licence that keeps their dashboard open,
+ * so this one lapsing doesn't pause anything — the email says so.
+ */
+function emailFor(stage: Stage, lic: any, covered = false) {
   const expiry = String(lic.expiryDate).slice(0, 10);
   const graceEnds = addDays(expiry, GRACE_DAYS);
   const plan = `${inr(lic.price)} / ${lic.tenure === 'yearly' ? 'year' : 'month'}`;
   const rows: [string, string][] = [['License', lic.name || '—'], ['Plan', plan]];
+  if (covered && (stage === 'due' || stage === 'grace')) {
+    return {
+      subject: `"${lic.name}" ${stage === 'due' && daysBetween(istToday(), expiry) === 0 ? 'is due today' : 'has expired'}`,
+      headline: 'Time to renew',
+      message: `Your licence "${lic.name}" was due on ${fmt(expiry)}. Renew it from the Billing page to keep it active.`,
+      rows: [...rows, ['Due date', fmt(expiry)]],
+      cta: 'Renew now',
+    };
+  }
   switch (stage) {
     case 'invoice':
       return {
@@ -94,14 +107,21 @@ export async function runBillingReminders(now = new Date()): Promise<{ sent: num
     await ensurePBAuth();
     const today = istToday(now);
     const licenses = await pb.collection('licenses').getFullList({ filter: 'assignedUserEmail != ""' });
+    const byClient = new Map<string, any[]>();
+    for (const lic of licenses as any[]) byClient.set(lic.assignedUserEmail, [...(byClient.get(lic.assignedUserEmail) || []), lic]);
     for (const lic of licenses as any[]) {
       const stage = reminderStage(lic, today);
       if (!stage) continue;
+      // Another licence keeps this client's dashboard open: no "paused"
+      // email, and due/grace emails don't talk about losing access.
+      const overall = bestLicenseAccess(byClient.get(lic.assignedUserEmail) || [lic], today);
+      const covered = !!overall && overall.license.id !== lic.id && overall.access.state === 'ok';
+      if (covered && stage === 'paused') continue;
       const expiry = String(lic.expiryDate).slice(0, 10);
       const record: Record<string, string[]> = lic.remindersSent && typeof lic.remindersSent === 'object' ? lic.remindersSent : {};
       if ((record[expiry] || []).includes(stage)) continue;
 
-      const e = emailFor(stage, lic);
+      const e = emailFor(stage, lic, covered);
       const result = await sendBillingReminderEmail({
         toEmail: lic.assignedUserEmail,
         clientName: lic.assignedOrgName,

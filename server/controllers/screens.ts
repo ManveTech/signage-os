@@ -1,6 +1,7 @@
 import { pb, ensurePBAuth } from '../db';
 import { APP_URL } from '../config';
-import { syncScreenSchedule } from '../scheduler';
+import { syncScreenSchedule, removeScreenSchedule, loadUsablePlaylist } from '../scheduler';
+import { groupBelongsTo } from '../services/ownership';
 import { redis, isRedisReady, acquireLock, releaseLock } from '../redis';
 import { notifyScreenConfigChanged } from '../services/screenPush';
 import { alertScreenOffline } from '../services/screenAlerts';
@@ -275,6 +276,21 @@ export async function pairScreen(req: any, res: any) {
       }
     }
 
+    // The playlist and group picked in Add screen must be the client's own
+    // (an admin-made playlist is fine too). Neither was checked, so a client
+    // could put another client's playlist — or group — on their TV.
+    let startPlaylist: any = null;
+    if (playlist) {
+      startPlaylist = await loadUsablePlaylist(String(playlist), clientEmail);
+      if (!startPlaylist) return res.status(403).json({ message: 'That playlist is not in this account.' });
+    }
+    if (groupId) {
+      const group = await pb.collection('screen_groups').getOne(String(groupId)).catch(() => null);
+      if (!group || (!isAdmin && !(await groupBelongsTo(group, clientEmail)))) {
+        return res.status(403).json({ message: 'That group is not in this account.' });
+      }
+    }
+
     // 2. Locate screen record by pairing code
     const pairingScreens = await pb.collection('screens').getList(1, 1, {
       filter: pb.filter('pairing_code = {:pairingCode}', { pairingCode: pairingCode.trim().toUpperCase() })
@@ -305,13 +321,15 @@ export async function pairScreen(req: any, res: any) {
       licenseType: license.whiteLabel ? 'Pro' : 'Lite',
       assignedToUserEmail: clientEmail,
       groupId: groupId || null,
-      playlist: playlist || '', // playlist ID
-      playlistId: playlist || '',
+      playlist: startPlaylist?.name || '',
+      playlistId: startPlaylist?.id || '',
       ...(orientation === 'landscape' || orientation === 'portrait' ? { orientation } : {}),
       ...(typeof screenSize === 'string' && screenSize.length <= 16 ? { screenSize } : {}),
       onlineSince: new Date().toISOString(),
       lastHeartbeat: new Date().toISOString()
     });
+
+    await clearScreenCache(updatedScreen.id, updatedScreen.hardware_uuid);
 
     // Sync branding details
     await syncScreenBrandingFromOrg(updatedScreen);
@@ -346,6 +364,18 @@ export async function pairScreen(req: any, res: any) {
     await logServerError('system', req.body?.name || 'System', req.body?.assignedToUserEmail || '', 'Pairing screen error', error.message || 'Unknown error');
     res.status(500).json({ message: error.message || 'Error pairing screen' });
   }
+}
+
+/**
+ * Drops every cached copy of a screen. Heartbeats cache the record under
+ * both the screen id and the TV's hardware id; a copy left behind after
+ * pairing or removal made heartbeats act on the old record for up to an hour.
+ */
+export async function clearScreenCache(screenId: string, hardwareUuid?: string): Promise<void> {
+  if (!isRedisReady()) return;
+  const p = redis.pipeline().del(`cache:screen:${screenId}`).del(`cache:screen_uuid:${screenId}`);
+  if (hardwareUuid) p.del(`cache:screen_uuid:${hardwareUuid}`);
+  await p.exec().catch(() => {});
 }
 
 class AsyncMutex {
@@ -769,6 +799,12 @@ export async function recordHeartbeat(req: any, res: any) {
       const cached = await redis.get(cacheKey) || await redis.get(`cache:screen:${targetId}`);
       if (cached) {
         screenRecord = JSON.parse(cached);
+        // A cached "not live" answer is re-checked before acting on it — the
+        // screen may have been paired or re-linked since it was cached.
+        if (screenRecord.status === 'pairing' || screenRecord.status === 'unlinked' ||
+            (screenRecord.hardware_uuid && screenRecord.hardware_uuid !== hardwareUuid)) {
+          screenRecord = null;
+        }
       }
     }
 
@@ -1037,6 +1073,22 @@ export async function reconnectScreen(req: any, res: any) {
       return res.status(400).json({ message: 'This screen is already connected to another device.' });
     }
 
+    // Linking a TV to a screen that has none uses a slot, same as pairing —
+    // otherwise "Pair later" placeholders were a way round the device limit.
+    if (!isAdmin && !existingScreen.hardware_uuid) {
+      const lics = await pb.collection('licenses').getList(1, 100, {
+        filter: pb.filter('assignedUserEmail = {:email} && status = "active"', { email: existingScreen.assignedToUserEmail })
+      }).catch(() => ({ items: [] as any[] }));
+      if (lics.items.length === 0) return res.status(400).json({ message: 'No active license found for this user.' });
+      const allowed: number = (lics.items as any[]).reduce((sum: number, l: any) => sum + (l.deviceLimit || 0), 0);
+      const inUse = await pb.collection('screens').getList(1, 1, {
+        filter: pb.filter('assignedToUserEmail = {:email} && status != "pairing" && status != "unlinked"', { email: existingScreen.assignedToUserEmail })
+      }).catch(() => ({ totalItems: 0 } as any));
+      if (inUse.totalItems >= allowed) {
+        return res.status(400).json({ message: `Device limit reached. Your active license(s) only support up to ${allowed} screen(s).` });
+      }
+    }
+
     // 3. Update the existing screen with the hardware_uuid and new device details
     const updatedScreen = await pb.collection('screens').update(existingScreen.id, {
       hardware_uuid: pairingScreen.hardware_uuid,
@@ -1104,9 +1156,19 @@ export async function assignPlaylistToScreen(req: any, res: any) {
 
     const isNone = !playlistId || playlistId === 'None' || !playlistName || playlistName === 'None';
 
+    // Only the screen owner's own playlists (or admin-made ones) — this used
+    // to accept any playlist id, including another client's.
+    let target: any = null;
+    if (!isNone) {
+      const screen = await pb.collection('screens').getOne(screenId).catch(() => null);
+      if (!screen) return res.status(404).json({ message: 'Screen not found.' });
+      target = await loadUsablePlaylist(playlistId, screen.assignedToUserEmail || '');
+      if (!target) return res.status(403).json({ message: 'That playlist is not in this account.' });
+    }
+
     const updatedScreen = await pb.collection('screens').update(screenId, {
-      playlistId: isNone ? '' : playlistId,
-      playlist: isNone ? '' : playlistName,
+      playlistId: isNone ? '' : target.id,
+      playlist: isNone ? '' : target.name,
       restart_playlist: true
     });
 
@@ -1224,17 +1286,8 @@ export async function reportOffline(req: any, res: any) {
       screenRecord = screens.items[0];
       const screenId = screenRecord.id;
       
-      // Clean presence and caches in Redis immediately
-      if (isRedisReady()) {
-        await redis.pipeline()
-          .del(`presence:screen:${screenId}`)
-          .zrem('presence:active_screens', screenId)
-          .del(`heartbeat:screen:${screenId}`)
-          .del(`cache:screen:${screenId}`)
-          .del(`cache:screen_uuid:${hardwareUuid}`)
-          .exec();
-      }
-
+      // markScreenOffline clears presence and caches — after reading the
+      // exact last-heartbeat time (clearing first here lost it).
       await markScreenOffline(screenId, reason || 'App was closed by the user.');
     }
 
@@ -1599,6 +1652,9 @@ export async function disconnectScreen(req: any, res: any) {
         groupId: null,
         playlist: '',
         playlistId: '',
+        schedulePlaylist: '',
+        scheduleDate: '',
+        scheduleTime: '',
         onlineSince: ''
       };
 
@@ -1617,15 +1673,15 @@ export async function disconnectScreen(req: any, res: any) {
       return pb.collection('screens').update(screenRecord.id, updateData);
     });
 
+    removeScreenSchedule(screenRecord.id);
     if (isRedisReady()) {
       await redis.pipeline()
         .zrem('presence:active_screens', screenRecord.id)
         .del(`heartbeat:screen:${screenRecord.id}`)
         .del(`presence:screen:${screenRecord.id}`)
-        .del(`cache:screen:${screenRecord.id}`)
-        .del(`cache:screen_uuid:${screenRecord.hardware_uuid || ''}`)
         .exec();
     }
+    await clearScreenCache(screenRecord.id, screenRecord.hardware_uuid);
 
     // Use screenRecord (pre-disconnect) for group info, since groupId is cleared on disconnect
     pb.collection('screen_logs').create(

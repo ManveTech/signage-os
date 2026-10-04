@@ -64,21 +64,33 @@ export function isScheduleDue(screen: any): boolean {
  * used to be looked up across every account, so two clients with a
  * "Morning" playlist could get each other's.
  */
+/**
+ * Whether a screen owned by `owner` may play this playlist: the owner's own,
+ * or one an admin made. Used everywhere a playlist gets put on a screen.
+ */
+export async function playlistUsableBy(playlist: any, owner: string): Promise<boolean> {
+  if (!playlist) return false;
+  if (playlist.createdBy && playlist.createdBy === owner) return true;
+  // Admin-made playlists may be used on any screen they manage.
+  if (!playlist.createdBy || playlist.createdBy === 'admin') return true;
+  const creator = await pb.collection('users')
+    .getFirstListItem(pb.filter('email = {:email}', { email: playlist.createdBy }))
+    .catch(() => null);
+  return !!creator && (creator.role === 'admin' || creator.role === 'super_admin');
+}
+
+/** Loads a playlist by id if `owner` may use it, else null. */
+export async function loadUsablePlaylist(playlistId: string, owner: string): Promise<any | null> {
+  if (!RECORD_ID.test(String(playlistId || ''))) return null;
+  const playlist = await pb.collection('playlists').getOne(playlistId).catch(() => null);
+  return playlist && await playlistUsableBy(playlist, owner) ? playlist : null;
+}
+
 export async function resolveScheduledPlaylist(screen: any): Promise<{ id: string; name: string } | null> {
   const value = String(screen.schedulePlaylist || '').trim();
   if (!value) return null;
   const owner = screen.assignedToUserEmail || '';
-
-  const allowed = async (playlist: any) => {
-    if (!playlist) return false;
-    if (playlist.createdBy && playlist.createdBy === owner) return true;
-    // Admin-made playlists may be scheduled on any screen they manage.
-    if (!playlist.createdBy || playlist.createdBy === 'admin') return true;
-    const creator = await pb.collection('users')
-      .getFirstListItem(pb.filter('email = {:email}', { email: playlist.createdBy }))
-      .catch(() => null);
-    return !!creator && (creator.role === 'admin' || creator.role === 'super_admin');
-  };
+  const allowed = (playlist: any) => playlistUsableBy(playlist, owner);
 
   if (RECORD_ID.test(value)) {
     const playlist = await pb.collection('playlists').getOne(value).catch(() => null);
@@ -300,6 +312,12 @@ export async function startScheduler() {
     console.error('[Scheduler] Critical error starting scheduler:', err.message);
   }
 
+  // Screens saved long ago may name their playlist instead of holding its id.
+  // TVs can only look playlists up by id now (listing is closed), so convert
+  // those references once, within each screen owner's own playlists.
+  normalizeLegacyPlaylistRefs().catch(err =>
+    console.error('[Scheduler] Playlist reference check failed:', err.message));
+
   // ── Device status poller ──────────────────────────────────────────────────
   // Run every 2 minutes regardless of HTTP traffic. This ensures "Screen went
   // offline" health logs are written even when no dashboard user is active.
@@ -348,4 +366,28 @@ export async function cleanupAbandonedPairings(): Promise<number> {
   }
   if (removed > 0) console.log(`[Scheduler] Removed ${removed} abandoned pairing record(s) older than 24h.`);
   return removed;
+}
+
+export async function normalizeLegacyPlaylistRefs(): Promise<number> {
+  await ensurePBAuth();
+  const screens = await pb.collection('screens').getFullList({
+    filter: 'playlistId != "" || playlist != ""', fields: 'id,playlistId,playlist,assignedToUserEmail'
+  });
+  let fixed = 0;
+  for (const sc of screens as any[]) {
+    if (RECORD_ID.test(sc.playlistId || '')) continue;
+    const name = String(sc.playlistId || sc.playlist || '').trim();
+    const owner = sc.assignedToUserEmail || '';
+    let own: any = null;
+    if (name && owner) {
+      const named = await pb.collection('playlists').getFullList({ filter: pb.filter('name = {:name}', { name }) }).catch(() => [] as any[]);
+      // The owner's own first, then one an admin made.
+      named.sort((a: any, b: any) => Number(b.createdBy === owner) - Number(a.createdBy === owner));
+      for (const p of named) { if (await playlistUsableBy(p, owner)) { own = p; break; } }
+    }
+    await pb.collection('screens').update(sc.id, own ? { playlistId: own.id, playlist: own.name } : { playlistId: '', playlist: '' }).catch(() => {});
+    fixed++;
+  }
+  if (fixed > 0) console.log(`[Scheduler] Converted ${fixed} screen playlist reference(s) from names to ids.`);
+  return fixed;
 }

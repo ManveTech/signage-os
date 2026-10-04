@@ -810,6 +810,42 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update licenses collection schema:', licensesErr.message);
     }
 
+    // Who created each screen group. Groups are shared within an
+    // organisation; a client with no organisation used to share one big
+    // "no organisation" bucket with every other such client (and with the
+    // admin's own groups), so they could see and use each other's groups.
+    try {
+      const groupsCollection: any = await pb.collections.getOne('screen_groups');
+      const groupFields = groupsCollection.fields || groupsCollection.schema || [];
+      if (!groupFields.some((f: any) => f.name === 'createdBy')) {
+        groupFields.push({
+          id: 'textcreatedbygroups',
+          name: 'createdBy',
+          type: 'text',
+          required: false,
+          system: false,
+          hidden: false,
+          presentable: false
+        });
+        groupsCollection.fields = groupFields;
+        await pb.collections.update('screen_groups', groupsCollection);
+        console.log('Programmatically added createdBy field to screen_groups collection');
+
+        // Existing groups with no organisation: credit them to the one client
+        // whose screens are in them, so they don't vanish from that client.
+        const orphanGroups = await pb.collection('screen_groups').getFullList({ filter: 'orgId = ""' }).catch(() => [] as any[]);
+        for (const g of orphanGroups) {
+          const members = await pb.collection('screens').getFullList({
+            filter: pb.filter('groupId = {:id}', { id: g.id }), fields: 'assignedToUserEmail'
+          }).catch(() => [] as any[]);
+          const owners = [...new Set(members.map((m: any) => m.assignedToUserEmail).filter(Boolean))];
+          if (owners.length === 1) await pb.collection('screen_groups').update(g.id, { createdBy: owners[0] }).catch(() => {});
+        }
+      }
+    } catch (groupsErr: any) {
+      console.warn('Failed to update screen_groups collection schema:', groupsErr.message);
+    }
+
     // Ensure screen_logs collection exists
     try {
       console.log('Ensuring screen_logs collection exists...');
@@ -1541,20 +1577,23 @@ Notes:
         }
       }
 
-      // media_items and playlists are read directly (GET only, never
-      // written to) by the TV app with no auth of its own — list/view stay
-      // public so devices and dashboards can keep loading assets/playlists,
-      // but create/update/delete are admin-only since every legitimate
-      // write already goes through the admin-authenticated Express layer.
+      // media_items and playlists are read directly by the TVs (no auth of
+      // their own), always one record at a time by id — so viewing by id
+      // stays public, but listing is admin-only. Listing used to be public
+      // too, which let anyone with the database address page through every
+      // client's playlists and media. Writes are admin-only; every
+      // legitimate write goes through the Express layer.
       for (const name of ['media_items', 'playlists']) {
         try {
           const coll: any = await pb.collections.getOne(name);
-          if (coll.createRule !== null || coll.updateRule !== null || coll.deleteRule !== null) {
+          if (coll.listRule !== null || coll.viewRule !== '' || coll.createRule !== null || coll.updateRule !== null || coll.deleteRule !== null) {
+            coll.listRule = null;
+            coll.viewRule = '';
             coll.createRule = null;
             coll.updateRule = null;
             coll.deleteRule = null;
             await pb.collections.update(name, coll);
-            console.log(`Programmatically locked down ${name} collection write rules to admin-only (list/view left public for anonymous asset reads)`);
+            console.log(`Locked down ${name} collection rules (view by id public for TVs; list and writes admin-only)`);
           }
         } catch (e: any) {
           console.warn(`Failed to lock down ${name} collection write rules:`, e.message);

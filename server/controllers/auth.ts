@@ -220,61 +220,27 @@ export async function forgotPassword(req: any, res: any) {
       exp: Math.floor(Date.now() / 1000) + 15 * 60
     });
 
-    const origin = req.get('origin') || req.get('referer');
-    const forwardedHost = req.get('x-forwarded-host');
-    const forwardedProto = req.get('x-forwarded-proto') || 'https';
+    // The link goes to the dashboard's own reset page. Built from APP_URL —
+    // never from the request's Origin/Referer, which a caller can set to
+    // their own site to have a working reset token mailed to them.
+    const baseUrl = (APP_URL || `${req.protocol || 'https'}://${req.get('host')}`).replace(/\/+$/, '');
+    const resetLink = `${baseUrl}/?token=${encodeURIComponent(token)}&userId=${user.id}`;
 
-    let baseUrl = APP_URL;
-    if (!baseUrl) {
-      if (origin) {
-        baseUrl = origin.replace(/\/+$/, '');
-      } else if (forwardedHost) {
-        baseUrl = `${forwardedProto}://${forwardedHost.split(',')[0].trim()}`;
-      } else {
-        const protocol = req.protocol || 'http';
-        const host = req.get('host') || 'blu.manve.co';
-        baseUrl = `${protocol}://${host}`;
-      }
-    }
-
-    // Ensure trailing slash is removed
-    baseUrl = baseUrl.replace(/\/+$/, '');
-
-    // Sync PocketBase appUrl setting dynamically so PocketBase's native password reset emails use the deployed domain URL
-    try {
-      await pb.settings.update({ appUrl: baseUrl });
-    } catch (err: any) {
-      console.warn('[PocketBase Settings] Could not update appUrl setting dynamically:', err.message);
-    }
-
-    const resetLink = `${baseUrl}/?token=${token}&userId=${user.id}`;
-
-    // 1. Try sending email directly via PocketBase native SMTP mailer first
+    // Sent by this server. It used to go through PocketBase's own reset
+    // email first, whose link opens PocketBase's admin screen (and pointed
+    // at localhost) — so resetting a password from the email never worked.
     let emailSent = false;
     let pbErrorMsg = '';
     try {
-      await pb.collection('users').requestPasswordReset(lowerEmail);
-      emailSent = true;
-      console.log(`[PocketBase SMTP] Password reset email sent successfully to ${lowerEmail} using appUrl: ${baseUrl}`);
-    } catch (pbMailErr: any) {
-      pbErrorMsg = pbMailErr.message || 'PocketBase mail error';
-      console.warn(`[PocketBase SMTP] requestPasswordReset failed for ${lowerEmail}:`, pbMailErr.message);
-    }
-
-    // 2. Fallback to custom Nodemailer SMTP if PocketBase mail fails
-    if (!emailSent) {
-      try {
-        emailSent = await sendPasswordResetEmail({
-          toEmail: user.email,
-          userName: user.name || 'SignageOS User',
-          resetLink
-        });
-        if (emailSent) {
-          console.log(`[Nodemailer SMTP] Password reset email sent successfully to ${lowerEmail}`);
-        }
-      } catch (emailErr: any) {
-        console.error('[Nodemailer SMTP] reset email error:', emailErr.message);
-      }
+      emailSent = await sendPasswordResetEmail({
+        toEmail: user.email,
+        userName: user.name || 'SignageOS User',
+        resetLink
+      });
+      if (!emailSent) pbErrorMsg = 'Email is not set up';
+    } catch (emailErr: any) {
+      pbErrorMsg = emailErr.message || 'Email error';
+      console.error('[Nodemailer SMTP] reset email error:', emailErr.message);
     }
 
     // Log reset link for developer testing convenience — dev only, since this
@@ -301,7 +267,7 @@ export async function forgotPassword(req: any, res: any) {
       // console log above (dev) or PocketBase Admin UI mail settings, not by
       // handing the link to whoever called this endpoint.
       return res.status(400).json({
-        message: `PocketBase SMTP mail server is not configured or failed (${pbErrorMsg}). Please configure SMTP settings in PocketBase Admin UI (Settings -> Mail Settings) or update .env SMTP credentials.`,
+        message: "We couldn't send the reset email right now. Please contact your administrator.",
         emailSent: false
       });
     }
