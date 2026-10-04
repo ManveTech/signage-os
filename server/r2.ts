@@ -67,7 +67,9 @@ export async function getKeyFromUrl(url: string): Promise<string | null> {
     const cfg = await getCloudflareConfig();
     const base = publicBaseUrlFor(cfg);
     if (base && url.startsWith(base)) {
-      return url.slice(base.length + 1); // +1 for the slash
+      // Addresses may be URL-encoded; object keys aren't.
+      const raw = url.slice(base.length + 1).split(/[?#]/)[0]; // +1 for the slash
+      try { return decodeURIComponent(raw); } catch { return raw; }
     }
     return null;
   } catch {
