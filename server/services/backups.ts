@@ -3,7 +3,9 @@ import { getCloudflareConfig } from '../integrationsStore';
 
 /**
  * Automatic database backups, using PocketBase's own backup scheduler: a
- * daily zip of every record and uploaded file, with the oldest pruned.
+ * daily zip of every record (and files PocketBase stores itself, like
+ * avatars), with the oldest pruned. Media in R2 is not inside the zip —
+ * only its addresses; the files stay in the media bucket.
  *
  * Off-site: when BACKUP_BUCKET is set, backups go to that S3/R2 bucket
  * instead of the server's own disk — the point of a backup is surviving the

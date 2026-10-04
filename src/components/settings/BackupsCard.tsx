@@ -81,7 +81,7 @@ export default function BackupsCard() {
             {status ? pill : !error && <Loader2 size={13} className="animate-spin text-slate-300" />}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            A copy of every client, licence, payment, screen and file.
+            A copy of all your data — clients, licences, invoices, payments, screens and playlists. (Images and videos stay in your media bucket.)
             {status?.enabled && ` ${scheduleLabel(status.cron)}, keeping the last ${status.keep}${status.offsite ? ` in “${status.bucket}”` : ''}.`}
           </p>
           {status && (
