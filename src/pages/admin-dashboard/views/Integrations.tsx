@@ -4,6 +4,7 @@ import { API_BASE } from '../../../config';
 import { getHeaders } from '../../../lib/syncHelper';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import { toast } from '../../../components/Toast';
+import BackupsCard from '../../../components/settings/BackupsCard';
 
 type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google';
 type Source = 'dashboard' | 'environment' | 'off';
@@ -235,6 +236,8 @@ export default function Integrations() {
           );
         })}
       </div>
+
+      <BackupsCard />
 
       {open && st && draft && (
         <ScreenDetailsSheet

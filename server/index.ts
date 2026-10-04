@@ -28,6 +28,7 @@ import { authenticatePBAdmin, startAuthKeepAlive } from './db';
 import apiRouter from './routes';
 import { startScheduler } from './scheduler';
 import { listenToCollectionChanges } from './cache_invalidator';
+import { configureBackups } from './services/backups';
 import { ensureRedisRunning, isRedisReady, redis } from './redis';
 import { apiLimiter } from './middleware/rateLimiter';
 import { getActiveConference, setActiveConference, clearActiveConference, clearActiveConferencesForConference } from './videoConferenceState';
@@ -567,6 +568,8 @@ async function startServer() {
     startScheduler();
     // Initialize cache invalidation via SSE
     listenToCollectionChanges();
+    // Daily database backups (services/backups.ts)
+    configureBackups().catch(() => {});
   });
 }
 
