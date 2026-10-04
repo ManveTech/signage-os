@@ -865,6 +865,41 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to default screen volumes:', volErr.message);
     }
 
+    // GST tax invoices: running numbers, a billed-to snapshot, and payment
+    // details on invoices; billing address, state and GSTIN on organisations.
+    const addFields = async (collection: string, defs: any[]): Promise<boolean> => {
+      const coll: any = await pb.collections.getOne(collection);
+      const fields = coll.fields || [];
+      const missing = defs.filter(d => !fields.some((f: any) => f.name === d.name));
+      if (!missing.length) return false;
+      coll.fields = [...fields, ...missing];
+      await pb.collections.update(collection, coll);
+      console.log(`Programmatically added ${missing.map(d => d.name).join(', ')} to ${collection}`);
+      return true;
+    };
+    const text = (id: string, name: string) => ({ id, name, type: 'text', required: false, system: false, hidden: false, presentable: false });
+    try {
+      const numbered = await addFields('invoices', [
+        text('textinvnumber00', 'number'),
+        { id: 'jsoninvbillto00', name: 'billTo', type: 'json', required: false, system: false, hidden: false, presentable: false, maxSize: 4000 },
+        text('textinvpaiddate', 'paidDate'),
+        text('textinvpayref00', 'paymentRef'),
+      ]);
+      await addFields('organizations', [
+        text('textorgbilladdr', 'billingAddress'),
+        text('textorgstate000', 'state'),
+        text('textorggstin000', 'gstin'),
+        text('textorgbillname', 'billingName'),
+      ]);
+      if (numbered) {
+        const { backfillInvoiceNumbers } = await import('./services/invoicing');
+        const n = await backfillInvoiceNumbers();
+        if (n) console.log(`Numbered ${n} existing invoice(s)`);
+      }
+    } catch (invErr: any) {
+      console.warn('Failed to update invoice/organization fields:', invErr.message);
+    }
+
     // Ensure screen_logs collection exists
     try {
       console.log('Ensuring screen_logs collection exists...');

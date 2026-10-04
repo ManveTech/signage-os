@@ -4,14 +4,17 @@ function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
 }
 
-const FIELDS = ['name', 'address', 'gstNumber', 'logoUrl', 'contactEmail', 'contactPhone'] as const;
+const FIELDS = ['name', 'address', 'gstNumber', 'logoUrl', 'contactEmail', 'contactPhone', 'state', 'invoicePrefix', 'sac'] as const;
+// Used when not filled in: the business is registered in Karnataka; SAC 997331
+// is licensing services for the right to use software.
+const DEFAULTS: Partial<Record<(typeof FIELDS)[number], string>> = { state: 'Karnataka', invoicePrefix: 'BSD', sac: '997331' };
 const MAX_LOGO_CHARS = 600_000; // ~450 KB image as a data URL
 
 function clean(input: any): Record<string, string> {
   const out: Record<string, string> = {};
   for (const key of FIELDS) {
     const v = input?.[key];
-    out[key] = typeof v === 'string' ? v.trim() : '';
+    out[key] = (typeof v === 'string' ? v.trim() : '') || DEFAULTS[key] || '';
   }
   return out;
 }

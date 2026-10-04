@@ -186,7 +186,7 @@ export async function enforceLicense(req: any, res: any, next: any) {
       (isGet && (path.startsWith('/faqs') || path.startsWith('/support_docs')));
     const isBillingRead = isGet && (path === '/licenses' || path.startsWith('/licenses/') || path === '/invoices' ||
       path.startsWith('/invoices/') || path === '/business-details' || path === '/organizations' || path.startsWith('/organizations/'));
-    const isAccountRoute = path === '/me/settings';
+    const isAccountRoute = path === '/me/settings' || path === '/me/billing';
     if (isPaymentRoute || isOwnUserRecord || isSupportRoute || isBillingRead || isAccountRoute) {
       return next();
     }

@@ -28,7 +28,8 @@ export const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
 export const SMTP_USERNAME = process.env.SMTP_USERNAME || '';
 export const SMTP_PASSWORD = process.env.SMTP_PASSWORD || '';
 export const SMTP_SENDER_EMAIL = process.env.SMTP_SENDER_EMAIL || '';
-export const SMTP_SENDER_NAME = process.env.SMTP_SENDER_NAME || 'SignageOS';
+// Empty = use the business name from Billing details (see emailLayout.fromLine).
+export const SMTP_SENDER_NAME = process.env.SMTP_SENDER_NAME || '';
 
 // Razorpay Configuration
 export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';

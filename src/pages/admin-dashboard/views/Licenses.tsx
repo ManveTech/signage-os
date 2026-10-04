@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Key, Plus, Search, Edit2, Trash2, Send, Receipt, CreditCard, Building, CheckCircle,
-  Image as ImageIcon, Video, Palette, Mail, AlertTriangle
+  Image as ImageIcon, Video, Palette, Mail, AlertTriangle, Printer
 } from 'lucide-react';
 import { API_BASE } from '../../../config';
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
@@ -12,6 +12,8 @@ import { toast } from '../../../components/Toast';
 import CustomSelect from '../../../components/CustomSelect';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import ConfirmDialog from '../../../components/screens/ConfirmDialog';
+import TaxInvoice from '../../../components/licenses/TaxInvoice';
+import { STATE_NAMES, stateFromGstin } from '../../../lib/gst';
 import {
   licenseState, LicenseStateKey, daysUntil, formatDate, formatInr, relativeDays, defaultExpiry, planLabel, localDate, isRenewalDue
 } from '../../../components/licenses/licenseStatus';
@@ -296,6 +298,15 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   // Records a payment received outside Razorpay: the server renews the
   // licence exactly as an online payment would (it used to only flip the
   // invoice, leaving the client locked out).
+  // Print only the invoice, not the whole dashboard (see .print-invoice in index.css).
+  const printInvoice = () => {
+    document.documentElement.classList.add('print-invoice');
+    const done = () => { document.documentElement.classList.remove('print-invoice'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    window.print();
+    setTimeout(done, 1000);
+  };
+
   const markInvoicePaid = async (inv: Invoice) => {
     try {
       const res = await apiPost(`/payments/invoices/${inv.id}/mark-paid`, {});
@@ -726,18 +737,15 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           open
           onClose={() => setOpenInvoiceId(null)}
           title={formatInr(openInvoice.amount)}
-          subtitle={`${openInvoice.clientName} · ${openInvoice.licenseName}`}
+          subtitle={`${openInvoice.number || 'Invoice'} · ${openInvoice.clientName}`}
           badge={openInvoice.status === 'paid'
             ? pill('Paid', 'bg-emerald-50 text-emerald-700 border-emerald-100')
             : pill('Unpaid', 'bg-amber-50 text-amber-700 border-amber-100')}
-          details={[
-            { label: 'Client', value: openInvoice.clientEmail },
-            { label: 'License', value: openInvoice.licenseName },
-            { label: 'Amount', value: `${formatInr(openInvoice.amount)} incl. 18% GST` },
-            { label: 'Issued', value: formatDate(openInvoice.issuedDate) },
-            { label: 'Due', value: formatDate(openInvoice.dueDate) },
-            { label: 'Invoice no.', value: <span className="font-mono text-xs">{openInvoice.id}</span> },
-          ]}
+          details={[]}
+          hero={<TaxInvoice invoice={openInvoice} biz={biz} />}
+          footer={
+            <button type="button" onClick={printInvoice} className="w-full h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 flex items-center justify-center gap-2"><Printer size={15} /> Print / save PDF</button>
+          }
           groups={openInvoice.status === 'unpaid' ? [{
             title: 'Collect payment',
             actions: [
@@ -934,9 +942,25 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                 <label className={labelCls}>Billing address</label>
                 <textarea rows={3} value={biz.address} onChange={e => setBiz(b => ({ ...b, address: e.target.value }))} className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 resize-none" />
               </div>
-              <div>
-                <label className={labelCls}>GSTIN</label>
-                <input value={biz.gstNumber} onChange={e => setBiz(b => ({ ...b, gstNumber: e.target.value.toUpperCase() }))} placeholder="29AAAAA1111A1Z1" className={`${inputCls} font-mono`} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>GSTIN</label>
+                  <input value={biz.gstNumber} onChange={e => { const g = e.target.value.toUpperCase(); setBiz(b => ({ ...b, gstNumber: g, state: stateFromGstin(g) || b.state })); }} placeholder="29AAAAA1111A1Z1" className={`${inputCls} font-mono`} />
+                </div>
+                <div>
+                  <label className={labelCls}>GST state</label>
+                  <CustomSelect value={biz.state || 'Karnataka'} onChange={v => setBiz(b => ({ ...b, state: v }))} options={STATE_NAMES.map(n => ({ value: n, label: n }))} buttonClassName="h-11 px-3 text-sm" />
+                </div>
+                <div>
+                  <label className={labelCls}>Invoice number prefix</label>
+                  <input value={biz.invoicePrefix || 'BSD'} onChange={e => setBiz(b => ({ ...b, invoicePrefix: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') }))} className={`${inputCls} font-mono`} />
+                  <p className="text-[11px] text-slate-400 mt-1">Invoices are numbered {(biz.invoicePrefix || 'BSD')}/{'{year}'}/0001, starting again each April.</p>
+                </div>
+                <div>
+                  <label className={labelCls}>SAC code</label>
+                  <input value={biz.sac || '997331'} onChange={e => setBiz(b => ({ ...b, sac: e.target.value.replace(/\D/g, '').slice(0, 6) }))} className={`${inputCls} font-mono`} />
+                  <p className="text-[11px] text-slate-400 mt-1">997331 = licensing the right to use software. Check with your accountant.</p>
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

@@ -41,6 +41,13 @@ export interface Invoice {
   dueDate: string;
   status: 'paid' | 'unpaid';
   issuedDate: string;
+  /** Running tax-invoice number, e.g. BSD/2026-27/0001 (set by the server). */
+  number?: string;
+  /** Who it's billed to, as it was when issued. */
+  billTo?: { name: string; email: string; address: string; state: string; gstin: string };
+  paidDate?: string;
+  /** Razorpay payment id, or manual_<invoice id> for payments recorded by hand. */
+  paymentRef?: string;
 }
 
 export interface BusinessDetails {
@@ -50,6 +57,11 @@ export interface BusinessDetails {
   logoUrl: string;
   contactEmail: string;
   contactPhone: string;
+  /** GST registration state (decides CGST+SGST vs IGST). */
+  state?: string;
+  invoicePrefix?: string;
+  /** SAC code printed on invoices. */
+  sac?: string;
 }
 
 // Empty until the admin fills in Licensing → Invoices → Billing details.

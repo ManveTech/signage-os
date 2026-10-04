@@ -1,3 +1,5 @@
+import CustomSelect from '../../../components/CustomSelect';
+import { STATE_NAMES, GSTIN_PATTERN, stateFromGstin } from '../../../lib/gst';
 import { useEffect, useState } from 'react';
 import { Plus, Search, Building2, Edit2, Trash2, Users, Globe, Image as ImageIcon } from 'lucide-react';
 import { licensingStore, License } from '../../../lib/licensingStore';
@@ -24,7 +26,7 @@ type Org = {
   websiteName?: string;
 };
 
-type FormState = { name: string; adminName: string; email: string; customDomain: string; websiteName: string; websiteLogo: string };
+type FormState = { name: string; adminName: string; email: string; customDomain: string; websiteName: string; websiteLogo: string; billingName: string; billingAddress: string; state: string; gstin: string };
 
 const inputCls = 'w-full h-11 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white';
 const labelCls = 'block text-xs font-medium text-slate-600 mb-1.5';
@@ -49,7 +51,7 @@ export default function Organizations({ onNavigate }: { onNavigate?: (view: stri
   const [search, setSearch] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [formFor, setFormFor] = useState<Org | 'new' | null>(null);
-  const [form, setForm] = useState<FormState>({ name: '', adminName: '', email: '', customDomain: '', websiteName: '', websiteLogo: '' });
+  const [form, setForm] = useState<FormState>({ name: '', adminName: '', email: '', customDomain: '', websiteName: '', websiteLogo: '', billingName: '', billingAddress: '', state: '', gstin: '' });
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Org | null>(null);
 
@@ -94,8 +96,8 @@ export default function Organizations({ onNavigate }: { onNavigate?: (view: stri
 
   const openForm = (o: Org | 'new') => {
     setForm(o === 'new'
-      ? { name: '', adminName: '', email: '', customDomain: '', websiteName: '', websiteLogo: '' }
-      : { name: o.name || '', adminName: o.adminName || '', email: o.email || '', customDomain: o.customDomain || '', websiteName: o.websiteName || '', websiteLogo: o.websiteLogo || '' });
+      ? { name: '', adminName: '', email: '', customDomain: '', websiteName: '', websiteLogo: '', billingName: '', billingAddress: '', state: '', gstin: '' }
+      : { name: o.name || '', adminName: o.adminName || '', email: o.email || '', customDomain: o.customDomain || '', websiteName: o.websiteName || '', websiteLogo: o.websiteLogo || '', billingName: (o as any).billingName || '', billingAddress: (o as any).billingAddress || '', state: (o as any).state || '', gstin: (o as any).gstin || '' });
     setFormFor(o);
   };
 
@@ -105,6 +107,9 @@ export default function Organizations({ onNavigate }: { onNavigate?: (view: stri
       return;
     }
     const domain = form.customDomain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    const gstin = form.gstin.trim().toUpperCase();
+    if (gstin && !GSTIN_PATTERN.test(gstin)) { toast.warning('That GSTIN should be 15 characters, like 29ABCDE1234F1Z5'); return; }
+    const billing = { billingName: form.billingName.trim(), billingAddress: form.billingAddress.trim(), state: form.state || stateFromGstin(gstin), gstin };
     setSaving(true);
     if (formFor === 'new') {
       const org: Org = {
@@ -118,7 +123,8 @@ export default function Organizations({ onNavigate }: { onNavigate?: (view: stri
         subscriptionStatus: 'active',
         renewalDate: new Date(Date.now() + 365 * 86_400_000).toISOString().split('T')[0],
         customDomain: domain,
-      };
+        ...billing,
+      } as Org;
       const res = await pushToDatabase('organizations', org.id, org, 'POST');
       setSaving(false);
       if (!res.ok) { toast.error(`Couldn't create it: ${errorText(res)}`); return; }
@@ -136,7 +142,8 @@ export default function Organizations({ onNavigate }: { onNavigate?: (view: stri
         customDomain: domain,
         websiteName: form.websiteName.trim(),
         websiteLogo: form.websiteLogo,
-      };
+        ...billing,
+      } as Partial<Org>;
       const res = await pushToDatabase('organizations', formFor.id, patch, 'PUT');
       setSaving(false);
       if (!res.ok) { toast.error(`Couldn't save: ${errorText(res)}`); return; }
@@ -305,6 +312,7 @@ export default function Organizations({ onNavigate }: { onNavigate?: (view: stri
               { label: 'People', value: members.length ? members.map(m => m.name).join(', ') : <span className="text-slate-400">No sign-ins yet</span> },
               { label: 'White label', value: whiteLabel ? (open.websiteName || 'On — not set up yet') : <span className="text-slate-400">Not in their license</span> },
               ...(open.customDomain ? [{ label: 'Custom domain', value: open.customDomain }] : []),
+              ...((open as any).gstin || (open as any).billingAddress ? [{ label: 'Invoices to', value: [(open as any).billingName || open.name, (open as any).state, (open as any).gstin && `GSTIN ${(open as any).gstin}`].filter(Boolean).join(' · ') }] : []),
             ]}
             groups={[
               {
@@ -358,6 +366,31 @@ export default function Organizations({ onNavigate }: { onNavigate?: (view: stri
                 <label className={labelCls}><Globe size={12} className="inline mr-1 -mt-0.5" />Custom domain <span className="text-slate-400 font-normal">(optional)</span></label>
                 <input value={form.customDomain} onChange={e => setForm(f => ({ ...f, customDomain: e.target.value }))} placeholder="cms.theircompany.com" className={inputCls} autoCapitalize="none" />
                 <p className="text-xs text-slate-500 mt-1.5">Point a CNAME for this domain at your dashboard so their team signs in on their own address.</p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-100 p-4 space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Invoice details</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Printed on their invoices. They can also fill these in themselves under License & Billing.</p>
+                </div>
+                <div>
+                  <label className={labelCls}>Registered business name</label>
+                  <input value={form.billingName} onChange={e => setForm(f => ({ ...f, billingName: e.target.value }))} placeholder={form.name} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Billing address</label>
+                  <textarea rows={2} value={form.billingAddress} onChange={e => setForm(f => ({ ...f, billingAddress: e.target.value }))} className={`${inputCls} h-auto py-2.5`} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>GSTIN <span className="text-slate-400 font-normal">(optional)</span></label>
+                    <input value={form.gstin} maxLength={15} onChange={e => { const g = e.target.value.toUpperCase(); setForm(f => ({ ...f, gstin: g, state: stateFromGstin(g) || f.state })); }} placeholder="29ABCDE1234F1Z5" className={`${inputCls} font-mono`} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>State</label>
+                    <CustomSelect value={form.state} onChange={v => setForm(f => ({ ...f, state: v }))} options={[{ value: '', label: 'Select state' }, ...STATE_NAMES.map(n => ({ value: n, label: n }))]} buttonClassName="h-11 px-3 text-sm" />
+                  </div>
+                </div>
               </div>
 
               {editingWhiteLabel && (

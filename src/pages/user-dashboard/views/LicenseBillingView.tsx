@@ -7,6 +7,8 @@ import { getAuthToken } from '../../../lib/authStorage';
 import { API_BASE } from '../../../config';
 import { toast } from '../../../components/Toast';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
+import TaxInvoice from '../../../components/licenses/TaxInvoice';
+import InvoiceDetailsCard from '../../../components/licenses/InvoiceDetailsCard';
 import { licenseState, licenseAccess, isRenewalDue, formatDate, formatInr, relativeDays, planLabel } from '../../../components/licenses/licenseStatus';
 
 interface Props {
@@ -338,6 +340,9 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
         </div>
       )}
 
+      {/* What's printed on their invoices */}
+      <InvoiceDetailsCard />
+
       {/* Invoices & payments */}
       {(invoices.length > 0 || payments.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -350,7 +355,7 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
                     <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${inv.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}><Receipt size={16} /></span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-medium text-slate-900 truncate">{inv.licenseName}</span>
-                      <span className="block text-xs text-slate-500">{formatDate(inv.issuedDate)}{inv.status === 'unpaid' ? ` · due ${formatDate(inv.dueDate)}` : ''}</span>
+                      <span className="block text-xs text-slate-500">{inv.number ? `${inv.number} · ` : ''}{formatDate(inv.issuedDate)}{inv.status === 'unpaid' ? ` · due ${formatDate(inv.dueDate)}` : ''}</span>
                     </span>
                     <span className="text-right shrink-0">
                       <span className="block text-sm font-semibold text-slate-900">{formatInr(inv.amount)}</span>
@@ -385,52 +390,16 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
       {/* ── Invoice ─────────────────────────────────────────────────────── */}
       {openInvoice && (() => {
         const lic = licenseFor(openInvoice);
-        const base = Math.round(openInvoice.amount / 1.18);
         return (
           <ScreenDetailsSheet
             open
             onClose={() => setOpenInvoiceId(null)}
-            title={`Invoice · ${formatInr(openInvoice.amount)}`}
+            title={`Invoice ${openInvoice.number || ''} · ${formatInr(openInvoice.amount)}`}
             subtitle={formatDate(openInvoice.issuedDate)}
             badge={<span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${openInvoice.status === 'paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>{openInvoice.status === 'paid' ? 'Paid' : 'Unpaid'}</span>}
             details={[]}
             groups={[]}
-            hero={
-              <div id="invoice-print-area" className="rounded-2xl border border-slate-200 p-4 sm:p-5 space-y-5 bg-white">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      {biz.logoUrl && <img src={biz.logoUrl} alt="" className="w-8 h-8 rounded-lg object-contain" />}
-                      <span className="text-sm font-semibold text-slate-900">{biz.name || 'Your provider'}</span>
-                    </div>
-                    {biz.address && <p className="text-xs text-slate-500 mt-1.5 whitespace-pre-line">{biz.address}</p>}
-                    {biz.gstNumber && <p className="text-xs text-slate-500 mt-0.5">GSTIN {biz.gstNumber}</p>}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs font-semibold text-slate-900 tracking-wide">TAX INVOICE</p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">{openInvoice.id}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <p className="text-slate-400 mb-0.5">Billed to</p>
-                    <p className="font-medium text-slate-800">{openInvoice.clientName}</p>
-                    <p className="text-slate-500">{openInvoice.clientEmail}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 mb-0.5">{openInvoice.status === 'paid' ? 'Paid' : 'Due'}</p>
-                    <p className="font-medium text-slate-800">{formatDate(openInvoice.status === 'paid' ? openInvoice.issuedDate : openInvoice.dueDate)}</p>
-                    {(biz.contactEmail || biz.contactPhone) && <p className="text-slate-500 mt-1">Questions: {[biz.contactEmail, biz.contactPhone].filter(Boolean).join(' · ')}</p>}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-100 divide-y divide-slate-100 text-sm">
-                  <div className="flex justify-between gap-4 px-3 py-2.5"><span className="text-slate-700">{openInvoice.licenseName}</span><span className="text-slate-900">{formatInr(base)}</span></div>
-                  <div className="flex justify-between gap-4 px-3 py-2.5"><span className="text-slate-500">GST (18%)</span><span className="text-slate-700">{formatInr(openInvoice.amount - base)}</span></div>
-                  <div className="flex justify-between gap-4 px-3 py-2.5 font-semibold"><span>Total</span><span>{formatInr(openInvoice.amount)}</span></div>
-                </div>
-                <p className="text-[10px] text-slate-400 text-center">Computer-generated invoice — no signature required.</p>
-              </div>
-            }
+            hero={<TaxInvoice invoice={openInvoice} biz={biz} planLabel={lic ? `Digital signage software license · ${lic.tenure === 'yearly' ? '1 year' : '1 month'}` : undefined} />}
             footer={
               <div className="flex gap-2">
                 <button type="button" onClick={printInvoice} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 flex items-center justify-center gap-2"><Printer size={15} /> Print / save PDF</button>

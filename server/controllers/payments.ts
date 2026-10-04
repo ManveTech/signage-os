@@ -5,6 +5,7 @@ import { updateEnvFile } from '../utils/env';
 import { logAudit, getClientIp } from '../services/auditLog';
 import { RAZORPAY_WEBHOOK_SECRET, RAZORPAY_KEY_ID } from '../config';
 import { isRedisReady, acquireLock, releaseLock } from '../redis';
+import { prepareInvoice } from '../services/invoicing';
 
 // Placeholder used only when no real key is configured — deliberately not
 // shaped like a real Razorpay key id (the old fallback, 'rzp_live_...', could
@@ -264,22 +265,25 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
   const unpaid = await pb.collection('invoices').getFullList({
     filter: pb.filter('licenseId = {:licenseId} && status = "unpaid"', { licenseId })
   }).catch(() => [] as any[]);
+  const paid = { status: 'paid', paidDate: istStamp().slice(0, 10), paymentRef: paymentId };
   if (unpaid.length > 0) {
     // The settled invoice shows what was actually charged (prices include GST).
     for (const [i, inv] of unpaid.entries()) {
-      await pb.collection('invoices').update(inv.id, i === 0 ? { status: 'paid', amount: Math.round(amount) } : { status: 'paid' }).catch(() => {});
+      const patch: Record<string, any> = i === 0 ? { ...paid, amount: Math.round(amount) } : { ...paid };
+      if (!inv.number) Object.assign(patch, await prepareInvoice({ ...inv, number: '' }).then(b => ({ number: b.number, billTo: b.billTo })));
+      await pb.collection('invoices').update(inv.id, patch).catch(() => {});
     }
   } else {
-    await pb.collection('invoices').create({
+    await pb.collection('invoices').create(await prepareInvoice({
       licenseId,
       licenseName: license.name,
       clientName: license.assignedOrgName || 'Client',
       clientEmail: license.assignedUserEmail || '',
       amount: Math.round(amount),
       dueDate: newExpiryStr,
-      status: 'paid',
-      issuedDate: istStamp().slice(0, 10)
-    });
+      issuedDate: istStamp().slice(0, 10),
+      ...paid,
+    }));
   }
 }
 
@@ -388,7 +392,7 @@ export async function markInvoicePaid(req: any, res: any) {
     const license = invoice.licenseId ? await pb.collection('licenses').getOne(invoice.licenseId).catch(() => null) : null;
     if (!license) {
       // Nothing to renew — just settle the invoice.
-      await pb.collection('invoices').update(invoice.id, { status: 'paid' });
+      await pb.collection('invoices').update(invoice.id, { status: 'paid', paidDate: istStamp().slice(0, 10), paymentRef: `manual_${invoice.id}` });
       return res.status(200).json({ status: 'success', message: 'Invoice marked as paid.' });
     }
 

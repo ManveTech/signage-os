@@ -22,6 +22,8 @@ function daysUntil(date: string): number | null {
  * for an unpaid invoice. The "Send alert" / "Remind" buttons on the admin
  * Licensing pages used to only show a toast saying an email was sent.
  */
+const fmtDate = (d?: string) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
+
 export async function sendBillingReminder(req: any, res: any) {
   try {
     if (!isAdminUser(req.user)) {
@@ -42,13 +44,14 @@ export async function sendBillingReminder(req: any, res: any) {
       result = await sendBillingReminderEmail({
         toEmail: to,
         clientName: inv.clientName,
-        subject: `Payment reminder: ${inv.licenseName || 'your SignageOS license'}`,
-        headline: 'Your invoice is awaiting payment',
-        message: 'This is a friendly reminder that the invoice below is still unpaid. You can pay it from the Billing page of your dashboard.',
+        subject: `Payment reminder${inv.number ? ` — invoice ${inv.number}` : ''}`,
+        headline: 'Your invoice is waiting for payment',
+        message: 'A quick reminder that the invoice below hasn\'t been paid yet. You can pay it securely from the Billing page of your dashboard.',
         rows: [
+          ...(inv.number ? [['Invoice', inv.number] as [string, string]] : []),
           ['License', inv.licenseName || '—'],
           ['Amount due', inr(inv.amount)],
-          ['Due date', inv.dueDate || '—'],
+          ['Due', fmtDate(inv.dueDate)],
         ],
         ctaLabel: 'Pay now',
         ctaUrl: billingUrl,
@@ -63,13 +66,13 @@ export async function sendBillingReminder(req: any, res: any) {
       result = await sendBillingReminderEmail({
         toEmail: to,
         clientName: lic.assignedOrgName,
-        subject: days !== null && days < 0 ? `Your SignageOS license has expired` : `Your SignageOS license ${when}`,
-        headline: days !== null && days < 0 ? 'Your license has expired' : 'Time to renew your license',
+        subject: days !== null && days < 0 ? 'Your license has expired' : `Your license ${when}`,
+        headline: days !== null && days < 0 ? 'Your license has expired' : 'Time to renew',
         message: `Your license "${lic.name}" ${when || 'needs renewal'}. Renew it from the Billing page to keep using your dashboard — your screens keep playing either way.`,
         rows: [
           ['License', lic.name || '—'],
           ['Plan', `${inr(lic.price)} / ${lic.tenure === 'yearly' ? 'year' : 'month'}`],
-          ['Expiry date', lic.expiryDate || '—'],
+          [days !== null && days < 0 ? 'Expired on' : 'Renews on', fmtDate(lic.expiryDate)],
         ],
         ctaLabel: 'Renew now',
         ctaUrl: billingUrl,

@@ -511,10 +511,18 @@
 
 /* Printing an invoice from License & Billing prints just the invoice. */
 @media print {
+  @page { size: A4; margin: 14mm; }
   html.print-invoice body * { visibility: hidden !important; }
+  /* The sheet around the invoice is animated and scrollable; undo that so
+     the invoice starts at the top of the page and isn't clipped. */
+  html.print-invoice body *:has(#invoice-print-area) { transform: none !important; animation: none !important; overflow: visible !important; max-height: none !important; height: auto !important; position: static !important; box-shadow: none !important; background: transparent !important; }
+  /* Everything that isn't the invoice or one of its containers leaves the
+     layout entirely — hidden content still took up room and printed as an
+     extra blank page. */
+  html.print-invoice body *:has(#invoice-print-area) > *:not(:has(#invoice-print-area)):not(#invoice-print-area) { display: none !important; }
   html.print-invoice #invoice-print-area,
   html.print-invoice #invoice-print-area * { visibility: visible !important; }
-  html.print-invoice #invoice-print-area { position: fixed; inset: 0 auto auto 0; width: 100%; border: 0; }
+  html.print-invoice #invoice-print-area { position: absolute; top: 0; left: 0; width: 100%; border: 0; border-radius: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 /* Bottom sheets from the phone dock: quick slide from the bottom edge. */

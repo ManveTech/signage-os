@@ -47,7 +47,7 @@ function emailFor(stage: Stage, lic: any, covered = false) {
     return {
       subject: `"${lic.name}" ${stage === 'due' && daysBetween(istToday(), expiry) === 0 ? 'is due today' : 'has expired'}`,
       headline: 'Time to renew',
-      message: `Your licence "${lic.name}" was due on ${fmt(expiry)}. Renew it from the Billing page to keep it active.`,
+      message: `Your license "${lic.name}" was due on ${fmt(expiry)}. Renew it from the Billing page to keep it active.`,
       rows: [...rows, ['Due date', fmt(expiry)]],
       cta: 'Renew now',
     };
@@ -55,43 +55,49 @@ function emailFor(stage: Stage, lic: any, covered = false) {
   switch (stage) {
     case 'invoice':
       return {
-        subject: `Your invoice for ${lic.name || 'your signage licence'}`,
-        headline: 'Your licence is ready — one step left',
-        message: 'Pay your first invoice from the Billing page to start using your dashboard. Your licence runs from the day you pay.',
+        subject: `Your invoice for ${lic.name || 'your signage license'}`,
+        headline: 'Your license is ready — one step left',
+        message: 'Pay your first invoice from the Billing page to start using your dashboard. Your license runs from the day you pay.',
         rows: [...rows, ['Amount due', inr(lic.price)]],
         cta: 'Pay now',
+        tone: 'info' as const,
+        callout: 'Your plan runs for a full period from the day you pay.',
       };
     case 'before':
       return {
-        subject: `Your licence renews on ${fmt(expiry)}`,
+        subject: `Your license renews on ${fmt(expiry)}`,
         headline: 'Time to renew',
-        message: `Your licence "${lic.name}" is due for renewal on ${fmt(expiry)}. Renewing early adds the new period after the current one, so you lose nothing.`,
+        message: `Your license "${lic.name}" is due for renewal on ${fmt(expiry)}. Renewing early adds the new period after the current one, so you lose nothing.`,
         rows: [...rows, ['Renewal date', fmt(expiry)]],
         cta: 'Renew now',
       };
     case 'due':
       return {
-        subject: `Your licence ${daysBetween(istToday(), expiry) === 0 ? 'expires today' : 'has expired'}`,
-        headline: 'Your licence is due',
+        subject: `Your license ${daysBetween(istToday(), expiry) === 0 ? 'expires today' : 'has expired'}`,
+        headline: 'Your license is due',
         message: `Renew by ${fmt(graceEnds)} to keep using your dashboard. Your screens keep playing either way.`,
-        rows: [...rows, ['Expired / expires', fmt(expiry)], ['Dashboard access until', fmt(graceEnds)]],
+        rows: [...rows, ['Due date', fmt(expiry)], ['Dashboard access until', fmt(graceEnds)]],
         cta: 'Renew now',
       };
     case 'grace':
       return {
         subject: `Renew by ${fmt(graceEnds)} to keep dashboard access`,
-        headline: 'Your licence has expired',
+        headline: 'Your license has expired',
         message: `Your dashboard stays open until ${fmt(graceEnds)}. After that it pauses until you renew — your screens keep playing.`,
         rows: [...rows, ['Expired on', fmt(expiry)], ['Dashboard access until', fmt(graceEnds)]],
         cta: 'Renew now',
+        tone: 'warn' as const,
+        callout: `After ${fmt(graceEnds)} your dashboard pauses until you renew. Your screens keep playing.`,
       };
     case 'paused':
       return {
         subject: 'Your dashboard access is paused',
         headline: 'Renew to continue',
-        message: 'Your licence has expired and the grace period has ended, so dashboard access is paused. Your screens are still playing. Renew from the Billing page to get back in straight away.',
+        message: 'Your license has expired and the grace period has ended, so dashboard access is paused. Your screens are still playing. Renew from the Billing page to get back in straight away.',
         rows: [...rows, ['Expired on', fmt(expiry)]],
         cta: 'Renew now',
+        tone: 'danger' as const,
+        callout: 'Renewing unlocks your dashboard straight away.',
       };
   }
 }
@@ -130,6 +136,8 @@ export async function runBillingReminders(now = new Date()): Promise<{ sent: num
         message: e.message,
         rows: e.rows as [string, string][],
         ctaLabel: e.cta,
+        tone: (e as any).tone,
+        callout: (e as any).callout,
         ctaUrl: APP_URL ? `${APP_URL.replace(/\/$/, '')}/#/license-billing` : undefined,
       });
       if (result !== 'sent') {

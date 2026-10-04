@@ -8,6 +8,7 @@ import { forgetSession } from '../middleware/auth';
 import { notifyScreenConfigChanged, notifyScreensConfigChanged } from '../services/screenPush';
 import { resolveUserOrgId, groupBelongsTo } from '../services/ownership';
 import { loadUsablePlaylist } from '../scheduler';
+import { prepareInvoice } from '../services/invoicing';
 
 // --- Tenancy rules for the generic CRUD router -----------------------------
 // Every collection mounted through createCrudRouter() is covered by exactly
@@ -396,6 +397,11 @@ export function createCrudRouter(collectionName: string) {
       }
 
       if (collectionName === 'screen_groups' && !body.createdBy) body.createdBy = req.user?.email;
+      // Tax invoices get their running number and billed-to details here.
+      if (collectionName === 'invoices') {
+        delete body.number;
+        await prepareInvoice(body);
+      }
       // New screens play at full volume (an unset volume reads as 0).
       if (collectionName === 'screens' && (body.volume === undefined || body.volume === null || body.volume === '')) body.volume = 100;
 
