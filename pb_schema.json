@@ -1402,6 +1402,15 @@
         "type": "text"
       },
       {
+        "hidden": true,
+        "id": "boolvolumedefaulted",
+        "name": "volumeDefaulted",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
         "autogeneratePattern": "",
         "hidden": false,
         "id": "txtscreensize",

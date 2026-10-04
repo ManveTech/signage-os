@@ -13,7 +13,7 @@ import CustomSelect from '../../../components/CustomSelect';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import ConfirmDialog from '../../../components/screens/ConfirmDialog';
 import {
-  licenseState, LicenseStateKey, daysUntil, formatDate, formatInr, relativeDays, defaultExpiry, planLabel, localDate
+  licenseState, LicenseStateKey, daysUntil, formatDate, formatInr, relativeDays, defaultExpiry, planLabel, localDate, isRenewalDue
 } from '../../../components/licenses/licenseStatus';
 
 type Tab = 'management' | 'expirations' | 'invoices' | 'payments';
@@ -321,14 +321,14 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       .some(v => (v || '').toLowerCase().includes(q)));
 
   const expiringRows = licenses
-    .filter(l => l.assignedUserEmail)
+    .filter(l => l.assignedUserEmail && isRenewalDue(l))
     .map(lic => ({ lic, days: daysUntil(lic.expiryDate) }))
-    .filter((x): x is { lic: License; days: number } => x.days !== null && x.days <= 30)
+    .filter((x): x is { lic: License; days: number } => x.days !== null)
     .sort((a, b) => a.days - b.days);
   const expiringGroups = [
     { title: 'Expired', rows: expiringRows.filter(x => x.days < 0) },
     { title: 'This week', rows: expiringRows.filter(x => x.days >= 0 && x.days <= 7) },
-    { title: 'Within 30 days', rows: expiringRows.filter(x => x.days > 7) },
+    { title: 'Later this month', rows: expiringRows.filter(x => x.days > 7) },
   ].filter(g => g.rows.length > 0);
 
   const unpaidInvoices = invoices.filter(i => i.status === 'unpaid');

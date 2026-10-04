@@ -39,6 +39,7 @@ import { useCapacitor } from '../../hooks/useCapacitor';
 import { syncAllFromDatabase } from '../../lib/syncHelper';
 import { Lock, X, CheckCircle } from 'lucide-react';
 import { getAuthToken } from '../../lib/authStorage';
+import { refreshProfileName } from '../../lib/profileName';
 
 function renderView(view: string, navigate: (v: string) => void, adminEmail: string) {
   switch (view) {
@@ -99,6 +100,8 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
 }
 
 export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail = 'admin@demo.com' }: { onLogout: () => void; onSwitchToClient?: () => void; userEmail?: string }) {
+  // The account's real name in the header/sidebar (see lib/profileName).
+  useEffect(() => { refreshProfileName(true); }, []);
   const location = useLocation();
   const navigate = useNavigate();
   const { isMobile } = useMobileDetect();

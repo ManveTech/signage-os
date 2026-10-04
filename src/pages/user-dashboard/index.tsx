@@ -37,6 +37,7 @@ import { licenseAccess, bestLicense, formatDate, formatInr, LicenseAccess } from
 import { syncCollection, pushToDatabase } from '../../lib/syncHelper';
 import { X, CheckCircle, Lock, Image, AlertTriangle, MonitorPlay, LifeBuoy } from 'lucide-react';
 import { getAuthToken } from '../../lib/authStorage';
+import { refreshProfileName } from '../../lib/profileName';
 
 
 function renderView(view: string, navigate: (v: string) => void, userEmail: string, videoConferencingEnabled: boolean, organizationId: string, licenseChecked: boolean) {
@@ -77,6 +78,8 @@ function renderView(view: string, navigate: (v: string) => void, userEmail: stri
 }
 
 export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', onSwitchToAdmin }: { onLogout: () => void; userEmail?: string; onSwitchToAdmin?: () => void }) {
+  // The account's real name in the header/sidebar (see lib/profileName).
+  useEffect(() => { refreshProfileName(false); }, []);
   const location = useLocation();
   const navigate = useNavigate();
   const { isMobile } = useMobileDetect();

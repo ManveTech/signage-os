@@ -189,7 +189,8 @@ export async function getPairingCode(req: any, res: any) {
         hardware_uuid: hardwareUuid,
         playlist: '',
         playlistId: '',
-        license_id: ''
+        license_id: '',
+        volume: 100
       });
     }
 
@@ -325,6 +326,7 @@ export async function pairScreen(req: any, res: any) {
       playlistId: startPlaylist?.id || '',
       ...(orientation === 'landscape' || orientation === 'portrait' ? { orientation } : {}),
       ...(typeof screenSize === 'string' && screenSize.length <= 16 ? { screenSize } : {}),
+      ...(!screenRecord.volume ? { volume: 100 } : {}),
       onlineSince: new Date().toISOString(),
       lastHeartbeat: new Date().toISOString()
     });

@@ -402,7 +402,7 @@ window.SignagePlayer = (function () {
             stopAndUnloadVideo(video);
 
             video.muted = false;
-            video.volume = 1.0;
+            video.volume = playbackVolume(state);
             video.style.objectFit = asset.objectFit || 'cover';
             video.style.display = 'block';
             video.style.zIndex = '4';
@@ -504,7 +504,7 @@ window.SignagePlayer = (function () {
                 }).catch((e) => {
                     console.warn('[Player] Unmuted play failed, retrying play for:', asset.filename, e);
                     video.muted = false;
-                    video.volume = 1.0;
+                    video.volume = playbackVolume(state);
                     video.play().then(() => {
                         onVideoFrameReady();
                     }).catch(onVideoError);
@@ -614,6 +614,13 @@ window.SignagePlayer = (function () {
         }
     }
 
+    // Playlist volume (playlist editor) × the screen's own volume (dashboard).
+    function playbackVolume(state) {
+        const pl = typeof state.playlistVolume === 'number' ? state.playlistVolume : 80;
+        const sc = typeof state.screenVolume === 'number' ? state.screenVolume : 100;
+        return Math.max(0, Math.min(1, (pl / 100) * (sc / 100)));
+    }
+
     function advancePlaylist(state, views, updateUICallback) {
         if (rotationTimeout) clearTimeout(rotationTimeout);
         if (state.playlist && state.playlist.length > 0) {
@@ -666,6 +673,7 @@ window.SignagePlayer = (function () {
 
             if (!data) throw new Error(`Playlist retrieval failed for "${playlistId}"`);
 
+            state.playlistVolume = typeof data.volume === 'number' ? data.volume : 80;
             const fingerprint = [data.id, data.updated || '', JSON.stringify(data.slides || ''), JSON.stringify(data.mediaIds || '')].join('|');
             if (fingerprint === lastPlaylistFingerprint && Date.now() - lastPlaylistFetchedAt < 30 * 60 * 1000 &&
                 state.playlist && state.playlist.length > 0 && state.isRotating) {

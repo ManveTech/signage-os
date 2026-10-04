@@ -4,9 +4,14 @@ import {
   Clock, CreditCard, List, Key
 } from 'lucide-react';
 import { licensingStore, License } from '../../../lib/licensingStore';
-import { licenseAccess, bestLicense } from '../../../components/licenses/licenseStatus';
+import { licenseAccess, bestLicense, isRenewalDue } from '../../../components/licenses/licenseStatus';
 import { mediaStore } from '../../../lib/mediaStore';
 import { syncCollection } from '../../../lib/syncHelper';
+
+// The database's own creation time. createdDate is only set by uploads made
+// in this dashboard (and holds no time of day), so anything added another
+// way — the phone app, the server — never showed in Recent activity.
+const whenMade = (x: { createdDate?: string }) => String((x as any).created || x.createdDate || '').replace(' ', 'T');
 
 function timeAgo(iso?: string): string {
   if (!iso) return '';
@@ -130,7 +135,7 @@ export default function Dashboard({
       detail: `${s.storageUsed}% used${s.location ? ` · ${s.location}` : ''}`,
       target: 'my-screens-list'
     })),
-    ...(userLicense && expiryDays < 15 ? [{
+    ...(userLicense && isRenewalDue(userLicense) ? [{
       id: 'license',
       tone: (expiryDays <= 3 ? 'bad' : 'warn') as 'bad' | 'warn',
       icon: <Clock size={14} />,
@@ -156,8 +161,8 @@ export default function Dashboard({
   const visibleAttention = showAllAttention ? attention : attention.slice(0, 3);
 
   const recentActivity = [
-    ...myMedia.map(m => ({ id: `media-${m.id}`, type: 'media' as const, text: m.title, sub: 'Media uploaded', time: m.createdDate, ts: new Date(m.createdDate || 0).getTime() })),
-    ...myPlaylists.map(p => ({ id: `playlist-${p.id}`, type: 'playlist' as const, text: p.name, sub: 'Playlist created', time: p.createdDate, ts: new Date(p.createdDate || 0).getTime() })),
+    ...myMedia.map(m => ({ id: `media-${m.id}`, type: 'media' as const, text: m.title, sub: 'Media uploaded', time: whenMade(m), ts: new Date(whenMade(m) || 0).getTime() })),
+    ...myPlaylists.map(p => ({ id: `playlist-${p.id}`, type: 'playlist' as const, text: p.name, sub: 'Playlist created', time: whenMade(p), ts: new Date(whenMade(p) || 0).getTime() })),
   ]
     .filter(a => Number.isFinite(a.ts) && a.ts > 0)
     .sort((a, b) => b.ts - a.ts)
@@ -283,7 +288,7 @@ export default function Dashboard({
       {userLicense ? (
         <>
           <p className="mt-2 text-base font-semibold text-ink-950">{userLicense.name || 'Subscription'}</p>
-          <p className={`text-xs mt-0.5 ${expiryDays < 15 ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
+          <p className={`text-xs mt-0.5 ${userLicense && isRenewalDue(userLicense) ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
             {expiryDays === 0 ? 'Expired' : `Renews ${formatDate(userLicense.expiryDate)}`}
             {expiryDays > 0 && ` · ${expiryDays} day${expiryDays === 1 ? '' : 's'} left`}
           </p>

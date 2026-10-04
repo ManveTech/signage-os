@@ -6,6 +6,12 @@ import {
 import { licensingStore } from '../../../lib/licensingStore';
 import { mediaStore } from '../../../lib/mediaStore';
 import { syncCollection } from '../../../lib/syncHelper';
+import { formatInr, isRenewalDue } from '../../../components/licenses/licenseStatus';
+
+// The database's own creation time. createdDate is only set by uploads made
+// in this dashboard (and holds no time of day), so anything added another
+// way — the phone app, the server — never showed in Recent activity.
+const whenMade = (x: { createdDate?: string }) => String((x as any).created || x.createdDate || '').replace(' ', 'T');
 
 function timeAgo(iso?: string): string {
   if (!iso) return '';
@@ -83,7 +89,7 @@ export default function Dashboard({
   const onlineScreens = pairedScreens.filter(isOnline).length;
   const offlineScreens = pairedScreens.filter(s => s.status === 'offline').length;
   const onlinePct = totalScreens > 0 ? Math.round((onlineScreens / totalScreens) * 100) : 0;
-  const expiring = licenses.filter(l => l.status === 'active' && daysLeft(l.expiryDate) < 15);
+  const expiring = licenses.filter(l => l.assignedUserEmail && isRenewalDue(l));
 
   const attention: Attention[] = [
     ...screens
@@ -106,7 +112,19 @@ export default function Dashboard({
         detail: `${s.storageUsed}% used${s.location ? ` · ${s.location}` : ''}`,
         target: 'screens-all'
       })),
-    ...expiring.map(l => {
+    // A new "Charge now" licence whose first invoice hasn't been paid — the
+    // client can't use their dashboard until it is.
+    ...licenses
+      .filter(l => l.status === 'pending_payment' && l.assignedUserEmail)
+      .map(l => ({
+        id: `pay-${l.id}`,
+        tone: 'warn' as const,
+        icon: <Clock size={14} />,
+        title: `Awaiting first payment · ${l.assignedOrgName || l.assignedUserEmail}`,
+        detail: `${l.name} · ${formatInr(l.price)}`,
+        target: 'licenses-invoices'
+      })),
+    ...expiring.filter(l => l.status === 'active').map(l => {
       const d = daysLeft(l.expiryDate);
       return {
         id: `lic-${l.id}`,
@@ -121,8 +139,8 @@ export default function Dashboard({
   const visibleAttention = showAllAttention ? attention : attention.slice(0, 3);
 
   const recentActivity = [
-    ...media.map(m => ({ id: `media-${m.id}`, type: 'media' as const, text: m.title, sub: 'Media uploaded', time: m.createdDate, ts: new Date(m.createdDate || 0).getTime() })),
-    ...playlists.map(p => ({ id: `playlist-${p.id}`, type: 'playlist' as const, text: p.name, sub: 'Playlist created', time: p.createdDate, ts: new Date(p.createdDate || 0).getTime() })),
+    ...media.map(m => ({ id: `media-${m.id}`, type: 'media' as const, text: m.title, sub: 'Media uploaded', time: whenMade(m), ts: new Date(whenMade(m) || 0).getTime() })),
+    ...playlists.map(p => ({ id: `playlist-${p.id}`, type: 'playlist' as const, text: p.name, sub: 'Playlist created', time: whenMade(p), ts: new Date(whenMade(p) || 0).getTime() })),
   ]
     .filter(a => Number.isFinite(a.ts) && a.ts > 0)
     .sort((a, b) => b.ts - a.ts)

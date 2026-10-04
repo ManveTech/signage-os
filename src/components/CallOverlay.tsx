@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff, Tv, MessageSquare, Send, X } from 'lucide-react';
 
+// Android's WebView shows a large grey "play" button on a video with no frame yet.
+const BLANK_POSTER = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+
 export interface ChatMessage {
   senderName: string;
   text: string;
@@ -134,6 +137,7 @@ export default function CallOverlay({
         <div className="absolute bottom-6 right-6 w-40 sm:w-52 aspect-video rounded-xl overflow-hidden border border-white/15 bg-slate-900 shadow-2xl">
           {cameraEnabled && localStream ? (
             <video
+              poster={BLANK_POSTER}
               ref={localVideoRef}
               autoPlay
               playsInline
@@ -297,6 +301,7 @@ function RemoteVideoTile({
     <div className={`relative flex items-center justify-center overflow-hidden ${fullscreen ? 'w-full h-full' : 'rounded-lg bg-slate-900 border border-white/10'}`}>
       {hasVideo ? (
         <video
+          poster={BLANK_POSTER}
           ref={videoRef}
           autoPlay
           playsInline

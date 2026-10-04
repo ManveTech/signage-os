@@ -364,7 +364,8 @@ class SignageRepository(private val context: Context) {
             val updatedConfig = currentConfig.copy(
                 status = response.status,
                 screenName = response.name ?: currentConfig.screenName,
-                screenVolume = response.volume ?: currentConfig.screenVolume,
+                // Older servers have no per-screen volume — full volume then.
+                screenVolume = response.volume ?: 100,
                 isWhiteLabel = isWhiteLabelNow,
                 whiteLabelLogoUrl = if (logoUrlNow.isNotEmpty()) logoUrlNow else currentConfig.whiteLabelLogoUrl,
                 whiteLabelName = if (nameNow.isNotEmpty()) nameNow else currentConfig.whiteLabelName,

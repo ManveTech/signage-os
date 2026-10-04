@@ -396,6 +396,8 @@ export function createCrudRouter(collectionName: string) {
       }
 
       if (collectionName === 'screen_groups' && !body.createdBy) body.createdBy = req.user?.email;
+      // New screens play at full volume (an unset volume reads as 0).
+      if (collectionName === 'screens' && (body.volume === undefined || body.volume === null || body.volume === '')) body.volume = 100;
 
       const record = await retryWithBackoff(() => pb.collection(collectionName).create(body));
 
@@ -455,11 +457,15 @@ export function createCrudRouter(collectionName: string) {
             return res.status(403).json({ error: 'Access denied: that group does not belong to your organization.' });
           }
         }
-        // Same for playlists: only the owner's own (or admin-made) playlists
-        // may be put on their screen. The dashboard sends the whole screen,
-        // so only a changed playlist is checked.
-        if (collectionName === 'screens' && req.body.playlistId && req.body.playlistId !== record.playlistId) {
-          const playlist = await loadUsablePlaylist(req.body.playlistId, record.assignedToUserEmail);
+      }
+      // Only the screen owner's own (or admin-made) playlists may go on a
+      // screen — for admins too, so one client's playlist can't be put on
+      // another client's screen by mistake. The dashboard sends the whole
+      // screen, so only a changed playlist is checked.
+      if (collectionName === 'screens' && req.body.playlistId) {
+        const current = await retryWithBackoff(() => pb.collection('screens').getOne(req.params.id)).catch(() => null);
+        if (current && req.body.playlistId !== current.playlistId) {
+          const playlist = await loadUsablePlaylist(req.body.playlistId, current.assignedToUserEmail || '');
           if (!playlist) {
             return res.status(403).json({ error: 'That playlist is not in this account.' });
           }

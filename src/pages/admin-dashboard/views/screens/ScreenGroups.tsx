@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { scheduleLabel } from '../../../../components/screens/scheduleLabel';
 import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, AlertCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser , Layers, ChevronRight, RotateCcw } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
@@ -72,6 +73,15 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
       }
     });
   }, []);
+
+  // Playlists a group's screens may play: that client's own, or ones the
+  // admin made. (The pickers listed every client's playlists.)
+  const playlistsForGroup = (g?: { orgId?: string } | null) => {
+    if (mode === 'my' || !g?.orgId) return userPlaylists.filter(p => p.createdBy === userEmail);
+    const org = organizations.find(o => o.id === g.orgId);
+    const owners = new Set([org?.email, ...licensingStore.getLicenses().filter(l => l.assignedOrgId === g.orgId).map(l => l.assignedUserEmail)].filter(Boolean));
+    return userPlaylists.filter(p => owners.has(p.createdBy) || p.createdBy === userEmail);
+  };
 
   const filteredPlaylists = userPlaylists.filter(p => {
     if (mode === 'my') {
@@ -158,7 +168,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
     if (!assignPlaylistDirectTo) return;
     const playlistName = playlistToAssign;
     const isNone = !playlistName || playlistName === 'None';
-    const targetPlaylistObj = isNone ? null : userPlaylists.find(p => p.name === playlistName);
+    const targetPlaylistObj = isNone ? null : playlistsForGroup(assignPlaylistDirectTo).find(p => p.name === playlistName);
 
     const updated = groups.map(g => g.id === assignPlaylistDirectTo.id ? {
       ...g,
@@ -281,7 +291,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
         const updatedScreen: Screen = {
           ...s,
           playlist: isGroupNone ? '' : updatedGroup.playlist,
-          playlistId: isGroupNone ? '' : (userPlaylists.find(p => p.name === updatedGroup.playlist)?.id || ''),
+          playlistId: isGroupNone ? '' : (playlistsForGroup(updatedGroup).find(p => p.name === updatedGroup.playlist)?.id || ''),
           restart_playlist: true,
           volume: updatedGroup.volume !== undefined ? updatedGroup.volume : s.volume,
           clear_cache: updatedGroup.clear_cache ? true : s.clear_cache,
@@ -332,7 +342,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
     const targetScreen = screens.find(s => s.id === screenId);
     if (!targetScreen) return;
     const gp = groups.find(g => g.id === groupId);
-    const newPlaylistId = userPlaylists.find(p => p.name === (gp?.playlist || ''))?.id || targetScreen.playlistId;
+    const newPlaylistId = playlistsForGroup(gp).find(p => p.name === (gp?.playlist || ''))?.id || targetScreen.playlistId;
     const isAlreadyOnline = targetScreen.status === 'online' || targetScreen.status === 'active';
     const playlistChanging = gp?.playlist && gp.playlist !== targetScreen.playlist;
     const updatedScreen = { 
@@ -563,7 +573,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
             }
             details={[
               { label: 'Playlist', value: group.playlist || <span className="text-slate-400">None</span> },
-              ...(group.schedulePlaylist ? [{ label: 'Next scheduled', value: `${group.schedulePlaylist} · ${group.scheduleDate || ''} ${group.scheduleTime || ''}`.trim() }] : []),
+              ...(scheduleLabel(group) ? [{ label: 'Scheduled', value: scheduleLabel(group) }] : []),
               ...(groupScreens.length ? [{ label: 'Online now', value: `${online} of ${groupScreens.length}` }] : []),
             ]}
             groups={[
@@ -732,14 +742,14 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
                   <span>Screen Volume (Bulk)</span>
-                  <span className="font-semibold text-blue-600">{(editGroup.volume !== undefined ? editGroup.volume : 80)}%</span>
+                  <span className="font-semibold text-blue-600">{(editGroup.volume !== undefined ? editGroup.volume : 100)}%</span>
                 </label>
                 <div className="flex items-center gap-3">
                   <input 
                     type="range" 
                     min="0" 
                     max="100" 
-                    value={editGroup.volume !== undefined ? editGroup.volume : 80} 
+                    value={editGroup.volume !== undefined ? editGroup.volume : 100} 
                     onChange={e => setEditGroup(p => p && ({ ...p, volume: parseInt(e.target.value) }))} 
                     className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />
@@ -819,7 +829,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                     placeholder="None"
                     options={[
                       { value: '', label: 'None' },
-                      ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                      ...playlistsForGroup(editGroup).map(pl => ({ value: pl.name, label: pl.name }))
                     ]}
                     buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                   />
@@ -834,7 +844,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                       placeholder="Select Playlist..."
                       options={[
                         { value: '', label: 'Select Playlist...' },
-                        ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                        ...playlistsForGroup(editGroup).map(pl => ({ value: pl.name, label: pl.name }))
                       ]}
                       buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                     />
@@ -946,7 +956,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                     placeholder="None"
                     options={[
                       { value: '', label: 'None' },
-                      ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                      ...playlistsForGroup(newGroup).map(pl => ({ value: pl.name, label: pl.name }))
                     ]}
                     buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                   />
@@ -961,7 +971,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                       placeholder="Select Playlist..."
                       options={[
                         { value: '', label: 'Select Playlist...' },
-                        ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                        ...playlistsForGroup(newGroup).map(pl => ({ value: pl.name, label: pl.name }))
                       ]}
                       buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                     />
@@ -1017,15 +1027,19 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
           <ul className="divide-y divide-slate-100">
             {ungroupedScreens.map(screen => {
               const e = getEffectiveStatus(screen);
+              const joinable = groupsForScreen(screen);
+              const orgName = mode === 'my' ? '' : organizations.find(o => o.id === getScreenOrgId(screen))?.name || '';
               const dot = e === 'online' || e === 'active' ? 'bg-emerald-500' : e === 'offline' ? 'bg-rose-500' : e === 'unlinked' ? 'bg-slate-300' : 'bg-amber-400';
               return (
                 <li key={screen.id} className="flex items-center gap-3 px-4 py-2.5">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm text-slate-800 truncate">{screen.name}</span>
-                    {screen.location && screen.location !== 'Not Specified' && <span className="block text-xs text-slate-400 truncate">{screen.location}</span>}
+                    <span className="block text-xs text-slate-400 truncate">
+                      {[screen.location && screen.location !== 'Not Specified' ? screen.location : '', orgName].filter(Boolean).join(' · ')}
+                    </span>
                   </span>
-                  {filteredGroups.length > 0 && (
+                  {joinable.length > 0 && (
                     <div className="w-36 shrink-0">
                       <CustomSelect
                         value=""
@@ -1039,7 +1053,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                         placeholder="Add to group"
                         options={[
                           { value: '', label: 'Add to group' },
-                          ...filteredGroups.map(g => ({ value: g.id, label: g.name }))
+                          ...joinable.map(g => ({ value: g.id, label: g.name }))
                         ]}
                         buttonClassName="text-xs py-1.5 px-2.5 min-h-[34px]"
                       />
@@ -1071,7 +1085,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   placeholder="None"
                   options={[
                     { value: '', label: 'None' },
-                    ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                    ...playlistsForGroup(assignPlaylistDirectTo).map(pl => ({ value: pl.name, label: pl.name }))
                   ]}
                   buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                 />
@@ -1105,7 +1119,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   placeholder="None"
                   options={[
                     { value: '', label: 'None' },
-                    ...filteredPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
+                    ...playlistsForGroup(schedulePlaylistTo).map(pl => ({ value: pl.name, label: pl.name }))
                   ]}
                   buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                 />

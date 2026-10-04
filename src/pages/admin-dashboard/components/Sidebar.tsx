@@ -207,7 +207,7 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
                   {section.children.map(child => {
                     const isChildActive = activeView === child.id || 
                       (child.id === 'my-screens-list' && activeView === 'screens-add-my') ||
-                      (child.id === 'screens-all' && (activeView === 'screens-all' || activeView === 'client-screens' || activeView === 'screens-add' || activeView === 'screens-add-client'));
+                      (child.id === 'screens-all' && (activeView === 'screens-all' || activeView === 'client-screens' || activeView === 'screens-add'));
                     return (
                       <button
                         key={child.id}

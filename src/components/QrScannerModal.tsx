@@ -106,7 +106,8 @@ export default function QrScannerModal({ onScan, onClose, title = 'Scan QR Code'
             </div>
           ) : (
             <>
-              <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
+              {/* A blank poster: Android's WebView otherwise shows a big grey "play" button until the camera starts. */}
+              <video ref={videoRef} className="w-full h-full object-cover bg-slate-900" muted playsInline poster="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
               {/* Viewfinder frame — purely visual, has no effect on decoding */}
               <div className="absolute inset-8 border-2 border-white/70 rounded-2xl pointer-events-none" />
               <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-black/50 text-white text-[11px] font-medium px-3 py-1 rounded-full">

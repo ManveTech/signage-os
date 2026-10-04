@@ -154,6 +154,9 @@
 
             let hasChanged = false;
 
+            // The screen's own volume (dashboard) scales the playlist's volume.
+            state.screenVolume = typeof data.volume === 'number' ? Math.max(0, Math.min(100, data.volume)) : 100;
+
             if (state.status !== data.status) {
                 state.status = data.status || 'pairing';
                 localStorage.setItem(KEYS.STATUS, state.status);

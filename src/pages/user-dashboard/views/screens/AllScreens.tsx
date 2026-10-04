@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { scheduleLabel } from '../../../../components/screens/scheduleLabel';
 import { Search, Plus, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit, Clock, Monitor, X, Check, CheckCircle, Users, ChevronDown, Activity, Pause, Eraser, FolderMinus, Lock, Play, Unlink, Tv, RotateCcw } from 'lucide-react';
 import ScreenDetailsSheet from '../../../../components/screens/ScreenDetailsSheet';
 import ScreenCard from '../../../../components/screens/ScreenCard';
@@ -339,22 +340,27 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
     });
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!editScreen) return;
     const gp = groups.find(g => g.id === editScreen.groupId);
-    const finalScreen = gp ? { 
-      ...editScreen, 
-      playlist: gp.playlist || editScreen.playlist,
-      playlistId: userPlaylists.find(p => p.name === (gp?.playlist || ''))?.id || editScreen.playlistId,
-      volume: gp.volume !== undefined ? gp.volume : editScreen.volume,
-    } : editScreen;
-    const allScreens = mediaStore.getScreens();
-    const updated = allScreens.map(s => s.id === editScreen.id ? finalScreen : s);
+    const groupPlaylist = gp?.playlist ? userPlaylists.find(p => p.name === gp.playlist) : undefined;
+    const finalScreen = {
+      ...editScreen,
+      ...(groupPlaylist ? { playlist: groupPlaylist.name, playlistId: groupPlaylist.id } : {}),
+      ...(gp && gp.volume !== undefined ? { volume: gp.volume } : {}),
+    };
+    const res = await pushToDatabase('screens', editScreen.id, finalScreen, 'PUT');
+    if (res.ok === false) {
+      let message = "Couldn't save the screen.";
+      try { message = JSON.parse(res.error || '').error || message; } catch { /* plain text */ }
+      addToast(message, 'error');
+      return;
+    }
+    const updated = mediaStore.getScreens().map(s => s.id === editScreen.id ? finalScreen : s);
     mediaStore.saveScreens(updated);
     setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
-    pushToDatabase('screens', editScreen.id, finalScreen, 'PUT');
     setEditScreen(null);
-    addToast(`"${editScreen.name}" updated successfully`);
+    addToast(`"${editScreen.name}" updated`);
   };
 
   return (
@@ -520,7 +526,9 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
         {paginatedRecords.map(screen => {
           const status = getEffectiveStatus(screen);
           const group = screen.groupId ? groups.find(g => g.id === screen.groupId) : null;
-          const playing = group ? (group.playlist || 'Normal') : (screen.playlist && screen.playlist !== 'None' ? screen.playlist : '');
+          // What the TV actually plays: its own playlist (assigning one to a
+          // group copies it onto each screen in the group).
+          const playing = screen.playlist && screen.playlist !== 'None' ? screen.playlist : '';
           return (
             <ScreenCard
               key={screen.id}
@@ -573,7 +581,7 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
         if (!screen) return null;
         const status = getEffectiveStatus(screen);
         const group = screen.groupId ? groups.find(g => g.id === screen.groupId) : null;
-        const playlistLabel = group ? (group.playlist || 'Normal') : (screen.playlist && screen.playlist !== 'None' ? screen.playlist : 'None');
+        const playlistLabel = screen.playlist && screen.playlist !== 'None' ? screen.playlist : 'None';
         const unlinked = status === 'unlinked';
         const waitingDevice = isWaitingToPair(screen);
         const pairingCode = (screen as any).pairing_code as string | undefined;
@@ -607,7 +615,8 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
               { label: 'Code expires', value: (screen as any).pairing_code_expires ? new Date((screen as any).pairing_code_expires).toLocaleString() : '—' },
               { label: 'First seen', value: (screen as any).created ? new Date((screen as any).created).toLocaleDateString() : '—' },
             ] : [
-              { label: group ? 'Playlist (from group)' : 'Playlist', value: playlistLabel },
+              { label: 'Playlist', value: playlistLabel },
+              ...(scheduleLabel(screen) ? [{ label: 'Scheduled', value: scheduleLabel(screen) }] : []),
               ...(screen.paused ? [{ label: 'Playback', value: <span className="text-amber-700">Paused</span> }] : []),
               { label: 'TV', value: unlinked ? <span className="text-slate-500">Not linked</span> : (status === 'online' || status === 'active' ? 'Online now' : `Last seen ${lastSeenText(screen.lastHeartbeat)}`) },
               ...(group ? [{ label: 'Group', value: group.name }] : []),
@@ -765,31 +774,18 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
                   <span>Screen Volume</span>
-                  <span className="font-semibold text-blue-600">{(editScreen.volume !== undefined ? editScreen.volume : 80)}%</span>
+                  <span className="font-semibold text-blue-600">{(editScreen.volume !== undefined ? editScreen.volume : 100)}%</span>
                 </label>
                 <div className="flex items-center gap-3">
                   <input 
                     type="range" 
                     min="0" 
                     max="100" 
-                    value={editScreen.volume !== undefined ? editScreen.volume : 80} 
+                    value={editScreen.volume !== undefined ? editScreen.volume : 100} 
                     onChange={e => setEditScreen(p => p && ({ ...p, volume: parseInt(e.target.value) }))} 
                     className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
-                <CustomSelect 
-                  value={editScreen.status} 
-                  onChange={val => setEditScreen(p => p && ({ ...p, status: val as Screen['status'] }))} 
-                  options={[
-                    { value: 'online', label: 'Online' },
-                    { value: 'offline', label: 'Offline' },
-                    { value: 'warning', label: 'Warning' }
-                  ]}
-                  buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
-                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Group</label>
@@ -818,29 +814,35 @@ export default function AllScreens({ onNavigate, userEmail = 'priya@demo.com' }:
                   />
                 </div>
               )}
-              {!editScreen.groupId && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">Assigned Playlist</label>
-                  <CustomSelect
-                    value={editScreen.playlist}
-                    onChange={val => {
-                      const play = userPlaylists.find(p => p.name === val);
-                      setEditScreen(p => p && ({ ...p, playlist: val, playlistId: play ? play.id : '' }));
-                    }}
-                    options={[
-                      { value: 'Normal', label: 'Normal' },
-                      { value: 'None', label: 'None (Stop Playback)' },
-                      ...userPlaylists.map(pl => ({ value: pl.name, label: pl.name }))
-                    ]}
-                    buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
-                  />
-                </div>
-              )}
+              {(() => {
+                // A group with a playlist decides it; otherwise the screen's own.
+                const gp = editScreen.groupId ? groups.find(g => g.id === editScreen.groupId) : undefined;
+                if (gp?.playlist) return null;
+                const options = userPlaylists;
+                return (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Playlist</label>
+                    <CustomSelect
+                      value={editScreen.playlistId || ''}
+                      onChange={val => {
+                        const play = options.find(p => p.id === val);
+                        setEditScreen(p => p && ({ ...p, playlist: play ? play.name : '', playlistId: play ? play.id : '' }));
+                      }}
+                      options={[
+                        { value: '', label: 'No playlist' },
+                        ...options.map(pl => ({ value: pl.id, label: pl.name }))
+                      ]}
+                      buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
+                    />
+                  </div>
+                );
+              })()}
               {editScreen.groupId && (() => {
                 const gp = groups.find(g => g.id === editScreen.groupId);
+                if (!gp?.playlist) return null;
                 return (
                   <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700 space-y-2">
-                    <p>Playlist is managed by group <strong>{gp?.name}</strong> (Inherited: <strong>{gp?.playlist || 'None'}</strong>).</p>
+                    <p>Playlist is set by the group <strong>{gp.name}</strong>: <strong>{gp.playlist}</strong>.</p>
                     <button
                       type="button"
                       onClick={() => setEditScreen(p => p && ({ ...p, groupId: undefined }))}

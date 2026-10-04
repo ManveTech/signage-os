@@ -19,7 +19,7 @@ data class ScreenConfig(
     val playlistLoop: Boolean = true,
     val playlistVolume: Int = 80,
     val playlistTransition: String = "fade",
-    val screenVolume: Int = 80,
+    val screenVolume: Int = 100,
     val widgetType: String? = null,
     val widgetPlacement: String? = null,
     val widgetLink: String? = null,

@@ -45,6 +45,23 @@ export function defaultExpiry(tenure: 'monthly' | 'yearly', from = new Date()): 
 }
 
 /**
+ * How many days before renewal a plan counts as "expiring": a week for a
+ * monthly plan (when reminder emails start) and a month for a yearly one.
+ * It was 30 days for every plan, so every monthly client always looked
+ * like they were about to expire.
+ */
+export function renewalWindowDays(lic: Pick<License, 'tenure'>): number {
+  return lic.tenure === 'yearly' ? 30 : 7;
+}
+
+/** Due for renewal soon (or already lapsed) — not a licence still awaiting its first payment. */
+export function isRenewalDue(lic: Pick<License, 'tenure' | 'status' | 'expiryDate'>): boolean {
+  if (lic.status === 'pending_payment') return false;
+  const days = daysUntil(lic.expiryDate);
+  return days !== null && days <= renewalWindowDays(lic);
+}
+
+/**
  * What a license actually is right now. The stored status stays "active"
  * after the expiry date passes until something renews or edits it, so the
  * date is checked too — otherwise lapsed licenses showed as Active.
@@ -62,7 +79,7 @@ export function licenseState(lic: License): { key: LicenseStateKey; label: strin
   if (!lic.assignedUserEmail) {
     return { key: 'unassigned', label: 'Unassigned', className: 'bg-slate-100 text-slate-600 border-slate-200', days };
   }
-  if (days !== null && days <= 30) {
+  if (days !== null && days <= renewalWindowDays(lic)) {
     return { key: 'expiring', label: days === 0 ? 'Expires today' : `${days}d left`, className: 'bg-orange-50 text-orange-700 border-orange-100', days };
   }
   return { key: 'active', label: 'Active', className: 'bg-emerald-50 text-emerald-700 border-emerald-100', days };

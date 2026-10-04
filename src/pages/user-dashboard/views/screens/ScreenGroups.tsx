@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { scheduleLabel } from '../../../../components/screens/scheduleLabel';
 import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, AlertCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser , Layers, ChevronRight, RotateCcw } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
@@ -502,7 +503,7 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
             }
             details={[
               { label: 'Playlist', value: group.playlist || <span className="text-slate-400">None</span> },
-              ...(group.schedulePlaylist ? [{ label: 'Next scheduled', value: `${group.schedulePlaylist} · ${group.scheduleDate || ''} ${group.scheduleTime || ''}`.trim() }] : []),
+              ...(scheduleLabel(group) ? [{ label: 'Scheduled', value: scheduleLabel(group) }] : []),
               ...(groupScreens.length ? [{ label: 'Online now', value: `${online} of ${groupScreens.length}` }] : []),
             ]}
             groups={[
@@ -663,14 +664,14 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
                   <span>Screen Volume (Bulk)</span>
-                  <span className="font-semibold text-blue-600">{(editGroup.volume !== undefined ? editGroup.volume : 80)}%</span>
+                  <span className="font-semibold text-blue-600">{(editGroup.volume !== undefined ? editGroup.volume : 100)}%</span>
                 </label>
                 <div className="flex items-center gap-3">
                   <input 
                     type="range" 
                     min="0" 
                     max="100" 
-                    value={editGroup.volume !== undefined ? editGroup.volume : 80} 
+                    value={editGroup.volume !== undefined ? editGroup.volume : 100} 
                     onChange={e => setEditGroup(p => p && ({ ...p, volume: parseInt(e.target.value) }))} 
                     className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />
@@ -816,14 +817,14 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5 flex justify-between">
                   <span>Screen Volume (Bulk)</span>
-                  <span className="font-semibold text-blue-600">{(newGroup.volume !== undefined ? newGroup.volume : 80)}%</span>
+                  <span className="font-semibold text-blue-600">{(newGroup.volume !== undefined ? newGroup.volume : 100)}%</span>
                 </label>
                 <div className="flex items-center gap-3">
                   <input 
                     type="range" 
                     min="0" 
                     max="100" 
-                    value={newGroup.volume !== undefined ? newGroup.volume : 80} 
+                    value={newGroup.volume !== undefined ? newGroup.volume : 100} 
                     onChange={e => setNewGroup(p => ({ ...p, volume: parseInt(e.target.value) }))} 
                     className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />

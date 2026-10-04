@@ -7,7 +7,7 @@ import { getAuthToken } from '../../../lib/authStorage';
 import { API_BASE } from '../../../config';
 import { toast } from '../../../components/Toast';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
-import { licenseState, licenseAccess, formatDate, formatInr, relativeDays, planLabel } from '../../../components/licenses/licenseStatus';
+import { licenseState, licenseAccess, isRenewalDue, formatDate, formatInr, relativeDays, planLabel } from '../../../components/licenses/licenseStatus';
 
 interface Props {
   userEmail: string;
@@ -185,7 +185,7 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
         : { tone: 'rose', title: 'Your dashboard is paused', body: 'The grace period has ended. Renew to get back in straight away — your screens are still playing. Renewing starts a new period from today.', lic: main };
     }
     if (st.key === 'pending') return { tone: 'amber', title: 'Payment needed to activate your plan', body: unpaid.length ? `You have ${unpaid.length} unpaid invoice${unpaid.length === 1 ? '' : 's'}.` : 'Complete the payment to start using your plan.', lic: main };
-    if (st.days !== null && st.days <= 14) return { tone: 'amber', title: `Your plan renews in ${st.days} day${st.days === 1 ? '' : 's'}`, body: 'Renew now to avoid a gap — paying early adds the new period after the current one ends, so you lose nothing.', lic: main };
+    if (st.days !== null && isRenewalDue(main)) return { tone: 'amber', title: `Your plan renews in ${st.days} day${st.days === 1 ? '' : 's'}`, body: 'Renew now to avoid a gap — paying early adds the new period after the current one ends, so you lose nothing.', lic: main };
     return null;
   })();
 
@@ -265,13 +265,24 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
                   </div>
                   <div className="grid grid-cols-2 gap-3 mt-4">
                     <div className="rounded-xl bg-slate-50 p-3">
-                      <p className="text-xs text-slate-500">{st.key === 'expired' ? 'Expired on' : 'Renews on'}</p>
-                      <p className={`text-sm font-semibold mt-0.5 ${st.key === 'expired' ? 'text-rose-600' : 'text-slate-900'}`}>{formatDate(lic.expiryDate)}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{relativeDays(st.days)}</p>
+                      {st.key === 'pending' ? (
+                        // Not started yet — the period begins the day they pay.
+                        <>
+                          <p className="text-xs text-slate-500">Starts</p>
+                          <p className="text-sm font-semibold mt-0.5 text-slate-900">When you pay</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Runs {lic.tenure === 'yearly' ? 'a year' : 'a month'} from then</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-slate-500">{st.key === 'expired' ? 'Expired on' : 'Renews on'}</p>
+                          <p className={`text-sm font-semibold mt-0.5 ${st.key === 'expired' ? 'text-rose-600' : 'text-slate-900'}`}>{formatDate(lic.expiryDate)}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">{relativeDays(st.days)}</p>
+                        </>
+                      )}
                     </div>
                     <div className="rounded-xl bg-slate-50 p-3">
                       <p className="text-xs text-slate-500">Includes</p>
-                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{lic.deviceLimit || 5} screens · {lic.storageLimit || 5} GB</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{lic.deviceLimit || 5} screen{(lic.deviceLimit || 5) === 1 ? '' : 's'} · {lic.storageLimit || 5} GB</p>
                       <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
                         <span className={`inline-flex items-center gap-1 ${lic.enableVideoConferencing ? 'text-slate-600' : 'line-through'}`}><Video size={11} /> Video calls</span>
                         <span className={`inline-flex items-center gap-1 ${lic.whiteLabel ? 'text-slate-600' : 'line-through'}`}><Palette size={11} /> Branding</span>

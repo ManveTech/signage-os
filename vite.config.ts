@@ -33,13 +33,10 @@ export default defineConfig(({mode}) => {
             vendor: ['react', 'react-dom'],
           },
         },
-        external: [
-          // Capacitor plugins are optional and loaded dynamically
-          '@capacitor/app',
-          '@capacitor/keyboard',
-          '@capacitor/splash-screen',
-          '@capacitor/status-bar',
-        ],
+        // The Capacitor plugins are bundled (lib/nativePlugins.ts). They used to
+        // be marked external "to load dynamically", which nothing did — so on
+        // the phone the back button, splash and status bar plugins were never
+        // there at all.
       },
     },
   };

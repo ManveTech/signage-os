@@ -846,6 +846,25 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update screen_groups collection schema:', groupsErr.message);
     }
 
+    // Per-screen volume now scales playback on the TV (playlist volume ×
+    // screen volume). It was stored but never used, and unset values read as
+    // 0 — so once, every existing screen is set to full volume. The hidden
+    // field marks that this has been done.
+    try {
+      const sc: any = await pb.collections.getOne('screens');
+      const scFields = sc.fields || [];
+      if (!scFields.some((f: any) => f.name === 'volumeDefaulted')) {
+        const all = await pb.collection('screens').getFullList({ fields: 'id' });
+        for (const row of all) await pb.collection('screens').update(row.id, { volume: 100 }).catch(() => {});
+        scFields.push({ id: 'boolvolumedefaulted', name: 'volumeDefaulted', type: 'bool', required: false, system: false, hidden: true, presentable: false });
+        sc.fields = scFields;
+        await pb.collections.update('screens', sc);
+        console.log(`Set ${all.length} screen(s) to full volume (per-screen volume is now applied on TVs)`);
+      }
+    } catch (volErr: any) {
+      console.warn('Failed to default screen volumes:', volErr.message);
+    }
+
     // Ensure screen_logs collection exists
     try {
       console.log('Ensuring screen_logs collection exists...');

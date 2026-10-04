@@ -88,7 +88,7 @@ export default function Support({ activeTab = 'tickets', userEmail = '', onNavig
   const q = search.trim().toLowerCase();
   const visibleFaqs = faqs.filter(f => !q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
   const visibleDocs = docs.filter(d => !q || [d.title, d.category, d.content].some(v => (v || '').toLowerCase().includes(q)));
-  const lastActivity = (t: Ticket) => (t.messages?.length ? t.messages[t.messages.length - 1].at : (t.lastUpdated || t.createdDate));
+  const lastActivity = (t: Ticket) => (t.messages?.length ? t.messages[t.messages.length - 1].at : (t.lastUpdated || t.createdDate || (t as any).created));
   const sorted = [...tickets].sort((a, b) => (new Date(lastActivity(b)).getTime() || 0) - (new Date(lastActivity(a)).getTime() || 0));
   const unread = (t: Ticket) => (t.messages || []).slice(-1)[0]?.from === 'support' && (t.status === 'in_progress' || t.status === 'open');
   const openTicket = openTicketId ? tickets.find(t => t.id === openTicketId) : null;
@@ -142,7 +142,7 @@ export default function Support({ activeTab = 'tickets', userEmail = '', onNavig
                   <span className={`block text-sm truncate ${unread(t) ? 'font-semibold text-slate-900' : 'font-medium text-slate-800'}`}>{t.subject}</span>
                   <span className="block text-xs text-slate-500 mt-0.5">
                     {unread(t) ? <span className="text-blue-600 font-medium">New reply from support</span> : (t.messages?.length ? `${t.messages.length} repl${t.messages.length === 1 ? 'y' : 'ies'}` : 'Waiting for support')}
-                    {' · '}{timeAgo(lastActivity(t))}
+                    {timeAgo(lastActivity(t)) ? ` · ${timeAgo(lastActivity(t))}` : ''}
                   </span>
                 </span>
                 <StatusPill status={t.status} />
@@ -277,7 +277,7 @@ export default function Support({ activeTab = 'tickets', userEmail = '', onNavig
           open
           onClose={() => setOpenTicketId(null)}
           title={openTicket.subject}
-          subtitle={`Opened ${timeAgo(openTicket.createdDate)}`}
+          subtitle={`Opened ${timeAgo(openTicket.createdDate || (openTicket as any).created)}`}
           badge={<StatusPill status={openTicket.status} />}
           details={[]}
           groups={[]}

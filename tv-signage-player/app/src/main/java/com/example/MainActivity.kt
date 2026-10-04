@@ -198,7 +198,8 @@ fun SignagePlayerApp(
                                         transitionName = uiState.playlistTransition,
                                         onOpenAdmin = {},
                                         onVideoCompleted = { viewModel.advanceToNextAsset() },
-                                        volumePercent = uiState.playlistVolume
+                                        // Playlist volume × the screen's own volume (set in the dashboard).
+                                        volumePercent = uiState.playlistVolume * uiState.screenVolume.coerceIn(0, 100) / 100
                                     )
                                 }
 

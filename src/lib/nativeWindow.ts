@@ -1,4 +1,6 @@
 import { Capacitor } from '@capacitor/core';
+import { Style } from '@capacitor/status-bar';
+import { SgWindow, StatusBar } from './nativePlugins';
 
 /**
  * Sets the status/navigation bar color and icon style on Android.
@@ -52,20 +54,9 @@ export function holdBarsForBoot(): () => void {
 
 async function applyBarColor(color: string, style: 'LIGHT' | 'DARK'): Promise<void> {
 
-  const plugins = (Capacitor as any).Plugins || {};
-  const { StatusBar, SgWindow } = plugins;
-
-  if (SgWindow?.setBackground) {
-    await SgWindow.setBackground({ color }).catch(() => {});
-  }
-  if (StatusBar?.setOverlaysWebView) {
-    // Without this the WebView draws under the status bar instead of below it.
-    await StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
-  }
-  if (StatusBar?.setBackgroundColor) {
-    await StatusBar.setBackgroundColor({ color }).catch(() => {});
-  }
-  if (StatusBar?.setStyle) {
-    await StatusBar.setStyle({ style }).catch(() => {});
-  }
+  await SgWindow.setBackground({ color }).catch(() => {});
+  // Without this the WebView draws under the status bar instead of below it.
+  await StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
+  await StatusBar.setBackgroundColor({ color }).catch(() => {});
+  await StatusBar.setStyle({ style: style === 'LIGHT' ? Style.Light : Style.Dark }).catch(() => {});
 }

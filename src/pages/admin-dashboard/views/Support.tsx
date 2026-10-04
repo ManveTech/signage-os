@@ -65,7 +65,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
   const isActive = (t: Ticket) => t.status === 'open' || t.status === 'in_progress';
   const activeCount = tickets.filter(isActive).length;
   const waitingOnUs = (t: Ticket) => isActive(t) && ((t.messages || []).slice(-1)[0]?.from ?? 'client') === 'client';
-  const lastActivity = (t: Ticket) => t.messages?.length ? t.messages[t.messages.length - 1].at : (t.lastUpdated || t.createdDate);
+  const lastActivity = (t: Ticket) => t.messages?.length ? t.messages[t.messages.length - 1].at : (t.lastUpdated || t.createdDate || (t as any).created);
   const sortKey = (t: Ticket) => { const v = new Date(lastActivity(t)).getTime(); return Number.isFinite(v) ? v : 0; };
   const visibleTickets = tickets
     .filter(t => ticketFilter === 'all' || (ticketFilter === 'active' ? isActive(t) : !isActive(t)))
@@ -229,7 +229,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
                     <span className="block text-xs text-slate-500 truncate">{t.clientName || t.clientEmail}</span>
                     <span className="block text-xs text-slate-400 mt-0.5">
                       {waitingOnUs(t) ? <span className="text-rose-600 font-medium">Waiting for your reply</span> : `${(t.messages || []).length} repl${(t.messages || []).length === 1 ? 'y' : 'ies'}`}
-                      {' · '}{timeAgo(lastActivity(t))}
+                      {timeAgo(lastActivity(t)) ? ` · ${timeAgo(lastActivity(t))}` : ''}
                     </span>
                   </span>
                   <StatusPill status={t.status} />
@@ -308,7 +308,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span className={`w-2 h-2 rounded-full ${PRIORITY[openTicket.priority]?.dot}`} />
-                {PRIORITY[openTicket.priority]?.label} priority · opened {timeAgo(openTicket.createdDate)}
+                {PRIORITY[openTicket.priority]?.label} priority · opened {timeAgo(openTicket.createdDate || (openTicket as any).created)}
               </div>
               <TicketThread ticket={openTicket} viewer="support" />
               <div>

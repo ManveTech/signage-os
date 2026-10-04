@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { stopActiveTour } from '../lib/tour/active';
 import { setNativeBarColor } from '../lib/nativeWindow';
+import { App, Keyboard, SplashScreen } from '../lib/nativePlugins';
 
 export function useCapacitor() {
   const [isNative, setIsNative] = useState(false);
@@ -23,13 +24,38 @@ export function useCapacitor() {
     try {
       if (!Capacitor.isNativePlatform()) return;
 
-      const plugins = (Capacitor as any).Plugins || {};
-      const { SplashScreen, Keyboard, App: CapacitorApp } = plugins;
+      const CapacitorApp = App;
+
+      // Android back button. Registered first, before anything awaited.
+      // Android's own "can go back" is always false here (moving between
+      // pages doesn't add WebView history), so it decided to exit the app on
+      // every press; the app's own state decides instead.
+      if (Capacitor.getPlatform() === 'android') {
+        CapacitorApp.addListener('backButton', () => {
+          // A guided tour owns the screen while it runs.
+          if (stopActiveTour()) return;
+          // An open sheet or dialog closes first.
+          if (document.querySelector('[role="dialog"], [aria-modal="true"]')) {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            return;
+          }
+          const hash = window.location.hash.replace(/^#/, '') || '/';
+          const home = hash.startsWith('/admin') ? '/admin/dashboard' : '/dashboard';
+          if (hash === home || hash === '/' || hash === '/login') {
+            // Leave the app running in the background, like other apps.
+            CapacitorApp.minimizeApp().catch(() => CapacitorApp.exitApp());
+            return;
+          }
+          window.history.back();
+          // Nothing to go back to (opened straight onto this page): go home.
+          setTimeout(() => {
+            if ((window.location.hash.replace(/^#/, '') || '/') === hash) window.location.hash = home;
+          }, 350);
+        });
+      }
 
       // Hide splash screen after app is ready
-      if (SplashScreen && typeof SplashScreen.hide === 'function') {
-        await SplashScreen.hide({ fadeOutDuration: 300 });
-      }
+      await SplashScreen.hide({ fadeOutDuration: 300 }).catch(() => {});
 
       // Configure the status/nav bars — white to match the login/dashboard
       // screens, which is what's on screen almost the entire time the app is
@@ -37,35 +63,8 @@ export function useCapacitor() {
       // duration and restores it on the way out.
       await setNativeBarColor('#ffffff', 'LIGHT');
 
-      // Handle hardware back button on Android
-      if (Capacitor.getPlatform() === 'android' && CapacitorApp) {
-        if (typeof CapacitorApp.addListener === 'function') {
-          CapacitorApp.addListener('backButton', ({ canGoBack }: any) => {
-            // A guided tour (lib/tour/runner.ts) owns the screen while it's
-            // running — back should close it, not navigate the page or exit
-            // the app underneath it. active.ts has no dependency on the tour
-            // engine itself (driver.js), so importing it here doesn't pull
-            // that into every page's bundle.
-            if (stopActiveTour()) return;
-            if (!canGoBack && typeof CapacitorApp.exitApp === 'function') {
-              CapacitorApp.exitApp();
-            } else {
-              window.history.back();
-            }
-          });
-        }
-      }
-
-      // Handle keyboard events
-      if (Keyboard && typeof Keyboard.addListener === 'function') {
-        Keyboard.addListener('keyboardWillShow', (info: any) => {
-          document.body.style.paddingBottom = `${info.keyboardHeight}px`;
-        });
-
-        Keyboard.addListener('keyboardWillHide', () => {
-          document.body.style.paddingBottom = '0px';
-        });
-      }
+      // (No keyboard padding here: Android already resizes the page for the
+      // keyboard, and the layouts are built for that.)
 
       // Handle app state changes
       if (CapacitorApp && typeof CapacitorApp.addListener === 'function') {
@@ -102,8 +101,6 @@ export function useKeyboardVisible() {
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    const Keyboard = (Capacitor as any).Plugins?.Keyboard;
-    if (!Keyboard || typeof Keyboard.addListener !== 'function') return;
 
     const showListener = Keyboard.addListener('keyboardWillShow', () => {
       setIsKeyboardVisible(true);
@@ -131,8 +128,7 @@ export function useAppState() {
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    const CapacitorApp = (Capacitor as any).Plugins?.App;
-    if (!CapacitorApp || typeof CapacitorApp.addListener !== 'function') return;
+    const CapacitorApp = App;
 
     const listener = CapacitorApp.addListener('appStateChange', ({ isActive }: any) => {
       setIsActive(isActive);

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 
 import { syncAllFromDatabase } from '../lib/syncHelper';
+import { storeProfileName } from '../lib/profileName';
 import { getAuthToken, setAuthToken, clearAuthToken } from '../lib/authStorage';
 
 interface Props {
@@ -143,6 +144,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       localStorage.setItem('signageos_user_email', data.user.email);
       localStorage.setItem('signageos_user_role', data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client');
       localStorage.setItem('signageos_first_time_login', data.user.firstTimeLogin ? 'true' : 'false');
+      storeProfileName(data.user.email, data.user.role === 'admin' || data.user.role === 'super_admin', data.user.name);
     }
 
     try {
@@ -162,7 +164,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setErrorMessage('Please fill in all security fields.');
+      setErrorMessage('Enter your email and password.');
       return;
     }
 

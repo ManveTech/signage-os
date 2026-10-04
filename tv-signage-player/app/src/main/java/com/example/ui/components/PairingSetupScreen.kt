@@ -200,7 +200,7 @@ fun PairingSetupScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = uiState.statusMessage,
+                        text = pairingStatus(uiState),
                         color = PairMuted,
                         fontSize = 13.sp
                     )
@@ -294,7 +294,7 @@ fun PairingSetupScreen(
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text(text = uiState.statusMessage, color = PairMuted, fontSize = 13.sp)
+                    Text(text = pairingStatus(uiState), color = PairMuted, fontSize = 13.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 TextButton(
@@ -311,3 +311,14 @@ fun PairingSetupScreen(
 /** The pairing QR: a dashboard link with the code filled in, or just the code for older servers. */
 internal fun pairQrContent(template: String, code: String): String =
     if (template.contains("{code}") && code.isNotEmpty()) template.replace("{code}", code) else code
+
+/**
+ * The line under the code: what the TV is waiting for. It showed the app's
+ * start-up text ("Initializing system...") for as long as the code was up
+ * whenever the code arrived through a background sync.
+ */
+internal fun pairingStatus(uiState: com.example.ui.SignageUiState): String = when {
+    uiState.statusMessage.startsWith("Network") -> "No connection — retrying..."
+    uiState.pairingCode.isNotEmpty() -> "Waiting to be added in the dashboard..."
+    else -> "Getting a pairing code..."
+}

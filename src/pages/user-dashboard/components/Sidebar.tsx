@@ -21,7 +21,7 @@ const navSections: NavSection[] = [
     id: 'my-screens', label: 'My Screens', icon: <MonitorPlay size={18} />,
     children: [
       { id: 'my-screens-list', label: 'My Screens' },
-      { id: 'screens-groups', label: 'Create Groups' },
+      { id: 'screens-groups', label: 'Groups' },
       { id: 'screens-logs', label: 'Logs' },
     ]
   },
@@ -34,7 +34,7 @@ const navSections: NavSection[] = [
     ]
   },
   { id: 'license-billing', label: 'License & Billing', icon: <Key size={18} /> },
-  { id: 'video-conferencing', label: 'Video Conferencing', icon: <Video size={18} /> },
+  { id: 'video-conferencing', label: 'Video calls', icon: <Video size={18} /> },
   {
     id: 'support', label: 'Support', icon: <MessageSquare size={18} />,
     children: [

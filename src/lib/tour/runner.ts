@@ -542,9 +542,16 @@ export function runTour(opts: {
   };
   window.addEventListener('scroll', reposition, true);
   window.addEventListener('resize', reposition);
+  // Leaving the page another way (browser Back, search) closes the tour —
+  // otherwise its card stayed up, pointing at whatever was now in that spot.
+  const onRouteChange = () => {
+    if (!moving && instance.isActive()) instance.destroy();
+  };
+  window.addEventListener('hashchange', onRouteChange);
   const releaseListeners = () => {
     window.removeEventListener('scroll', reposition, true);
     window.removeEventListener('resize', reposition);
+    window.removeEventListener('hashchange', onRouteChange);
   };
 
   void move(async () => {
