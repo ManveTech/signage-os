@@ -4,6 +4,7 @@ import {
   Clock, CreditCard, List, Key
 } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
+import { licenseAccess } from '../../../components/licenses/licenseStatus';
 import { mediaStore } from '../../../lib/mediaStore';
 import { syncCollection } from '../../../lib/syncHelper';
 
@@ -133,8 +134,14 @@ export default function Dashboard({
       id: 'license',
       tone: (expiryDays <= 3 ? 'bad' : 'warn') as 'bad' | 'warn',
       icon: <Clock size={14} />,
-      title: expiryDays === 0 ? 'Your plan has expired' : `Your plan expires in ${expiryDays} day${expiryDays === 1 ? '' : 's'}`,
-      detail: `Renew by ${formatDate(userLicense.expiryDate)} to keep your screens running`,
+      title: expiryDays <= 0 ? 'Your plan has expired' : `Your plan expires in ${expiryDays} day${expiryDays === 1 ? '' : 's'}`,
+      // Screens keep playing either way; what's at stake is dashboard access.
+      detail: (() => {
+        const acc = licenseAccess(userLicense as any);
+        return acc.state === 'grace'
+          ? `Renew by ${formatDate(acc.graceEnds || '')} to keep using the dashboard`
+          : `Renew by ${formatDate(userLicense.expiryDate)} to avoid a gap`;
+      })(),
       target: 'license-billing'
     }] : []),
     ...(unpaidInvoice ? [{

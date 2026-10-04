@@ -65,7 +65,7 @@ export async function sendBillingReminder(req: any, res: any) {
         clientName: lic.assignedOrgName,
         subject: days !== null && days < 0 ? `Your SignageOS license has expired` : `Your SignageOS license ${when}`,
         headline: days !== null && days < 0 ? 'Your license has expired' : 'Time to renew your license',
-        message: `Your license "${lic.name}" ${when || 'needs renewal'}. Renew it from the Billing page to keep your screens playing without interruption.`,
+        message: `Your license "${lic.name}" ${when || 'needs renewal'}. Renew it from the Billing page to keep using your dashboard — your screens keep playing either way.`,
         rows: [
           ['License', lic.name || '—'],
           ['Plan', `${inr(lic.price)} / ${lic.tenure === 'yearly' ? 'year' : 'month'}`],

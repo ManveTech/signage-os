@@ -54,7 +54,9 @@ export function licenseState(lic: License): { key: LicenseStateKey; label: strin
     return { key: 'pending', label: 'Awaiting payment', className: 'bg-amber-50 text-amber-700 border-amber-100', days };
   }
   if (lic.status === 'expired' || (days !== null && days < 0)) {
-    return { key: 'expired', label: 'Expired', className: 'bg-rose-50 text-rose-700 border-rose-100', days };
+    // Within the grace period the client still has full access.
+    const inGrace = days !== null && days >= -7 && !!lic.assignedUserEmail;
+    return { key: 'expired', label: inGrace ? `Expired · grace ${7 + days}d` : lic.assignedUserEmail ? 'Expired · paused' : 'Expired', className: 'bg-rose-50 text-rose-700 border-rose-100', days };
   }
   if (!lic.assignedUserEmail) {
     return { key: 'unassigned', label: 'Unassigned', className: 'bg-slate-100 text-slate-600 border-slate-200', days };
@@ -68,4 +70,38 @@ export function licenseState(lic: License): { key: LicenseStateKey; label: strin
 /** "₹1,000 / month" */
 export function planLabel(lic: Pick<License, 'price' | 'tenure'>): string {
   return `${formatInr(lic.price)} / ${lic.tenure === 'yearly' ? 'year' : 'month'}`;
+}
+
+/**
+ * Dashboard access for a client's licence — mirrors server
+ * services/licenseAccess.ts (keep the two in step). TVs are never affected.
+ *   ok      — paid up
+ *   grace   — expired up to GRACE_DAYS ago: full access + renew banner
+ *   blocked — past grace, or a new licence's first invoice is unpaid:
+ *             only Billing, Help and Profile until they pay
+ */
+export const GRACE_DAYS = 7;
+
+const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const dayDiff = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+const plusDays = (date: string, n: number) => { const d = new Date(`${date}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+
+export type LicenseAccess = { state: 'ok' | 'grace' | 'blocked'; reason?: 'first_payment' | 'expired'; daysLeft: number | null; graceEnds?: string; graceDaysLeft?: number };
+
+export function licenseAccess(lic: Pick<License, 'status' | 'expiryDate'> & { created?: string }): LicenseAccess {
+  const today = istToday();
+  const expiry = lic.expiryDate ? String(lic.expiryDate).slice(0, 10) : '';
+  const daysLeft = expiry ? dayDiff(today, expiry) : null;
+  const created = lic.created ? String(lic.created).slice(0, 10) : '';
+  if (lic.status === 'pending_payment' && expiry && created && expiry <= created) {
+    return { state: 'blocked', reason: 'first_payment', daysLeft };
+  }
+  const lapsed = lic.status === 'expired' || lic.status === 'pending_payment' || (daysLeft !== null && daysLeft < 0);
+  if (!lapsed) return { state: 'ok', daysLeft };
+  if (!expiry) return { state: 'blocked', reason: 'expired', daysLeft };
+  const graceEnds = plusDays(expiry, GRACE_DAYS);
+  const graceDaysLeft = dayDiff(today, graceEnds);
+  return graceDaysLeft >= 0
+    ? { state: 'grace', reason: 'expired', daysLeft, graceEnds, graceDaysLeft }
+    : { state: 'blocked', reason: 'expired', daysLeft, graceEnds };
 }

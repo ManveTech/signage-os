@@ -784,6 +784,23 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         console.log('Programmatically added enableVideoConferencing field to licenses collection');
       }
 
+      // Which automatic reminder emails went out, per renewal date — so each
+      // is sent once, even across restarts.
+      if (!licFields.some((f: any) => f.name === 'remindersSent')) {
+        licFields.push({
+          id: 'jsonreminderssentlic',
+          name: 'remindersSent',
+          type: 'json',
+          required: false,
+          system: false,
+          hidden: false,
+          presentable: false,
+          maxSize: 2000
+        });
+        licensesUpdated = true;
+        console.log('Programmatically added remindersSent field to licenses collection');
+      }
+
       if (licensesUpdated) {
         licensesCollection.fields = licFields;
         await pb.collections.update('licenses', licensesCollection);

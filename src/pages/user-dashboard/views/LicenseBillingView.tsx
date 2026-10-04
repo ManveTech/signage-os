@@ -7,7 +7,7 @@ import { getAuthToken } from '../../../lib/authStorage';
 import { API_BASE } from '../../../config';
 import { toast } from '../../../components/Toast';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
-import { licenseState, formatDate, formatInr, relativeDays, planLabel } from '../../../components/licenses/licenseStatus';
+import { licenseState, licenseAccess, formatDate, formatInr, relativeDays, planLabel } from '../../../components/licenses/licenseStatus';
 
 interface Props {
   userEmail: string;
@@ -137,6 +137,8 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
               syncCollection('payments', 'signageos_payments', { force: true }),
             ]).catch(() => {});
             load();
+            // Lifts the "paused" screen / grace banner straight away.
+            window.dispatchEvent(new Event('signageos_license_updated'));
           } catch {
             fail('Connection lost while confirming. If money was taken, your plan updates automatically once the payment is confirmed.');
           }
@@ -173,7 +175,12 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
   const attention = (() => {
     if (!main) return null;
     const st = licenseState(main);
-    if (st.key === 'expired') return { tone: 'rose', title: 'Your plan has expired', body: 'You can still see everything, but changes are paused until you renew. Renewing starts a new period from today.', lic: main };
+    if (st.key === 'expired') {
+      const acc = licenseAccess(main as any);
+      return acc.state === 'grace'
+        ? { tone: 'rose', title: 'Your plan has expired', body: `Renew by ${formatDate(acc.graceEnds || '')} to keep using your dashboard. Your screens keep playing either way. Renewing starts a new period from today.`, lic: main }
+        : { tone: 'rose', title: 'Your dashboard is paused', body: 'The grace period has ended. Renew to get back in straight away — your screens are still playing. Renewing starts a new period from today.', lic: main };
+    }
     if (st.key === 'pending') return { tone: 'amber', title: 'Payment needed to activate your plan', body: unpaid.length ? `You have ${unpaid.length} unpaid invoice${unpaid.length === 1 ? '' : 's'}.` : 'Complete the payment to start using your plan.', lic: main };
     if (st.days !== null && st.days <= 14) return { tone: 'amber', title: `Your plan renews in ${st.days} day${st.days === 1 ? '' : 's'}`, body: 'Renew now to avoid a gap — paying early adds the new period after the current one ends, so you lose nothing.', lic: main };
     return null;

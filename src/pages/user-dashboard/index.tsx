@@ -33,8 +33,9 @@ import Settings from './views/Settings';
 import Support from './views/Support';
 import Profile from './views/Profile';
 import { licensingStore, License } from '../../lib/licensingStore';
+import { licenseAccess, formatDate, formatInr, LicenseAccess } from '../../components/licenses/licenseStatus';
 import { syncCollection, pushToDatabase } from '../../lib/syncHelper';
-import { X, CheckCircle, Lock, Image } from 'lucide-react';
+import { X, CheckCircle, Lock, Image, AlertTriangle, MonitorPlay, LifeBuoy } from 'lucide-react';
 import { getAuthToken } from '../../lib/authStorage';
 
 
@@ -101,7 +102,6 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     });
   };
 
-  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
   const [clientLicense, setClientLicense] = useState<License | null>(() => {
     const licenses = licensingStore.getLicenses();
     return licenses.find(l => l.assignedUserEmail === userEmail) || null;
@@ -186,22 +186,12 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     }
   };
 
+  // The newest licence decides access (same rule as the server).
   const checkLicense = () => {
-    const licenses = licensingStore.getLicenses();
-    const lic = licenses.find(l => l.assignedUserEmail === userEmail);
-    if (lic) {
-      setClientLicense(lic);
-      const todayStr = new Date().toISOString().split('T')[0];
-      // Due/Expired if status is expired/pending OR expiry date is set and is in the past
-      const isExpired = lic.status === 'expired' || lic.status === 'pending_payment' || (lic.expiryDate && lic.expiryDate < todayStr);
-      if (isExpired) {
-        setIsPaywallOpen(true);
-      } else {
-        setIsPaywallOpen(false);
-      }
-    } else {
-      setIsPaywallOpen(false); // No license, don't block
-    }
+    const mine = licensingStore.getLicenses()
+      .filter(l => l.assignedUserEmail === userEmail)
+      .sort((a, b) => String((b as any).created || b.createdAt || '').localeCompare(String((a as any).created || a.createdAt || '')));
+    setClientLicense(mine[0] || null);
     setLicenseChecked(true);
   };
 
@@ -236,14 +226,24 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
     });
   }, [userEmail]);
 
-  // Keep checking license state on view changes
+  // Re-check the licence when it may have changed: another tab, a payment
+  // on the Billing page, or moving between pages.
   useEffect(() => {
-    const handleStorageChange = () => {
-      checkLicense();
+    const recheck = () => checkLicense();
+    window.addEventListener('storage', recheck);
+    window.addEventListener('signageos_license_updated', recheck);
+    return () => {
+      window.removeEventListener('storage', recheck);
+      window.removeEventListener('signageos_license_updated', recheck);
     };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail]);
+  useEffect(() => { checkLicense(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeView]);
+
+  const access = clientLicense ? licenseAccess(clientLicense as any) : null;
+  // While paused, these stay usable so the client can pay or get help.
+  const OPEN_WHEN_PAUSED = ['license-billing', 'support', 'support-tickets', 'support-help', 'profile', 'settings-general'];
+  const paused = !!access && access.state === 'blocked' && !OPEN_WHEN_PAUSED.includes(activeView);
 
   // First time login submit handler
   const handleFirstLoginSubmit = async (e: React.FormEvent) => {
@@ -322,8 +322,13 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
         {/* Pull to Refresh wrapper for mobile */}
         <PullToRefresh onRefresh={handleRefresh} enabled={isMobile}>
           <main ref={mainRef} className="flex-1 overflow-y-auto pb-20 md:pb-4">
-            <SectionTransition viewKey={activeView} scrollRoot={mainRef} className="sg-page">
-              {renderView(activeView, handleNavigate, userEmail, !!clientLicense?.enableVideoConferencing, clientLicense?.assignedOrgId || '', licenseChecked)}
+            {access && access.state !== 'ok' && activeView !== 'license-billing' && !paused && (
+              <LicenseBanner access={access} price={clientLicense?.price || 0} onRenew={() => handleNavigate('license-billing')} />
+            )}
+            <SectionTransition viewKey={paused ? 'paused' : activeView} scrollRoot={mainRef} className="sg-page">
+              {paused && access
+                ? <PausedScreen access={access} license={clientLicense!} onRenew={() => handleNavigate('license-billing')} onHelp={() => handleNavigate('support-tickets')} />
+                : renderView(activeView, handleNavigate, userEmail, !!clientLicense?.enableVideoConferencing, clientLicense?.assignedOrgId || '', licenseChecked)}
             </SectionTransition>
           </main>
         </PullToRefresh>
@@ -331,61 +336,6 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
 
       {/* Mobile Fixed Bottom Navigation Bar */}
       <MobileDock activeView={activeView} onNavigate={handleNavigate} onLogout={onLogout} role="user" />
-
-      {/* Expiration Paywall Modal Overlay */}
-      {isPaywallOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn select-none">
-          <div className="relative w-full max-w-lg bg-slate-900 text-white rounded-3xl overflow-hidden shadow-2xl border border-slate-800 p-8 space-y-6 animate-scaleIn text-center">
-            
-            <div className="w-16 h-16 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center mx-auto text-red-500">
-              <Lock size={28} />
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold tracking-tight text-white">License Expired or Due</h2>
-              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-                Your organization's license access key has expired or requires renewal. Access to your displays and dashboard is temporarily paused until billing status is updated.
-              </p>
-            </div>
-
-            {clientLicense && (
-              <div className="bg-slate-800 border border-slate-800 rounded-2xl p-4 text-left space-y-2 text-xs">
-                <div className="flex justify-between items-center text-slate-400">
-                  <span>Organization Name:</span>
-                  <span className="font-semibold text-white">{clientLicense.assignedOrgName || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-400">
-                  <span>License Tier:</span>
-                  <span className="font-semibold text-blue-400">{(clientLicense as any).planType || (clientLicense as any).type || 'Standard'}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-400">
-                  <span>Expiration Date:</span>
-                  <span className="font-semibold text-amber-400">{clientLicense.expiryDate || 'Expired'}</span>
-                </div>
-              </div>
-            )}
-
-            <div className="pt-2 flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={() => {
-                  setIsPaywallOpen(false);
-                  handleNavigate('licenses-pool');
-                }}
-                className="flex-1 py-3.5 px-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-blue-500/20 cursor-pointer"
-              >
-                Renew License / View Billing
-              </button>
-              <button
-                onClick={onLogout}
-                className="py-3.5 px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all border border-slate-700 cursor-pointer"
-              >
-                Logout
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
 
       {/* First Time Login Password Reset & WhiteLabel Onboarding Modal */}
       {isFirstLogin && (
@@ -511,6 +461,49 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Shown on every page during the grace period (and before a first payment is due). */
+function LicenseBanner({ access, price, onRenew }: { access: LicenseAccess; price: number; onRenew: () => void }) {
+  const text = access.state === 'grace'
+    ? `Your plan expired. Renew by ${formatDate(access.graceEnds || '')} to keep using the dashboard — ${access.graceDaysLeft === 0 ? 'today is the last day' : `${access.graceDaysLeft} day${access.graceDaysLeft === 1 ? '' : 's'} left`}. Your screens keep playing.`
+    : 'Your plan needs payment.';
+  return (
+    <div className="mx-4 sm:mx-6 mt-4 flex items-start sm:items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <AlertTriangle size={17} className="shrink-0 mt-0.5 sm:mt-0 text-amber-600" />
+      <p className="flex-1 min-w-0">{text}</p>
+      <button onClick={onRenew} className="shrink-0 h-9 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold">
+        Renew{price ? ` · ${formatInr(price)}` : ''}
+      </button>
+    </div>
+  );
+}
+
+/** Replaces every page except Billing, Help and Profile while access is paused. */
+function PausedScreen({ access, license, onRenew, onHelp }: { access: LicenseAccess; license: License; onRenew: () => void; onHelp: () => void }) {
+  const first = access.reason === 'first_payment';
+  return (
+    <div className="p-4 sm:p-6">
+      <div className="max-w-md mx-auto mt-4 sm:mt-10 bg-white rounded-3xl border border-slate-100 p-6 sm:p-8 text-center">
+        <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto"><Lock size={24} /></div>
+        <h1 className="text-lg font-semibold text-slate-900 mt-4">{first ? 'Pay your first invoice to get started' : 'Your dashboard is paused'}</h1>
+        <p className="text-sm text-slate-500 mt-1.5">
+          {first
+            ? 'Your licence is ready. It starts the day you pay and runs for a full period from then.'
+            : `Your plan expired on ${formatDate(license.expiryDate)} and the ${7}-day grace period has ended. Renew to get back in straight away.`}
+        </p>
+        <p className="flex items-center justify-center gap-1.5 text-xs text-emerald-700 mt-3">
+          <MonitorPlay size={14} /> Your screens keep playing in the meantime.
+        </p>
+        <button onClick={onRenew} className="mt-6 w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">
+          {first ? 'Pay' : 'Renew'} {license.price ? formatInr(license.price) : ''}
+        </button>
+        <button onClick={onHelp} className="mt-2 w-full h-11 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-1.5">
+          <LifeBuoy size={15} /> Ask for help
+        </button>
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { pb, ensurePBAuth } from './db';
 import { checkDeviceStatuses, getLiveScreenMetrics } from './controllers/screens';
 import { notifyScreenConfigChanged } from './services/screenPush';
+import { runBillingReminders } from './services/billingReminders';
 
 // In-memory map of active screen cron tasks: screenId -> ScheduledTask
 const activeJobs = new Map<string, any>();
@@ -322,6 +323,12 @@ export async function startScheduler() {
     console.error('[Scheduler] Pairing cleanup error:', err.message));
   setTimeout(runPairingCleanup, 60 * 1000);
   setInterval(runPairingCleanup, 6 * 60 * 60 * 1000);
+
+  // ── Automatic renewal reminders (services/billingReminders.ts) ────────────
+  const runReminders = () => runBillingReminders().catch(err =>
+    console.error('[Scheduler] Reminder run error:', err.message));
+  setTimeout(runReminders, 2 * 60 * 1000);
+  setInterval(runReminders, 60 * 60 * 1000);
 }
 
 const ABANDONED_PAIRING_AGE_MS = 24 * 60 * 60 * 1000;

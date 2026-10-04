@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { JWT_SECRET } from '../config';
+import { licenseAccess } from '../services/licenseAccess';
 import { pb } from '../db';
 
 export function verifyJwt(token: string): any {
@@ -111,25 +112,23 @@ export async function enforceLicense(req: any, res: any, next: any) {
       return next();
     }
 
-    // An expired/unpaid account must still be able to see its own license
-    // and billing data and actually pay — previously this blocked /payments
-    // (and the /licenses read the paywall itself depends on), so the only
-    // customers who needed to renew were exactly the ones who couldn't.
-    // Reads stay open (the dashboard shows the paywall over them); writes
-    // other than payments and the user's own profile/password are blocked.
+    // Billing, support and the user's own account always stay reachable —
+    // a client whose access is paused needs exactly these to pay or ask for
+    // help. TVs use /devices/* (no login) and are never gated.
     const path: string = req.path || '';
+    const isGet = req.method === 'GET';
     const isPaymentRoute = path === '/payments' || path.startsWith('/payments/');
     const isOwnUserRecord = !!req.user?.id && (path === `/users/${req.user.id}` || path === `/users/${req.user.id}/avatar`);
-    // Support stays reachable too: a customer whose license lapsed (or whose
-    // payment failed) is exactly who needs to open a ticket. The tickets
-    // routes do their own ownership checks.
-    const isSupportRoute = (req.method === 'POST') && (path === '/tickets' || /^\/tickets\/[^/]+\/messages$/.test(path));
-    if (req.method === 'GET' || isPaymentRoute || isOwnUserRecord || isSupportRoute) {
+    const isSupportRoute = path === '/tickets' || path.startsWith('/tickets/') ||
+      (isGet && (path.startsWith('/faqs') || path.startsWith('/support_docs')));
+    const isBillingRead = isGet && (path === '/licenses' || path.startsWith('/licenses/') || path === '/invoices' ||
+      path.startsWith('/invoices/') || path === '/business-details' || path === '/organizations' || path.startsWith('/organizations/'));
+    const isAccountRoute = path === '/me/settings';
+    if (isPaymentRoute || isOwnUserRecord || isSupportRoute || isBillingRead || isAccountRoute) {
       return next();
     }
 
     const userEmail = req.user.email;
-
     // Fetch user's assigned license from PocketBase
     const licenses = await pb.collection('licenses').getFullList({
       filter: pb.filter('assignedUserEmail = {:email}', { email: userEmail }),
@@ -143,19 +142,15 @@ export async function enforceLicense(req: any, res: any, next: any) {
     }
 
     const license = licenses[0];
-    // India time, matching how renewal dates are set (UTC lagged until 5:30 am).
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-
-    // Check if license is expired or payment pending
-    const isExpired =
-      license.status === 'expired' ||
-      license.status === 'pending_payment' ||
-      (license.expiryDate && license.expiryDate < today);
-
-    if (isExpired) {
+    const access = licenseAccess(license as any);
+    if (access.state === 'blocked') {
       return res.status(402).json({
         error: 'License expired or payment required',
-        message: 'Your license has expired or requires payment renewal. Please contact your administrator.',
+        code: 'license_paused',
+        reason: access.reason,
+        message: access.reason === 'first_payment'
+          ? 'Pay your first invoice to start using your dashboard.'
+          : 'Your plan has expired. Renew it from Billing to continue — your screens keep playing.',
         licenseStatus: license.status,
         expiryDate: license.expiryDate
       });
