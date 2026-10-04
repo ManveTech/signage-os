@@ -45,7 +45,10 @@ export function licenseAccess(lic: { status?: string; expiryDate?: string; creat
 
   // "Charge now" licences are created with their expiry on the creation
   // day and wait for the first payment — pay first, no grace period.
-  const created = lic.created ? String(lic.created).slice(0, 10) : '';
+  // Creation day in India: the stored time is UTC, so before 5:30 am IST
+  // its date is still yesterday and a new licence looked lapsed (a free
+  // week of grace) instead of waiting for its first payment.
+  const created = lic.created ? istToday(new Date(String(lic.created).replace(' ', 'T'))) : '';
   if (lic.status === 'pending_payment' && expiry && created && expiry <= created) {
     return { state: 'blocked', reason: 'first_payment', daysLeft };
   }

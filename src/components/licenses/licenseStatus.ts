@@ -110,7 +110,8 @@ export function licenseAccess(lic: Pick<License, 'status' | 'expiryDate'> & { cr
   const today = istToday();
   const expiry = lic.expiryDate ? String(lic.expiryDate).slice(0, 10) : '';
   const daysLeft = expiry ? dayDiff(today, expiry) : null;
-  const created = lic.created ? String(lic.created).slice(0, 10) : '';
+  // Creation day in India (stored time is UTC — see the server's licenseAccess).
+  const created = lic.created ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(String(lic.created).replace(' ', 'T'))) : '';
   if (lic.status === 'pending_payment' && expiry && created && expiry <= created) {
     return { state: 'blocked', reason: 'first_payment', daysLeft };
   }
