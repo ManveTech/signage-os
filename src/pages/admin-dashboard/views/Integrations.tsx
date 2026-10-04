@@ -5,6 +5,7 @@ import { getHeaders } from '../../../lib/syncHelper';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import { toast } from '../../../components/Toast';
 import BackupsCard from '../../../components/settings/BackupsCard';
+import MediaMovePanel from '../../../components/settings/MediaMovePanel';
 
 type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google';
 type Source = 'dashboard' | 'environment' | 'off';
@@ -32,6 +33,7 @@ const FIELDS: Record<IntegrationType, FieldDef[]> = {
     { key: 'accessKeyId', label: 'Access key ID' },
     { key: 'secretAccessKey', label: 'Secret access key', type: 'password' },
     { key: 'publicUrl', label: 'Public URL', placeholder: 'https://media.yourdomain.com', help: 'The bucket\'s public or custom domain — TVs download files from here.', wide: true },
+    { key: 'backupBucket', label: 'Backups bucket', placeholder: 'my-signage-backups', help: 'A separate PRIVATE bucket (no public access) for daily database backups. Same keys.', wide: true },
   ],
   smtp: [
     { key: 'host', label: 'SMTP server', placeholder: 'smtp.gmail.com' },
@@ -296,6 +298,8 @@ export default function Integrations() {
                   );
                 })}
               </div>
+
+              {open === 'cloudflare' && <MediaMovePanel refreshKey={st.enabled ? 1 : 0} />}
 
               {testResult && (
                 <p className={`flex items-start gap-1.5 text-xs p-3 rounded-xl ${testResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>

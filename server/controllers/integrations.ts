@@ -2,6 +2,9 @@ import { pb, ensurePBAuth } from '../db';
 import { getIntegration, saveIntegration, recordTestResult, IntegrationType, getSmtpConfig, getCloudflareConfig, getGoogleOAuthConfig } from '../integrationsStore';
 import { testR2Connection } from '../r2';
 import { testSmtpConnection, sendSmtpTestEmail } from '../email';
+import { configureBackups } from '../services/backups';
+import { migrateMedia, emptyProgress, BucketRef } from '../services/mediaMigration';
+import { S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET } from '../config';
 
 function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
@@ -88,6 +91,8 @@ export async function updateIntegration(req: any, res: any) {
     }
 
     const saved = await saveIntegration(type, finalConfig, !!enabled);
+    // The backups bucket lives in the File storage settings.
+    if (type === 'cloudflare') await configureBackups().catch(() => {});
     res.json({
       type,
       config: maskConfig(type, saved.config),
@@ -201,4 +206,54 @@ export async function sendTestEmail(req: any, res: any) {
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message || 'Could not send the test email' });
   }
+}
+
+// ── Moving existing media to the storage saved here ─────────────────────────
+// The old storage is the server's environment settings (S3_* / R2_PUBLIC_URL);
+// the new one is what's saved and switched on in File storage. One move at a
+// time; the old bucket is only read.
+
+const migration = emptyProgress();
+
+async function migrationPlan(): Promise<{ from: BucketRef; to: BucketRef } | null> {
+  const rec = await getIntegration('cloudflare');
+  if (!rec?.enabled) return null;
+  const to: BucketRef = {
+    endpoint: rec.config.endpoint || '', bucket: rec.config.bucket || '',
+    accessKey: rec.config.accessKeyId || '', secret: rec.config.secretAccessKey || '',
+    publicUrl: rec.config.publicUrl || '',
+  };
+  const from: BucketRef = {
+    endpoint: S3_ENDPOINT, bucket: S3_BUCKET, accessKey: S3_ACCESS_KEY, secret: S3_SECRET,
+    publicUrl: (process.env.R2_PUBLIC_URL || '').trim(),
+  };
+  if (Object.values(from).some(v => !v) || Object.values(to).some(v => !v)) return null;
+  const same = from.endpoint.replace(/\/$/, '') === to.endpoint.replace(/\/$/, '') && from.bucket === to.bucket;
+  if (same || from.publicUrl === to.publicUrl) return null;
+  return { from, to };
+}
+
+/** GET /integrations/cloudflare/migration — is there old media to move, and how far along. */
+export async function getMediaMigration(req: any, res: any) {
+  if (!isAdminUser(req.user)) return res.status(403).json({ error: 'Admin access required.' });
+  const plan = await migrationPlan().catch(() => null);
+  res.json({
+    available: !!plan,
+    from: plan ? { bucket: plan.from.bucket, publicUrl: plan.from.publicUrl } : null,
+    to: plan ? { bucket: plan.to.bucket, publicUrl: plan.to.publicUrl } : null,
+    progress: migration,
+  });
+}
+
+/** POST /integrations/cloudflare/migration — copy everything across and rewrite addresses. */
+export async function startMediaMigration(req: any, res: any) {
+  if (!isAdminUser(req.user)) return res.status(403).json({ error: 'Admin access required.' });
+  if (['copying', 'checking', 'rewriting'].includes(migration.state)) return res.status(409).json({ error: 'A move is already running.' });
+  const plan = await migrationPlan().catch(() => null);
+  if (!plan) return res.status(400).json({ error: 'Save and switch on the new storage first — there is nothing to move.' });
+  await ensurePBAuth();
+  // Runs in the background; the dashboard polls the progress.
+  migrateMedia({ ...plan, pb, apply: true, progress: migration, log: (m) => console.log(`[Media move] ${m}`) })
+    .catch((e) => { migration.state = 'failed'; migration.error = e.message; });
+  res.status(202).json({ progress: migration });
 }

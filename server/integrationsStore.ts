@@ -68,6 +68,8 @@ export interface CloudflareConfig {
   accessKeyId: string;
   secretAccessKey: string;
   publicUrl: string;
+  /** Private bucket for database backups (services/backups.ts). */
+  backupBucket: string;
 }
 
 // Dashboard-saved config (when enabled) takes priority over .env — that's
@@ -84,7 +86,8 @@ export async function getCloudflareConfig(): Promise<CloudflareConfig> {
       endpoint: rec.config.endpoint || '',
       accessKeyId: rec.config.accessKeyId || '',
       secretAccessKey: rec.config.secretAccessKey || '',
-      publicUrl: rec.config.publicUrl || ''
+      publicUrl: rec.config.publicUrl || '',
+      backupBucket: rec.config.backupBucket || (process.env.BACKUP_BUCKET || '').trim()
     };
   }
   return {
@@ -94,7 +97,8 @@ export async function getCloudflareConfig(): Promise<CloudflareConfig> {
     endpoint: S3_ENDPOINT,
     accessKeyId: S3_ACCESS_KEY,
     secretAccessKey: S3_SECRET,
-    publicUrl: (process.env.R2_PUBLIC_URL || '').trim()
+    publicUrl: (process.env.R2_PUBLIC_URL || '').trim(),
+    backupBucket: (process.env.BACKUP_BUCKET || '').trim()
   };
 }
 

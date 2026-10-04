@@ -16,7 +16,7 @@ import { getCloudflareConfig } from '../integrationsStore';
  * covers mistakes (a deleted client, bad data) but not losing the server,
  * and the dashboard says so.
  *
- *   BACKUP_BUCKET          private bucket for backups (enables off-site)
+ *   Backups bucket         Admin > Integrations > File storage, or BACKUP_BUCKET
  *   BACKUP_S3_ENDPOINT / BACKUP_S3_REGION / BACKUP_S3_ACCESS_KEY / BACKUP_S3_SECRET
  *                          optional; default to the media storage's R2 settings
  *   BACKUP_CRON            default "30 21 * * *" (UTC) = 3:00 am India time
@@ -42,18 +42,19 @@ async function desiredSetup(): Promise<{ setup: BackupSetup; s3: any }> {
     return { setup: { enabled: false, offsite: false, bucket: '', cron: '', keep, warning: 'Automatic backups are turned off (BACKUPS_ENABLED=false).' }, s3: { enabled: false } };
   }
 
-  const bucket = (process.env.BACKUP_BUCKET || '').trim();
+  const media = await getCloudflareConfig().catch(() => null);
+  // Set in Admin > Integrations > File storage, or BACKUP_BUCKET.
+  const bucket = (media?.backupBucket || process.env.BACKUP_BUCKET || '').trim();
   if (!bucket) {
     return {
-      setup: { enabled: true, offsite: false, bucket: '', cron, keep, warning: "Backups are kept on the server's own disk only. Set BACKUP_BUCKET to a private R2 bucket so they survive losing the server." },
+      setup: { enabled: true, offsite: false, bucket: '', cron, keep, warning: "Backups are kept on the server's own disk only. Add a private backups bucket in File storage so they survive losing the server." },
       s3: { enabled: false }
     };
   }
 
-  const media = await getCloudflareConfig().catch(() => null);
   if (media?.bucket && media.bucket === bucket) {
     return {
-      setup: { enabled: true, offsite: false, bucket, cron, keep, warning: 'BACKUP_BUCKET is the public media bucket — refused, backups would be downloadable by anyone. Use a separate private bucket.' },
+      setup: { enabled: true, offsite: false, bucket, cron, keep, warning: 'The backups bucket is the public media bucket — refused, backups would be downloadable by anyone. Use a separate private bucket.' },
       s3: { enabled: false }
     };
   }
@@ -63,7 +64,7 @@ async function desiredSetup(): Promise<{ setup: BackupSetup; s3: any }> {
   const region = (process.env.BACKUP_S3_REGION || media?.region || 'auto').trim();
   if (!endpoint || !accessKey || !secret) {
     return {
-      setup: { enabled: true, offsite: false, bucket, cron, keep, warning: 'BACKUP_BUCKET is set but there are no storage keys (set the R2 storage integration, or BACKUP_S3_ENDPOINT / BACKUP_S3_ACCESS_KEY / BACKUP_S3_SECRET). Backups stay on the server for now.' },
+      setup: { enabled: true, offsite: false, bucket, cron, keep, warning: 'A backups bucket is set but there are no storage keys (set the R2 storage integration, or BACKUP_S3_ENDPOINT / BACKUP_S3_ACCESS_KEY / BACKUP_S3_SECRET). Backups stay on the server for now.' },
       s3: { enabled: false }
     };
   }
