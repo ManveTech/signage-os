@@ -200,6 +200,11 @@ export async function deleteMediaItem(req: any, res: any) {
     const urlToDelete = record.fileUrl || record.thumbnail;
     if (urlToDelete && await isR2Enabled()) {
       const key = await getKeyFromUrl(urlToDelete);
+      if (!key) {
+        // Not in the storage set up in Integrations (e.g. a different public
+        // address) — the record goes, but the file can't be located to delete.
+        console.warn(`[R2] Not deleting the file for media ${id}: ${urlToDelete} isn't under the storage's public URL.`);
+      }
       if (key) {
         console.log(`[R2] Deleting object key: ${key}`);
         await deleteFromR2(key).then(() => {
