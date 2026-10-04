@@ -238,11 +238,11 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
   }, [userEmail]);
   useEffect(() => { checkLicense(); setTeamPaused(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeView]);
 
-  // A team member (no licence of their own) whose organisation's plan is
-  // paused — learned from the server's 402.
-  const [teamPaused, setTeamPaused] = useState(false);
+  // No licence of their own: a team member whose organisation's plan is
+  // paused, or a client with no plan at all — learned from the server's 402.
+  const [teamPaused, setTeamPaused] = useState<false | string>(false);
   useEffect(() => {
-    const onPaused = () => setTeamPaused(true);
+    const onPaused = (e: Event) => setTeamPaused((e as CustomEvent).detail?.reason || 'expired');
     window.addEventListener('signageos_license_paused', onPaused);
     return () => window.removeEventListener('signageos_license_paused', onPaused);
   }, []);
@@ -337,7 +337,7 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
               {paused && access
                 ? <PausedScreen access={access} license={clientLicense!} onRenew={() => handleNavigate('license-billing')} onHelp={() => handleNavigate('support-tickets')} />
                 : showTeamPaused
-                ? <TeamPausedScreen onHelp={() => handleNavigate('support-tickets')} />
+                ? <TeamPausedScreen noPlan={teamPaused === 'no_license'} onHelp={() => handleNavigate('support-tickets')} />
                 : renderView(activeView, handleNavigate, userEmail, !!clientLicense?.enableVideoConferencing, clientLicense?.assignedOrgId || '', licenseChecked)}
             </SectionTransition>
           </main>
@@ -491,14 +491,16 @@ function LicenseBanner({ access, price, onRenew }: { access: LicenseAccess; pric
   );
 }
 
-/** For team members: their organisation's plan is paused; only its owner can renew. */
-function TeamPausedScreen({ onHelp }: { onHelp: () => void }) {
+/** No licence of their own: a team member of a paused organisation, or a client with no plan. */
+function TeamPausedScreen({ noPlan, onHelp }: { noPlan: boolean; onHelp: () => void }) {
   return (
     <div className="p-4 sm:p-6">
       <div className="max-w-md mx-auto mt-4 sm:mt-10 bg-white rounded-3xl border border-slate-100 p-6 sm:p-8 text-center">
         <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto"><Lock size={24} /></div>
-        <h1 className="text-lg font-semibold text-slate-900 mt-4">Your organisation's plan is paused</h1>
-        <p className="text-sm text-slate-500 mt-1.5">Ask your account owner to renew it — you'll be back in as soon as they do.</p>
+        <h1 className="text-lg font-semibold text-slate-900 mt-4">{noPlan ? "You don't have an active plan" : "Your organisation's plan is paused"}</h1>
+        <p className="text-sm text-slate-500 mt-1.5">{noPlan
+          ? "Contact us to get a plan — your dashboard opens as soon as it's set up."
+          : "Ask your account owner to renew it — you'll be back in as soon as they do."}</p>
         <p className="flex items-center justify-center gap-1.5 text-xs text-emerald-700 mt-3">
           <MonitorPlay size={14} /> Your screens keep playing in the meantime.
         </p>

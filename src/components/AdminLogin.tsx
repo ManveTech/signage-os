@@ -346,6 +346,19 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     navigate('/login');
   };
 
+  // The server ended this session (account deleted, role changed or
+  // deactivated) — back to sign-in rather than a dashboard full of errors.
+  useEffect(() => {
+    const onEnded = () => {
+      if (!getAuthToken()) return;
+      handleLogout();
+      setErrorMessage('Your session has ended. Please sign in again.');
+    };
+    window.addEventListener('signageos_session_ended', onEnded);
+    return () => window.removeEventListener('signageos_session_ended', onEnded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Warm both dashboard chunks in the background once the shell is up, so by
   // the time the boot animation ends (or the user signs in) they're ready.
   useEffect(() => {

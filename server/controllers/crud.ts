@@ -4,6 +4,7 @@ import { refreshDeviceStatusesForList, getLiveScreenMetrics } from './screens';
 import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '../scheduler';
 import { isRedisReady, redis } from '../redis';
 import { logAudit, getClientIp } from '../services/auditLog';
+import { forgetSession } from '../middleware/auth';
 import { notifyScreenConfigChanged, notifyScreensConfigChanged } from '../services/screenPush';
 import { resolveUserOrgId, groupBelongsTo } from '../services/ownership';
 import { loadUsablePlaylist } from '../scheduler';
@@ -493,6 +494,7 @@ export function createCrudRouter(collectionName: string) {
 
       const record = await retryWithBackoff(() => pb.collection(collectionName).update(req.params.id, body));
 
+      if (collectionName === 'users') forgetSession(req.params.id);
       if (collectionName === 'users' && typeof body.role === 'string' && body.role !== previousRole) {
         logAudit({
           actorId: req.user?.id,

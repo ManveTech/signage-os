@@ -4,6 +4,7 @@ import { PB_URL } from '../config';
 import { sendCredentialsEmail } from '../email';
 import { appBaseUrl } from '../utils/appUrl';
 import { logAudit, getClientIp } from '../services/auditLog';
+import { forgetSession } from '../middleware/auth';
 import { removeScreenSchedule } from '../scheduler';
 import { clearScreenCache } from './screens';
 import { notifyScreenConfigChanged } from '../services/screenPush';
@@ -267,6 +268,7 @@ export async function updateUser(req: any, res: any) {
       }
     }
     const record = await pb.collection('users').update(req.params.id, body);
+    forgetSession(req.params.id);
 
     if (isAdmin && typeof body.role === 'string' && body.role !== previousRole) {
       logAudit({
@@ -422,6 +424,7 @@ export async function deleteUser(req: any, res: any) {
     }
 
     await pb.collection('users').delete(req.params.id);
+    forgetSession(req.params.id);
     logAudit({
       actorId: req.user?.id,
       actorEmail: req.user?.email,

@@ -195,6 +195,12 @@ if (typeof window !== 'undefined' && !(window as any).__sgWriteAwareFetch) {
     // The server pauses the dashboard (402) once a plan's grace period ends.
     // Clients see this from their own licence; team members have none of
     // their own, so the dashboard learns it from here.
+    // The account was deleted, its role changed or it was deactivated.
+    if (response.status === 401) {
+      response.clone().json().then(body => {
+        if (body?.code === 'session_ended') window.dispatchEvent(new Event('signageos_session_ended'));
+      }).catch(() => {});
+    }
     if (response.status === 402) {
       response.clone().json().then(body => {
         if (body?.code === 'license_paused') window.dispatchEvent(new CustomEvent('signageos_license_paused', { detail: body }));

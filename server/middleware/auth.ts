@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { JWT_SECRET } from '../config';
 import { bestLicenseAccess } from '../services/licenseAccess';
-import { pb } from '../db';
+import { pb, ensurePBAuth } from '../db';
 import { resolveUserOrgId } from '../services/ownership';
 
 export function verifyJwt(token: string): any {
@@ -50,7 +50,63 @@ export function signJwt(payload: any): string {
   return `${headerB64}.${payloadB64}.${signature}`;
 }
 
-export function authenticateToken(req: any, res: any, next: any) {
+/**
+ * Sessions are signed tokens that last 7 days. Each one is also checked
+ * against the live account, so deleting a user, changing their role or
+ * deactivating them ends their sessions straight away instead of at expiry.
+ * The lookup is cached for a short while; if the database can't be reached
+ * the session is let through rather than logging everyone out.
+ */
+const SESSION_CHECK_MS = 30_000;
+const sessionCache = new Map<string, { role: string; status: string; exists: boolean; at: number }>();
+
+/** Forget the cached account so the next request re-checks it (after delete / role change). */
+export function forgetSession(userId: string | undefined): void {
+  if (!userId) return;
+  sessionCache.delete(userId);
+  // Live connections of a session that just ended are closed too.
+  const io = (global as any).io;
+  io?.fetchSockets?.().then(async (sockets: any[]) => {
+    for (const sk of sockets) {
+      if (sk.data?.user?.id === userId && !(await sessionStillValid(sk.data.user))) sk.disconnect(true);
+    }
+  }).catch(() => {});
+}
+
+async function sessionStillValid(payload: any): Promise<boolean> {
+  if (!payload?.id) return false;
+  const now = Date.now();
+  let entry = sessionCache.get(payload.id);
+  if (!entry || now - entry.at > SESSION_CHECK_MS) {
+    try {
+      await ensurePBAuth();
+      const user = await pb.collection('users').getOne(payload.id, { fields: 'id,role,status' });
+      entry = { role: user.role || 'client', status: user.status || 'active', exists: true, at: now };
+    } catch (err: any) {
+      if (err?.status !== 404) return true; // database unreachable — don't end sessions over it
+      entry = { role: '', status: '', exists: false, at: now };
+    }
+    sessionCache.set(payload.id, entry);
+    if (sessionCache.size > 10_000) sessionCache.clear();
+  }
+  if (!entry.exists) return false;
+  if (entry.role !== (payload.role || 'client')) return false;
+  return !['inactive', 'suspended', 'disabled'].includes(String(entry.status).toLowerCase());
+}
+
+function endSession(res: any) {
+  res.clearCookie('auth_token', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/' });
+  return res.status(401).json({ code: 'session_ended', message: 'Your session has ended. Please sign in again.' });
+}
+
+/** Socket handshakes use the same rule. */
+export async function verifySession(token: string): Promise<any | null> {
+  const payload = verifyJwt(token);
+  if (!payload || payload.purpose) return null;
+  return (await sessionStillValid(payload)) ? payload : null;
+}
+
+export async function authenticateToken(req: any, res: any, next: any) {
   const path = req.path || '';
   const authHeader = req.headers['authorization'];
   const headerToken = authHeader && authHeader.split(' ')[1];
@@ -93,6 +149,10 @@ export function authenticateToken(req: any, res: any, next: any) {
   // reset a password, never act as a login.
   if (!payload || payload.purpose) {
     return res.status(403).json({ message: 'Invalid or expired session token.' });
+  }
+
+  if (!(await sessionStillValid(payload))) {
+    return endSession(res);
   }
 
   req.user = payload;
@@ -150,9 +210,14 @@ export async function enforceLicense(req: any, res: any, next: any) {
     }
 
     if (licenses.length === 0) {
-      // No license assigned - allow access (configurable business rule)
-      console.warn(`[License] No license found for user: ${userEmail}`);
-      return next();
+      // No licence (never given one, or it was revoked): paused like an
+      // expired plan — billing, support and their profile stay open.
+      return res.status(402).json({
+        error: 'No active license',
+        code: 'license_paused',
+        reason: 'no_license',
+        message: "You don't have an active plan. Contact us to get one."
+      });
     }
 
     const { license, access } = bestLicenseAccess(licenses as any[])!;

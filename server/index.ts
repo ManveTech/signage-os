@@ -32,7 +32,7 @@ import { ensureRedisRunning, isRedisReady, redis } from './redis';
 import { apiLimiter } from './middleware/rateLimiter';
 import { getActiveConference, setActiveConference, clearActiveConference, clearActiveConferencesForConference } from './videoConferenceState';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { verifyJwt } from './middleware/auth';
+import { verifySession } from './middleware/auth';
 import { loadOwnedConference, parseTargetScreenIds } from './controllers/videoConference';
 import { pb } from './db';
 import { MEDIA_UPLOAD_BODY_LIMIT_BYTES } from './uploadLimits';
@@ -261,10 +261,10 @@ const pendingCallerGoneCleanup = new Map<string, ReturnType<typeof setTimeout>>(
 // do send one; when it's present and valid it's attached to the socket so
 // the conference-room-entry handlers below can check real ownership instead
 // of trusting whatever conferenceId a socket happens to send.
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token;
   if (token) {
-    const payload = verifyJwt(token);
+    const payload = await verifySession(token).catch(() => null);
     if (payload) {
       (socket.data as any).user = payload;
     }
