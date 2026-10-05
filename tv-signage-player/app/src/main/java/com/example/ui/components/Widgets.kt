@@ -193,179 +193,58 @@ fun LiveTvStatusBar(
     }
 }
 
+/**
+ * Time and date in India time (TV boxes often have the wrong time zone set),
+ * with an optional label above, on a dark backing so it stays readable over
+ * bright content.
+ */
 @Composable
-fun WeatherWidget(location: String) {
-    val locLower = location.lowercase()
-    var temp = 24
-    var condition = "Sunny"
-    var isRainy = false
-    var isSunny = true
-    var isSnowing = false
-    var isCloudy = false
-    var isWindy = false
-
-    if (locLower.contains("london") || locLower.contains("rain") || locLower.contains("seattle")) {
-        temp = 14
-        condition = "Rainy"
-        isRainy = true
-        isSunny = false
-    } else if (locLower.contains("delhi") || locLower.contains("hot") || locLower.contains("desert") || locLower.contains("chennai")) {
-        temp = 38
-        condition = "Hot & Sunny"
-        isSunny = true
-    } else if (locLower.contains("snow") || locLower.contains("cold") || locLower.contains("moscow") || locLower.contains("ice")) {
-        temp = -2
-        condition = "Snowing"
-        isSnowing = true
-        isSunny = false
-    } else if (locLower.contains("cloud") || locLower.contains("paris") || locLower.contains("tokyo") || locLower.contains("mumbai")) {
-        temp = 19
-        condition = "Partly Cloudy"
-        isCloudy = true
-        isSunny = false
-    } else if (locLower.contains("wind") || locLower.contains("storm") || locLower.contains("chicago")) {
-        temp = 16
-        condition = "Windy"
-        isWindy = true
-        isSunny = false
-    }
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = "WEATHER",
-            color = Color(0xFF94A3B8),
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(vertical = 4.dp)
-        ) {
-            Box(modifier = Modifier.size(24.dp)) {
-                if (isSunny) {
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .align(Alignment.Center)
-                            .background(Color(0xFFF59E0B), CircleShape)
-                    )
-                } else if (isRainy) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.Center)) {
-                        Box(
-                            modifier = Modifier
-                                .size(width = 18.dp, height = 10.dp)
-                                .background(Color(0xFF64748B), RoundedCornerShape(5.dp))
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 2.dp)) {
-                            Box(modifier = Modifier.size(width = 1.dp, height = 3.dp).background(Color(0xFF38BDF8)))
-                            Box(modifier = Modifier.size(width = 1.dp, height = 3.dp).background(Color(0xFF38BDF8)))
-                            Box(modifier = Modifier.size(width = 1.dp, height = 3.dp).background(Color(0xFF38BDF8)))
-                        }
-                    }
-                } else if (isSnowing) {
-                    Box(
-                        modifier = Modifier
-                            .size(14.dp)
-                            .align(Alignment.Center)
-                            .background(Color(0xFF93C5FD), CircleShape)
-                    )
-                } else if (isCloudy) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .align(Alignment.TopStart)
-                                .background(Color(0xFFF59E0B), CircleShape)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(width = 16.dp, height = 10.dp)
-                                .align(Alignment.BottomEnd)
-                                .background(Color(0xFF94A3B8), RoundedCornerShape(5.dp))
-                        )
-                    }
-                } else {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier.align(Alignment.Center).fillMaxWidth()
-                    ) {
-                        Box(modifier = Modifier.fillMaxWidth(0.8f).height(2.dp).background(Color(0xFF2DD4BF), RoundedCornerShape(1.dp)))
-                        Box(modifier = Modifier.fillMaxWidth(0.9f).height(2.5.dp).background(Color(0xFF2DD4BF), RoundedCornerShape(1.dp)))
-                        Box(modifier = Modifier.fillMaxWidth(0.7f).height(2.dp).background(Color(0xFF2DD4BF), RoundedCornerShape(1.dp)))
-                    }
-                }
-            }
-
-            Text(
-                text = "$temp°C",
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.ExtraBold
-            )
-        }
-        Text(
-            text = "$location · $condition",
-            color = Color(0xFFE2E8F0),
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-fun ClockWidget(header: String) {
+fun ClockWidget(header: String, alignEnd: Boolean = true) {
+    val zone = remember { java.util.TimeZone.getTimeZone("Asia/Kolkata") }
+    val timeFormat = remember { java.text.SimpleDateFormat("h:mm a", java.util.Locale.ENGLISH).apply { timeZone = zone } }
+    val dateFormat = remember { java.text.SimpleDateFormat("EEE, d MMM", java.util.Locale.ENGLISH).apply { timeZone = zone } }
     var timeText by remember { mutableStateOf("") }
+    var dateText by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         while (isActive) {
-            val sdf = java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale.getDefault())
-            timeText = sdf.format(java.util.Date())
-            delay(1000)
+            val now = java.util.Date()
+            timeText = timeFormat.format(now).uppercase()
+            dateText = dateFormat.format(now)
+            // Wake at the start of the next second so minutes flip on time.
+            delay(1000L - System.currentTimeMillis() % 1000L)
         }
     }
 
+    val align = if (alignEnd) Alignment.End else Alignment.Start
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalAlignment = align,
+        modifier = Modifier
+            .background(Color(0x99000000), RoundedCornerShape(14.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Text(
-            text = header.ifEmpty { "CLOCK" }.uppercase(),
-            color = Color(0xFF94A3B8),
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            style = androidx.compose.ui.text.TextStyle(
-                shadow = androidx.compose.ui.graphics.Shadow(
-                    color = Color.Black,
-                    offset = androidx.compose.ui.geometry.Offset(2f, 2f),
-                    blurRadius = 4f
-                )
+        if (header.isNotBlank()) {
+            Text(
+                text = header.trim().uppercase(),
+                color = Color(0xCCFFFFFF),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                maxLines = 1
             )
-        )
+        }
         Text(
             text = timeText,
             color = Color.White,
-            fontSize = 15.sp,
+            fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.padding(vertical = 4.dp),
-            style = androidx.compose.ui.text.TextStyle(
-                shadow = androidx.compose.ui.graphics.Shadow(
-                    color = Color.Black,
-                    offset = androidx.compose.ui.geometry.Offset(2f, 2f),
-                    blurRadius = 6f
-                )
-            )
+            maxLines = 1
+        )
+        Text(
+            text = dateText,
+            color = Color(0xCCFFFFFF),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
         )
     }
 }

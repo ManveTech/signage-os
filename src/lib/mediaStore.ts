@@ -45,7 +45,7 @@ export interface Playlist {
   orientation?: 'horizontal' | 'vertical';
   /** Shown upside down (display mounted the other way up). */
   flipped?: boolean;
-  widgetType?: 'weather' | 'clock' | 'rss' | 'qrcode' | string;
+  widgetType?: 'clock' | 'rss' | 'qrcode' | string;
   widgetPlacement?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   widgetLink?: string;
   transition?: 'fade' | 'slide' | 'zoom' | 'slide-up' | 'slide-down' | 'flip' | 'spin' | 'blur' | 'bounce' | 'wipe';

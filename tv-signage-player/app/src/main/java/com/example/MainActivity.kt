@@ -231,35 +231,37 @@ fun SignagePlayerApp(
                                 }
 
                                 val widgetType = uiState.widgetType
-                                val widgetLink = uiState.widgetLink ?: ""
+                                val widgetLink = (uiState.widgetLink ?: "").trim()
                                 if (!widgetType.isNullOrEmpty()) {
+                                    // Weather was removed; "weather" in an old playlist is ignored.
                                     val activeWidgets = widgetType.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-                                    
+                                    val hasRss = activeWidgets.contains("rss")
+                                    val hasQr = activeWidgets.contains("qrcode")
+                                    val hasClock = activeWidgets.contains("clock")
+
+                                    // widgetLink is the plain value when one widget is on, or
+                                    // {"qrcode", "clock", "rss"} when several are (see
+                                    // src/lib/playlistWidgets.ts). A ticker on its own is
+                                    // stored as its own JSON ({"label", "items", ...}).
                                     var rssText = ""
                                     var qrLink = ""
-                                    var weatherLoc = ""
-                                    var clockText = ""
-
-                                    if (widgetLink.startsWith("{") && widgetLink.endsWith("}")) {
-                                        try {
-                                            val json = org.json.JSONObject(widgetLink)
-                                            rssText = json.optString("rss", "")
-                                            qrLink = json.optString("qrcode", "")
-                                            weatherLoc = json.optString("weather", "")
-                                            clockText = json.optString("clock", "")
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("MainActivity", "Failed to parse widgetLink JSON", e)
-                                        }
-                                    } else {
-                                        when {
-                                            activeWidgets.contains("rss") -> rssText = widgetLink
-                                            activeWidgets.contains("qrcode") -> qrLink = widgetLink
-                                            activeWidgets.contains("weather") -> weatherLoc = widgetLink
-                                            activeWidgets.contains("clock") -> clockText = widgetLink
-                                        }
+                                    var clockLabel = ""
+                                    val json = if (widgetLink.startsWith("{") && widgetLink.endsWith("}")) {
+                                        try { org.json.JSONObject(widgetLink) } catch (e: Exception) { null }
+                                    } else null
+                                    if (json != null && (json.has("rss") || json.has("qrcode") || json.has("clock"))) {
+                                        rssText = json.optString("rss", "")
+                                        qrLink = json.optString("qrcode", "")
+                                        clockLabel = json.optString("clock", "")
+                                    } else if (hasRss) {
+                                        rssText = widgetLink
+                                    } else if (hasQr) {
+                                        qrLink = widgetLink
+                                    } else if (hasClock) {
+                                        clockLabel = widgetLink
                                     }
 
-                                    if (activeWidgets.contains("rss")) {
+                                    if (hasRss) {
                                         Box(
                                             modifier = Modifier.fillMaxSize(),
                                             contentAlignment = Alignment.BottomCenter
@@ -268,60 +270,46 @@ fun SignagePlayerApp(
                                         }
                                     }
 
-                                    val hasFloatWidget = activeWidgets.any { it == "qrcode" || it == "weather" || it == "clock" }
-                                    if (hasFloatWidget) {
-                                        val alignment = when (uiState.widgetPlacement) {
-                                            "top-left" -> Alignment.TopStart
-                                            "top-right" -> Alignment.TopEnd
-                                            "bottom-left" -> Alignment.BottomStart
-                                            "bottom-right" -> Alignment.BottomEnd
-                                            else -> Alignment.TopEnd
-                                        }
-                                        val extraBottomPadding = if (activeWidgets.contains("rss") && uiState.widgetPlacement?.startsWith("bottom") == true) 56.dp else 24.dp
-                                        
+                                    // The chosen corner is the clock's (or the QR code's when
+                                    // there's no clock). With both, the QR code takes the other
+                                    // corner on the same side — same as the dashboard preview.
+                                    val corner = uiState.widgetPlacement?.takeIf { it in setOf("top-left", "top-right", "bottom-left", "bottom-right") } ?: "top-right"
+                                    val qrCorner = if (hasClock) {
+                                        if (corner.startsWith("top")) corner.replace("top", "bottom") else corner.replace("bottom", "top")
+                                    } else corner
+                                    val bottomPadding = if (hasRss) 64.dp else 24.dp
+                                    fun alignmentOf(c: String) = when (c) {
+                                        "top-left" -> Alignment.TopStart
+                                        "bottom-left" -> Alignment.BottomStart
+                                        "bottom-right" -> Alignment.BottomEnd
+                                        else -> Alignment.TopEnd
+                                    }
+
+                                    if (hasClock) {
                                         Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(
-                                                    start = 24.dp,
-                                                    top = 24.dp,
-                                                    end = 24.dp,
-                                                    bottom = extraBottomPadding
-                                                ),
-                                            contentAlignment = alignment
+                                            modifier = Modifier.fillMaxSize().padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = bottomPadding),
+                                            contentAlignment = alignmentOf(corner)
                                         ) {
-                                            val floatWidgetType = activeWidgets.firstOrNull { it == "qrcode" || it == "weather" || it == "clock" }
-                                            if (floatWidgetType == "qrcode") {
-                                                val encodedLink = try {
-                                                    java.net.URLEncoder.encode(qrLink, "UTF-8")
-                                                } catch (e: Exception) {
-                                                    qrLink
-                                                }
-                                                AsyncImage(
-                                                    model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
-                                                    contentDescription = "Scan QR Code Widget Overlay",
-                                                    modifier = Modifier.size(120.dp),
-                                                    contentScale = ContentScale.Fit
-                                                )
-                                            } else if (floatWidgetType == "clock") {
-                                                ClockWidget(header = clockText.ifEmpty { "Lobby Clock" })
-                                            } else if (floatWidgetType != null) {
-                                                Card(
-                                                    colors = CardDefaults.cardColors(
-                                                        containerColor = Color(0xCC111827)
-                                                    ),
-                                                    shape = RoundedCornerShape(16.dp),
-                                                    modifier = Modifier
-                                                        .width(200.dp)
-                                                        .padding(14.dp)
-                                                ) {
-                                                    when (floatWidgetType) {
-                                                        "weather" -> {
-                                                            WeatherWidget(location = weatherLoc.ifEmpty { "Bengaluru" })
-                                                        }
-                                                    }
-                                                }
+                                            ClockWidget(header = clockLabel, alignEnd = corner.endsWith("right"))
+                                        }
+                                    }
+
+                                    if (hasQr) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize().padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = bottomPadding),
+                                            contentAlignment = alignmentOf(qrCorner)
+                                        ) {
+                                            val encodedLink = try {
+                                                java.net.URLEncoder.encode(qrLink, "UTF-8")
+                                            } catch (e: Exception) {
+                                                qrLink
                                             }
+                                            AsyncImage(
+                                                model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
+                                                contentDescription = "Scan QR Code Widget Overlay",
+                                                modifier = Modifier.size(120.dp),
+                                                contentScale = ContentScale.Fit
+                                            )
                                         }
                                     }
                                 }

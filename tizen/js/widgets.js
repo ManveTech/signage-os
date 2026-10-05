@@ -85,27 +85,33 @@ window.SignageWidgets = (function () {
 
     // ---- Clock Widget ----------------------------------------------------
 
+    // India time, whatever time zone the TV is set to (same as Android TV).
+    const IST_OFFSET_MS = 330 * 60000;
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
     function updateClockDisplay() {
         const timeEl = document.getElementById('clock-time');
         const dateEl = document.getElementById('clock-date');
         if (!timeEl || !dateEl) return;
 
-        const now = new Date();
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        timeEl.innerText = `${hours}:${minutes}:${seconds}`;
-
-        const options = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
-        dateEl.innerText = now.toLocaleDateString('en-US', options);
+        const ist = new Date(Date.now() + IST_OFFSET_MS);
+        const h = ist.getUTCHours(), m = ist.getUTCMinutes();
+        timeEl.innerText = `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+        dateEl.innerText = `${DAYS[ist.getUTCDay()]}, ${ist.getUTCDate()} ${MONTHS[ist.getUTCMonth()]}`;
     }
 
-    function startClock(placement = 'top-right') {
+    function startClock(placement = 'top-right', label = '') {
         const clockEl = document.getElementById('widget-clock');
         if (!clockEl) return;
 
         clockEl.className = `widget widget-clock ${placement}`;
         clockEl.classList.remove('hidden');
+        const labelEl = document.getElementById('clock-label');
+        if (labelEl) {
+            labelEl.innerText = String(label || '').trim().toUpperCase();
+            labelEl.classList.toggle('hidden', !String(label || '').trim());
+        }
 
         updateClockDisplay();
         if (clockInterval) clearInterval(clockInterval);
@@ -251,9 +257,19 @@ window.SignageWidgets = (function () {
             stopTicker();
         }
 
-        // 2. Clock Widget
+        // 2. Clock Widget — its label is widgetLink's "clock" (several
+        // widgets on) or the plain widgetLink (the clock on its own).
         if (activeTypes.has('clock')) {
-            startClock(widgetPlacement);
+            let clockLabel = '';
+            const linkStr = typeof rawWidgetLink === 'string' ? rawWidgetLink.trim() : '';
+            if (rawWidgetLink && typeof rawWidgetLink === 'object') {
+                clockLabel = typeof rawWidgetLink.clock === 'string' ? rawWidgetLink.clock : '';
+            } else if (linkStr.startsWith('{')) {
+                try { const p = JSON.parse(linkStr); clockLabel = typeof p.clock === 'string' ? p.clock : ''; } catch (_) {}
+            } else if (activeTypes.size === 1) {
+                clockLabel = linkStr;
+            }
+            startClock(widgetPlacement, clockLabel);
         } else {
             stopClock();
         }

@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import MediaThumb, { PreviewMedia } from '../../../../components/media/MediaThumb';
-import LiveClock from '../../../../components/media/LiveClock';
-import { 
-  Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, 
-  Play, Pause, ChevronLeft, ChevronRight, ChevronDown, QrCode, Sun, Eye, 
-  Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive,
-  Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2, CloudRain, CloudSnow, CloudSun, Wind,
-  Building2, FlipVertical2} from 'lucide-react';
+import { CornerPicker, WidgetPreviewOverlay } from '../../../../components/playlists/WidgetControls';
+import { withoutWeather, clockLabelFrom, qrLinkFrom, buildWidgetLink, qrCornerWithClock, cornerLabel } from '../../../../lib/playlistWidgets';
+import {
+  Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Eye, Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive, Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2, Building2, FlipVertical2
+} from 'lucide-react';
 import { checkFiles, uploadMediaFile } from '../../../../lib/mediaUpload';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
@@ -23,38 +21,6 @@ type PlaylistItem = {
   secondMediaId?: string;
   objectFit?: string;
   scalePercent?: number;
-};
-
-const getCleanWidgetLink = (link: any): string => {
-  if (!link) return '';
-  if (typeof link === 'object') {
-    if (typeof link.qrcode === 'string') return link.qrcode;
-    if (typeof link.weather === 'string') return link.weather;
-    if (typeof link.clock === 'string') return link.clock;
-    if (typeof link.url === 'string') return link.url;
-    if (typeof link.link === 'string') return link.link;
-    return '';
-  }
-  if (typeof link === 'string') {
-    const trimmed = link.trim();
-    if (trimmed.startsWith('{') || trimmed.includes('[object')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (parsed && typeof parsed === 'object') {
-          if (typeof parsed.qrcode === 'string') return parsed.qrcode;
-          if (typeof parsed.weather === 'string') return parsed.weather;
-          if (typeof parsed.clock === 'string') return parsed.clock;
-          if (typeof parsed.url === 'string') return parsed.url;
-          if (typeof parsed.link === 'string') return parsed.link;
-          return '';
-        }
-      } catch {
-        return '';
-      }
-    }
-    return link;
-  }
-  return String(link);
 };
 
 interface Props {
@@ -145,6 +111,8 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   };
   const [playlistWidgetPlacement, setPlaylistWidgetPlacement] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'>('top-right');
   const [playlistWidgetLink, setPlaylistWidgetLink] = useState('');
+  // The clock's own label (separate from the QR code's address).
+  const [clockLabel, setClockLabel] = useState('');
   const [tickerBgColor, setTickerBgColor] = useState('#111827');
   const [tickerTextColor, setTickerTextColor] = useState('#ffffff');
   const [tickerParagraphs, setTickerParagraphs] = useState<string[]>(['']);
@@ -203,9 +171,10 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       setPlaylistShuffle(play.shuffle || false);
       setPlaylistLoop(play.loop !== undefined ? play.loop : true);
       setPlaylistVolume(play.volume !== undefined ? play.volume : 80);
-      setPlaylistWidgetType(play.widgetType);
+      setPlaylistWidgetType(withoutWeather(play.widgetType));
       setPlaylistWidgetPlacement(play.widgetPlacement || 'top-right');
-      setPlaylistWidgetLink(getCleanWidgetLink(play.widgetLink));
+      setPlaylistWidgetLink(qrLinkFrom(play.widgetLink, play.widgetType));
+      setClockLabel(clockLabelFrom(play.widgetLink, play.widgetType));
       setTargetUserEmail(play.createdBy);
 
       // Load ticker specific states (handling both single widget and multi-widget formats)
@@ -230,10 +199,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
               setTickerLabel(rssData.label !== undefined ? rssData.label : 'WORLD NEWS');
               
               // Unpack secondary widget link
-              if (parsed.qrcode) setPlaylistWidgetLink(String(parsed.qrcode));
-              else if (parsed.weather) setPlaylistWidgetLink(String(parsed.weather));
-              else if (parsed.clock) setPlaylistWidgetLink(String(parsed.clock));
-              else setPlaylistWidgetLink('');
+              setPlaylistWidgetLink(typeof parsed.qrcode === 'string' ? parsed.qrcode : '');
             } else if (parsed.items) {
               // Standard single RSS JSON structure
               setTickerBgColor(parsed.bgColor || '#111827');
@@ -309,6 +275,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     setPlaylistVolume(80);
     setPlaylistWidgetType(undefined);
     setPlaylistWidgetPlacement('top-right');
+    setClockLabel('');
     setPlaylistWidgetLink('');
     setTickerBgColor('#111827');
     setTickerTextColor('#ffffff');
@@ -574,18 +541,13 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
     const active = playlistWidgetType ? playlistWidgetType.split(',').map(s => s.trim().toLowerCase()) : [];
     const hasRss = active.includes('rss');
-    const hasSecondary = active.includes('qrcode') || active.includes('weather') || active.includes('clock');
-
-    const finalWidgetLink = (hasRss && hasSecondary)
-      ? JSON.stringify({
-          qrcode: playlistWidgetLink,
-          weather: playlistWidgetLink,
-          clock: playlistWidgetLink,
-          rss: { label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor }
-        })
-      : hasRss
-        ? JSON.stringify({ label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor })
-        : playlistWidgetLink;
+    void hasRss;
+    const finalWidgetLink = buildWidgetLink({
+      widgetType: playlistWidgetType,
+      qrLink: playlistWidgetLink,
+      clockLabel,
+      rss: { label: tickerLabel, items: tickerParagraphs.filter(p => p.trim() !== ''), bgColor: tickerBgColor, textColor: tickerTextColor },
+    });
 
     if (editingPlaylistId) {
       // Update existing playlist
@@ -1259,12 +1221,11 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
               {/* Widget overlays */}
               <div className="space-y-2">
                 <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Global Widget Overlay</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {[
                     { id: 'rss', name: 'News RSS Ticker' },
                     { id: 'qrcode', name: 'Scan QR Code' },
-                    { id: 'clock', name: 'Live Digital Clock' },
-                    { id: 'weather', name: 'Weather Forecast' }
+                    { id: 'clock', name: 'Clock' }
                   ].map(opt => (
                     <button
                       key={opt.id}
@@ -1282,21 +1243,13 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 </div>
               </div>
 
-              {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (
-                <div>
-                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Secondary Widget Placement</label>
-                  <CustomSelect
-                    value={playlistWidgetPlacement}
-                    onChange={val => setPlaylistWidgetPlacement(val as any)}
-                    options={[
-                      { value: 'top-left', label: 'Top Left Corner' },
-                      { value: 'top-right', label: 'Top Right Corner' },
-                      { value: 'bottom-left', label: 'Bottom Left Corner' },
-                      { value: 'bottom-right', label: 'Bottom Right Corner' }
-                    ]}
-                    buttonClassName="min-h-[40px] px-3.5 py-2.5 text-xs font-semibold text-slate-800 border-slate-200"
-                  />
-                </div>
+              {(isWidgetActive('clock') || isWidgetActive('qrcode')) && (
+                <CornerPicker
+                  label={isWidgetActive('clock') ? 'Clock position' : 'QR code position'}
+                  value={playlistWidgetPlacement}
+                  onChange={setPlaylistWidgetPlacement}
+                  note={isWidgetActive('clock') && isWidgetActive('qrcode') ? `The QR code goes ${cornerLabel(qrCornerWithClock(playlistWidgetPlacement)).toLowerCase()}.` : undefined}
+                />
               )}
 
               {playlistWidgetType && isWidgetActive('rss') && (
@@ -1394,27 +1347,33 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 </div>
               )}
 
-              {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (() => {
-                const activeSecondary = isWidgetActive('qrcode') ? 'qrcode' : isWidgetActive('weather') ? 'weather' : 'clock';
-                return (
-                  <div className="sm:col-span-2">
-                    <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">
-                      {activeSecondary === 'qrcode' ? 'QR Code Link / URL' :
-                       activeSecondary === 'weather' ? 'Weather Location / City' : 'Clock Label / Header'}
-                    </label>
-                    <input
-                      type={activeSecondary === 'qrcode' ? 'url' : 'text'}
-                      value={getCleanWidgetLink(playlistWidgetLink)}
-                      onChange={e => setPlaylistWidgetLink(e.target.value)}
-                      placeholder={
-                        activeSecondary === 'qrcode' ? 'https://example.com/menu.pdf' :
-                        activeSecondary === 'weather' ? 'e.g. Bengaluru' : 'e.g. Lobby Clock'
-                      }
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-semibold text-slate-800 text-xs"
-                    />
-                  </div>
-                );
-              })()}
+              {isWidgetActive('clock') && (
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Clock label (optional)</label>
+                  <input
+                    type="text"
+                    value={clockLabel}
+                    onChange={e => setClockLabel(e.target.value)}
+                    maxLength={30}
+                    placeholder="e.g. Reception — leave blank for just the time"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-semibold text-slate-800"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">Shows the time and date in India time.</p>
+                </div>
+              )}
+
+              {isWidgetActive('qrcode') && (
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">QR code link</label>
+                  <input
+                    type="url"
+                    value={playlistWidgetLink}
+                    onChange={e => setPlaylistWidgetLink(e.target.value)}
+                    placeholder="https://example.com/menu.pdf"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-semibold text-slate-800"
+                  />
+                </div>
+              )}
             </div>
 
             <div data-tour="create-save" className="hidden md:flex flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100 w-full">
@@ -1554,114 +1513,14 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                   )}
 
                   {/* Render Widget Overlay (Clean, Elegant Modern Cards) */}
-                  {playlistWidgetType && (isWidgetActive('qrcode') || isWidgetActive('weather') || isWidgetActive('clock')) && (() => {
-                    // Both this card and the RSS ticker below are independently
-                    // toggleable and both can claim the bottom of the screen —
-                    // a bottom-left/bottom-right widget sitting at bottom-5 (20px)
-                    // overlapped the ticker's own bottom-0..32px band whenever
-                    // both were enabled at once. Reserve the ticker's height
-                    // plus a gap so the widget sits above it instead.
-                    const tickerActive = isWidgetActive('rss');
-                    const bottomOffset = tickerActive ? 'bottom-12' : 'bottom-5';
-                    const positionClasses = {
-                      'top-left': 'top-5 left-5',
-                      'top-right': 'top-5 right-5',
-                      'bottom-left': `${bottomOffset} left-5`,
-                      'bottom-right': `${bottomOffset} right-5`,
-                    }[playlistWidgetPlacement];
-
-                    return (
-                      <div className={`absolute ${positionClasses} z-10 shadow-md bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl p-3 w-48 flex flex-col justify-between animate-fadeIn text-slate-800`}>
-                        {isWidgetActive('weather') && (() => {
-                          const location = playlistWidgetLink || 'Bengaluru';
-                          let temp = 24;
-                          let condition = 'Sunny';
-                          let WeatherIcon = Sun;
-                          let iconColor = 'text-amber-500';
-                          let animateClass = 'animate-pulse';
-                          
-                          const locLower = location.toLowerCase();
-                          if (locLower.includes('london') || locLower.includes('rain') || locLower.includes('seattle')) {
-                            temp = 14;
-                            condition = 'Rainy';
-                            WeatherIcon = CloudRain;
-                            iconColor = 'text-blue-400';
-                            animateClass = 'animate-bounce';
-                          } else if (locLower.includes('delhi') || locLower.includes('hot') || locLower.includes('desert') || locLower.includes('chennai')) {
-                            temp = 38;
-                            condition = 'Hot & Sunny';
-                            WeatherIcon = Sun;
-                            iconColor = 'text-orange-500';
-                            animateClass = 'animate-spin-slow';
-                          } else if (locLower.includes('snow') || locLower.includes('cold') || locLower.includes('moscow') || locLower.includes('ice')) {
-                            temp = -2;
-                            condition = 'Snowing';
-                            WeatherIcon = CloudSnow;
-                            iconColor = 'text-sky-300';
-                            animateClass = 'animate-bounce';
-                          } else if (locLower.includes('cloud') || locLower.includes('paris') || locLower.includes('tokyo') || locLower.includes('mumbai')) {
-                            temp = 19;
-                            condition = 'Partly Cloudy';
-                            WeatherIcon = CloudSun;
-                            iconColor = 'text-slate-400';
-                            animateClass = 'animate-pulse';
-                          } else if (locLower.includes('wind') || locLower.includes('storm') || locLower.includes('chicago')) {
-                            temp = 16;
-                            condition = 'Windy';
-                            WeatherIcon = Wind;
-                            iconColor = 'text-teal-400';
-                            animateClass = 'animate-pulse';
-                          }
-
-                          return (
-                            <div className="flex flex-col gap-1 text-center font-normal">
-                              <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left">Weather</span>
-                              <div className="flex items-center gap-2 mt-1 justify-center">
-                                <WeatherIcon className={`${iconColor} w-5 h-5 ${animateClass}`} />
-                                <span className="text-base font-extrabold text-slate-800">{temp}°C</span>
-                              </div>
-                              <div className="text-[9px] font-medium text-slate-600 mt-0.5 truncate max-w-full" title={`${location} · ${condition}`}>
-                                {location} · {condition}
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {isWidgetActive('clock') && (
-                          <div className="text-center font-normal">
-                            <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left block">
-                              {playlistWidgetLink || 'Lobby Clock'}
-                            </span>
-                            <div className="text-base font-mono font-bold text-slate-800 mt-1">
-                              <LiveClock />
-                            </div>
-                          </div>
-                        )}
-
-                        {isWidgetActive('qrcode') && (
-                          <div className="flex flex-col items-center gap-1.5 text-center font-normal">
-                            <span className="text-[7px] font-bold uppercase text-slate-400 tracking-wider text-left w-full">Scan Link</span>
-                            <div className="bg-white p-1 rounded-xl border border-slate-100 flex items-center justify-center w-12 h-12 shadow-xs overflow-hidden">
-                              {playlistWidgetLink ? (
-                                <img
-                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(playlistWidgetLink)}`}
-                                  alt="QR Code"
-                                  className="w-full h-full object-contain"
-                                />
-                              ) : (
-                                <QrCode size={40} className="text-slate-800" />
-                              )}
-                            </div>
-                            {playlistWidgetLink && (
-                              <div className="text-[7px] text-slate-500 truncate w-full max-w-[150px] mt-0.5" title={playlistWidgetLink}>
-                                {playlistWidgetLink}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
+                  <WidgetPreviewOverlay
+                    clock={isWidgetActive('clock')}
+                    qr={isWidgetActive('qrcode')}
+                    corner={playlistWidgetPlacement}
+                    clockLabel={clockLabel}
+                    qrLink={playlistWidgetLink}
+                    tickerOn={isWidgetActive('rss')}
+                  />
 
                   {/* Render bottom News RSS Ticker marquee overlay */}
                   {playlistWidgetType && isWidgetActive('rss') && (() => {
