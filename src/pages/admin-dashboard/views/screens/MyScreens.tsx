@@ -5,12 +5,14 @@ import {
   Search, Plus, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit,
   Clock, Monitor, X, Check, CheckCircle, MapPin,
   Grid3X3, List, Pause, Eraser, Lock, Trash,
-  Calendar, Link, ListVideo, FolderMinus, ChevronRight, Play, Activity, Unlink, Tv
+  Calendar, Link, ListVideo, FolderMinus, ChevronRight, Play, Activity, Unlink, Tv, Moon, Sun
 } from 'lucide-react';
 import ScreenDetailsSheet from '../../../../components/screens/ScreenDetailsSheet';
 import PairTvDialog from '../../../../components/screens/PairTvDialog';
 import ConfirmDialog from '../../../../components/screens/ConfirmDialog';
-import { pingScreen, unlinkScreen, pairTvToScreen } from '../../../../lib/screenActions';
+import { pingScreen, unlinkScreen, pairTvToScreen, setScreenSleep } from '../../../../lib/screenActions';
+import SleepScheduleEditor from '../../../../components/screens/SleepScheduleEditor';
+import { sleepingLine, sleepDetail } from '../../../../lib/sleepSchedule';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import CustomSelect from '../../../../components/CustomSelect';
@@ -338,6 +340,19 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     });
   };
 
+  // Sleep now / Wake now hold until the sleep schedule next changes;
+  // "auto" goes back to the schedule.
+  const handleSleep = async (screen: Screen, action: 'sleep' | 'wake' | 'auto') => {
+    setOpenMenu(null);
+    try {
+      const r = await setScreenSleep(screen.id, action);
+      updateLocalScreen(screen.id, { sleepOverride: r.sleepOverride, sleepStatus: r.sleepStatus });
+      addToast(action === 'sleep' ? `"${screen.name}" is going to sleep` : action === 'wake' ? `"${screen.name}" is waking up` : `"${screen.name}" is back on its sleep schedule`, 'success');
+    } catch (e: any) {
+      addToast(e?.message || `Couldn't change sleep on "${screen.name}"`, 'error');
+    }
+  };
+
   const handleCheckStatus = async (screen: Screen) => {
     addToast(`Checking "${screen.name}"…`, 'info');
     try {
@@ -644,6 +659,8 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                   <span className="flex items-center gap-1.5 text-xs mt-1 min-w-0">
                     {status === 'unlinked' ? (
                       <span className="text-blue-600 font-medium">Tap to pair a TV</span>
+                    ) : screen.sleepStatus?.asleep ? (
+                      <span className="truncate text-indigo-700 font-medium">☾ {sleepingLine(screen.sleepStatus)}</span>
                     ) : screen.paused ? (
                       <span className="truncate text-amber-700 font-medium">❚❚ Paused{playing ? ` · ${playing}` : ''}</span>
                     ) : playing ? (
@@ -695,6 +712,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
               { label: 'Playlist', value: screen.playlist && screen.playlist !== 'None' ? screen.playlist : 'None' },
               ...(scheduleLabel(screen) ? [{ label: 'Scheduled', value: scheduleLabel(screen) }] : []),
               ...(screen.paused ? [{ label: 'Playback', value: <span className="text-amber-700">Paused</span> }] : []),
+              ...(screen.sleepStatus && (screen.sleepStatus.scheduled || screen.sleepStatus.manual) ? [{ label: 'Sleep', value: <span className={screen.sleepStatus.asleep ? 'text-indigo-700' : ''}>{sleepDetail(screen.sleepStatus)}</span> }] : []),
               { label: 'TV', value: status === 'unlinked' ? <span className="text-slate-500">Not linked</span> : (status === 'online' || status === 'active' ? 'Online now' : `Last seen ${lastSeen}`) },
               ...(group ? [{ label: 'Group', value: group.name }] : []),
               { label: 'Organization', value: getScreenOrgName(screen) || '—' },
@@ -829,6 +847,20 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                     icon: screen.paused ? <Play size={17} /> : <Pause size={17} />,
                     onClick: () => handleTogglePause(screen)
                   },
+                  {
+                    key: 'sleep',
+                    label: screen.sleepStatus?.asleep ? 'Wake up now' : 'Sleep now',
+                    description: screen.sleepStatus?.asleep ? 'Turn the screen back on and resume its playlist' : 'Make the screen dark and silent until it next wakes',
+                    icon: screen.sleepStatus?.asleep ? <Sun size={17} /> : <Moon size={17} />,
+                    onClick: () => handleSleep(screen, screen.sleepStatus?.asleep ? 'wake' : 'sleep')
+                  },
+                  ...(screen.sleepStatus?.manual && screen.sleepStatus?.scheduled ? [{
+                    key: 'sleep-auto',
+                    label: 'Back to sleep schedule',
+                    description: 'Undo "Sleep now" / "Wake up now" and follow the schedule',
+                    icon: <Clock size={17} />,
+                    onClick: () => handleSleep(screen, 'auto')
+                  }] : []),
                   {
                     key: 'cache',
                     label: 'Clear cache',
@@ -1143,6 +1175,13 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                   buttonClassName="px-3 py-2.5 text-sm min-h-[42px]"
                 />
               </div>
+              <SleepScheduleEditor
+                kind="screen"
+                value={editScreen.sleepSchedule}
+                onChange={v => setEditScreen(p => p && ({ ...p, sleepSchedule: v }))}
+                groupName={groups.find(g => g.id === editScreen.groupId)?.name}
+                groupSchedule={groups.find(g => g.id === editScreen.groupId)?.sleepSchedule}
+              />
 
               {editScreen.groupId && (() => {
                 const gp = groups.find(g => g.id === editScreen.groupId);

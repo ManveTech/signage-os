@@ -28,6 +28,10 @@ export function alertScreenOffline(screen: any, reason: string): void {
   void (async () => {
     const owner = screen?.assignedToUserEmail;
     if (!owner || !screen?.id) return;
+    // Asleep on schedule (or "Sleep now") — being dark or switched off is expected.
+    const { screenSleepStatus } = await import('./sleep');
+    const latest = await pb.collection('screens').getOne(screen.id).catch(() => screen);
+    if ((await screenSleepStatus(latest).catch(() => null))?.asleep) return;
     const user: any = await pb.collection('users')
       .getFirstListItem(pb.filter('email = {:email}', { email: owner }))
       .catch(() => null);

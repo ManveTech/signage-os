@@ -55,7 +55,9 @@ data class PocketBaseScreenResponse(
     val websiteLogo: String? = null,
     val websiteName: String? = null,
     val cameraMountEnabled: Boolean? = null,
-    val paused: Boolean? = null
+    val paused: Boolean? = null,
+    // Sleep times and any "Sleep now / Wake now" (null from older servers).
+    val sleep: com.example.util.SleepConfig? = null
 )
 
 @JsonClass(generateAdapter = true)

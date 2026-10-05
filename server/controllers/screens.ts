@@ -4,6 +4,7 @@ import { syncScreenSchedule, removeScreenSchedule, loadUsablePlaylist } from '..
 import { groupBelongsTo } from '../services/ownership';
 import { redis, isRedisReady, acquireLock, releaseLock } from '../redis';
 import { notifyScreenConfigChanged } from '../services/screenPush';
+import { deviceSleepPayload, applySleepAction } from '../services/sleep';
 import { alertScreenOffline } from '../services/screenAlerts';
 
 async function logServerError(screenId: string, screenName: string, email: string, event: string, detail: string) {
@@ -771,7 +772,10 @@ export async function getScreenStatusForDevice(req: any, res: any) {
       return res.status(403).json({ message: 'This TV was unlinked from the screen.', unpaired: true });
     }
 
-    return res.status(200).json(screenRecord);
+    // Sleep times (its own or its group's) and any "Sleep now / Wake now",
+    // so the TV can sleep and wake on time even if it loses its connection.
+    const sleep = await deviceSleepPayload(screenRecord).catch(() => null);
+    return res.status(200).json(sleep ? { ...screenRecord, sleep } : screenRecord);
   } catch (error: any) {
     console.error('Error fetching screen status for device:', error);
     res.status(500).json({ message: error.message || 'Error fetching screen status' });
@@ -1479,6 +1483,28 @@ export async function pingScreen(req: any, res: any) {
   } catch (error: any) {
     console.error('Error pinging screen:', error);
     res.status(500).json({ message: error.message || 'Error checking screen status' });
+  }
+}
+
+/** Dashboard "Sleep now" / "Wake now" / "Back to schedule". */
+export async function sleepScreen(req: any, res: any) {
+  try {
+    const action = String(req.body?.action || '');
+    if (!['sleep', 'wake', 'auto'].includes(action)) {
+      return res.status(400).json({ message: 'action must be sleep, wake or auto.' });
+    }
+    const screen = await loadOwnedScreen(req, res);
+    if (!screen) return;
+    const result = await applySleepAction(screen, action);
+    await pb.collection('screen_logs').create(await buildScreenLog(screen, {
+      event: action === 'sleep' ? 'Put to sleep' : action === 'wake' ? 'Woken up' : 'Sleep back to schedule',
+      type: 'info',
+      detail: `From the dashboard by ${req.user?.email || 'unknown'}.`,
+    })).catch(() => {});
+    res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Error setting screen sleep:', error);
+    res.status(500).json({ message: error.message || 'Could not change sleep' });
   }
 }
 

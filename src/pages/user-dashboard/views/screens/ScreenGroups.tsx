@@ -9,6 +9,7 @@ import ScreenSubNav from '../../../../components/ScreenSubNav';
 import ScreenDetailsSheet from '../../../../components/screens/ScreenDetailsSheet';
 import { getEffectiveStatus } from './MyScreens';
 import type { Screen, ScreenGroup } from '../../types';
+import SleepScheduleEditor from '../../../../components/screens/SleepScheduleEditor';
 
 const COLOR_OPTIONS = [
   { id: 'blue', label: 'Blue', cls: 'bg-blue-600' },
@@ -677,6 +678,12 @@ export default function ScreenGroups({ userEmail = 'priya@demo.com', onNavigate 
                   />
                 </div>
               </div>
+
+              <SleepScheduleEditor
+                kind="group"
+                value={editGroup.sleepSchedule}
+                onChange={v => setEditGroup(p => p && ({ ...p, sleepSchedule: v }))}
+              />
 
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
                 <div className="flex-1">

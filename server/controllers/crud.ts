@@ -9,6 +9,7 @@ import { notifyScreenConfigChanged, notifyScreensConfigChanged } from '../servic
 import { resolveUserOrgId, groupBelongsTo } from '../services/ownership';
 import { loadUsablePlaylist } from '../scheduler';
 import { prepareInvoice } from '../services/invoicing';
+import { annotateSleep, cleanScreenSchedule, cleanGroupSchedule } from '../services/sleep';
 
 // --- Tenancy rules for the generic CRUD router -----------------------------
 // Every collection mounted through createCrudRouter() is covered by exactly
@@ -263,6 +264,8 @@ export function createCrudRouter(collectionName: string) {
             }
           } catch (_) {}
         }
+        // Asleep right now, and when it next wakes / sleeps.
+        await annotateSleep(records).catch(() => {});
       }
       res.json(records);
     } catch (error: any) {
@@ -287,6 +290,7 @@ export function createCrudRouter(collectionName: string) {
         }
       }
 
+      if (collectionName === 'screens') await annotateSleep([record]).catch(() => {});
       res.json(record);
     } catch (error: any) {
       console.error(`Error fetching record from ${collectionName}:`, error);
@@ -402,8 +406,17 @@ export function createCrudRouter(collectionName: string) {
         delete body.number;
         await prepareInvoice(body);
       }
-      // New screens play at full volume (an unset volume reads as 0).
+      // New screens play at full volume, new playlists at the editor's 80%
+      // (an unset volume reads as 0 — muted).
       if (collectionName === 'screens' && (body.volume === undefined || body.volume === null || body.volume === '')) body.volume = 100;
+      if (collectionName === 'playlists' && (body.volume === undefined || body.volume === null || body.volume === '')) body.volume = 80;
+      // Sleep: schedules are tidied; "Sleep now" only via /screens/:id/sleep.
+      if (collectionName === 'screens') {
+        delete body.sleepOverride;
+        delete body.sleepStatus;
+        if ('sleepSchedule' in body) body.sleepSchedule = cleanScreenSchedule(body.sleepSchedule);
+      }
+      if (collectionName === 'screen_groups' && 'sleepSchedule' in body) body.sleepSchedule = cleanGroupSchedule(body.sleepSchedule);
 
       const record = await retryWithBackoff(() => pb.collection(collectionName).create(body));
 
@@ -492,7 +505,13 @@ export function createCrudRouter(collectionName: string) {
         // screen, so these were copies from when the page loaded — saving a
         // rename could write back an old "online" or last-seen time.
         for (const f of ['lastHeartbeat', 'onlineSince', 'cumulativeUptime', 'cumulativeLoops', 'storageUsed']) delete body[f];
+        // "Sleep now / Wake now" only changes via /screens/:id/sleep — a whole-
+        // screen save from the dashboard would write back a stale copy.
+        delete body.sleepOverride;
+        delete body.sleepStatus;
+        if ('sleepSchedule' in body) body.sleepSchedule = cleanScreenSchedule(body.sleepSchedule);
       }
+      if (collectionName === 'screen_groups' && 'sleepSchedule' in body) body.sleepSchedule = cleanGroupSchedule(body.sleepSchedule);
 
       // Role changes are a privilege-escalation-sensitive action — capture the
       // prior role before it's overwritten so the audit entry shows the change.

@@ -1,3 +1,4 @@
+import type { ScreenSleepSchedule, GroupSleepSchedule, SleepOverride, SleepStatus } from '../../lib/sleepSchedule';
 export type NavItem = {
   id: string;
   label: string;
@@ -11,6 +12,11 @@ export type Screen = {
   status: 'online' | 'offline' | 'warning' | 'active' | 'suspended' | 'pairing' | 'unlinked';
   /** Playback paused from the dashboard (the playlist stays assigned). */
   paused?: boolean;
+  /** Sleep times: follow the group, its own, or never. */
+  sleepSchedule?: ScreenSleepSchedule | null;
+  sleepOverride?: SleepOverride;
+  /** Worked out by the server: asleep now, and when that next changes. */
+  sleepStatus?: SleepStatus | null;
   playlist: string;
   playlistId?: string;
   location: string;
@@ -33,6 +39,7 @@ export type Screen = {
 };
 
 export type ScreenGroup = {
+  sleepSchedule?: GroupSleepSchedule | null;
   id: string;
   name: string;
   desc: string;

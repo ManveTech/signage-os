@@ -345,3 +345,15 @@ html, body {
     0% { transform: translate3d(0, 0, 0); }
     100% { transform: translate3d(-100%, 0, 0); }
 }
+
+/* Sleep mode: black and on top of everything. */
+.sleep-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 100000;
+}
+
+.sleep-overlay.hidden {
+    display: none;
+}

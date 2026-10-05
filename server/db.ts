@@ -915,6 +915,34 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update invoice/organization fields:', invErr.message);
     }
 
+    // Sleep mode: a schedule on screens and groups, and "Sleep now / Wake now".
+    try {
+      const json = (id: string, name: string) => ({ id, name, type: 'json', required: false, system: false, hidden: false, presentable: false, maxSize: 4000 });
+      await addFields('screens', [json('jsonscrsleepsch', 'sleepSchedule'), json('jsonscrsleepovr', 'sleepOverride')]);
+      await addFields('screen_groups', [json('jsongrpsleepsch', 'sleepSchedule')]);
+    } catch (sleepErr: any) {
+      console.warn('Failed to add sleep fields:', sleepErr.message);
+    }
+
+    // A playlist volume of 0 almost always means "never set": playlists made
+    // before the volume slider existed read as 0 and played muted. Once, set
+    // those to the editor's default of 80; from now on new playlists always
+    // store a volume, so 0 means someone chose silence.
+    try {
+      const pl: any = await pb.collections.getOne('playlists');
+      const plFields = pl.fields || [];
+      if (!plFields.some((f: any) => f.name === 'volumeDefaulted')) {
+        const silent = await pb.collection('playlists').getFullList({ filter: 'volume = 0', fields: 'id' });
+        for (const row of silent) await pb.collection('playlists').update(row.id, { volume: 80 }).catch(() => {});
+        plFields.push({ id: 'boolplvoldefault', name: 'volumeDefaulted', type: 'bool', required: false, system: false, hidden: true, presentable: false });
+        pl.fields = plFields;
+        await pb.collections.update('playlists', pl);
+        console.log(`Set ${silent.length} playlist(s) with no volume to 80%`);
+      }
+    } catch (plVolErr: any) {
+      console.warn('Failed to default playlist volumes:', plVolErr.message);
+    }
+
     // Ensure screen_logs collection exists
     try {
       console.log('Ensuring screen_logs collection exists...');

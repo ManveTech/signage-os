@@ -1,9 +1,10 @@
 import { ChevronRight, Monitor } from 'lucide-react';
 import { screenStatusStyle } from './screenStatus';
+import { sleepingLine, type SleepStatus } from '../../lib/sleepSchedule';
 
 /**
  * Compact, tappable summary of one screen: thumbnail with status dot, name,
- * status · location, and what it's playing (or paused / not linked).
+ * status · location, and what it's playing (or paused / asleep / not linked).
  * Tapping opens the screen's details sheet; in selection mode it toggles
  * selection instead.
  */
@@ -17,7 +18,7 @@ export default function ScreenCard({
   selected,
   onClick
 }: {
-  screen: { name: string; location?: string; thumbnail?: string; paused?: boolean; pairing_code?: string };
+  screen: { name: string; location?: string; thumbnail?: string; paused?: boolean; pairing_code?: string; sleepStatus?: SleepStatus | null };
   status: string;
   playing: string;
   groupName?: string;
@@ -68,6 +69,8 @@ export default function ScreenCard({
             </span>
           ) : status === 'unlinked' ? (
             <span className="text-blue-600 font-medium">Tap to pair a TV</span>
+          ) : screen.sleepStatus?.asleep ? (
+            <span className="truncate text-indigo-700 font-medium">☾ {sleepingLine(screen.sleepStatus)}</span>
           ) : screen.paused ? (
             <span className="truncate text-amber-700 font-medium">❚❚ Paused{playing ? ` · ${playing}` : ''}</span>
           ) : playing ? (

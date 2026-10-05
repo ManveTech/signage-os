@@ -59,3 +59,8 @@ export function pairTvToScreen(screenId: string, pairingCode: string): Promise<a
 
 /** Authenticated JSON POST to the API, with friendly network errors. */
 export { post as apiPost };
+
+/** "Sleep now", "Wake now" or back to the sleep schedule ("auto"). */
+export function setScreenSleep(screenId: string, action: 'sleep' | 'wake' | 'auto'): Promise<{ sleepOverride: any; sleepStatus: any }> {
+  return post(`/screens/${screenId}/sleep`, { action });
+}

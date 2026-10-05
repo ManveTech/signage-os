@@ -1,3 +1,4 @@
+import type { ScreenSleepSchedule, SleepOverride, SleepStatus } from './sleepSchedule';
 import { pushToDatabase, generatePocketBaseId, memoryMedia, setMemoryMedia } from './syncHelper';
 
 // Purge the old bloated local storage key immediately on load to free up space
@@ -66,6 +67,11 @@ export interface Screen {
   status: 'online' | 'offline' | 'warning' | 'active' | 'suspended' | 'pairing' | 'unlinked';
   /** Playback paused from the dashboard (the playlist stays assigned). */
   paused?: boolean;
+  /** Sleep times: follow the group, its own, or never. */
+  sleepSchedule?: ScreenSleepSchedule | null;
+  sleepOverride?: SleepOverride;
+  /** Worked out by the server: asleep now, and when that next changes. */
+  sleepStatus?: SleepStatus | null;
   playlist: string; // Playlist name
   playlistId?: string; // Assigned playlist ID
   location: string;

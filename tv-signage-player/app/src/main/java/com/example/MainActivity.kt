@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
@@ -146,6 +147,15 @@ fun SignagePlayerApp(
         }
     }
 
+    // While asleep, turn the backlight right down where the device allows it
+    // (many TV boxes ignore this; the screen is black either way).
+    LaunchedEffect(uiState.sleeping) {
+        val window = activity?.window ?: return@LaunchedEffect
+        val attrs = window.attributes
+        attrs.screenBrightness = if (uiState.sleeping) 0f else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        window.attributes = attrs
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (callState !is CallState.Idle) {
             // A licensed screen was called — swap fully into the meeting view.
@@ -161,6 +171,11 @@ fun SignagePlayerApp(
                             onOpenAdmin = {}
                         )
                     }
+                }
+                // Sleep mode: completely black and silent (nothing playing),
+                // until the schedule or "Wake now" wakes it.
+                com.example.ui.isPlayingStatus(uiState.status) && uiState.sleeping -> {
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black))
                 }
                 // Any paired status plays — not just active/online/offline.
                 // "warning" (or any status added later) used to fall through to

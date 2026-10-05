@@ -18,6 +18,8 @@
         currentAssetIndex: 0,
         orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
         flipped: localStorage.getItem('signage_tizen_flipped') === 'true',
+        sleep: (function () { try { return JSON.parse(localStorage.getItem('signage_tizen_sleep') || 'null'); } catch (e) { return null; } })(),
+        sleeping: false,
         playlistId: localStorage.getItem('signage_tizen_playlist_id') || '',
         isRotating: false,
         screenName: localStorage.getItem('signage_tizen_screen_name') || '',
@@ -82,6 +84,58 @@
 
         startSyncLoop();
         startHeartbeatLoop();
+        checkSleep();
+        setInterval(checkSleep, 5000);
+    }
+
+    // Sleep mode: same rules as src/lib/sleepSchedule.ts. Times are local
+    // to the schedule (India, UTC+5:30), whatever the TV's own clock zone.
+    function minutesOf(hhmm) {
+        const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+        if (!m) return -1;
+        const h = Number(m[1]), mm = Number(m[2]);
+        return h < 24 && mm < 60 ? h * 60 + mm : -1;
+    }
+
+    function isAsleep(cfg, now) {
+        if (!cfg) return false;
+        const o = cfg.override;
+        if (o && (o.state === 'sleep' || o.state === 'wake') && (o.untilMs == null || now < o.untilMs)) {
+            return o.state === 'sleep';
+        }
+        const rules = Array.isArray(cfg.rules) ? cfg.rules : [];
+        if (!rules.length) return false;
+        const offset = typeof cfg.utcOffsetMinutes === 'number' ? cfg.utcOffsetMinutes : 330;
+        const local = new Date(now + offset * 60000);
+        const day = local.getUTCDay();
+        const minute = local.getUTCHours() * 60 + local.getUTCMinutes();
+        const yesterday = (day + 6) % 7;
+        return rules.some(function (r) {
+            const from = minutesOf(r.from), to = minutesOf(r.to);
+            const days = Array.isArray(r.days) ? r.days : [];
+            if (from < 0 || to < 0) return false;
+            if (from < to) return days.indexOf(day) >= 0 && minute >= from && minute < to;
+            return (days.indexOf(day) >= 0 && minute >= from) || (days.indexOf(yesterday) >= 0 && minute < to);
+        });
+    }
+
+    function checkSleep() {
+        const asleep = isAsleep(state.sleep, Date.now());
+        if (asleep === state.sleeping) return;
+        state.sleeping = asleep;
+        const overlay = document.getElementById('sleep-overlay');
+        if (overlay) overlay.classList.toggle('hidden', !asleep);
+        if (asleep) {
+            console.log('[Tizen] Going to sleep');
+            if (window.SignageWidgets) window.SignageWidgets.hideAllWidgets();
+            if (stopPlaylistRotation) stopPlaylistRotation(state, views);
+            if (views.videoPlayer) { try { views.videoPlayer.pause(); views.videoPlayer.muted = true; } catch (e) {} }
+        } else {
+            console.log('[Tizen] Waking up');
+            if (views.videoPlayer) { try { views.videoPlayer.muted = false; } catch (e) {} }
+            state.isRotating = false;
+            updateUI();
+        }
     }
 
     function applyOrientation() {
@@ -113,6 +167,8 @@
                     if (window.SignageWidgets) window.SignageWidgets.hideAllWidgets();
                     if (stopPlaylistRotation) stopPlaylistRotation(state, views);
                     if (views.standby) views.standby.classList.add('active');
+                } else if (state.sleeping) {
+                    if (stopPlaylistRotation) stopPlaylistRotation(state, views);
                 } else {
                     applyOrientation();
                     if (views.playback) views.playback.classList.add('active');
@@ -153,6 +209,13 @@
             }
 
             let hasChanged = false;
+
+            // Sleep times and any "Sleep now / Wake now" (kept for offline use).
+            if (data.sleep !== undefined) {
+                state.sleep = data.sleep || null;
+                try { localStorage.setItem('signage_tizen_sleep', JSON.stringify(state.sleep)); } catch (e) {}
+                checkSleep();
+            }
 
             // The screen's own volume (dashboard) scales the playlist's volume.
             state.screenVolume = typeof data.volume === 'number' ? Math.max(0, Math.min(100, data.volume)) : 100;

@@ -137,6 +137,20 @@ class SignageRepository(private val context: Context) {
         }
     }
 
+    private val sleepAdapter by lazy { moshi.adapter(com.example.util.SleepConfig::class.java) }
+
+    /** Sleep times and any "Sleep now / Wake now"; kept so the TV keeps to them offline. */
+    val sleepFlow = MutableStateFlow(
+        prefs.getString("sleep", null)?.let { runCatching { sleepAdapter.fromJson(it) }.getOrNull() }
+    )
+
+    private fun setSleep(sleep: com.example.util.SleepConfig?) {
+        if (sleepFlow.value != sleep) {
+            sleepFlow.value = sleep
+            prefs.edit().putString("sleep", sleep?.let { sleepAdapter.toJson(it) }).apply()
+        }
+    }
+
     // Bumped by clearDeviceAssets() so a download run in progress notices its
     // files were wiped out from under it and restarts instead of finishing
     // with renames that fail.
@@ -333,6 +347,7 @@ class SignageRepository(private val context: Context) {
                     configDao.saveConfig(unassignedConfig)
                     clearDeviceAssets()
                     setPaused(false)
+                    setSleep(null)
                     return@withContext Result.success(Unit)
                 } else {
                     // Device is currently in pairing mode waiting for user to pair.
@@ -375,6 +390,7 @@ class SignageRepository(private val context: Context) {
             )
             configDao.saveConfig(updatedConfig)
             setPaused(response.paused == true)
+            setSleep(response.sleep)
 
             // Trigger asset download if whitelabel logo is missing or changed
             if (isWhiteLabelNow && wasWhiteLabelLogoMissing && logoUrlNow.isNotEmpty()) {
@@ -461,6 +477,7 @@ class SignageRepository(private val context: Context) {
                 configDao.saveConfig(unassignedConfig)
                 clearDeviceAssets()
                 setPaused(false)
+                setSleep(null)
             }
             Log.e("SignageRepository", "HTTP error syncing screen status with backend", e)
             logErrorToServer("Sync Status HTTP Error", "HTTP ${e.code()}: ${e.message()}")

@@ -77,6 +77,8 @@ data class SignageUiState(
     val isConfigLoaded: Boolean = false,
     // Paused from the dashboard — show the paused screen, keep the playlist.
     val paused: Boolean = false,
+    // Sleep mode (schedule or "Sleep now") — dark and silent until it wakes.
+    val sleeping: Boolean = false,
     val cameraMountEnabled: Boolean = false
 )
 
@@ -127,13 +129,30 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
+        // Sleep mode: decide every few seconds from the stored times, so the
+        // screen sleeps and wakes on time even with no connection.
+        viewModelScope.launch {
+            repository.sleepFlow.collectLatest { config ->
+                while (isActive) {
+                    val asleep = com.example.util.SleepSchedule.isAsleep(config)
+                    if (asleep != _uiState.value.sleeping) {
+                        Log.d("SignageViewModel", if (asleep) "Going to sleep" else "Waking up")
+                        _uiState.update { it.copy(sleeping = asleep) }
+                        restartAssetRotation(force = true)
+                    }
+                    delay(5_000)
+                }
+            }
+        }
+
         // What this TV reports back to the dashboard's "Check status".
         videoCallManager.statusReporter = {
             val s = _uiState.value
             org.json.JSONObject().apply {
                 put("status", s.status)
                 put("paused", s.paused)
-                put("playing", !s.paused && s.playbackPlaylist.isNotEmpty())
+                put("sleeping", s.sleeping)
+                put("playing", !s.paused && !s.sleeping && s.playbackPlaylist.isNotEmpty())
                 put("currentAsset", s.playbackPlaylist.getOrNull(s.currentAssetIndex)?.filename ?: "")
                 put("assetsReady", s.playbackPlaylist.size)
                 put("assetsTotal", s.playlist.size)
@@ -501,7 +520,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
         }
         assetRotationJob?.cancel()
         val playlist = _uiState.value.playbackPlaylist
-        if (playlist.isEmpty() || _uiState.value.paused || !isPlayingStatus(_uiState.value.status)) {
+        if (playlist.isEmpty() || _uiState.value.paused || _uiState.value.sleeping || !isPlayingStatus(_uiState.value.status)) {
             return
         }
 
