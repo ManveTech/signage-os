@@ -11,7 +11,8 @@ window.SignageWidgets = (function () {
 
     function extractTickerData(input) {
         let text = '';
-        let label = 'WORLD NEWS';
+        // null = no badge text was saved (old tickers); '' = left blank on purpose.
+        let label = null;
 
         if (!input) return { text: '', label };
 
@@ -35,7 +36,7 @@ window.SignageWidgets = (function () {
         if (typeof parsed === 'object' && parsed !== null) {
             // Case 1: Combined website JSON with .rss field
             if (parsed.rss && typeof parsed.rss === 'object') {
-                if (parsed.rss.label) label = String(parsed.rss.label);
+                if (typeof parsed.rss.label === 'string') label = parsed.rss.label;
                 if (Array.isArray(parsed.rss.items)) {
                     text = parsed.rss.items.filter(i => i && String(i).trim()).map(i => String(i).trim()).join('   •   ');
                 } else if (parsed.rss.text) {
@@ -44,7 +45,7 @@ window.SignageWidgets = (function () {
             }
             // Case 2: Website RSS JSON with .items array
             else if (Array.isArray(parsed.items)) {
-                if (parsed.label) label = String(parsed.label);
+                if (typeof parsed.label === 'string') label = parsed.label;
                 text = parsed.items.filter(i => i && String(i).trim()).map(i => String(i).trim()).join('   •   ');
             }
             // Case 3: Flat object or single news item
@@ -57,7 +58,7 @@ window.SignageWidgets = (function () {
 
         return {
             text: String(text).replace(/\[object Object\]/gi, '').trim(),
-            label: String(label).trim().toUpperCase()
+            label: label === null ? null : String(label).trim().toUpperCase()
         };
     }
 
@@ -73,6 +74,7 @@ window.SignageWidgets = (function () {
                     if (parsed.qrcode) return String(parsed.qrcode).trim();
                     if (parsed.url) return String(parsed.url).trim();
                     if (parsed.link) return String(parsed.link).trim();
+                    return ''; // JSON for other widgets, no QR link in it
                 } catch (_) {}
             }
             return trimmed;
@@ -97,7 +99,7 @@ window.SignageWidgets = (function () {
 
         const ist = new Date(Date.now() + IST_OFFSET_MS);
         const h = ist.getUTCHours(), m = ist.getUTCMinutes();
-        timeEl.innerText = `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+        timeEl.innerHTML = `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')}<span class="clock-ampm">${h < 12 ? 'AM' : 'PM'}</span>`;
         dateEl.innerText = `${DAYS[ist.getUTCDay()]}, ${ist.getUTCDate()} ${MONTHS[ist.getUTCMonth()]}`;
     }
 
@@ -142,7 +144,10 @@ window.SignageWidgets = (function () {
         }
 
         const displayText = String(cleanText).trim();
-        if (labelEl) labelEl.innerText = (label || 'NOTICE').toUpperCase();
+        if (labelEl) {
+            labelEl.innerText = String(label || '').toUpperCase();
+            labelEl.style.display = label ? '' : 'none';
+        }
         textEl.innerText = displayText;
 
         // Force reflow to restart CSS marquee animation smoothly
@@ -163,11 +168,20 @@ window.SignageWidgets = (function () {
 
     // ---- QR Code Widget (SVG / Vector Renderer) --------------------------
 
+    // Drawn here on the TV (js/vendor/qrcode.js), so it works offline and
+    // the link isn't sent to an outside QR service.
     function generateQrSvg(text) {
-        if (!text) return '';
-        const encodedUrl = encodeURIComponent(text);
-        const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodedUrl}`;
-        return `<img src="${qrApiUrl}" alt="QR Code" style="width: 90px; height: 90px; display: block; border-radius: 6px; background: #ffffff;" />`;
+        if (!text || typeof qrcode !== 'function') return '';
+        try {
+            qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+            const qr = qrcode(0, 'M');
+            qr.addData(String(text));
+            qr.make();
+            return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+        } catch (e) {
+            console.warn('[Widgets] QR code failed:', e);
+            return '';
+        }
     }
 
     function startQR(url, placement = 'top-right') {
@@ -235,15 +249,9 @@ window.SignageWidgets = (function () {
                               rawWidgetLink ||
                               '';
 
-        const defaultLabel = (currentAsset && currentAsset.tickerLabel) ||
-                             state.tickerLabel ||
-                             activePlaylist.tickerLabel ||
-                             'NOTICE';
 
         const tickerData = extractTickerData(rawTickerText);
-        if (!tickerData.label || tickerData.label === 'WORLD NEWS') {
-            tickerData.label = defaultLabel;
-        }
+        if (tickerData.label === null) tickerData.label = 'NEWS';
 
         const cleanQrUrl = extractQrUrl(rawWidgetLink);
         const overlayEl = document.getElementById('widgets-overlay');
@@ -275,12 +283,10 @@ window.SignageWidgets = (function () {
         }
 
         // 3. QR Code Widget
-        if (activeTypes.has('qr')) {
-            let qrUrl = cleanQrUrl;
-            if (!qrUrl) {
-                const domain = window.location.hostname || 'tizen.manve.co';
-                qrUrl = `http://${domain}`;
-            }
+        // Nothing to show until a link is set (it used to show a code for
+        // the player's own address).
+        if (activeTypes.has('qr') && cleanQrUrl) {
+            const qrUrl = cleanQrUrl;
 
             let qrPlacement = widgetPlacement;
             if (activeTypes.has('clock')) {

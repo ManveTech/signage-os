@@ -17,8 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -30,7 +30,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import androidx.compose.runtime.collectAsState
 import com.example.call.CallState
 import com.example.ui.SignageViewModel
@@ -294,21 +293,21 @@ fun SignagePlayerApp(
                                         }
                                     }
 
-                                    if (hasQr) {
+                                    // Drawn on the TV itself (works offline); nothing until a link is set.
+                                    if (hasQr && qrLink.isNotBlank()) {
                                         Box(
                                             modifier = Modifier.fillMaxSize().padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = bottomPadding),
                                             contentAlignment = alignmentOf(qrCorner)
                                         ) {
-                                            val encodedLink = try {
-                                                java.net.URLEncoder.encode(qrLink, "UTF-8")
-                                            } catch (e: Exception) {
-                                                qrLink
-                                            }
-                                            AsyncImage(
-                                                model = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=$encodedLink",
-                                                contentDescription = "Scan QR Code Widget Overlay",
-                                                modifier = Modifier.size(120.dp),
-                                                contentScale = ContentScale.Fit
+                                            com.example.ui.components.QrCodeImage(
+                                                content = qrLink.trim(),
+                                                sizePx = 360,
+                                                description = "QR code: ${qrLink.trim()}",
+                                                modifier = Modifier
+                                                    .size(96.dp)
+                                                    .background(Color.White, RoundedCornerShape(16.dp))
+                                                    .padding(8.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
                                             )
                                         }
                                     }

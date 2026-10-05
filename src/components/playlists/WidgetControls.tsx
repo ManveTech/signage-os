@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { QrCode } from 'lucide-react';
 import { CORNERS, cornerLabel, qrCornerWithClock, clockParts, type Corner } from '../../lib/playlistWidgets';
+import { qrDataUrl } from '../../lib/qr';
 
 /** Pick a corner on a small screen drawing. */
 export function CornerPicker({ value, onChange, label, note }: { value: Corner; onChange: (c: Corner) => void; label: string; note?: string }) {
@@ -42,10 +43,13 @@ function LiveClockParts() {
     return () => clearInterval(t);
   }, []);
   const { time, date } = clockParts(now);
+  const [hm, ampm] = time.split(' ');
   return (
     <>
-      <div className="text-lg font-bold leading-tight tabular-nums">{time}</div>
-      <div className="text-[10px] text-white/70 leading-tight">{date}</div>
+      <div className="text-[15px] font-semibold leading-tight tracking-tight tabular-nums">
+        {hm}<span className="text-[9px] font-medium text-white/70 ml-0.5">{ampm}</span>
+      </div>
+      <div className="text-[8px] text-white/70 leading-tight">{date}</div>
     </>
   );
 }
@@ -69,21 +73,25 @@ export function WidgetPreviewOverlay({ clock, qr, corner, clockLabel, qrLink, ti
     <>
       {clock && (
         <div className={at(clockCorner)}>
-          <div className="rounded-xl bg-black/55 backdrop-blur-sm text-white px-3 py-2 shadow-md flex flex-col">
-            {clockLabel.trim() && <div className="text-[8px] font-bold uppercase tracking-wider text-white/70 mb-0.5">{clockLabel}</div>}
+          <div className="rounded-lg bg-black/45 backdrop-blur-sm text-white px-2.5 py-1.5 flex flex-col">
+            {clockLabel.trim() && <div className="text-[7px] font-semibold uppercase tracking-widest text-white/70">{clockLabel}</div>}
             <LiveClockParts />
           </div>
         </div>
       )}
       {qr && (
         <div className={at(qrCorner)}>
-          <div className="rounded-xl bg-white p-1.5 shadow-md w-14 h-14 flex items-center justify-center">
-            {qrLink ? (
-              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrLink)}`} alt="QR code" className="w-full h-full object-contain" />
-            ) : (
-              <QrCode size={36} className="text-slate-800" />
-            )}
-          </div>
+          {qrLink.trim() ? (
+            <div className="rounded-xl bg-white p-1.5 shadow-md w-12 h-12 flex items-center justify-center">
+              <img src={qrDataUrl(qrLink)} alt="QR code" className="w-full h-full object-contain rounded-[3px]" />
+            </div>
+          ) : (
+            // The TV shows nothing until a link is added.
+            <div className="rounded-xl border-2 border-dashed border-white/70 bg-black/30 text-white w-12 h-12 flex flex-col items-center justify-center text-center">
+              <QrCode size={18} />
+              <span className="text-[7px] font-semibold leading-tight mt-0.5">Add a link</span>
+            </div>
+          )}
         </div>
       )}
     </>

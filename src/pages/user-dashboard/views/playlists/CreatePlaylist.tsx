@@ -82,7 +82,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
   const [tickerBgColor, setTickerBgColor] = useState('#111827');
   const [tickerTextColor, setTickerTextColor] = useState('#ffffff');
   const [tickerParagraphs, setTickerParagraphs] = useState<string[]>(['']);
-  const [tickerLabel, setTickerLabel] = useState('WORLD NEWS');
+  const [tickerLabel, setTickerLabel] = useState('NEWS');
 
   // Preview Modal States
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -161,7 +161,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               setTickerBgColor(rssData.bgColor || '#111827');
               setTickerTextColor(rssData.textColor || '#ffffff');
               setTickerParagraphs(Array.isArray(rssData.items) ? rssData.items : ['']);
-              setTickerLabel(rssData.label !== undefined ? rssData.label : 'WORLD NEWS');
+              setTickerLabel(rssData.label !== undefined ? rssData.label : 'NEWS');
               
               // Unpack secondary widget link
               setPlaylistWidgetLink(typeof parsed.qrcode === 'string' ? parsed.qrcode : '');
@@ -170,33 +170,33 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               setTickerBgColor(parsed.bgColor || '#111827');
               setTickerTextColor(parsed.textColor || '#ffffff');
               setTickerParagraphs(Array.isArray(parsed.items) ? parsed.items : ['']);
-              setTickerLabel(parsed.label !== undefined ? parsed.label : 'WORLD NEWS');
+              setTickerLabel(parsed.label !== undefined ? parsed.label : 'NEWS');
               setPlaylistWidgetLink('');
             } else {
               setTickerParagraphs([linkStr]);
               setTickerBgColor('#111827');
               setTickerTextColor('#ffffff');
-              setTickerLabel('WORLD NEWS');
+              setTickerLabel('NEWS');
             }
           } else {
             setTickerParagraphs([linkStr]);
             setTickerBgColor('#111827');
             setTickerTextColor('#ffffff');
-            setTickerLabel('WORLD NEWS');
+            setTickerLabel('NEWS');
             setPlaylistWidgetLink('');
           }
         } catch (e) {
           setTickerParagraphs([String(play.widgetLink)]);
           setTickerBgColor('#111827');
           setTickerTextColor('#ffffff');
-          setTickerLabel('WORLD NEWS');
+          setTickerLabel('NEWS');
           setPlaylistWidgetLink('');
         }
       } else {
         setTickerBgColor('#111827');
         setTickerTextColor('#ffffff');
         setTickerParagraphs(['']);
-        setTickerLabel('WORLD NEWS');
+        setTickerLabel('NEWS');
       }
 
       const allMedia = mediaStore.getMedia();
@@ -245,7 +245,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     setTickerBgColor('#111827');
     setTickerTextColor('#ffffff');
     setTickerParagraphs(['']);
-    setTickerLabel('WORLD NEWS');
+    setTickerLabel('NEWS');
     showToast('Starting a new playlist.');
   };
 
@@ -501,6 +501,14 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     }
     if (playlistItems.length === 0) {
       showToast('Please add at least one media slide to the sequence.');
+      return;
+    }
+    if (isWidgetActive('qrcode') && !playlistWidgetLink.trim()) {
+      showToast('Add the QR code link, or turn the QR code off.');
+      return;
+    }
+    if (isWidgetActive('rss') && !tickerParagraphs.some(p => p.trim())) {
+      showToast('Add at least one message for the scrolling text, or turn it off.');
       return;
     }
 
@@ -1147,11 +1155,11 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
               {/* Widget overlays */}
               <div className="space-y-2">
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Global Widget Overlay</label>
+                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">Widgets</label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { id: 'rss', name: 'News RSS Ticker' },
-                    { id: 'qrcode', name: 'Scan QR Code' },
+                    { id: 'rss', name: 'Scrolling text' },
+                    { id: 'qrcode', name: 'QR code' },
                     { id: 'clock', name: 'Clock' }
                   ].map(opt => (
                     <button
@@ -1177,101 +1185,6 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                   onChange={setPlaylistWidgetPlacement}
                   note={isWidgetActive('clock') && isWidgetActive('qrcode') ? `The QR code goes ${cornerLabel(qrCornerWithClock(playlistWidgetPlacement)).toLowerCase()}.` : undefined}
                 />
-              )}
-
-              {playlistWidgetType && isWidgetActive('rss') && (
-                <div className="sm:col-span-2 space-y-4 bg-slate-500/10 p-4 rounded-xl border border-slate-200 text-left">
-                  <span className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold">Ticker Configuration</span>
-                  
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-700">Ticker Label / Header</label>
-                    <input
-                      type="text"
-                      value={tickerLabel}
-                      onChange={e => setTickerLabel(e.target.value)}
-                      placeholder="e.g. WORLD NEWS (leave blank for no label)"
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-semibold text-slate-800 text-xs shadow-xs"
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Background Color</label>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="color"
-                          value={tickerBgColor}
-                          onChange={e => setTickerBgColor(e.target.value)}
-                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-300"
-                        />
-                        <input
-                          type="text"
-                          value={tickerBgColor}
-                          onChange={e => setTickerBgColor(e.target.value)}
-                          className="w-full px-2 py-1 text-xs border border-slate-200 rounded-lg outline-none font-semibold text-slate-800 bg-white"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Text Color</label>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="color"
-                          value={tickerTextColor}
-                          onChange={e => setTickerTextColor(e.target.value)}
-                          className="w-8 h-8 rounded-lg cursor-pointer border border-slate-300"
-                        />
-                        <input
-                          type="text"
-                          value={tickerTextColor}
-                          onChange={e => setTickerTextColor(e.target.value)}
-                          className="w-full px-2 py-1 text-xs border border-slate-200 rounded-lg outline-none font-semibold text-slate-800 bg-white"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Ticker Paragraphs / List Items</label>
-                    <div className="space-y-2">
-                      {tickerParagraphs.map((para, idx) => (
-                        <div key={idx} className="flex gap-2 items-center">
-                          <input
-                            type="text"
-                            value={para}
-                            onChange={e => {
-                              const newParas = [...tickerParagraphs];
-                              newParas[idx] = e.target.value;
-                              setTickerParagraphs(newParas);
-                            }}
-                            placeholder={`Item ${idx + 1}`}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-800 text-sm bg-white"
-                          />
-                          {tickerParagraphs.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newParas = tickerParagraphs.filter((_, i) => i !== idx);
-                                setTickerParagraphs(newParas);
-                              }}
-                              className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                            >
-                              <X size={15} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    
-                    <button
-                      type="button"
-                      onClick={() => setTickerParagraphs([...tickerParagraphs, ''])}
-                      className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-dashed border-blue-200 rounded-xl transition-all cursor-pointer"
-                    >
-                      <Plus size={13} /> Add Item
-                    </button>
-                  </div>
-                </div>
               )}
 
               {isWidgetActive('clock') && (
@@ -1301,6 +1214,102 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                   />
                 </div>
               )}
+
+              {playlistWidgetType && isWidgetActive('rss') && (
+                <div className="sm:col-span-2 space-y-4 bg-slate-500/10 p-4 rounded-xl border border-slate-200 text-left">
+                  <span className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold">Scrolling text</span>
+                  
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">Badge (optional)</label>
+                    <input
+                      type="text"
+                      value={tickerLabel}
+                      onChange={e => setTickerLabel(e.target.value)}
+                      placeholder="e.g. OFFERS — leave blank for no badge"
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 bg-white font-semibold text-slate-800 text-xs shadow-xs"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Background</label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="color"
+                          value={tickerBgColor}
+                          onChange={e => setTickerBgColor(e.target.value)}
+                          className="w-8 h-8 shrink-0 rounded-lg cursor-pointer border border-slate-300"
+                        />
+                        <input
+                          type="text"
+                          value={tickerBgColor}
+                          onChange={e => setTickerBgColor(e.target.value)}
+                          className="w-full min-w-0 px-1.5 py-1 text-[11px] font-mono border border-slate-200 rounded-lg outline-none font-semibold text-slate-800 bg-white"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Text</label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="color"
+                          value={tickerTextColor}
+                          onChange={e => setTickerTextColor(e.target.value)}
+                          className="w-8 h-8 shrink-0 rounded-lg cursor-pointer border border-slate-300"
+                        />
+                        <input
+                          type="text"
+                          value={tickerTextColor}
+                          onChange={e => setTickerTextColor(e.target.value)}
+                          className="w-full min-w-0 px-1.5 py-1 text-[11px] font-mono border border-slate-200 rounded-lg outline-none font-semibold text-slate-800 bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Messages</label>
+                    <div className="space-y-2">
+                      {tickerParagraphs.map((para, idx) => (
+                        <div key={idx} className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            value={para}
+                            onChange={e => {
+                              const newParas = [...tickerParagraphs];
+                              newParas[idx] = e.target.value;
+                              setTickerParagraphs(newParas);
+                            }}
+                            placeholder={`Message ${idx + 1}`}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-semibold text-slate-800 text-sm bg-white"
+                          />
+                          {tickerParagraphs.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newParas = tickerParagraphs.filter((_, i) => i !== idx);
+                                setTickerParagraphs(newParas);
+                              }}
+                              className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <X size={15} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setTickerParagraphs([...tickerParagraphs, ''])}
+                      className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-dashed border-blue-200 rounded-xl transition-all cursor-pointer"
+                    >
+                      <Plus size={13} /> Add message
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </div>
 
             <div data-tour="create-save" className="hidden md:flex flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100 w-full">
@@ -1448,7 +1457,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                     tickerOn={isWidgetActive('rss')}
                   />
 
-                  {/* Render bottom News RSS Ticker marquee overlay */}
+                  {/* Scrolling text along the bottom */}
                   {playlistWidgetType && isWidgetActive('rss') && (() => {
                     let tickerText = 'SignageOS Player online and running.';
                     let bgColor = '#ffffff';

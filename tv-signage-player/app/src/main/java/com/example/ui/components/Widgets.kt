@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.text.withStyle
 
 import androidx.compose.ui.res.painterResource
 
@@ -216,33 +217,45 @@ fun ClockWidget(header: String, alignEnd: Boolean = true) {
     }
 
     val align = if (alignEnd) Alignment.End else Alignment.Start
+    val dim = Color(0xB3FFFFFF)
+    // "1:24" large, "AM" small beside it.
+    val parts = timeText.split(" ")
+    val time = androidx.compose.ui.text.buildAnnotatedString {
+        append(parts.getOrElse(0) { "" })
+        if (parts.size > 1) {
+            withStyle(androidx.compose.ui.text.SpanStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium, color = dim)) {
+                append(" " + parts[1])
+            }
+        }
+    }
     Column(
         horizontalAlignment = align,
         modifier = Modifier
-            .background(Color(0x99000000), RoundedCornerShape(14.dp))
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .background(Color(0x73000000), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 7.dp)
     ) {
         if (header.isNotBlank()) {
             Text(
                 text = header.trim().uppercase(),
-                color = Color(0xCCFFFFFF),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
+                color = dim,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.2.sp,
                 maxLines = 1
             )
         }
         Text(
-            text = timeText,
+            text = time,
             color = Color.White,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.2).sp,
             maxLines = 1
         )
         Text(
             text = dateText,
-            color = Color(0xCCFFFFFF),
-            fontSize = 11.sp,
+            color = dim,
+            fontSize = 9.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1
         )
@@ -252,7 +265,9 @@ fun ClockWidget(header: String, alignEnd: Boolean = true) {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RssTickerWidget(tickerText: String) {
-    var labelText = "LIVE"
+    // The badge on the left: the playlist's own text, none when left blank.
+    // Old tickers saved without one show "NEWS".
+    var labelText = "NEWS"
     var displayText = ""
     var bgColor = Color(0xE6111827)
     var textColor = Color.White
@@ -264,8 +279,8 @@ fun RssTickerWidget(tickerText: String) {
                 val json = org.json.JSONObject(jsonStr)
                 val config = json.optJSONObject("rss") ?: json
 
-                if (config.has("label") && !config.optString("label").isNullOrEmpty()) {
-                    labelText = config.optString("label")
+                if (config.has("label")) {
+                    labelText = config.optString("label", "").trim()
                 }
 
                 val itemsArray = config.optJSONArray("items")
@@ -309,9 +324,8 @@ fun RssTickerWidget(tickerText: String) {
         }
     }
 
-    if (displayText.isEmpty()) {
-        displayText = "Welcome to SignageOS Digital Display Player Network Ticker"
-    }
+    // No messages: show nothing rather than placeholder text.
+    if (displayText.isBlank()) return
 
     Row(
         modifier = Modifier
@@ -321,20 +335,22 @@ fun RssTickerWidget(tickerText: String) {
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .background(Color(0xFFDC2626), RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = labelText.uppercase(),
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 0.5.sp
-            )
+        if (labelText.isNotBlank()) {
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFFDC2626), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = labelText.uppercase(),
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.5.sp
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
         }
-        Spacer(modifier = Modifier.width(12.dp))
         ScrollingTickerText(
             text = displayText,
             color = textColor,

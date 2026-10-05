@@ -17,7 +17,7 @@ private fun encodeQrBitmap(content: String, sizePx: Int): Bitmap {
     // white square, which is what actually made the "big white box, small
     // code" look, not the padding around it in Compose. 1 module is still a
     // safely scannable margin, just not a wasteful one.
-    val hints = mapOf(EncodeHintType.MARGIN to 1)
+    val hints = mapOf(EncodeHintType.MARGIN to 1, EncodeHintType.CHARACTER_SET to "UTF-8")
     val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565)
     for (x in 0 until sizePx) {
@@ -34,12 +34,12 @@ private fun encodeQrBitmap(content: String, sizePx: Int): Bitmap {
  * characters by hand. Regenerated only when [content] or [sizePx] change.
  */
 @Composable
-fun QrCodeImage(content: String, sizePx: Int, modifier: Modifier = Modifier) {
+fun QrCodeImage(content: String, sizePx: Int, modifier: Modifier = Modifier, description: String = "QR code for pairing code $content") {
     if (content.isEmpty()) return
     val bitmap = remember(content, sizePx) { encodeQrBitmap(content, sizePx) }
     Image(
         bitmap = bitmap.asImageBitmap(),
-        contentDescription = "QR code for pairing code $content",
+        contentDescription = description,
         modifier = modifier
     )
 }
