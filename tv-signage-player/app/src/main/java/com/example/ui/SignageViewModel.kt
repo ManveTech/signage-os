@@ -61,6 +61,7 @@ data class SignageUiState(
     val showSplash: Boolean = true,
     // Playlist playback settings
     val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
+    val playlistFlipped: Boolean = false,
     val playlistShuffle: Boolean = false,
     val playlistLoop: Boolean = true,
     val playlistVolume: Int = 80,
@@ -172,6 +173,7 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                             pocketbaseUrl = config.pocketbaseUrl,
                             lastSyncedAt = config.lastSyncedAt,
                             playlistOrientation = config.playlistOrientation,
+                            playlistFlipped = config.playlistFlipped,
                             playlistShuffle = config.playlistShuffle,
                             playlistLoop = config.playlistLoop,
                             playlistVolume = config.playlistVolume,

@@ -779,6 +779,8 @@ window.SignagePlayer = (function () {
             }
 
             state.orientation = data.orientation || 'horizontal';
+            state.flipped = data.flipped === true;
+            try { localStorage.setItem('signage_tizen_orientation', state.orientation); localStorage.setItem('signage_tizen_flipped', String(state.flipped)); } catch (e) {}
             state.widgetType = data.widgetType || '';
             state.widgetPlacement = data.widgetPlacement || 'top-right';
             state.widgetLink = data.widgetLink || '';

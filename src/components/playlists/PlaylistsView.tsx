@@ -372,7 +372,7 @@ export default function PlaylistsView({
               },
               ...(plays.groups.length ? [{ label: 'Groups', value: plays.groups.map(g => g.name).join(', ') }] : []),
               ...(plays.direct.length ? [{ label: 'Screens', value: plays.direct.map(s => s.name).join(', ') }] : []),
-              { label: 'Orientation', value: open.orientation === 'vertical' ? 'Portrait' : 'Landscape' },
+              { label: 'Orientation', value: (open.orientation === 'vertical' ? 'Portrait' : 'Landscape') + (open.flipped ? ', flipped' : '') },
               { label: 'Transition', value: TRANSITION_LABELS[open.transition || 'fade'] || open.transition || 'Fade' },
               { label: 'Playback', value: [open.shuffle ? 'Shuffle' : 'In order', open.loop === false ? 'once' : 'loops'].join(', ') },
               ...(open.createdDate ? [{ label: 'Created', value: open.createdDate }] : []),

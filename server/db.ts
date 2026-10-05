@@ -753,6 +753,21 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         console.log('Programmatically added websiteName field to playlists collection');
       }
 
+      if (!pFields.some((f: any) => f.name === 'flipped')) {
+        pFields.push({
+          id: 'boolplaylistflip',
+          name: 'flipped',
+          type: 'bool',
+          required: false,
+          system: false,
+          help: 'Show the playlist upside down (display mounted the other way up)',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added flipped field to playlists collection');
+      }
+
       if (playlistsUpdated) {
         playlistsCollection.fields = pFields;
         await pb.collections.update('playlists', playlistsCollection);

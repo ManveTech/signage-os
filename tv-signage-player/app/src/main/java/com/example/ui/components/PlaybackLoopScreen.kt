@@ -48,6 +48,8 @@ fun PlaybackLoopScreen(
     playlist: List<PlaylistAsset>,
     currentIndex: Int,
     orientation: String = "horizontal",
+    /** Content is turned by MainActivity (portrait on a landscape display, or flipped). */
+    rotated: Boolean = false,
     playlistLoop: Boolean = true,
     transitionName: String = "fade",
     onOpenAdmin: () -> Unit,
@@ -158,7 +160,7 @@ fun PlaybackLoopScreen(
         if (isVideo) {
             LocalVideoRenderer(
                 asset = activeAsset,
-                useTextureSurface = orientation == "vertical",
+                useTextureSurface = rotated,
                 sharedExoPlayer = sharedExoPlayer,
                 currentIndex = currentIndex,
                 // A single-video playlist has nowhere else to advance to —
@@ -368,6 +370,11 @@ fun LocalVideoRenderer(
 
     val scale = (asset.scalePercent ?: 100).toFloat() / 100f
 
+    // Recreate the view when the surface type changes: the factory only runs
+    // once, so a playlist switched to portrait (or flipped) while a video was
+    // on screen kept its SurfaceView — which ignores rotation — and the video
+    // stayed sideways while the widgets around it turned.
+    key(useTextureSurface) {
     AndroidView(
         factory = { ctx ->
             val view = if (useTextureSurface) {
@@ -387,6 +394,7 @@ fun LocalVideoRenderer(
                 playerViewRef = this
             }
         },
+        onRelease = { it.player = null },
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer(
@@ -394,4 +402,5 @@ fun LocalVideoRenderer(
                 scaleY = scale
             )
     )
+    }
 }

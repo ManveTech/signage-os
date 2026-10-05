@@ -754,6 +754,7 @@ class SignageRepository(private val context: Context) {
 
             val updatedConfig = currentConfig.copy(
                 playlistOrientation = response.orientation ?: "horizontal",
+                playlistFlipped = response.flipped == true,
                 playlistShuffle = response.shuffle ?: false,
                 playlistLoop = response.loop ?: true,
                 playlistVolume = response.volume?.toInt() ?: 80,

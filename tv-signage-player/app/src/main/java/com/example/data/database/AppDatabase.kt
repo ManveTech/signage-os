@@ -65,12 +65,18 @@ interface PlaylistAssetDao {
     }
 }
 
-@Database(entities = [ScreenConfig::class, PlaylistAsset::class], version = 10, exportSchema = false)
+@Database(entities = [ScreenConfig::class, PlaylistAsset::class], version = 11, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun screenConfigDao(): ScreenConfigDao
     abstract fun playlistAssetDao(): PlaylistAssetDao
 
     companion object {
+        val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE screen_config ADD COLUMN playlistFlipped INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -81,6 +87,9 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "signage_player_db"
                 )
+                // Keep the pairing when only a column is added (a destructive
+                // migration would unpair every TV on update).
+                .addMigrations(MIGRATION_10_11)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

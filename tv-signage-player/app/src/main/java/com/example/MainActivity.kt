@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
@@ -172,8 +173,16 @@ fun SignagePlayerApp(
                     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
                     val rotateForPortrait = uiState.playlistOrientation == "vertical" &&
                         configuration.screenWidthDp > configuration.screenHeightDp
+                    // Flip: the display is mounted the other way up — turn
+                    // everything a further 180°.
+                    val flipped = uiState.playlistFlipped
+                    val turnModifier = when {
+                        rotateForPortrait -> Modifier.rotatedToPortrait(flipped)
+                        flipped -> Modifier.graphicsLayer { rotationZ = 180f }
+                        else -> Modifier
+                    }
                     Box(modifier = Modifier.fillMaxSize()) {
-                        Box(modifier = Modifier.fillMaxSize().then(if (rotateForPortrait) Modifier.rotatedToPortrait() else Modifier)) {
+                        Box(modifier = Modifier.fillMaxSize().then(turnModifier)) {
                             if (uiState.paused) {
                                 PausedScreen(uiState = uiState)
                             } else if (uiState.playlist.isEmpty()) {
@@ -194,6 +203,9 @@ fun SignagePlayerApp(
                                         playlist = uiState.playbackPlaylist,
                                         currentIndex = uiState.currentAssetIndex,
                                         orientation = uiState.playlistOrientation,
+                                        // Video must draw into a TextureView whenever we turn the
+                                        // content ourselves — a SurfaceView ignores the rotation.
+                                        rotated = rotateForPortrait || flipped,
                                         playlistLoop = uiState.playlistLoop,
                                         transitionName = uiState.playlistTransition,
                                         onOpenAdmin = {},
@@ -344,13 +356,13 @@ fun SignagePlayerApp(
  * the TV is turned 90° clockwise, so content is drawn turned 90° counter-
  * clockwise to appear upright).
  */
-internal fun Modifier.rotatedToPortrait(): Modifier = this.layout { measurable, constraints ->
+internal fun Modifier.rotatedToPortrait(flipped: Boolean = false): Modifier = this.layout { measurable, constraints ->
     val width = constraints.maxWidth
     val height = constraints.maxHeight
     val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(height, width))
     layout(width, height) {
         placeable.placeWithLayer(x = (width - height) / 2, y = (height - width) / 2) {
-            rotationZ = -90f
+            rotationZ = if (flipped) 90f else -90f
         }
     }
 }

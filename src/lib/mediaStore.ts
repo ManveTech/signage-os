@@ -42,6 +42,8 @@ export interface Playlist {
   assignedScreenIds: string[];
   allowCustomOrientation?: boolean;
   orientation?: 'horizontal' | 'vertical';
+  /** Shown upside down (display mounted the other way up). */
+  flipped?: boolean;
   widgetType?: 'weather' | 'clock' | 'rss' | 'qrcode' | string;
   widgetPlacement?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   widgetLink?: string;

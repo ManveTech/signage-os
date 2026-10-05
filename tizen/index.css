@@ -213,6 +213,16 @@ html, body {
     transform-origin: center center !important;
 }
 
+/* Flip upside down (display mounted the other way up). */
+#playback-screen.flipped {
+    transform: rotate(180deg);
+    transform-origin: center center;
+}
+
+#playback-screen.rotate-portrait.flipped {
+    transform: translate(-50%, -50%) rotate(-90deg) !important;
+}
+
 /* Overlay Widgets Layer */
 .widgets-layer {
     position: absolute;

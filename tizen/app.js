@@ -17,6 +17,7 @@
         playlist: JSON.parse(localStorage.getItem(KEYS.PLAYLIST) || '[]'),
         currentAssetIndex: 0,
         orientation: localStorage.getItem('signage_tizen_orientation') || 'horizontal',
+        flipped: localStorage.getItem('signage_tizen_flipped') === 'true',
         playlistId: localStorage.getItem('signage_tizen_playlist_id') || '',
         isRotating: false,
         screenName: localStorage.getItem('signage_tizen_screen_name') || '',
@@ -85,11 +86,10 @@
 
     function applyOrientation() {
         const orientation = (state.orientation || 'horizontal').toLowerCase();
-        if ((orientation === 'vertical' || orientation === 'portrait') && window.innerWidth > window.innerHeight) {
-            views.playback.classList.add('rotate-portrait');
-        } else {
-            views.playback.classList.remove('rotate-portrait');
-        }
+        const rotate = (orientation === 'vertical' || orientation === 'portrait') && window.innerWidth > window.innerHeight;
+        views.playback.classList.toggle('rotate-portrait', rotate);
+        // Flip: the display is mounted the other way up — turn everything 180°.
+        views.playback.classList.toggle('flipped', state.flipped === true);
     }
 
     function updateUI() {

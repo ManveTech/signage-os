@@ -79,6 +79,7 @@ export const createPlaylistSchema = z.object({
   scheduleStatus: z.enum(['Running', 'Scheduled', 'Paused']).default('Running'),
   createdBy: z.string().min(1),
   orientation: z.enum(['horizontal', 'vertical']).optional(),
+  flipped: z.boolean().optional(),
   transition: z.enum(['fade', 'slide', 'zoom', 'slide-up', 'slide-down', 'flip', 'spin', 'blur', 'bounce', 'wipe']).optional(),
   shuffle: z.boolean().optional(),
   loop: z.boolean().optional(),

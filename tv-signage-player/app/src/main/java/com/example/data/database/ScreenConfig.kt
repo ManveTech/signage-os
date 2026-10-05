@@ -1,5 +1,6 @@
 package com.example.data.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -15,6 +16,8 @@ data class ScreenConfig(
     val pocketbaseUrl: String = com.example.AppConfig.POCKETBASE_URL,
     val lastSyncedAt: Long = 0L,
     val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
+    // Shown upside down (display mounted the other way up).
+    @ColumnInfo(defaultValue = "0") val playlistFlipped: Boolean = false,
     val playlistShuffle: Boolean = false,
     val playlistLoop: Boolean = true,
     val playlistVolume: Int = 80,

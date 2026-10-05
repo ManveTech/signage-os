@@ -6,8 +6,7 @@ import {
   Play, Pause, ChevronLeft, ChevronRight, ChevronDown, QrCode, Sun, Eye, 
   Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive,
   Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2, CloudRain, CloudSnow, CloudSun, Wind,
-  Building2
-} from 'lucide-react';
+  Building2, FlipVertical2} from 'lucide-react';
 import { checkFiles, uploadMediaFile } from '../../../../lib/mediaUpload';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
@@ -117,6 +116,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   // Playlist Settings (Orientation, Transition, Shuffle, Loop)
   const [allowCustomOrientation, setAllowCustomOrientation] = useState<boolean>(false);
   const [playlistOrientation, setPlaylistOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
+  const [playlistFlipped, setPlaylistFlipped] = useState<boolean>(false);
   const [playlistTransition, setPlaylistTransition] = useState<'fade' | 'slide' | 'zoom' | 'slide-up' | 'slide-down' | 'flip' | 'spin' | 'blur' | 'bounce' | 'wipe'>('fade');
   const [showAllTransitions, setShowAllTransitions] = useState(false);
   const [playlistShuffle, setPlaylistShuffle] = useState<boolean>(false);
@@ -194,6 +194,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       setPlaylistName(play.name);
       setPlaylistDesc(play.slides ? '' : 'Loaded from older layout');
       setPlaylistOrientation(play.orientation || 'horizontal');
+      setPlaylistFlipped(!!play.flipped);
       // The toggle itself isn't stored (PocketBase has no field for it) — only
       // orientation is. Without this it always reopened switched off, and the
       // next save silently wrote 'horizontal' back over a vertical playlist.
@@ -301,6 +302,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     setPlaylistDesc('');
     setPlaylistItems([]);
     setPlaylistOrientation('horizontal');
+    setPlaylistFlipped(false);
     setPlaylistTransition('fade');
     setPlaylistShuffle(false);
     setPlaylistLoop(true);
@@ -594,6 +596,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         mediaIds: playlistItems.map(item => item.mediaId),
         allowCustomOrientation: allowCustomOrientation,
         orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
+        flipped: playlistFlipped,
         // '' rather than undefined when every widget is switched off —
         // undefined is dropped when the record is sent to the server, so the
         // old widgets were never cleared and came back on the next load.
@@ -618,6 +621,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         assignedScreenIds: [],
         allowCustomOrientation: allowCustomOrientation,
         orientation: allowCustomOrientation ? playlistOrientation : 'horizontal',
+        flipped: playlistFlipped,
         // '' rather than undefined when every widget is switched off —
         // undefined is dropped when the record is sent to the server, so the
         // old widgets were never cleared and came back on the next load.
@@ -1152,6 +1156,25 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                       </button>
                     );
                   })}
+                </div>
+                <div className="flex items-center justify-between border border-slate-200 rounded-xl px-4 h-[42px] bg-white shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <FlipVertical2 size={14} className="text-gray-400" />
+                    <span className="font-bold text-gray-600 text-xs">Flip upside down</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-pressed={playlistFlipped}
+                    title="For a display mounted the other way up"
+                    onClick={() => setPlaylistFlipped(prev => !prev)}
+                    style={{ width: '36px', height: '20px', minWidth: '36px', minHeight: '20px', padding: '2px' }}
+                    className={`flex items-center rounded-full cursor-pointer transition-colors duration-200 shrink-0 ${playlistFlipped ? 'bg-blue-600' : 'bg-slate-300'}`}
+                  >
+                    <div
+                      style={{ width: '16px', height: '16px' }}
+                      className={`bg-white rounded-full shadow-xs transform transition-transform duration-200 ${playlistFlipped ? 'translate-x-4' : 'translate-x-0'}`}
+                    />
+                  </button>
                 </div>
               </div>
 

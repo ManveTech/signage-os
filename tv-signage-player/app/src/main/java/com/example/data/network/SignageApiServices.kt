@@ -102,6 +102,7 @@ data class PocketBasePlaylistResponse(
     val slides: List<PocketBasePlaylistSlide>? = null,
     // Playlist playback settings
     val orientation: String? = null,       // "horizontal" | "vertical"
+    val flipped: Boolean? = null,          // Upside down (display mounted the other way up)
     val shuffle: Boolean? = null,          // Shuffle slide order
     val loop: Boolean? = null,             // Loop playlist
     val transition: String? = null,        // Slide transition effect
