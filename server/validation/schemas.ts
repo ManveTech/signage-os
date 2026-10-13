@@ -139,6 +139,40 @@ export const updateTicketSchema = z.object({
   priority: z.enum(['low', 'medium', 'high']).optional()
 });
 
+/**
+ * Enquiry posted by the public marketing site (bluestardigitech.com) to
+ * POST /api/v1/public/leads. This one is reachable without a token, so the
+ * schema is the only thing standing between a form on the open internet and
+ * the leads table: every field is length-capped, unknown keys are dropped by
+ * Zod's default object behaviour, and `status`/`estimatedValue` are
+ * deliberately absent — those are set by whoever works the lead, not by the
+ * visitor.
+ */
+export const publicLeadSchema = z.object({
+  clientName: z.string().trim().min(2, 'Name is required').max(100),
+  // A phone number is the one thing we genuinely need back. Loose on format
+  // (+91, spaces, STD codes all arrive in practice), strict on length.
+  phone: z.string().trim().min(8, 'A contact number is required').max(24),
+  email: z.union([emailSchema.max(150), z.literal('')]).optional().default(''),
+  whatsapp: z.string().trim().max(24).optional().default(''),
+  company: z.string().trim().max(120).optional().default(''),
+  product: z.string().trim().max(120).optional().default(''),
+  displaySize: z.string().trim().max(40).optional().default(''),
+  finish: z.string().trim().max(60).optional().default(''),
+  // Text, not a number: people type "10-15" and "approx 20" far more often
+  // than a clean integer, and losing that detail helps nobody.
+  quantity: z.string().trim().max(40).optional().default(''),
+  city: z.string().trim().max(120).optional().default(''),
+  message: z.string().trim().max(2000).optional().default(''),
+  source: z.string().trim().max(60).optional().default(''),
+  /*
+   * Honeypot. A real visitor never sees this field, so anything in it means a
+   * bot filled the form in blind. Named like a field a bot would want to
+   * complete rather than something obviously a trap.
+   */
+  website: z.string().max(200).optional().default('')
+});
+
 // Query parameter schemas
 export const paginationSchema = z.object({
   page: z.string().regex(/^\d+$/).transform(Number).default('1'),
@@ -161,4 +195,5 @@ export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
 export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;
+export type PublicLeadInput = z.infer<typeof publicLeadSchema>;
 export type PaginationParams = z.infer<typeof paginationSchema>;

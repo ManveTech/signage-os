@@ -42,6 +42,17 @@
         "5175"
       ],
       "port": 5175
+    },
+    {
+      "name": "marketing-site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "marketing-site",
+        "run",
+        "dev"
+      ],
+      "port": 3000
     }
   ]
 }

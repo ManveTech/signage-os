@@ -62,6 +62,20 @@ export interface BusinessDetails {
   invoicePrefix?: string;
   /** SAC code printed on invoices. */
   sac?: string;
+  /*
+   * The two below are not printed on invoices — they drive the public
+   * marketing site (bluestardigitech.com), which reads them from
+   * GET /public/contact.
+   *
+   * whatsappNumber: every "request a quote" button on that site opens a
+   *   wa.me chat with this number. Stored as country code + digits, no '+'
+   *   (918095851597); the server normalises whatever is typed here.
+   * enquiryEmail: where a new website enquiry is emailed. Separate from
+   *   contactEmail because that one is the accounts address on invoices,
+   *   which is rarely who should be chasing a lead.
+   */
+  whatsappNumber?: string;
+  enquiryEmail?: string;
 }
 
 // Empty until the admin fills in Licensing → Invoices → Billing details.

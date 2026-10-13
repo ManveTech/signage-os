@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The site is a single page; the nav targets (#shop, #benefits, #nutrition,
+  #how-to-make, #reviews, #faq, #contact) are fragments of this URL, and search
+  engines drop fragments, so listing them separately would only create
+  duplicates. The product renders are declared as image entries instead, which
+  is what actually earns extra surface in image search.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://bluestardigitech.com/</loc>
+    <lastmod>2026-10-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+
+    <image:image>
+      <image:loc>https://bluestardigitech.com/products/standee.webp</image:loc>
+      <image:title>Floor Standing Digital Standee</image:title>
+      <image:caption>Powder-coated floor standing digital signage standee manufactured by Bluestar Digitech, Bangalore.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://bluestardigitech.com/products/a-type-standee.webp</image:loc>
+      <image:title>A-Type Digital Standee</image:title>
+      <image:caption>A-frame digital signage standee for high-footfall retail interiors.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://bluestardigitech.com/products/self-service-kiosk.webp</image:loc>
+      <image:title>Self-Service Kiosk</image:title>
+      <image:caption>Touch-screen self-service ordering and payment kiosk with custom POS cutouts.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://bluestardigitech.com/products/info-kiosk.webp</image:loc>
+      <image:title>Information Kiosk</image:title>
+      <image:caption>Interactive wayfinding and information kiosk in a sheet-metal enclosure.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://bluestardigitech.com/products/podium.webp</image:loc>
+      <image:title>Digital Podium</image:title>
+      <image:caption>Digital lectern and podium with integrated touch display.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://bluestardigitech.com/products/touch-table.webp</image:loc>
+      <image:title>Multi-Touch Table</image:title>
+      <image:caption>Multi-touch interactive table for showrooms and experience centres.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://bluestardigitech.com/products/coffee-table.webp</image:loc>
+      <image:title>Digital Coffee Table</image:title>
+      <image:caption>Toughened-glass digital coffee table with multi-touch display.</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://bluestardigitech.com/products/led-video-wall.webp</image:loc>
+      <image:title>Active LED Video Wall</image:title>
+      <image:caption>Tiled active LED video wall supplied and commissioned across India.</image:caption>
+    </image:image>
+  </url>
+</urlset>

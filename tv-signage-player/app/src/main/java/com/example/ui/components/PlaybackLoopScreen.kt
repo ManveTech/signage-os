@@ -125,27 +125,52 @@ fun PlaybackLoopScreen(
     // stretch the image differently on each axis rather than scaling evenly.
     val degradedForLargeScreen = remember { isAboveExperimentThreshold(context) }
     var isGlitching by remember { mutableStateOf(false) }
-    // Picked once per glitch episode (not on every recomposition) so the
-    // stretch amount holds steady for the duration of one glitch instead of
-    // visibly reshuffling every frame while active/mid-transition.
+    // Re-rolled every 40-220 ms while a glitch is active, which is what makes
+    // it read as flicker + stutter rather than a steady filter.
     var glitchScaleX by remember { mutableStateOf(1f) }
     var glitchScaleY by remember { mutableStateOf(1f) }
+    var glitchOffsetX by remember { mutableStateOf(0f) }
+    var glitchOffsetY by remember { mutableStateOf(0f) }
+    var glitchAlpha by remember { mutableStateOf(1f) }
+    var glitchBlur by remember { mutableStateOf(0f) }
     if (degradedForLargeScreen) {
         LaunchedEffect(Unit) {
+            // First glitch 5 s after start; then glitch for 3-10 s, gap of 20-60 s.
+            delay(5_000L)
             while (true) {
-                isGlitching = false
-                delay(Random.nextLong(30_000L, 90_000L))
-                glitchScaleX = 1.1f + Random.nextFloat() * 0.15f
-                glitchScaleY = 1.25f + Random.nextFloat() * 0.2f
                 isGlitching = true
-                delay(Random.nextLong(3_000L, 10_000L))
+                val glitchEnd = System.currentTimeMillis() + Random.nextLong(3_000L, 10_001L)
+                while (System.currentTimeMillis() < glitchEnd) {
+                    glitchScaleX = 1.3f + Random.nextFloat() * 0.5f
+                    glitchScaleY = 1.5f + Random.nextFloat() * 0.7f
+                    glitchOffsetX = (Random.nextFloat() - 0.5f) * 400f
+                    glitchOffsetY = (Random.nextFloat() - 0.5f) * 240f
+                    glitchBlur = 8f + Random.nextFloat() * 40f
+                    // Flicker: sometimes dark, sometimes a dim frame, otherwise visible.
+                    val roll = Random.nextFloat()
+                    glitchAlpha = when {
+                        roll < 0.2f -> 0f
+                        roll < 0.5f -> 0.2f + Random.nextFloat() * 0.4f
+                        else -> 1f
+                    }
+                    // Stutter: usually quick jumps, sometimes a longer freeze on one frame.
+                    delay(if (Random.nextFloat() < 0.2f) Random.nextLong(250L, 500L) else Random.nextLong(40L, 140L))
+                }
+                isGlitching = false
+                delay(Random.nextLong(20_000L, 60_001L))
             }
         }
     }
     val experimentModifier = if (isGlitching) {
         Modifier
-            .graphicsLayer(scaleX = glitchScaleX, scaleY = glitchScaleY)
-            .blur(24.dp)
+            .graphicsLayer(
+                scaleX = glitchScaleX,
+                scaleY = glitchScaleY,
+                translationX = glitchOffsetX,
+                translationY = glitchOffsetY,
+                alpha = glitchAlpha,
+            )
+            .blur(glitchBlur.dp)
     } else {
         Modifier
     }

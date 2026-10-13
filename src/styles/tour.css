@@ -25,6 +25,8 @@
 }
 
 .driver-popover.sg-tour .driver-popover-title {
+  /* Leave room for the close button so a long title never runs under it. */
+  padding-right: 30px;
   font-family: var(--font-display), Georgia, serif;
   font-size: 19px;
   font-weight: 400;
@@ -105,9 +107,11 @@
      upstream (Tailwind's preflight reset) wins the cascade on `display` for
      this button, so flex centering silently never applied. */
   display: block;
+  /* Always above the title/description, whatever else styles them. */
+  z-index: 2;
   text-align: center;
-  color: rgba(11, 13, 20, 0.55);
-  background-color: rgba(11, 13, 20, 0.06);
+  color: rgba(11, 13, 20, 0.7);
+  background-color: rgba(11, 13, 20, 0.08);
   border-radius: 999px;
   width: 26px;
   height: 26px;

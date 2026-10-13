@@ -3734,16 +3734,102 @@
         "type": "text"
       },
       {
+        "autogeneratePattern": "",
         "hidden": false,
-        "id": "numberaoghg4ujpp",
-        "max": null,
-        "min": null,
-        "name": "quantity",
-        "onlyInt": true,
+        "id": "textwhatsapp01",
+        "max": 24,
+        "min": 0,
+        "name": "whatsapp",
+        "pattern": "",
         "presentable": false,
+        "primaryKey": false,
         "required": false,
         "system": false,
-        "type": "number"
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "textdispsize01",
+        "max": 40,
+        "min": 0,
+        "name": "displaySize",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "textfinish0001",
+        "max": 60,
+        "min": 0,
+        "name": "finish",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "textcity000001",
+        "max": 120,
+        "min": 0,
+        "name": "city",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "textmessage001",
+        "max": 2000,
+        "min": 0,
+        "name": "message",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "textsource0001",
+        "max": 60,
+        "min": 0,
+        "name": "source",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "numberaoghg4ujpp",
+        "max": 40,
+        "min": 0,
+        "name": "quantity",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
       },
       {
         "autogeneratePattern": "",
@@ -3769,9 +3855,11 @@
         "system": false,
         "type": "select",
         "values": [
-          "Pending",
-          "Approved",
-          "Declined"
+          "New",
+          "Contacted",
+          "Quoted",
+          "Won",
+          "Lost"
         ]
       },
       {

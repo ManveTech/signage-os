@@ -2,6 +2,11 @@
    made the whole stylesheet (and so first paint) wait on a network fetch. */
 @import "tailwindcss";
 
+/* Tailwind 4 auto-detects sources from the project root, which would now sweep
+   in the marketing site and bundle its class names into the dashboard's CSS.
+   It is a separate Vite project with its own stylesheet — it builds its own. */
+@source not "../marketing-site";
+
 @theme {
   --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Instrument Serif", ui-serif, Georgia, serif;
@@ -240,8 +245,11 @@
     min-height: calc(100vh - 3.75rem - 4rem);
   }
 
-  /* Header adjustments - Fixed mobile height with safe areas */
-  header {
+  /* Header adjustments - Fixed mobile height with safe areas.
+     :not(.driver-popover-title) — driver.js renders the tour popover's title
+     as a <header>; without the exclusion this turned it into a 60px sticky
+     white bar layered over the tour's close (×) button on phones. */
+  header:not(.driver-popover-title) {
     padding-left: 0.875rem !important;
     padding-right: 0.875rem !important;
     height: 3.75rem !important;
@@ -437,7 +445,7 @@
     padding-bottom: 4.5rem !important;
   }
 
-  header {
+  header:not(.driver-popover-title) {
     height: 3rem !important;
   }
 }

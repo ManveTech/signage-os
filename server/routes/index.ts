@@ -12,11 +12,14 @@ import { createCrudRouter } from '../controllers/crud';
 import { authenticateToken, enforceLicense } from '../middleware/auth';
 import { clearAllScreenLogs } from '../controllers/screens';
 import { postTicketMessage } from '../controllers/tickets';
-import { getBusinessDetails, putBusinessDetails } from '../controllers/businessDetails';
+import { getBusinessDetails, putBusinessDetails, getPublicContact } from '../controllers/businessDetails';
+import { createPublicLead } from '../controllers/publicLeads';
 import { getMySettings, updateMySettings, getMyBilling, updateMyBilling } from '../controllers/userSettings';
 import { listBackups, createBackupNow } from '../services/backups';
 import { Readable } from 'stream';
-import { mediaLimiter } from '../middleware/rateLimiter';
+import { mediaLimiter, leadLimiter } from '../middleware/rateLimiter';
+import { validateBody } from '../middleware/validation';
+import { publicLeadSchema } from '../validation/schemas';
 import { isAllowedMediaUrl, getImageThumb, getVideoPoster } from '../services/mediaThumbs';
 
 const apiRouter = express.Router();
@@ -149,6 +152,27 @@ apiRouter.get('/public/video-poster', mediaLimiter, async (req, res) => {
     if (!res.headersSent) res.status(500).send('Error generating video poster');
   }
 });
+
+/*
+ * Public enquiry form on bluestardigitech.com.
+ *
+ * Mounted here, above authenticateToken, because the marketing site has no
+ * account to sign in with — and NOT via createCrudRouter('leads') further
+ * down, which would let an anonymous caller read and delete every lead as
+ * well as create one. The schema allowlists the fields a visitor may set, the
+ * limiter caps it at ten an hour per IP, and the controller carries a
+ * honeypot. The browser also has to be on an allowed origin
+ * (CORS_ALLOWED_ORIGINS) to read the response.
+ */
+apiRouter.post('/public/leads', leadLimiter, validateBody(publicLeadSchema), createPublicLead);
+
+/*
+ * Phone, address and WhatsApp number for the marketing site's footer and its
+ * "quote on WhatsApp" buttons, so those are maintained in the dashboard
+ * instead of hardcoded in another repo. A deliberately narrower payload than
+ * GET /business-details below, which is behind auth and includes the GSTIN.
+ */
+apiRouter.get('/public/contact', getPublicContact);
 
 // 2. Unprotected Device Hardware Endpoints (Pairing, Heartbeats, Device Status)
 apiRouter.use('/devices', devicesRouter);

@@ -1,0 +1,8 @@
+# Bluestar Digitech — https://bluestardigitech.com
+User-agent: *
+Allow: /
+
+# Build output and source maps are not useful to crawlers.
+Disallow: /assets/*.map$
+
+Sitemap: https://bluestardigitech.com/sitemap.xml

@@ -263,3 +263,86 @@ Handles background webhook events from Razorpay for robust server-to-server upda
   4. Calculate new `expiry_date` (adds 30 days for monthly or 365 days for yearly).
   5. Add new record to the `payments` collection.
   6. Return `200 OK` to Razorpay.
+
+---
+
+## 6. Public Website APIs (No Authentication)
+
+These two are mounted **above** `authenticateToken` in `server/routes/index.ts`
+so the marketing site at `bluestardigitech.com` — which has no account to sign
+in with — can reach them. Everything else under `/api/v1` still requires a
+token.
+
+The calling browser must be on an origin listed in `CORS_ALLOWED_ORIGINS`.
+Leaving that variable unset means `*`, which lets any site on the internet post
+enquiries; set it in production.
+
+### 6.1 Submit an Enquiry
+
+* **Endpoint**: `POST /public/leads`
+* **Rate limit**: 10 per hour per IP (`leadLimiter`)
+* **Request Payload**:
+  ```json
+  {
+    "clientName": "Ravi Kumar",
+    "phone": "+91 98450 11223",
+    "whatsapp": "+91 98450 11223",
+    "email": "ravi@acme.in",
+    "company": "Acme Retail",
+    "product": "Self-Service Kiosk",
+    "displaySize": "55\"",
+    "finish": "Silver (standard)",
+    "quantity": "10-15",
+    "city": "Mysore",
+    "message": "Wall-mounted, with our branding on the bezel.",
+    "source": "product range"
+  }
+  ```
+* **Response**: `201 { "ok": true, "id": "<lead id>" }`
+* **Node.js Actions**:
+  1. Validate against `publicLeadSchema`. Only `clientName` and `phone` are
+     required; every other field is optional and length-capped. Unknown keys
+     are dropped — in particular `status`, `estimatedValue` and `id`, which
+     belong to whoever works the lead rather than to the visitor.
+  2. If the hidden `website` honeypot came back filled, answer `201` and stop.
+     A bot is not told it was spotted.
+  3. Create the row in `leads` with `status: "New"`.
+  4. Email the address in **Licensing → Invoices → Business details → Enquiry
+     email** (falling back to the billing email). Best-effort: a failure here
+     is logged, never surfaced, and never loses the saved row.
+* **Failure modes**: `400` validation (with per-field detail), `429` rate
+  limited, `503` the database could not be reached — the visitor is asked to
+  call instead.
+
+> This endpoint deliberately does **not** use `createCrudRouter('leads')`.
+> That router would also give an anonymous caller list, update and delete on
+> every lead.
+
+### 6.2 Public Contact Details
+
+* **Endpoint**: `GET /public/contact`
+* **Response**:
+  ```json
+  {
+    "name": "Blue Star Metacraft",
+    "address": "Plot No. 23, 13th Cross, Peenya 2nd Stage, Bangalore 560091",
+    "contactEmail": "info@bluestarmetacraft.com",
+    "contactPhone": "+91 80958 51597",
+    "whatsappNumber": "918095851597"
+  }
+  ```
+* Feeds the marketing site's footer and its "quote on WhatsApp" buttons, so
+  those are maintained in the dashboard rather than hardcoded in another repo.
+* A deliberately narrower payload than the authenticated `GET /business-details`,
+  which also returns the GSTIN, SAC code and invoice prefix. Extend this
+  allowlist only with fields that belong on a letterhead.
+* `whatsappNumber` is normalised to wa.me's format (country code + digits, no
+  `+`). A bare 10-digit number is assumed Indian and gets `91`.
+
+### Tenancy note
+
+Leads are global rows: this CMS runs for Bluestar alone, so the `leads`
+collection has no organization relation. If signage-os is ever sold to a second
+client, this endpoint and that collection both need an org column plus a
+trustworthy way to tell which site a submission came from — a public endpoint
+cannot be allowed to name its own tenant.

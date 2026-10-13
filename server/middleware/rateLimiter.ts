@@ -205,3 +205,22 @@ export const mediaLimiter = rateLimit({
   message: { error: 'Too many media requests, please slow down.', retryAfter: 60 },
   ...(isRedisReady() ? { store: new RedisStore('media:') as any } : {})
 });
+
+/**
+ * Public enquiry form on the marketing site. Unauthenticated and it writes a
+ * row plus sends an email, so this is the tightest limiter here: a genuine
+ * visitor sends one enquiry, occasionally two if they got something wrong.
+ * Ten an hour per IP leaves room for a shared office connection while making
+ * the endpoint useless for flooding the leads table.
+ */
+export const leadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many enquiries from this connection. Please call us instead — we would rather talk anyway.',
+    retryAfter: 3600
+  },
+  ...(isRedisReady() ? { store: new RedisStore('lead:') as any } : {})
+});

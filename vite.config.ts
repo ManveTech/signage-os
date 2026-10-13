@@ -17,7 +17,10 @@ export default defineConfig(({mode}) => {
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: {
-        ignored: ['**/tv-signage-player/**'],
+        // marketing-site is its own Vite project with its own node_modules —
+        // watching it would have this dev server reloading on edits to a site
+        // it does not serve.
+        ignored: ['**/tv-signage-player/**', '**/marketing-site/**'],
       },
     },
     build: {

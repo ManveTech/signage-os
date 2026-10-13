@@ -2,47 +2,31 @@ package com.example.util
 
 import android.content.Context
 import android.os.Build
-import android.util.DisplayMetrics
-import android.view.WindowManager
-import kotlin.math.sqrt
+import android.util.Log
 
 /**
  * TEMPORARY EXPERIMENT — requested to trial a "looks broken" render on large
- * screens. To undo: delete this file and its one call site in
+ * screens. To undo: delete this file and its call sites in
  * PlaybackLoopScreen.kt (search for isAboveExperimentThreshold).
  *
- * Estimates physical screen diagonal in inches from reported DPI. Caveat:
- * many Android TV boxes report a generic/normalized DPI rather than their
- * true physical density, so this may not reliably distinguish actual screen
- * sizes across all hardware — verify against the real TVs being tested
- * rather than trusting this in the abstract.
+ * TV boxes report a fake DPI (e.g. a 55" 1080p panel says 240 dpi => "9 in"),
+ * so size can't be measured. Instead it is read from the model name, where
+ * signage models lead with the inches (Philips "55BDL2050Q-N" = 55"). A model
+ * with no leading size number never triggers the experiment.
  */
 private const val EXPERIMENT_ENABLED = true
-private const val DIAGONAL_THRESHOLD_INCHES = 55.0
+private const val DIAGONAL_THRESHOLD_INCHES = 55
+private val MODEL_SIZE_REGEX = Regex("^(\\d{2,3})[A-Za-z]")
+
+/** Inches parsed from the start of Build.MODEL, or null if it doesn't lead with a plausible size. */
+fun screenInchesFromModel(model: String = Build.MODEL): Int? =
+    MODEL_SIZE_REGEX.find(model.trim())?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 20..120 }
 
 fun isAboveExperimentThreshold(context: Context): Boolean {
     if (!EXPERIMENT_ENABLED) return false
-    return try {
-        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val widthPx: Int
-        val heightPx: Int
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bounds = wm.currentWindowMetrics.bounds
-            widthPx = bounds.width()
-            heightPx = bounds.height()
-        } else {
-            val dm = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            wm.defaultDisplay.getRealMetrics(dm)
-            widthPx = dm.widthPixels
-            heightPx = dm.heightPixels
-        }
-        val density = context.resources.displayMetrics
-        val widthInches = widthPx / density.xdpi
-        val heightInches = heightPx / density.ydpi
-        val diagonal = sqrt((widthInches * widthInches + heightInches * heightInches).toDouble())
-        diagonal > DIAGONAL_THRESHOLD_INCHES
-    } catch (e: Exception) {
-        false
-    }
+    val inches = screenInchesFromModel()
+    Log.i(TAG, "model=${Build.MODEL} parsedInches=$inches")
+    return inches != null && inches > DIAGONAL_THRESHOLD_INCHES
 }
+
+private const val TAG = "ScreenSizeExperiment"

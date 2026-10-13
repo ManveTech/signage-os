@@ -1,0 +1,314 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { ArrowUpRight, Check, ShieldCheck, Mail, MapPin, MessageCircle } from 'lucide-react';
+import { BluestarLogo, ProductShowcaseLoop } from './BrandAssets';
+import { BLUESTAR_PRODUCTS } from '../data/bluestarProducts';
+import type { EnquiryPrefill } from './EnquiryModal';
+import type { QuoteContext } from '../data/enquiry';
+
+interface HeroSectionProps {
+  /** Opens the enquiry form. */
+  onEnquire: (prefill?: EnquiryPrefill) => void;
+  /** Opens WhatsApp, prefilled with the product currently on screen. */
+  onRequestQuote: (ctx: QuoteContext) => void;
+  onScrollToProducts: () => void;
+}
+
+const ROTATE_MS = 4200;
+
+export const HeroSection: React.FC<HeroSectionProps> = ({
+  onEnquire,
+  onRequestQuote,
+  onScrollToProducts
+}) => {
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const heroRef = useRef<HTMLElement>(null);
+
+  const prefersReduced =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  // Single source of truth: the stat circles, the render and the headline all
+  // read from this index, so the whole hero describes one product at a time.
+  useEffect(() => {
+    if (prefersReduced || paused) return;
+    const id = window.setInterval(
+      () => setIndex(i => (i + 1) % BLUESTAR_PRODUCTS.length),
+      ROTATE_MS
+    );
+    return () => window.clearInterval(id);
+  }, [prefersReduced, paused]);
+
+  // Smooth mouse parallax movement
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!heroRef.current) return;
+    const rect = heroRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 20; // -10 to +10 deg
+    const y = ((e.clientY - rect.top) / rect.height - 0.5) * -20;
+    setMousePos({ x, y });
+  };
+
+  const handleMouseLeave = () => {
+    setMousePos({ x: 0, y: 0 });
+  };
+
+  const active = BLUESTAR_PRODUCTS[index];
+  // Three spec columns inside a 340px bar means ~100px each, which forced 8px
+  // type on a phone. Two columns there, three once there is room.
+  const [specCount, setSpecCount] = useState(3);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 640px)');
+    const sync = () => setSpecCount(mq.matches ? 3 : 2);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  const headlineColors = ['text-white drop-shadow-sm', 'text-[#0b2545]', 'text-[#2563eb]'];
+
+  return (
+    <section
+      ref={heroRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      /*
+       * On a laptop the hero is sized to land inside one screen: the sticky
+       * header and announcement bar come to roughly 90px, so the hero takes the
+       * rest and centres its content. `svh` rather than `vh` so a phone's
+       * collapsing address bar does not push the bottom off screen.
+       */
+      className="hero-section relative pt-1 sm:pt-3 pb-4 sm:pb-6 px-3 sm:px-6 lg:px-8 overflow-hidden flex flex-col lg:justify-center lg:min-h-[calc(100svh-100px)]"
+    >
+
+      {/* Background Subtle Gradient & Light Radial Highlights */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div
+          className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-white/30 rounded-full blur-3xl transition-transform duration-700 ease-out"
+          style={{
+            transform: `translate(calc(-50% + ${mousePos.x * 1.5}px), calc(-50% + ${mousePos.y * 1.5}px))`
+          }}
+        />
+        <div className="absolute bottom-10 left-10 w-96 h-96 bg-sky-900/10 rounded-full blur-2xl" />
+        <div className="absolute top-20 right-10 w-80 h-80 bg-blue-400/10 rounded-full blur-2xl" />
+      </div>
+
+      {/* Top Header: Brand Logo & CTA */}
+      <div className="relative z-10 flex flex-col items-center text-center mt-1">
+
+        {/*
+          The "Digital Signage • Kiosks • LED Video Walls • ISO 9001:2015" pill
+          that sat here is gone: the announcement bar already carries ISO
+          9001:2015 two rows above it, and the product categories are spelled out
+          by the headline and the carousel below. Removing it also buys the hero
+          back ~30px of height on a short screen.
+        */}
+
+        {/* The Exact "Bluestar Digitech" Brand Mark with Wireframe Star & Mesh */}
+        {/* Sized down from 640px: at full width the lockup alone was 204px tall
+            and pushed the bottom of the hero past the fold on a 900px screen. */}
+        <div className="hero-logo w-full max-w-[250px] sm:max-w-[330px] md:max-w-[390px] lg:max-w-[430px] xl:max-w-[470px] transition-transform duration-300 hover:scale-[1.01]">
+          <BluestarLogo className="w-full h-auto drop-shadow-sm" color="#0b2545" priority />
+        </div>
+
+        {/*
+          CTA row. `flex-nowrap` plus a shorter label on phones: at 360px the
+          two pills used to wrap onto separate lines, which left the hero opening
+          with a stack of three centred blocks and no clear primary action.
+        */}
+        <div className="mt-2.5 sm:mt-3.5 flex flex-nowrap items-center justify-center gap-2">
+          <button
+            onClick={() =>
+              onEnquire({
+                product: active.name,
+                context: `Enquiring about the ${active.name} — tell us the site and quantity and we’ll quote it.`
+              })
+            }
+            className="group inline-flex flex-shrink-0 items-center gap-1.5 sm:gap-2 bg-[#0b2545] text-white hover:bg-[#153b68] px-4 sm:px-7 py-2.5 sm:py-3 rounded-full font-bold text-xs sm:text-sm tracking-tight shadow-md hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer"
+            id="hero-enquire-btn"
+          >
+            <Mail className="w-3.5 h-3.5 text-sky-300 transition-transform group-hover:scale-110" aria-hidden="true" />
+            <span>Enquire Now</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-sky-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
+          </button>
+
+          <button
+            onClick={onScrollToProducts}
+            className="inline-flex flex-shrink-0 items-center gap-1 px-2.5 sm:px-3 py-2 rounded-full bg-white/70 backdrop-blur-md text-[10px] sm:text-[11px] font-bold text-[#0b2545] border border-white/60 hover:bg-white transition cursor-pointer"
+          >
+            <MapPin className="w-3 h-3 text-[#0284c7] flex-shrink-0" aria-hidden="true" />
+            <span className="sm:hidden">4K+ installs</span>
+            <span className="hidden sm:inline">4K+ installations across India</span>
+          </button>
+        </div>
+
+      </div>
+
+      {/* Main Interactive Hero Grid (Orbit Circles, Product & Big Stacked Headline) */}
+      <div
+        className="hero-grid relative z-20 max-w-7xl mx-auto w-full mt-3 sm:mt-4 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-4 items-center"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
+
+        {/* LEFT COLUMN: Handwritten Scribble + Circular Stat Badges on Orbit */}
+        <div className="lg:col-span-4 relative order-2 lg:order-1 flex flex-col items-center lg:items-start pl-0 lg:pl-2">
+
+          {/* Handwritten Annotation with Curvy Arrow */}
+          <div className="relative mb-2 sm:mb-4 self-center lg:self-start pl-2 sm:pl-4">
+            <div className="font-script text-xl sm:text-2xl font-bold text-[#0b2545] rotate-[-6deg] tracking-wide select-none">
+              Designed &amp; Built,<br />
+              <span className="text-2xl sm:text-3xl text-[#18487d]">In Bangalore</span>
+            </div>
+
+            {/* Hand-drawn SVG Curvy Arrow */}
+            <svg
+              className="w-8 h-8 sm:w-10 sm:h-10 text-[#0b2545] absolute -bottom-6 left-6 sm:left-8 rotate-12 opacity-85"
+              viewBox="0 0 60 60"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <path d="M 15 5 C 10 25, 25 35, 45 42" />
+              <path d="M 38 46 L 47 43 L 42 34" />
+            </svg>
+          </div>
+
+          {/* Stat Badges Orbit Grid - Slim & Balanced */}
+          <div className="relative w-full max-w-[340px] pt-1 sm:pt-2 flex flex-row lg:flex-col justify-center lg:justify-start gap-2 sm:gap-3 flex-nowrap">
+            {active.stats.map((stat, i) => {
+              const offset = ['lg:ml-12', 'lg:ml-4', 'lg:ml-0'][i];
+              const key = `${active.id}-${i}`;
+              return (
+                <div
+                  key={key}
+                  className="relative group cursor-pointer animate-in fade-in duration-500 flex-1 min-w-0 max-w-[104px] lg:flex-none lg:max-w-none"
+                  onClick={() => setActiveTooltip(activeTooltip === key ? null : key)}
+                >
+                  <div className={`hero-stat w-full aspect-square lg:w-26 lg:h-26 lg:aspect-auto rounded-full bg-white/90 backdrop-blur-md shadow-md border border-white/80 flex flex-col items-center justify-center p-1.5 text-center transition-all duration-300 group-hover:scale-105 group-hover:bg-white group-hover:shadow-lg ${offset}`}>
+                    <div className="hero-stat-value text-lg sm:text-2xl font-black text-[#0b2545] tracking-tight leading-none">
+                      {stat.value}
+                      {stat.unit && (
+                        <span className="text-sm sm:text-base">{stat.unit}</span>
+                      )}
+                    </div>
+                    <div className="text-[11px] font-bold text-[#1e4e82] mt-1 px-1 leading-tight">
+                      {stat.label}
+                    </div>
+                    {/* The third tier sat at 7px inside a 96px circle — legible
+                        only on a desktop, so it waits for one. */}
+                    <div className="hidden sm:block text-[9px] font-semibold text-sky-900/80 uppercase tracking-wider mt-0.5 px-1 leading-tight">
+                      {stat.sub}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Quick Spec Breakdown Bar */}
+          <div
+            key={active.id}
+            className="mt-4 bg-white/80 backdrop-blur-sm rounded-xl p-2.5 border border-white/70 text-[10px] font-bold text-[#0b2545] flex items-stretch justify-between gap-2 shadow-sm w-full max-w-[340px] animate-in fade-in duration-500"
+          >
+            {active.specs.slice(0, specCount).map((s, i) => (
+              <React.Fragment key={s.label}>
+                {i > 0 && <div className="w-px bg-zinc-200 flex-shrink-0 self-stretch" />}
+                <div className="text-center min-w-0 flex-1 flex flex-col justify-center">
+                  <span className="block text-[#18487d] text-[10px] uppercase leading-tight">
+                    {s.label}
+                  </span>
+                  <span className="font-black text-[11px] leading-tight block break-words mt-0.5">{s.value}</span>
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+
+        </div>
+
+        {/* CENTER COLUMN: PRODUCT RENDER VERTICAL & CENTERED */}
+        <div className="lg:col-span-4 relative order-1 lg:order-2 flex flex-col items-center justify-center my-0 lg:my-0 overflow-visible">
+
+          {/* Circular Orbit Guide Ring Behind Product - Centered */}
+          <div className="absolute w-[185px] h-[185px] sm:w-[320px] sm:h-[320px] rounded-full border-2 border-white/60 pointer-events-none -z-0 scale-95" />
+          <div className="absolute w-[230px] h-[230px] sm:w-[395px] sm:h-[395px] rounded-full border border-white/40 pointer-events-none -z-0" />
+
+          {/* Product Render — also capped against viewport height, so the hero
+              still fits on a short laptop screen. */}
+          <div className="relative z-10 w-full max-w-[160px] sm:max-w-[250px] lg:max-w-[270px] lg:max-h-[46svh] mx-auto flex flex-col items-center animate-float">
+            <ProductShowcaseLoop index={index} />
+          </div>
+
+        </div>
+
+        {/* RIGHT COLUMN: Condensed Typography + Explanatory Text + Certification */}
+        <div className="lg:col-span-4 relative order-3 lg:order-3 text-center lg:text-left flex flex-col justify-center items-center lg:items-start">
+
+          {/* Big Stacked Headline */}
+          <h1
+            key={active.id}
+            className="hero-headline font-condensed uppercase leading-[0.9] tracking-tight select-none w-full animate-in fade-in duration-500"
+          >
+            {active.headline.map((line, i) => (
+              <span
+                key={line}
+                className={`block text-[28px] xs:text-4xl sm:text-5xl md:text-6xl lg:text-[clamp(28px,4vw,56px)] font-black break-words ${headlineColors[i % headlineColors.length]}`}
+              >
+                {line}
+              </span>
+            ))}
+          </h1>
+
+          {/* Subtitle Body Copy */}
+          <p
+            key={`${active.id}-tagline`}
+            className="mt-3 sm:mt-4 text-xs sm:text-sm lg:text-base font-medium text-[#12365e] leading-relaxed max-w-md animate-in fade-in duration-500"
+          >
+            {active.tagline} Fabricated in-house at our Peenya facility and installed across India.
+          </p>
+
+          {/* Highlight Checklist Badges */}
+          <div
+            key={`${active.id}-features`}
+            className="mt-3 sm:mt-4 space-y-1.5 text-xs font-semibold text-[#0b2545] text-left w-full max-w-md animate-in fade-in duration-500"
+          >
+            {active.features.map(f => (
+              <div
+                key={f}
+                className="flex items-center gap-2 bg-white/50 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-white/60"
+              >
+                <span className="w-4 h-4 rounded-full bg-[#0b2545] text-white flex items-center justify-center text-[9px] flex-shrink-0">
+                  <Check className="w-3 h-3" />
+                </span>
+                <span className="text-[11px] sm:text-xs">{f}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Enquiry Link & Certification Row */}
+          <div className="mt-3 sm:mt-4 pt-3 border-t border-[#0b2545]/15 flex flex-wrap items-center justify-center lg:justify-start gap-3 w-full">
+            {/* A price question for the product on screen — straight to WhatsApp
+                with the model already named, rather than a scroll to the footer. */}
+            <button
+              onClick={() =>
+                onRequestQuote({ product: active.name, from: 'hero' })
+              }
+              className="flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-[#0b2545] hover:underline cursor-pointer bg-white/70 px-2.5 py-1 rounded-full shadow-sm"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-[#128c7e]" aria-hidden="true" />
+              <span>Quote on WhatsApp</span>
+            </button>
+
+            <span className="text-[11px] sm:text-xs font-bold text-[#18487d] flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#0284c7]" /> ISO 9001:2015 Certified
+            </span>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+  );
+};

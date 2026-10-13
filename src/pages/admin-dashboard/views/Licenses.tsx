@@ -929,7 +929,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           open
           onClose={() => setBillingOpen(false)}
           title="Billing details"
-          subtitle="Printed on every client's invoices"
+          /* No longer only invoices — the last two fields drive the website. */
+          subtitle="Printed on every client's invoices, and used by the website"
           details={[]}
           groups={[]}
           hero={
@@ -970,6 +971,40 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                 <div>
                   <label className={labelCls}>Billing phone</label>
                   <input type="tel" value={biz.contactPhone} onChange={e => setBiz(b => ({ ...b, contactPhone: e.target.value }))} className={inputCls} />
+                </div>
+              </div>
+
+              {/* Not printed on invoices — these two drive the public website. */}
+              <div className="pt-1 border-t border-slate-100">
+                <p className="text-xs font-semibold text-slate-700 pt-3 mb-2">Website enquiries</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>WhatsApp number</label>
+                    <input
+                      type="tel"
+                      value={biz.whatsappNumber || ''}
+                      onChange={e => setBiz(b => ({ ...b, whatsappNumber: e.target.value }))}
+                      placeholder="+91 80958 51597"
+                      className={inputCls}
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Every &ldquo;request a quote&rdquo; button on bluestardigitech.com opens a WhatsApp chat
+                      with this number. Make sure WhatsApp is actually registered against it.
+                    </p>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Enquiry email</label>
+                    <input
+                      type="email"
+                      value={biz.enquiryEmail || ''}
+                      onChange={e => setBiz(b => ({ ...b, enquiryEmail: e.target.value }))}
+                      placeholder="sales@bluestardigitech.com"
+                      className={inputCls}
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Where a new website enquiry is emailed. Leave blank to use the billing email above.
+                    </p>
+                  </div>
                 </div>
               </div>
               <div>

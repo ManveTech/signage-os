@@ -1,5 +1,29 @@
-node_modules
-dist
+# Docker matches these with Go path semantics, where a bare `node_modules`
+# only matches at the top level — so nested ones need the `**/` form or they
+# are copied into the build context anyway.
+**/node_modules
+**/dist
 .git
 .DS_Store
+*.log
 
+# Secrets stay out of the image. `COPY . .` was putting the real .env into a
+# layer, where dotenv.config() then loaded it at runtime in preference to
+# nothing — so the container quietly kept using whatever host was in the file
+# instead of the environment the platform injected. Vite reads it at build
+# time too, which is how a stale VITE_NODE_SERVER_URL ends up compiled into
+# the dashboard. .env.example is the documented template and stays.
+.env
+.env.*
+!.env.example
+
+# The marketing site is its own image, built from its own directory with its
+# own Dockerfile. Without this line its 340 MB (deps, photo masters, the img/
+# source folder) is uploaded to the daemon on every CMS build and then thrown
+# away — the CMS build has no use for any of it.
+marketing-site
+
+# Platform and tooling trees the server image never needs.
+android
+tizen
+tv-signage-player

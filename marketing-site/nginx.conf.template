@@ -1,0 +1,59 @@
+server {
+    listen ${PORT};
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    charset utf-8;
+
+    # Gzip Compression
+    gzip on;
+    gzip_min_length 1000;
+    gzip_proxied any;
+    gzip_vary on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml application/manifest+json;
+
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # The site is one page with no client-side router, so the old
+    # `try_files ... /index.html` catch-all answered every mistyped or stale URL
+    # with the homepage under a 200. Search engines read that as a pile of
+    # duplicate pages (soft 404s). Now: real files are served, anything else
+    # without a file extension is redirected to the canonical "/", and missing
+    # assets return a genuine 404.
+    location = / {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location / {
+        try_files $uri $uri/ @canonical;
+    }
+
+    location @canonical {
+        return 301 /;
+    }
+
+    # Missing asset = 404, not a redirect, so broken references stay visible.
+    location ~* \.(js|mjs|css|map|png|jpg|jpeg|gif|ico|svg|webp|avif|woff|woff2|ttf|eot|mp4|webm)$ {
+        try_files $uri =404;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    # Crawler files must always be fresh.
+    location ~* ^/(robots\.txt|sitemap\.xml|site\.webmanifest)$ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}

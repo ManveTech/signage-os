@@ -1,21 +1,66 @@
-version: '3.8'
+# The CMS — cms.bluestardigitech.com
+#
+# One service: Express serves /api/v1 and the built dashboard together, so this
+# domain answers the login, the API the TVs talk to, and the public enquiry
+# endpoint the marketing site posts to.
+#
+# The marketing site (bluestardigitech.com) is a separate image built from
+# ./marketing-site with its own compose file — point that domain at it.
 
 services:
-  frontend:
+  cms:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        # Using placeholders so Coolify automatically detects these build arguments in the UI
-        - VITE_API_BASE_URL=${VITE_API_BASE_URL}
-        - VITE_POCKETBASE_URL=${VITE_POCKETBASE_URL}
-        - GEMINI_API_KEY=${GEMINI_API_KEY}
-    ports:
-      - "0:80"
+    image: bluestar-cms:latest
     restart: always
+    # No fixed host port — the ingress proxy maps the domain to this.
+    expose:
+      - "5000"
+    environment:
+      # --- core ---------------------------------------------------------
+      NODE_ENV: production
+      PORT: 5000
+      # Used in password-reset links and the "open the enquiry" button in
+      # lead notification emails, so it must be the public origin.
+      APP_URL: ${APP_URL}
+
+      # --- database -----------------------------------------------------
+      POCKETBASE_URL: ${POCKETBASE_URL}
+      PB_ADMIN_EMAIL: ${PB_ADMIN_EMAIL}
+      PB_ADMIN_PASSWORD: ${PB_ADMIN_PASSWORD}
+
+      # --- auth ---------------------------------------------------------
+      JWT_SECRET: ${JWT_SECRET}
+
+      # --- who may call the API from a browser --------------------------
+      # Must list the marketing site, or the enquiry form's POST is discarded
+      # by the browser. Unset means "*", which lets any site post enquiries.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+
+      # --- optional services --------------------------------------------
+      # SMTP and R2 can also be configured in the dashboard under
+      # Integrations, which takes priority over anything set here.
+      REDIS_URL: ${REDIS_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SENDER_EMAIL: ${SMTP_SENDER_EMAIL:-}
+      SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET: ${S3_SECRET:-}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5000/health/live || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 20s

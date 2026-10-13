@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.DS_Store
+*.log
+bun.lock
+
+# Secrets and local env never belong in the image (Vite would also inline
+# them at build time). Build-time config comes in as --build-arg instead.
+.env
+.env.*

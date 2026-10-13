@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Monitor, Film, List, BarChart2, Users, Key, Building2,
   Settings, HelpCircle, User, ChevronDown, ChevronRight, Search, LogOut,
   Tv, MonitorPlay, Layers, Tag, CalendarDays, FileBarChart, Shield,
-  MessageSquare, Video, Plug
+  MessageSquare, Video, Plug, Inbox
 } from 'lucide-react';
 
 type NavSection = {
@@ -49,6 +49,8 @@ const navSections: NavSection[] = [
     ]
   },
   { id: 'users', label: 'Users', icon: <Users size={18} /> },
+  // Enquiries from the public website (bluestardigitech.com).
+  { id: 'leads', label: 'Enquiries', icon: <Inbox size={18} /> },
   { id: 'organizations', label: 'Organizations', icon: <Building2 size={18} /> },
   {
     id: 'licenses', label: 'Licensing', icon: <Key size={18} />,
