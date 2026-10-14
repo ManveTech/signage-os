@@ -10,15 +10,36 @@ import { ProcessSection } from './components/ProcessSection';
 // import { ReviewsSection } from './components/ReviewsSection'; // see note below
 import { FaqSection } from './components/FaqSection';
 import { Footer } from './components/Footer';
-import { EnquiryModal, EnquiryPrefill } from './components/EnquiryModal';
+import { EnquiryPage, EnquiryPrefill } from './components/EnquiryPage';
 import { buildQuoteMessage, openWhatsApp, QuoteContext } from './data/enquiry';
 import { CheckCircle } from 'lucide-react';
 
+/**
+ * Where the enquiry form lives. A real path rather than a hash, so it can be
+ * linked and shared; nginx.conf.template serves index.html for it.
+ */
+const ENQUIRE_PATH = '/enquire';
+
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [enquiry, setEnquiry] = useState<{ open: boolean; prefill?: EnquiryPrefill }>({
-    open: false
-  });
+  /*
+   * Two routes is not worth a router dependency, so this is the whole of it:
+   * the current path in state, pushState to navigate, and popstate to follow
+   * the back button. Anything that is not /enquire is the marketing site.
+   */
+  const [path, setPath] = useState(() => window.location.pathname.replace(/\/+$/, '') || '/');
+  const [prefill, setPrefill] = useState<EnquiryPrefill | undefined>();
+
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname.replace(/\/+$/, '') || '/');
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const goTo = (next: string) => {
+    if (window.location.pathname !== next) window.history.pushState({}, '', next);
+    setPath(next.replace(/\/+$/, '') || '/');
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -43,14 +64,19 @@ export default function App() {
    *                       that was on screen. Someone asking a price should not
    *                       have to fill in a form to ask it.
    */
-  const handleEnquire = (prefill?: EnquiryPrefill) => {
-    setEnquiry({ open: true, prefill });
+  const handleEnquire = (next?: EnquiryPrefill) => {
+    setPrefill(next);
+    goTo(ENQUIRE_PATH);
   };
 
   const handleQuote = (ctx: QuoteContext) => {
     openWhatsApp(buildQuoteMessage(ctx));
     showToast('Opening WhatsApp with your product details…');
   };
+
+  if (path === ENQUIRE_PATH) {
+    return <EnquiryPage prefill={prefill} onBack={() => goTo('/')} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#d5e5f7] text-[#0b2545] selection:bg-[#0b2545] selection:text-white flex flex-col justify-between">
@@ -125,13 +151,6 @@ export default function App() {
 
       {/* Footer */}
       <Footer onEnquire={handleEnquire} />
-
-      {/* The enquiry form every "Enquire" button opens */}
-      <EnquiryModal
-        open={enquiry.open}
-        prefill={enquiry.prefill}
-        onClose={() => setEnquiry({ open: false })}
-      />
 
     </div>
   );

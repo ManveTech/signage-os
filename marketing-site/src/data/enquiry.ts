@@ -8,7 +8,7 @@
  *                        screen (product, screen size, finish). One tap, no
  *                        typing, and the salesperson opens a message that
  *                        already says what is being asked about.
- *   "Enquire"          → the enquiry form (components/EnquiryModal.tsx), for
+ *   "Enquire"          → the enquiry form (components/EnquiryPage.tsx), for
  *                        the longer conversation — site, quantity, drawings.
  *
  * NOTE ON THE NUMBER: WHATSAPP_DIAL is the brochure's Sales mobile. It is the

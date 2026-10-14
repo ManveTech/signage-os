@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  The site is a single page; the nav targets (#shop, #benefits, #nutrition,
-  #how-to-make, #reviews, #faq, #contact) are fragments of this URL, and search
-  engines drop fragments, so listing them separately would only create
-  duplicates. The product renders are declared as image entries instead, which
+  Two real URLs: the homepage and /enquire. The nav targets (#products,
+  #installations, #why-us, #process, #faq, #contact) are fragments of the
+  homepage, and search engines drop fragments, so listing those separately
+  would only create duplicates. The product renders are declared as image entries instead, which
   is what actually earns extra surface in image search.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
@@ -54,5 +54,12 @@
       <image:title>Active LED Video Wall</image:title>
       <image:caption>Tiled active LED video wall supplied and commissioned across India.</image:caption>
     </image:image>
+  </url>
+
+  <url>
+    <loc>https://bluestardigitech.com/enquire</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>

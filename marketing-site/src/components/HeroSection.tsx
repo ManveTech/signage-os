@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ArrowUpRight, ShieldCheck, Mail, MapPin, MessageCircle } from 'lucide-react';
 import { BluestarLogo, ProductShowcaseLoop } from './BrandAssets';
 import { BLUESTAR_PRODUCTS } from '../data/bluestarProducts';
-import type { EnquiryPrefill } from './EnquiryModal';
+import type { EnquiryPrefill } from './EnquiryPage';
 import type { QuoteContext } from '../data/enquiry';
 
 interface HeroSectionProps {

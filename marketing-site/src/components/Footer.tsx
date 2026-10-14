@@ -4,7 +4,7 @@ import { Check, Mail, Phone, MapPin, ArrowUpRight, Clock, MessageCircle, Factory
 import { COMPANY, PHONES, ADDRESS_ONE_LINE, MAPS_URL } from '../data/company';
 import { whatsappUrl, buildQuoteMessage, WHATSAPP_DISPLAY } from '../data/enquiry';
 import { Reveal } from './Reveal';
-import type { EnquiryPrefill } from './EnquiryModal';
+import type { EnquiryPrefill } from './EnquiryPage';
 
 const PRIMARY_PHONE = PHONES[0];
 

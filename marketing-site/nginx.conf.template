@@ -20,13 +20,22 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    # The site is one page with no client-side router, so the old
-    # `try_files ... /index.html` catch-all answered every mistyped or stale URL
-    # with the homepage under a 200. Search engines read that as a pile of
-    # duplicate pages (soft 404s). Now: real files are served, anything else
+    # The site has exactly two real routes, so they are both named explicitly
+    # rather than restoring a `try_files ... /index.html` catch-all. That
+    # catch-all answered every mistyped or stale URL with the homepage under a
+    # 200, which search engines read as a pile of duplicate pages (soft 404s).
+    # Here: these two serve the app, real files are served, anything else
     # without a file extension is redirected to the canonical "/", and missing
     # assets return a genuine 404.
+    #
+    # Add a line here if App.tsx ever gains another route — without it, a direct
+    # visit or a refresh on that path 301s back to the homepage.
     location = / {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /enquire {
         try_files /index.html =404;
         add_header Cache-Control "no-cache" always;
     }
