@@ -4,12 +4,10 @@ import {
   Wrench,
   ShieldCheck,
   Factory,
-  ArrowUpRight,
   Ruler,
   ChevronLeft,
   ChevronRight,
   MessageCircle,
-  Layers,
   Check
 } from 'lucide-react';
 import {
@@ -81,15 +79,9 @@ const ProductCard: React.FC<{
           />
         </div>
 
-        <div className="relative z-10 mt-4 bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl text-[11px] font-bold text-[#0b2545] border border-white flex flex-col sm:flex-row items-center justify-center gap-x-3 gap-y-1 shadow-sm text-center">
-          <span className="inline-flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-[#0284c7]" aria-hidden="true" /> {product.material}
-          </span>
-          <span className="hidden sm:inline">•</span>
-          <span className="inline-flex items-center gap-1.5">
-            <Ruler className="w-3.5 h-3.5 text-[#0284c7]" aria-hidden="true" /> {product.displaySizes.join(' · ')}
-          </span>
-        </div>
+        {/* The material/sizes strip that floated over the render is gone — the
+            size buttons below offer the same list as a choice rather than as a
+            caption, and the material is already in the spec row. */}
 
       </div>
 
@@ -127,11 +119,13 @@ const ProductCard: React.FC<{
 
         {/* Display Size Selector */}
         <div className="mt-6">
-          <div className="flex items-center justify-between text-xs font-bold text-[#0b2545] mb-2">
+          {/* The selected size used to be echoed on the right of this label.
+              The chosen button below is already filled navy, so it said the
+              same thing twice. */}
+          <div className="flex items-center text-xs font-bold text-[#0b2545] mb-2">
             <span className="flex items-center gap-1.5">
               <Ruler className="w-3.5 h-3.5 text-[#0284c7]" /> DISPLAY SIZE
             </span>
-            <span className="text-[11px] text-[#18487d]">{selectedSize}</span>
           </div>
 
           <div className="flex flex-wrap gap-2">

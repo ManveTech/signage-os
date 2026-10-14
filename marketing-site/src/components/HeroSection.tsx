@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowUpRight, Check, ShieldCheck, Mail, MapPin, MessageCircle } from 'lucide-react';
+import { ArrowUpRight, ShieldCheck, Mail, MapPin, MessageCircle } from 'lucide-react';
 import { BluestarLogo, ProductShowcaseLoop } from './BrandAssets';
 import { BLUESTAR_PRODUCTS } from '../data/bluestarProducts';
 import type { EnquiryPrefill } from './EnquiryModal';
@@ -317,23 +317,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             {active.tagline} Fabricated in-house at our Peenya facility and installed across India.
           </p>
 
-          {/* Highlight Checklist Badges */}
-          <div
-            key={`${active.id}-features`}
-            className="mt-3 sm:mt-4 space-y-1.5 text-xs font-semibold text-[#0b2545] text-left w-full max-w-md animate-in fade-in duration-500"
-          >
-            {active.features.map(f => (
-              <div
-                key={f}
-                className="flex items-center gap-2 bg-white/50 backdrop-blur-sm px-2.5 py-1.5 rounded-xl border border-white/60"
-              >
-                <span className="w-4 h-4 rounded-full bg-[#0b2545] text-white flex items-center justify-center text-[9px] flex-shrink-0">
-                  <Check className="w-3 h-3" />
-                </span>
-                <span className="text-[11px] sm:text-xs">{f}</span>
-              </div>
-            ))}
-          </div>
+          {/*
+            The three feature pills that sat here are gone. The hero already
+            carries the stat circles, the spec bar and the tagline for the same
+            product; a fourth block of claims pushed the fold down without
+            adding anything the product card below does not say better.
+            `features` is still on the data and read by nothing — it is there
+            for whatever uses it next.
+          */}
 
           {/* Enquiry Link & Certification Row */}
           <div className="mt-3 sm:mt-4 pt-3 border-t border-[#0b2545]/15 flex flex-wrap items-center justify-center lg:justify-start gap-3 w-full">
