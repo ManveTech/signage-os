@@ -51,6 +51,14 @@ COPY --from=build /app/dist ./dist
 COPY server ./server
 COPY tsconfig.json ./
 
+# The server runs from TypeScript source, and some of it reaches into the
+# frontend tree for shared logic — server/services/sleep.ts imports
+# ../../src/lib/sleepSchedule. Shipping only server/ made the container crash
+# on boot with ERR_MODULE_NOT_FOUND, and it would do so again the next time
+# anyone shares a module, so the whole source tree comes along rather than the
+# one file that happens to be needed today. It is 3.7 MB of text.
+COPY src ./src
+
 EXPOSE 5000
 
 # /health/live only reports that the process is up. The richer /health also
