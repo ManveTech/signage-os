@@ -5,21 +5,24 @@ Where this stands, and what is left to do. Written as a handoff — pick up from
 
 ## The two halves
 
-| | | Image |
+| Built from | Domains | Image |
 |---|---|---|
-| `marketing-site/` | **bluestardigitech.com** (+ www) | nginx serving the built site |
-| the repo root | **cms.bluestardigitech.com** | Node — Express serves `/api/v1` *and* the dashboard |
+| `marketing-site/` | `bluestardigitech.com`, `www.` | nginx serving the built site |
+| the repo root | `cms.bluestardigitech.com`, `api.bluestardigitech.com` | Node — Express serves `/api/v1` *and* the dashboard |
 
-Two Docker services, two domains. Point the apex at the first and the `cms`
-subdomain at the second; everything else is env.
+Two Docker services. The CMS answers on **two** domains that both reach the
+same container:
 
-The CMS is deliberately one service rather than two. Express already serves
-`dist/` with an SPA fallback alongside `/api/v1`, so the dashboard, the login,
-the API the TVs poll, and the public enquiry endpoint all answer on one origin
-— the dashboard is same-origin with its own API, so there is no CORS between
-them and no per-environment API host to keep in sync. The root Dockerfile used
-to build a static nginx image with no API in it at all, which is why it had to
-be told at build time where some other service was listening.
+* `cms.*` — the dashboard and its login. Because Express serves the dashboard
+  and the API together, the dashboard is same-origin with `/api/v1` and needs
+  no API host configured at all.
+* `api.*` — the stable public name. TVs in the field and the marketing site
+  call this one, so neither has to care what the dashboard is called.
+
+This replaced a split of two Coolify apps — `Bluestar-Server` (the Express API)
+and `Frontend` (a static nginx dashboard). The root Dockerfile used to build
+that static image with no API in it, which is why the dashboard had to be told
+at build time where some other service was listening.
 
 They are separate Vite projects with separate `node_modules` and separate
 builds. The site was moved in here on 12 Oct 2026 so both halves live together;
@@ -103,26 +106,36 @@ Against a throwaway PocketBase with the real schema imported:
 
 ### 1. Point the domains
 
-In Coolify, two services:
+In Coolify (project **Bluestar → production**):
 
-| Service | Build from | Domain |
+| Coolify app | Build from | Domains |
 |---|---|---|
-| CMS | repo root (`Dockerfile`, port 5000) | `cms.bluestardigitech.com` |
-| Site | `marketing-site/` (port 80) | `bluestardigitech.com`, `www.` |
+| `Frontend` (repurposed) | repo root, `/docker-compose.yml`, service `cms` | `cms.` + `api.bluestardigitech.com` |
+| `Bluestar-Web` (repurposed) | base directory `/marketing-site` | `bluestardigitech.com`, `www.` |
+| `Bluestar-Server` | — | delete once `Frontend` is serving the API |
+| `CMS` (Services) | PocketBase | the database — keep, move its domain |
+
+Note the naming trap: the Coolify service called **CMS is PocketBase**, not the
+dashboard. The dashboard is the app called **Frontend**.
+
+The compose service was renamed `frontend` → `cms`, so after **Reload Compose
+File** the domain fields are bound to the old name — re-assign them.
 
 Domain assignment is Coolify UI configuration, not anything in this repo.
 
 ### 2. Import the schema
 
-The six new `leads` columns (`whatsapp`, `displaySize`, `finish`, `city`,
-`message`, `source`), the `quantity` number→text change and the new status
-values exist in `pb_schema.json` only:
+Into the **existing** PocketBase — nothing here needs a new instance. The six
+new `leads` columns (`whatsapp`, `displaySize`, `finish`, `city`, `message`,
+`source`), the `quantity` number→text change and the new status values exist in
+`pb_schema.json` only:
 
 ```bash
 ./pocketbase admin import pb_schema.json
 ```
 
-Verified to import cleanly against PocketBase 0.34.2.
+Verified to import cleanly against PocketBase 0.34.2. `deleteMissing: false`,
+so it adds columns without touching anything already there.
 
 ### 3. Set the CMS environment
 
@@ -133,24 +146,28 @@ Verified to import cleanly against PocketBase 0.34.2.
 | `POCKETBASE_URL` | the new production database |
 | `PB_ADMIN_EMAIL` / `PB_ADMIN_PASSWORD` | superuser for that instance |
 | `JWT_SECRET` | **must** change from the dev default |
-| `APP_URL` | `https://cms.bluestardigitech.com` — used in password-reset links and the "open the enquiry" button in lead emails |
+| `APP_URL` | `https://cms.bluestardigitech.com` — used in password-reset links and the "open the enquiry" button in lead emails, so it must be the dashboard domain, not api.* |
 | `CORS_ALLOWED_ORIGINS` | `https://bluestardigitech.com,https://www.bluestardigitech.com,https://cms.bluestardigitech.com` |
 
-Leave `VITE_NODE_SERVER_URL` **unset** for this deployment — unset means
-same-origin, which is what one service wants.
+Leave `VITE_NODE_SERVER_URL` **unset** — unset means same-origin, which is what
+the dashboard wants now that one service serves both. The existing value
+(`https://dem1.manve.co`) must be removed, or it gets compiled into the
+dashboard and points it back at the old host.
 
 `CORS_ALLOWED_ORIGINS` matters more than it looks: unset means `*`, which lets
 any site on the internet post enquiries. And the origins must match exactly —
 `localhost` and `127.0.0.1` are different origins to a browser.
 
-### 4. Build the site against the CMS
+### 4. Build the site against the API
 
 ```bash
-docker build --build-arg VITE_CMS_API=https://cms.bluestardigitech.com/api/v1 marketing-site/
+docker build --build-arg VITE_CMS_API=https://api.bluestardigitech.com/api/v1 marketing-site/
 ```
 
 That is also the default in `marketing-site/Dockerfile`, so a plain build is
-already correct for production.
+already correct for production. It uses `api.*` rather than `cms.*` because the
+site calls it cross-origin either way, and the public API name should not
+change if the dashboard is ever renamed or moved.
 
 ### 5. Fill in the dashboard
 

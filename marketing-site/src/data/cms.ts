@@ -13,7 +13,7 @@
 import type { EnquiryDetails } from './enquiry';
 
 export const CMS_API =
-  (import.meta.env?.VITE_CMS_API || 'https://cms.bluestardigitech.com/api/v1')
+  (import.meta.env?.VITE_CMS_API || 'https://api.bluestardigitech.com/api/v1')
     .trim()
     .replace(/\/+$/, '');
 

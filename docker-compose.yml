@@ -1,8 +1,17 @@
-# The CMS — cms.bluestardigitech.com
+# The CMS — one container, two domains
 #
-# One service: Express serves /api/v1 and the built dashboard together, so this
-# domain answers the login, the API the TVs talk to, and the public enquiry
-# endpoint the marketing site posts to.
+#   cms.bluestardigitech.com   the dashboard and its login
+#   api.bluestardigitech.com   what the TVs poll and the marketing site posts to
+#
+# Both names point at this same service. Express serves /api/v1 and the built
+# dashboard together, so the dashboard loaded from cms.* talks to /api/v1 on
+# cms.* — same-origin, no CORS between the dashboard and its own API — while
+# TVs and the public site use the stable api.* name.
+#
+# This replaces the old split of Bluestar-Server (API) + Frontend (static
+# dashboard). The service is named `cms`, not `frontend` as it was before: in
+# Coolify, re-assign the domains after "Reload Compose File", because the
+# domain fields are bound to the service name.
 #
 # The marketing site (bluestardigitech.com) is a separate image built from
 # ./marketing-site with its own compose file — point that domain at it.
@@ -14,7 +23,10 @@ services:
       dockerfile: Dockerfile
     image: bluestar-cms:latest
     restart: always
-    # No fixed host port — the ingress proxy maps the domain to this.
+    # "0:5000" lets the host port be chosen at deploy time and the proxy map
+    # the domains to it — the same pattern the previous compose used for :80.
+    ports:
+      - "0:5000"
     expose:
       - "5000"
     environment:
@@ -34,8 +46,12 @@ services:
       JWT_SECRET: ${JWT_SECRET}
 
       # --- who may call the API from a browser --------------------------
-      # Must list the marketing site, or the enquiry form's POST is discarded
-      # by the browser. Unset means "*", which lets any site post enquiries.
+      # The marketing site calls api.* cross-origin, so both the apex and www
+      # must be listed or the browser discards the enquiry form's response.
+      # cms.* belongs here too for anything the dashboard fetches by absolute
+      # URL. Unset means "*", which lets any site on the internet post
+      # enquiries — set it.
+      #   https://bluestardigitech.com,https://www.bluestardigitech.com,https://cms.bluestardigitech.com
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
 
       # --- optional services --------------------------------------------

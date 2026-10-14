@@ -18,7 +18,7 @@ COPY . .
 # Where the enquiry form posts and the contact details are read from. Vite
 # inlines this at build time, so it is a build arg, not runtime env — changing
 # it means rebuilding the image.
-ARG VITE_CMS_API=https://cms.bluestardigitech.com/api/v1
+ARG VITE_CMS_API=https://api.bluestardigitech.com/api/v1
 ENV VITE_CMS_API=$VITE_CMS_API
 
 RUN npm run build
