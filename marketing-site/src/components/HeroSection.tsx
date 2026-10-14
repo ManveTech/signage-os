@@ -197,8 +197,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                       {stat.label}
                     </div>
                     {/* The third tier sat at 7px inside a 96px circle — legible
-                        only on a desktop, so it waits for one. */}
-                    <div className="hidden sm:block text-[9px] font-semibold text-sky-900/80 uppercase tracking-wider mt-0.5 px-1 leading-tight">
+                        only on a desktop, so it waits for one. It also drops
+                        back out on a short desktop screen, where the circle
+                        shrinks to 74px but this text does not: see
+                        .hero-stat-sub in index.css. */}
+                    <div className="hero-stat-sub hidden sm:block text-[9px] font-semibold text-sky-900/80 uppercase tracking-wider mt-0.5 px-1 leading-tight">
                       {stat.sub}
                     </div>
                   </div>

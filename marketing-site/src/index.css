@@ -164,6 +164,18 @@
     font-size: 1.25rem;
   }
 
+  /*
+    The circle shrinks on a short screen but its text does not, so the third
+    tier has to go. With it, the worst stats ("Door Rated / Both Environments",
+    "Built-in Audio / 8 Ohm Speakers") wrap to two lines each and fill a 74px
+    circle edge to edge — measured at exactly 0px of slack at 1280x800.
+    The tier is the least load-bearing of the three: the label above it already
+    says "Door Rated" and "Built-in Audio".
+  */
+  .hero-stat-sub {
+    display: none;
+  }
+
   .hero-headline span {
     font-size: clamp(26px, 4vw, 52px);
   }

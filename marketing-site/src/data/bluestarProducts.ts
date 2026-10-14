@@ -175,7 +175,10 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
     id: 'digital-podium',
     name: 'Digital Podium',
     category: 'Interactive Kiosks',
-    tagline: 'Dual-screen lectern for auditoriums and boardrooms.',
+    // "Dual-screen ... LED accent base" described the previous render. The
+    // brochure's Digital Podium (p.10, item 03) is this one: a single angled
+    // touchscreen with a gooseneck mic.
+    tagline: 'Touchscreen lectern with a gooseneck mic, for auditoriums and boardrooms.',
     headline: ['DIGITAL', 'PODIUM'],
     stats: [
       { value: '1080', unit: 'P', label: 'Full HD', sub: 'Resolution' },
@@ -184,10 +187,10 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
     ],
     displaySizes: PANEL_SIZES,
     material: 'Powder-coated steel',
-    features: ['Dual-screen lectern', 'LED accent base', 'Cable-managed column'],
+    features: ['Angled touchscreen top', 'Gooseneck microphone', 'Cable-managed column'],
     specs: PLATFORM_SPECS,
     image: '/products/podium.webp',
-    master: 'assets/masters/products/podium.png',
+    master: 'assets/masters/products/podium.webp',
     orientation: 'portrait',
     specsSource: 'platform'
   },
@@ -229,7 +232,7 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
     features: ['Low-height touch surface', 'Lounge and waiting-area format', 'Toughened glass top'],
     specs: PLATFORM_SPECS,
     image: '/products/coffee-table.webp',
-    master: 'assets/masters/products/coffee-table.png',
+    master: 'assets/masters/products/coffee-table.webp',
     orientation: 'landscape',
     specsSource: 'platform'
   },
