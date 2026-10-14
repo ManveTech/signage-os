@@ -29,8 +29,8 @@ export const BluestarLogo: React.FC<{
   const img = (
     <img
       src="/brand/bluestar-logo.webp"
-      width={1107}
-      height={352}
+      width={686}
+      height={219}
       alt="Bluestar Digitech — digital kiosks, designed and built for tomorrow"
       className={onDark ? 'w-full h-auto' : `${className} select-none`}
       loading={priority ? 'eager' : 'lazy'}

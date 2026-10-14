@@ -65,7 +65,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     mq.addEventListener('change', sync);
     return () => mq.removeEventListener('change', sync);
   }, []);
-  const headlineColors = ['text-white drop-shadow-sm', 'text-[#0b2545]', 'text-[#2563eb]'];
+  /*
+   * White measured 1.28:1 against the hero's #d5e5f7 background — WCAG AA
+   * wants 3:1 for text this size, so the first word of every headline was
+   * effectively invisible and only legible at all because of a drop-shadow
+   * propping it up. #18487d is the same mid-navy used for body copy here and
+   * measures 7.24:1, keeping the three-tone ramp: medium, darkest, accent.
+   */
+  const headlineColors = ['text-[#18487d]', 'text-[#0b2545]', 'text-[#2563eb]'];
 
   return (
     <section
@@ -154,16 +161,24 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           in the hero grid's right column instead (further down this file);
           only one of the two is ever rendered, so only one h1 exists at a time.
         */}
+        {/*
+          The words flow and wrap here rather than taking a line each. Forced
+          one-per-line, a three-word name ("SELF / SERVICE / KIOSK") became
+          three stacked bands that ate the screen before the product render.
+          Inline, the same name settles into one or two lines. Desktop keeps
+          the stacked treatment, where there is height to spend on it.
+        */}
         <h1
           key={`${active.id}-m`}
-          className="sm:hidden hero-headline font-condensed uppercase leading-[0.9] tracking-tight select-none mt-3 animate-in fade-in duration-500"
+          className="sm:hidden hero-headline font-condensed uppercase leading-[0.95] tracking-tight select-none mt-3 px-2 text-balance animate-in fade-in duration-500"
         >
-          {active.headline.map((line, i) => (
+          {active.headline.map((word, i) => (
             <span
-              key={line}
-              className={`block text-[34px] xs:text-[40px] font-black break-words ${headlineColors[i % headlineColors.length]}`}
+              key={word}
+              className={`text-[34px] xs:text-[38px] font-black ${headlineColors[i % headlineColors.length]}`}
             >
-              {line}
+              {word}
+              {i < active.headline.length - 1 ? ' ' : ''}
             </span>
           ))}
         </h1>

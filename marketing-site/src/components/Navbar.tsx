@@ -140,8 +140,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           <img
             src="/brand/bluestar-logo.webp"
             alt="Bluestar Digitech"
-            width={1107}
-            height={352}
+            width={686}
+            height={219}
             /* Was h-5 (20px) on a phone, which left the brand mark unreadable
                and 46% of the header empty beside it. */
             className="h-7 sm:h-8 md:h-9 w-auto"
