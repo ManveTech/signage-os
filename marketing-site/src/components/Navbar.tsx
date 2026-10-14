@@ -29,7 +29,9 @@ interface NavbarProps {
 export const AnnouncementBar: React.FC = () => {
   return (
     <div className="bg-[#0b2545] text-[#e0f2fe] text-[11px] sm:text-xs font-semibold py-2 px-3 sm:px-4 relative z-50 border-b border-[#163f70]">
-      <div className="max-w-7xl mx-auto flex items-center justify-center sm:justify-between gap-2 sm:gap-4">
+      {/* justify-between at every width: one item hard left, one hard right.
+          Centred, the two read as a single clump floating in the middle. */}
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
 
         {/*
           Two items, not five. This used to also carry the facility
@@ -43,7 +45,14 @@ export const AnnouncementBar: React.FC = () => {
           page. Dispatch time was previously hidden below 1024px, so the only
           genuinely new information here was invisible to phones and tablets.
         */}
-        <span className="inline-flex items-center gap-1 bg-[#0284c7] text-white px-1.5 sm:px-2 py-0.5 rounded-full font-bold uppercase text-[10px] tracking-wider shadow-sm flex-shrink-0">
+        {/* On a phone the hero no longer carries the installs figure, so it
+            takes this slot; the certification still appears in the hero's own
+            footer row and in the page footer. From sm up, both have room. */}
+        <span className="sm:hidden inline-flex items-center gap-1 bg-[#0284c7] text-white px-1.5 py-0.5 rounded-full font-bold uppercase text-[10px] tracking-wider shadow-sm flex-shrink-0">
+          <MapPin className="w-2.5 h-2.5 text-sky-200" aria-hidden="true" /> 4K+ installs
+        </span>
+
+        <span className="hidden sm:inline-flex items-center gap-1 bg-[#0284c7] text-white px-1.5 sm:px-2 py-0.5 rounded-full font-bold uppercase text-[10px] tracking-wider shadow-sm flex-shrink-0">
           <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-sky-200" aria-hidden="true" /> ISO 9001:2015
         </span>
 

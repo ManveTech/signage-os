@@ -116,7 +116,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           two pills used to wrap onto separate lines, which left the hero opening
           with a stack of three centred blocks and no clear primary action.
         */}
-        <div className="mt-2.5 sm:mt-3.5 flex flex-nowrap items-center justify-center gap-2">
+        {/*
+          Hidden on phones. The installs figure moved up into the announcement
+          bar, and "Enquire" is already a sticky button in the header two rows
+          above — so on a small screen this row was a third call to action
+          competing with itself. The product title takes the space instead.
+        */}
+        <div className="hidden sm:flex mt-2.5 sm:mt-3.5 flex-nowrap items-center justify-center gap-2">
           <button
             onClick={() =>
               onEnquire({
@@ -137,10 +143,30 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             className="inline-flex flex-shrink-0 items-center gap-1 px-2.5 sm:px-3 py-2 rounded-full bg-white/70 backdrop-blur-md text-[10px] sm:text-[11px] font-bold text-[#0b2545] border border-white/60 hover:bg-white transition cursor-pointer"
           >
             <MapPin className="w-3 h-3 text-[#0284c7] flex-shrink-0" aria-hidden="true" />
-            <span className="sm:hidden">4K+ installs</span>
-            <span className="hidden sm:inline">4K+ installations across India</span>
+            <span>4K+ installations across India</span>
           </button>
         </div>
+
+        {/*
+          The product title, on phones only — it takes the space the CTA row
+          gave up, so the headline sits directly under the logo and names the
+          product before you scroll to its render. From sm up the title lives
+          in the hero grid's right column instead (further down this file);
+          only one of the two is ever rendered, so only one h1 exists at a time.
+        */}
+        <h1
+          key={`${active.id}-m`}
+          className="sm:hidden hero-headline font-condensed uppercase leading-[0.9] tracking-tight select-none mt-3 animate-in fade-in duration-500"
+        >
+          {active.headline.map((line, i) => (
+            <span
+              key={line}
+              className={`block text-[34px] xs:text-[40px] font-black break-words ${headlineColors[i % headlineColors.length]}`}
+            >
+              {line}
+            </span>
+          ))}
+        </h1>
 
       </div>
 
@@ -253,10 +279,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {/* RIGHT COLUMN: Condensed Typography + Explanatory Text + Certification */}
         <div className="lg:col-span-4 relative order-3 lg:order-3 text-center lg:text-left flex flex-col justify-center items-center lg:items-start">
 
-          {/* Big Stacked Headline */}
+          {/* Big Stacked Headline — from sm up; phones get the copy above. */}
           <h1
             key={active.id}
-            className="hero-headline font-condensed uppercase leading-[0.9] tracking-tight select-none w-full animate-in fade-in duration-500"
+            className="hidden sm:block hero-headline font-condensed uppercase leading-[0.9] tracking-tight select-none w-full animate-in fade-in duration-500"
           >
             {active.headline.map((line, i) => (
               <span
