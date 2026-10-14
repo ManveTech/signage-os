@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BluestarLogo } from './BrandAssets';
-import { Check, Mail, Phone, MapPin, ArrowUpRight, Clock, MessageCircle } from 'lucide-react';
+import { Check, Mail, Phone, MapPin, ArrowUpRight, Clock, MessageCircle, Factory, ShieldCheck } from 'lucide-react';
 import { COMPANY, PHONES, ADDRESS_ONE_LINE, MAPS_URL } from '../data/company';
 import { whatsappUrl, buildQuoteMessage, WHATSAPP_DISPLAY } from '../data/enquiry';
 import { Reveal } from './Reveal';
@@ -184,9 +184,15 @@ export const Footer: React.FC<FooterProps> = ({ onEnquire }) => {
             {/* No literal bullet separators — they orphan onto their own line
                 when this wraps on a phone. */}
             <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-bold text-sky-300">
-              <span>🇮🇳 Made in India</span>
-              <span>🏭 Peenya 2nd Stage</span>
-              <span>🔬 ISO 9001:2015</span>
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" aria-hidden="true" /> Made in India
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Factory className="w-3.5 h-3.5" aria-hidden="true" /> Peenya 2nd Stage
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> ISO 9001:2015
+              </span>
             </div>
           </div>
 

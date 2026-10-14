@@ -10,6 +10,7 @@ import {
   Phone,
   RotateCw,
   ShieldCheck,
+  Truck,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -46,7 +47,10 @@ export const AnnouncementBar: React.FC = () => {
           <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-sky-200" aria-hidden="true" /> ISO 9001:2015
         </span>
 
-        <span className="text-[#bae6fd] flex-shrink-0">⚡ 5–7 day dispatch</span>
+        <span className="text-[#bae6fd] flex-shrink-0 inline-flex items-center gap-1.5">
+          <Truck className="w-3.5 h-3.5" aria-hidden="true" />
+          5–7 day dispatch
+        </span>
 
       </div>
     </div>
@@ -129,7 +133,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             alt="Bluestar Digitech"
             width={1107}
             height={352}
-            className="h-5 sm:h-6 md:h-7 w-auto"
+            /* Was h-5 (20px) on a phone, which left the brand mark unreadable
+               and 46% of the header empty beside it. */
+            className="h-7 sm:h-8 md:h-9 w-auto"
             fetchPriority="high"
             decoding="async"
             draggable={false}

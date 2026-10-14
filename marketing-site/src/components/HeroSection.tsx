@@ -78,7 +78,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
        * rest and centres its content. `svh` rather than `vh` so a phone's
        * collapsing address bar does not push the bottom off screen.
        */
-      className="hero-section relative pt-1 sm:pt-3 pb-4 sm:pb-6 px-3 sm:px-6 lg:px-8 overflow-hidden flex flex-col lg:justify-center lg:min-h-[calc(100svh-100px)]"
+      className="hero-section relative pt-1 sm:pt-3 pb-4 sm:pb-6 px-3 sm:px-6 lg:px-8 overflow-hidden flex flex-col lg:justify-center lg:min-h-[calc(100svh-112px)]"
     >
 
       {/* Background Subtle Gradient & Light Radial Highlights */}
@@ -234,12 +234,17 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         <div className="lg:col-span-4 relative order-1 lg:order-2 flex flex-col items-center justify-center my-0 lg:my-0 overflow-visible">
 
           {/* Circular Orbit Guide Ring Behind Product - Centered */}
-          <div className="absolute w-[185px] h-[185px] sm:w-[320px] sm:h-[320px] rounded-full border-2 border-white/60 pointer-events-none -z-0 scale-95" />
-          <div className="absolute w-[230px] h-[230px] sm:w-[395px] sm:h-[395px] rounded-full border border-white/40 pointer-events-none -z-0" />
+          <div className="absolute w-[250px] h-[250px] sm:w-[340px] sm:h-[340px] rounded-full border-2 border-white/60 pointer-events-none -z-0 scale-95" />
+          <div className="absolute w-[310px] h-[310px] sm:w-[415px] sm:h-[415px] rounded-full border border-white/40 pointer-events-none -z-0" />
 
-          {/* Product Render — also capped against viewport height, so the hero
-              still fits on a short laptop screen. */}
-          <div className="relative z-10 w-full max-w-[160px] sm:max-w-[250px] lg:max-w-[270px] lg:max-h-[46svh] mx-auto flex flex-col items-center animate-float">
+          {/*
+            Product Render. The render is the thing people came to look at, so
+            it gets the room: it used to cap at 160px on a phone — 42% of a
+            390px screen, floating inside a 230px ring — and 270px on desktop.
+            Still capped against viewport height so the hero fits one screen on
+            a short laptop; that cap, not the width, is what keeps it in check.
+          */}
+          <div className="relative z-10 w-full max-w-[230px] sm:max-w-[300px] lg:max-w-[290px] xl:max-w-[330px] lg:max-h-[46svh] mx-auto flex flex-col items-center animate-float">
             <ProductShowcaseLoop index={index} />
           </div>
 

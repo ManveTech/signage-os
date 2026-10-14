@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle, ThumbsUp, Filter, ArrowUpRight, Quote } from 'lucide-react';
+import { CheckCircle, ThumbsUp, Filter, ArrowUpRight, Quote, Star } from 'lucide-react';
 import { REVIEWS } from '../data/testimonials';
 import type { CustomerReview } from '../types';
 import { Reveal } from './Reveal';
@@ -39,7 +39,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({ onEnquire }) => 
       {/* Header */}
       <Reveal className="text-center max-w-3xl mx-auto mb-10 sm:mb-12">
         <span className="inline-flex items-center gap-1 px-4 py-1 rounded-full bg-[#0b2545]/15 text-[#0b2545] text-xs font-black uppercase tracking-widest mb-3">
-          ⭐ 4,000+ DEPLOYMENTS
+          <Star className="w-3.5 h-3.5 text-[#0284c7]" aria-hidden="true" /> 4,000+ DEPLOYMENTS
         </span>
         <h2 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
           TRUSTED BY ENTERPRISES &amp; RETAIL LEADERS
@@ -56,8 +56,10 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({ onEnquire }) => 
           <div className="text-5xl sm:text-6xl font-black text-[#0b2545] font-condensed leading-none">
             4.9<span className="text-2xl text-zinc-400">/5.0</span>
           </div>
-          <div className="flex text-amber-500 text-2xl mt-2" aria-label="4.9 out of 5 stars">
-            <span aria-hidden="true">★★★★★</span>
+          <div className="flex items-center gap-0.5 text-amber-500 mt-2" aria-label="4.9 out of 5 stars">
+            {Array.from({ length: 5 }, (_, i) => (
+              <Star key={i} className="w-5 h-5 fill-current" aria-hidden="true" />
+            ))}
           </div>
           <div className="text-xs font-bold text-[#18487d] mt-1">
             Based on 4,000+ client deployments
@@ -173,7 +175,9 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({ onEnquire }) => 
                     className="flex text-amber-500 text-xs flex-shrink-0"
                     aria-label={`${rev.rating} out of 5 stars`}
                   >
-                    <span aria-hidden="true">{'★'.repeat(rev.rating)}</span>
+                    {Array.from({ length: rev.rating }, (_, i) => (
+                      <Star key={i} className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                    ))}
                   </div>
                 </div>
 

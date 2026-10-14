@@ -8,7 +8,9 @@ import {
   Ruler,
   ChevronLeft,
   ChevronRight,
-  MessageCircle
+  MessageCircle,
+  Layers,
+  Check
 } from 'lucide-react';
 import {
   BLUESTAR_PRODUCTS,
@@ -80,9 +82,13 @@ const ProductCard: React.FC<{
         </div>
 
         <div className="relative z-10 mt-4 bg-white/90 backdrop-blur-md px-4 py-2 rounded-2xl text-[11px] font-bold text-[#0b2545] border border-white flex flex-col sm:flex-row items-center justify-center gap-x-3 gap-y-1 shadow-sm text-center">
-          <span>🔩 {product.material}</span>
+          <span className="inline-flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-[#0284c7]" aria-hidden="true" /> {product.material}
+          </span>
           <span className="hidden sm:inline">•</span>
-          <span>📐 {product.displaySizes.join(' · ')}</span>
+          <span className="inline-flex items-center gap-1.5">
+            <Ruler className="w-3.5 h-3.5 text-[#0284c7]" aria-hidden="true" /> {product.displaySizes.join(' · ')}
+          </span>
         </div>
 
       </div>
@@ -185,8 +191,10 @@ const ProductCard: React.FC<{
                 : 'bg-[#128c7e] text-white hover:bg-[#0f7a6d] hover:shadow-xl hover:scale-[1.01]'
             }`}
           >
-            <MessageCircle className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-            <span>{sent ? 'Opening WhatsApp ✓' : 'Request a quote on WhatsApp'}</span>
+            {sent
+              ? <Check className="w-5 h-5 flex-shrink-0" strokeWidth={3} aria-hidden="true" />
+              : <MessageCircle className="w-5 h-5 flex-shrink-0" aria-hidden="true" />}
+            <span>{sent ? 'Opening WhatsApp' : 'Request a quote on WhatsApp'}</span>
           </button>
         </div>
 

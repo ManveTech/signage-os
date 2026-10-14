@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowUpRight, Factory, MessageCircle } from 'lucide-react';
+import { ArrowUpRight, Factory, MessageCircle, X } from 'lucide-react';
 import {
   CARD_OUTDOOR,
   CARD_INSTALLED,
@@ -321,9 +321,10 @@ export const InstallationGallery: React.FC<InstallationGalleryProps> = ({ onRequ
               </div>
               <button 
                 onClick={() => setActivePhoto(null)}
-                className="w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-white hover:text-black transition"
+                aria-label="Close photo"
+                className="w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-white hover:text-black transition cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 
