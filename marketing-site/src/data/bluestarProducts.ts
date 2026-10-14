@@ -195,7 +195,9 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
     id: 'multi-touch-table',
     name: 'Multi-Touch Table',
     category: 'Touch Solutions',
-    tagline: 'Large-format interactive table on a curved steel pedestal.',
+    // "curved steel pedestal" described the render that used to sit here, which
+    // was a standing kiosk and not a table at all.
+    tagline: 'Large-format interactive table in a powder-coated steel body.',
     headline: ['MULTI', 'TOUCH', 'TABLE'],
     stats: [
       { value: '1080', unit: 'P', label: 'Full HD', sub: 'Resolution' },
@@ -204,11 +206,11 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
     ],
     displaySizes: PANEL_SIZES,
     material: 'Powder-coated steel',
-    features: ['Multi-touch landscape display', 'Curved pedestal frame', 'Commercial-grade panel'],
+    features: ['Multi-touch landscape display', 'Screen set flush into the table top', 'Commercial-grade panel'],
     specs: PLATFORM_SPECS,
     image: '/products/touch-table.webp',
-    master: 'assets/masters/products/touch-table.png',
-    orientation: 'portrait',
+    master: 'assets/masters/products/touch-table.webp',
+    orientation: 'landscape',
     specsSource: 'platform'
   },
   {
