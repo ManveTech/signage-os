@@ -254,7 +254,7 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
       { label: 'Environment', value: 'Indoor / outdoor rated' }
     ],
     image: '/products/led-video-wall.webp',
-    master: 'assets/masters/products/led-video-wall.png',
+    master: 'assets/masters/products/led-video-wall.webp',
     orientation: 'landscape',
     specsSource: 'platform'
   }
