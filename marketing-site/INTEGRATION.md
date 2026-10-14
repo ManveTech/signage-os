@@ -106,14 +106,23 @@ Against a throwaway PocketBase with the real schema imported:
 
 ### 1. Point the domains
 
-In Coolify (project **Bluestar → production**):
+**One** Coolify resource (`Frontend`, Base Directory `/`, Compose Location
+`/docker-compose.yml`) builds both services — the same shape as the Manve
+project. Each service is its own container, so Coolify gives each its own
+domain field and its own logs, and one crashing doesn't take the other down.
 
-| Coolify app | Build from | Domains |
+| Compose service | Folder | Domains to set in Coolify |
 |---|---|---|
-| `Frontend` (repurposed) | repo root, `/docker-compose.yml`, service `cms` | `cms.` + `api.bluestardigitech.com` |
-| `Bluestar-Web` (repurposed) | base directory `/marketing-site` | `bluestardigitech.com`, `www.` |
-| `Bluestar-Server` | — | delete once `Frontend` is serving the API |
-| `CMS` (Services) | PocketBase | the database — keep, move its domain |
+| `cms` | repo root | `cms.` + `api.bluestardigitech.com`, `blu.manve.co`, `dem1.manve.co` |
+| `website` | `marketing-site/` | `bluestardigitech.com`, `www.` |
+
+Separate fields on purpose: either side's domains can change later without
+touching the other.
+
+Two other Coolify apps become redundant — `Bluestar-Server` (the API, now
+inside `cms`) and `Bluestar-Web` (empty). Delete `Bluestar-Server` only after
+`dem1.manve.co` has moved onto this resource and a real TV is confirmed
+syncing; see the legacy-domain note in `docker-compose.yml`.
 
 Note the naming trap: the Coolify service called **CMS is PocketBase**, not the
 dashboard. The dashboard is the app called **Frontend**.

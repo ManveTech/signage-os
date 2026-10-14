@@ -1,62 +1,74 @@
-# The CMS — one container, two domains
+# BLUESTAR — the CMS and the public website in one Docker Compose deployment.
 #
-#   cms.bluestardigitech.com   the dashboard and its login
-#   api.bluestardigitech.com   what the TVs poll and the marketing site posts to
+# Used by the Coolify resource "Frontend" (Base Directory "/", Compose Location
+# "/docker-compose.yml"). Each service is its own container, so in Coolify each gets its own
+# domain(s) and its own logs, and one app crashing doesn't take the other down.
 #
-# Both names point at this same service. Express serves /api/v1 and the built
-# dashboard together, so the dashboard loaded from cms.* talks to /api/v1 on
-# cms.* — same-origin, no CORS between the dashboard and its own API — while
-# TVs and the public site use the stable api.* name.
+#   service   folder            domain(s) to set in Coolify
+#   cms       . (repo root)     cms.bluestardigitech.com, api.bluestardigitech.com,
+#                               blu.manve.co, dem1.manve.co
+#   website   marketing-site/   bluestardigitech.com, www.bluestardigitech.com
 #
-# This replaces the old split of Bluestar-Server (API) + Frontend (static
-# dashboard). The service is named `cms`, not `frontend` as it was before: in
-# Coolify, re-assign the domains after "Reload Compose File", because the
-# domain fields are bound to the service name.
+# WHY THE CMS HAS FOUR DOMAINS — it is one container answering on all of them:
+#   cms.*          the dashboard and its login. Because this service serves the dashboard AND
+#                  /api/v1, the dashboard is same-origin with its own API: no CORS between
+#                  them, and no API host to configure per environment.
+#   api.*          the stable public name. The marketing site's enquiry form posts here.
+#   dem1.manve.co  LEGACY, LOAD-BEARING. Every TV already in the field has this compiled in
+#                  (tv-signage-player AppConfig.kt, tizen/js/config.js) and the Android player
+#                  force-overwrites any stored URL back to it on boot — so a deployed TV cannot
+#                  be repointed remotely. Keep it until every TV has a new build installed.
+#   blu.manve.co   the old dashboard address. Keep while DNS moves, then drop.
 #
-# The marketing site (bluestardigitech.com) is a separate image built from
-# ./marketing-site with its own compose file — point that domain at it.
+# This replaced two separate Coolify apps — Bluestar-Server (the Express API) and Frontend
+# (a static nginx dashboard that had to be told at build time where the API was listening).
+#
+# All settings live in ONE place: the Environment Variables screen of this Coolify resource
+# (or a .env file next to this one when running `docker compose up -d --build` yourself).
+# See .env.example for the full list.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   cms:
     build:
       context: .
       dockerfile: Dockerfile
-    image: bluestar-cms:latest
-    restart: always
-    # "0:5000" lets the host port be chosen at deploy time and the proxy map
-    # the domains to it — the same pattern the previous compose used for :80.
-    ports:
-      - "0:5000"
-    expose:
-      - "5000"
+      args:
+        # Deliberately empty: unset means the dashboard calls /api/v1 on whatever origin it
+        # was loaded from. Setting it compiles an absolute host into the bundle, which is how
+        # the dashboard used to end up pinned to dem1.manve.co.
+        VITE_NODE_SERVER_URL: ""
     environment:
-      # --- core ---------------------------------------------------------
       NODE_ENV: production
-      PORT: 5000
-      # Used in password-reset links and the "open the enquiry" button in
-      # lead notification emails, so it must be the public origin.
-      APP_URL: ${APP_URL}
+      PORT: "5000"
 
-      # --- database -----------------------------------------------------
+      # Used in password-reset links and the "open the enquiry" button in lead emails, so it
+      # must be the dashboard domain rather than api.*.
+      APP_URL: ${CMS_PUBLIC_URL:-https://cms.bluestardigitech.com}
+
+      # --- database -----------------------------------------------------------------
       POCKETBASE_URL: ${POCKETBASE_URL}
       PB_ADMIN_EMAIL: ${PB_ADMIN_EMAIL}
       PB_ADMIN_PASSWORD: ${PB_ADMIN_PASSWORD}
 
-      # --- auth ---------------------------------------------------------
+      # --- auth ---------------------------------------------------------------------
+      # The server refuses to start in production without this (server/config.ts requireEnv).
       JWT_SECRET: ${JWT_SECRET}
 
-      # --- who may call the API from a browser --------------------------
-      # The marketing site calls api.* cross-origin, so both the apex and www
-      # must be listed or the browser discards the enquiry form's response.
-      # cms.* belongs here too for anything the dashboard fetches by absolute
-      # URL. Unset means "*", which lets any site on the internet post
-      # enquiries — set it.
-      #   https://bluestardigitech.com,https://www.bluestardigitech.com,https://cms.bluestardigitech.com
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      # --- who may call the API from a browser --------------------------------------
+      # The website calls api.* cross-origin, so the apex and www must both be listed or the
+      # browser discards the enquiry form's response. Unset means "*", which would let any
+      # site on the internet post enquiries.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://bluestardigitech.com,https://www.bluestardigitech.com,https://cms.bluestardigitech.com}
 
-      # --- optional services --------------------------------------------
-      # SMTP and R2 can also be configured in the dashboard under
-      # Integrations, which takes priority over anything set here.
+      # --- optional services --------------------------------------------------------
+      # SMTP and R2 can also be set in the dashboard under Integrations, which takes priority
+      # over anything here once enabled. The rest are env-only.
       REDIS_URL: ${REDIS_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -73,10 +85,38 @@ services:
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
-
+    expose:
+      - "5000"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5000/health/live || exit 1"]
+      # /health/live only reports that the process is up. The richer /health also queries
+      # PocketBase, pings Redis and opens an R2 connection — using that here would have Docker
+      # kill the container whenever a dependency blipped, which a restart does not fix.
+      # busybox wget, because neither alpine base image ships curl.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5000/health/live"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
+    logging: *logging
+
+  website:
+    build:
+      context: ./marketing-site
+      args:
+        # Vite inlines this at build time, so changing it needs a rebuild, not a restart.
+        # api.* rather than cms.* because the site calls it cross-origin either way, and the
+        # public API name should not change if the dashboard is ever renamed or moved.
+        VITE_CMS_API: ${API_PUBLIC_URL:-https://api.bluestardigitech.com}/api/v1
+    environment:
+      PORT: "80"
+    expose:
+      - "80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *logging
