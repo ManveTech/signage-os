@@ -30,23 +30,23 @@ export const AnnouncementBar: React.FC = () => {
     <div className="bg-[#0b2545] text-[#e0f2fe] text-[11px] sm:text-xs font-semibold py-2 px-3 sm:px-4 relative z-50 border-b border-[#163f70]">
       <div className="max-w-7xl mx-auto flex items-center justify-center sm:justify-between gap-2 sm:gap-4">
 
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-          <span className="inline-flex items-center gap-1 bg-[#0284c7] text-white px-1.5 sm:px-2 py-0.5 rounded-full font-bold uppercase text-[10px] tracking-wider shadow-sm flex-shrink-0">
-            <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-sky-200" aria-hidden="true" /> ISO 9001:2015
-          </span>
+        {/*
+          Two items, not five. This used to also carry the facility
+          description, "Made in India" and the installation count — and the
+          hero directly below already states the ISO certification, Peenya,
+          Bangalore and "4K+ installations across India", so the strip was
+          mostly repeating the thing it sits on top of.
 
-          {/* Short on phones, full sentence from `md` up. */}
-          <span className="text-[#bae6fd] md:hidden">Peenya, Bangalore</span>
-          <span className="text-[#bae6fd] hidden md:inline">
-            Precision sheet metal &amp; kiosk facility • Peenya, Bangalore
-          </span>
-        </div>
+          What is left is the credential, which reads as a badge rather than as
+          a sentence, and the one commercial fact stated nowhere else on the
+          page. Dispatch time was previously hidden below 1024px, so the only
+          genuinely new information here was invisible to phones and tablets.
+        */}
+        <span className="inline-flex items-center gap-1 bg-[#0284c7] text-white px-1.5 sm:px-2 py-0.5 rounded-full font-bold uppercase text-[10px] tracking-wider shadow-sm flex-shrink-0">
+          <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-sky-200" aria-hidden="true" /> ISO 9001:2015
+        </span>
 
-        <div className="hidden sm:flex items-center gap-3 md:gap-4 text-[11px] text-[#93c5fd] flex-shrink-0">
-          <span className="hidden lg:inline">⚡ 5–7 day dispatch</span>
-          <span>🇮🇳 Made in India</span>
-          <span className="font-bold text-white">4,000+ installations</span>
-        </div>
+        <span className="text-[#bae6fd] flex-shrink-0">⚡ 5–7 day dispatch</span>
 
       </div>
     </div>
