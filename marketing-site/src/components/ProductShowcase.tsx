@@ -188,9 +188,6 @@ const ProductCard: React.FC<{
             <MessageCircle className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
             <span>{sent ? 'Opening WhatsApp ✓' : 'Request a quote on WhatsApp'}</span>
           </button>
-          <p className="mt-2 text-[11px] font-semibold text-[#5b7fa6] text-center">
-            {product.name} · {selectedSize} · {selectedFinish} — sent with your message
-          </p>
         </div>
 
         {/* Capability Row */}
