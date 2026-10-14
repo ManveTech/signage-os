@@ -127,7 +127,7 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
       { label: 'Finish', value: 'Powder-coated, colour per MOQ' }
     ],
     image: '/products/a-type-standee.webp',
-    master: 'assets/masters/products/a-type-standee.png',
+    master: 'assets/masters/products/a-type-standee.webp',
     orientation: 'portrait',
     specsSource: 'brochure'
   },
