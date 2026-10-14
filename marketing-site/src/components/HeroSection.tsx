@@ -219,7 +219,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           {/* Stat Badges Orbit Grid - Slim & Balanced */}
           <div className="relative w-full max-w-[340px] pt-1 sm:pt-2 flex flex-row lg:flex-col justify-center lg:justify-start gap-2 sm:gap-3 flex-nowrap">
             {active.stats.map((stat, i) => {
-              const offset = ['lg:ml-12', 'lg:ml-4', 'lg:ml-0'][i];
+              /* The stagger, nudged toward the middle of the column. It used
+                 to start at ml-12 and run down to ml-0, which pinned the
+                 circles against the left edge with ~310px of empty space
+                 between them and the product render. Same rhythm, ~48px
+                 further in. */
+              const offset = ['lg:ml-24', 'lg:ml-16', 'lg:ml-12'][i];
               const key = `${active.id}-${i}`;
               return (
                 <div

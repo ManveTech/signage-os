@@ -150,18 +150,32 @@ const ProductCard: React.FC<{
           <div className="text-xs font-bold text-[#0b2545] mb-2">FINISH</div>
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
             {FINISH_OPTIONS.map((finish) => (
+              /*
+                Compact on phones. These were full-height cards with a title
+                and a line of description each, and "Custom colour (per MOQ)"
+                wrapped to two lines inside its box — so two tiles ate the
+                height of the quote button below them. On a phone the
+                qualifier and the description drop away and the options read
+                as pills, matching the size buttons above. The detail comes
+                back from sm up, where there is width for it.
+              */
               <button
                 key={finish}
                 type="button"
                 onClick={() => setSelectedFinish(finish)}
-                className={`p-3 rounded-2xl border text-left cursor-pointer transition ${
+                className={`px-3 py-2 sm:p-3 rounded-xl sm:rounded-2xl border text-center sm:text-left cursor-pointer transition ${
                   selectedFinish === finish
                     ? 'border-[#0b2545] bg-[#0b2545]/5 ring-2 ring-[#0b2545]'
                     : 'border-zinc-200 bg-white'
                 }`}
               >
-                <span className="text-xs font-bold text-[#0b2545]">{finish}</span>
-                <p className="text-[10px] text-zinc-500 mt-0.5">
+                <span className="text-[11px] sm:text-xs font-bold text-[#0b2545]">
+                  {finish.split(' (')[0]}
+                  {finish.includes(' (') && (
+                    <span className="hidden sm:inline"> ({finish.split(' (')[1]}</span>
+                  )}
+                </span>
+                <p className="hidden sm:block text-[10px] text-zinc-500 mt-0.5">
                   {finish === FINISH_OPTIONS[0]
                     ? 'Standard powder-coated finish'
                     : 'Any RAL shade, subject to order quantity'}
@@ -179,7 +193,7 @@ const ProductCard: React.FC<{
         <div className="mt-6">
           <button
             onClick={handleQuote}
-            className={`w-full py-4 px-6 rounded-full font-black text-sm sm:text-base tracking-tight flex items-center justify-center gap-2 shadow-lg transition-all duration-300 cursor-pointer ${
+            className={`w-full py-3 sm:py-4 px-5 sm:px-6 rounded-full font-black text-sm sm:text-base tracking-tight flex items-center justify-center gap-2 shadow-lg transition-all duration-300 cursor-pointer ${
               sent
                 ? 'bg-[#0f7a6d] text-white scale-[0.99]'
                 : 'bg-[#128c7e] text-white hover:bg-[#0f7a6d] hover:shadow-xl hover:scale-[1.01]'
@@ -188,7 +202,10 @@ const ProductCard: React.FC<{
             {sent
               ? <Check className="w-5 h-5 flex-shrink-0" strokeWidth={3} aria-hidden="true" />
               : <MessageCircle className="w-5 h-5 flex-shrink-0" aria-hidden="true" />}
-            <span>{sent ? 'Opening WhatsApp' : 'Request a quote on WhatsApp'}</span>
+            {/* Short label on phones — the full sentence pushed the pill wide
+                enough to shrink its own type. */}
+            <span className="sm:hidden">{sent ? 'Opening WhatsApp' : 'Quote on WhatsApp'}</span>
+            <span className="hidden sm:inline">{sent ? 'Opening WhatsApp' : 'Request a quote on WhatsApp'}</span>
           </button>
         </div>
 

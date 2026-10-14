@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Phone, Mail, MessageCircle, ShieldCheck, Send, Loader2, Check } from 'lucide-react';
+import { X, Phone, Mail, MessageCircle, ShieldCheck, Send, Loader2, Check, ChevronDown } from 'lucide-react';
 import { BLUESTAR_PRODUCTS, PANEL_SIZES } from '../data/bluestarProducts';
 import { COMPANY, PHONES } from '../data/company';
 import {
@@ -63,6 +63,8 @@ const labelClass = 'block text-[11px] font-black uppercase tracking-wider text-[
 export const EnquiryModal: React.FC<EnquiryModalProps> = ({ open, onClose, prefill }) => {
   const [details, setDetails] = useState<EnquiryDetails>(EMPTY);
   const [touched, setTouched] = useState(false);
+  /** Company, site, size and quantity start folded away — see the form below. */
+  const [showDetails, setShowDetails] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +84,7 @@ export const EnquiryModal: React.FC<EnquiryModalProps> = ({ open, onClose, prefi
       source: prefill?.source ?? 'enquiry form'
     });
     setTouched(false);
+    setShowDetails(false);
     setSending(false);
     setSent(false);
     setError(null);
@@ -187,13 +190,13 @@ export const EnquiryModal: React.FC<EnquiryModalProps> = ({ open, onClose, prefi
             className="fixed inset-x-0 bottom-0 sm:inset-0 z-[61] sm:m-auto w-full sm:w-[min(640px,calc(100vw-2rem))] sm:h-fit sm:max-h-[calc(100svh-3rem)] max-h-[92svh] overflow-y-auto overscroll-contain bg-white rounded-t-[28px] sm:rounded-[28px] shadow-2xl border border-white"
           >
             {/* Header — sticky so "close" is always reachable while scrolling */}
-            <div className="sticky top-0 z-10 bg-[#0b2545] text-white px-5 sm:px-7 pt-5 pb-4 rounded-t-[28px] sm:rounded-t-[28px]">
+            <div className="sticky top-0 z-10 bg-[#0b2545] text-white px-5 sm:px-7 pt-4 pb-3.5 sm:pt-5 sm:pb-4 rounded-t-[28px]">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 id={titleId} className="text-xl sm:text-2xl font-black font-condensed tracking-tight uppercase">
                     Send us an enquiry
                   </h2>
-                  <p className="mt-1 text-xs sm:text-[13px] text-[#93bfe8] leading-relaxed">
+                  <p className="mt-1 text-[11px] sm:text-[13px] text-[#93bfe8] leading-snug sm:leading-relaxed">
                     {prefill?.context
                       ? prefill.context
                       : 'Tell us what you need and we’ll come back with a quote.'}
@@ -251,8 +254,8 @@ export const EnquiryModal: React.FC<EnquiryModalProps> = ({ open, onClose, prefi
                 </p>
               </div>
             ) : (
-            <form onSubmit={submit} className="px-5 sm:px-7 py-5 sm:py-6" noValidate>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={submit} className="px-5 sm:px-7 py-4 sm:py-6" noValidate>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
 
                 <div>
                   <label className={labelClass} htmlFor="enq-name">
@@ -302,32 +305,6 @@ export const EnquiryModal: React.FC<EnquiryModalProps> = ({ open, onClose, prefi
                 </div>
 
                 <div>
-                  <label className={labelClass} htmlFor="enq-company">Company</label>
-                  <input
-                    id="enq-company"
-                    name="company"
-                    autoComplete="organization"
-                    value={details.company}
-                    onChange={set('company')}
-                    placeholder="Optional"
-                    className={fieldClass}
-                  />
-                </div>
-
-                <div>
-                  <label className={labelClass} htmlFor="enq-city">Site / city</label>
-                  <input
-                    id="enq-city"
-                    name="city"
-                    autoComplete="address-level2"
-                    value={details.city}
-                    onChange={set('city')}
-                    placeholder="e.g. Bangalore"
-                    className={fieldClass}
-                  />
-                </div>
-
-                <div>
                   <label className={labelClass} htmlFor="enq-product">Product</label>
                   <select
                     id="enq-product"
@@ -353,46 +330,99 @@ export const EnquiryModal: React.FC<EnquiryModalProps> = ({ open, onClose, prefi
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelClass} htmlFor="enq-size">Screen size</label>
-                    <select
-                      id="enq-size"
-                      name="size"
-                      value={details.size}
-                      onChange={set('size')}
-                      className={`${fieldClass} cursor-pointer`}
-                    >
-                      <option value="">Any</option>
-                      {sizeOptions.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass} htmlFor="enq-qty">Quantity</label>
-                    <input
-                      id="enq-qty"
-                      name="quantity"
-                      inputMode="numeric"
-                      value={details.quantity}
-                      onChange={set('quantity')}
-                      placeholder="e.g. 10"
-                      className={fieldClass}
+                {/*
+                  Size, quantity, company and site live behind this. Only name
+                  and phone are actually required (publicLeadSchema agrees), and
+                  eight fields made the sheet 92% of a phone screen with 235px
+                  of scroll still to go. They stay one tap away, and anyone who
+                  opens them is someone with details worth collecting.
+                */}
+                <div className="sm:col-span-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDetails((v) => !v)}
+                    aria-expanded={showDetails}
+                    aria-controls="enq-more"
+                    className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-[#0284c7] hover:text-[#0b2545] transition cursor-pointer py-1"
+                  >
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${showDetails ? 'rotate-180' : ''}`}
+                      aria-hidden="true"
                     />
-                  </div>
+                    {showDetails ? 'Fewer details' : 'Add size, quantity & site'}
+                  </button>
                 </div>
+
+                {showDetails && (
+                  <>
+                    <div>
+                      <label className={labelClass} htmlFor="enq-company">Company</label>
+                      <input
+                        id="enq-company"
+                        name="company"
+                        autoComplete="organization"
+                        value={details.company}
+                        onChange={set('company')}
+                        placeholder="Optional"
+                        className={fieldClass}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelClass} htmlFor="enq-city">Site / city</label>
+                      <input
+                        id="enq-city"
+                        name="city"
+                        autoComplete="address-level2"
+                        value={details.city}
+                        onChange={set('city')}
+                        placeholder="e.g. Bangalore"
+                        className={fieldClass}
+                      />
+                    </div>
+
+                    <div id="enq-more" className="grid grid-cols-2 gap-3 sm:col-span-2">
+                      <div>
+                        <label className={labelClass} htmlFor="enq-size">Screen size</label>
+                        <select
+                          id="enq-size"
+                          name="size"
+                          value={details.size}
+                          onChange={set('size')}
+                          className={`${fieldClass} cursor-pointer`}
+                        >
+                          <option value="">Any</option>
+                          {sizeOptions.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelClass} htmlFor="enq-qty">Quantity</label>
+                        <input
+                          id="enq-qty"
+                          name="quantity"
+                          inputMode="numeric"
+                          value={details.quantity}
+                          onChange={set('quantity')}
+                          placeholder="e.g. 10"
+                          className={fieldClass}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="sm:col-span-2">
                   <label className={labelClass} htmlFor="enq-message">What do you need?</label>
                   <textarea
                     id="enq-message"
                     name="message"
-                    rows={3}
+                    rows={2}
                     value={details.message}
                     onChange={set('message')}
                     placeholder="Branding, mounting, indoor or outdoor, a drawing you can send over — anything that helps us quote accurately."
-                    className={`${fieldClass} resize-y min-h-[84px]`}
+                    className={`${fieldClass} resize-y min-h-[68px] sm:min-h-[84px]`}
                   />
                 </div>
 
