@@ -89,13 +89,16 @@ export const INSTALLATIONS: Installation[] = [
     thumb: '/products/standee.webp'
   },
   {
-    id: 'touch-table',
+    // The photo is a standing information kiosk — angled landscape screen on a
+    // pedestal. It was captioned as a Multi-Touch Table, which is a different
+    // product entirely (a table you stand around, not a kiosk you stand at).
+    id: 'kiosk-floor',
     image: '/installations/09-touch-table.webp',
-    product: 'Multi-Touch Table',
+    product: 'Information Kiosk',
     site: 'Peenya Facility',
     location: 'In production',
-    note: 'Curved-pedestal touch table on the floor ahead of final inspection.',
-    thumb: '/products/touch-table.webp'
+    note: 'Information kiosk on the floor ahead of final inspection.',
+    thumb: '/products/info-kiosk.webp'
   },
   {
     id: 'podium',
@@ -107,13 +110,15 @@ export const INSTALLATIONS: Installation[] = [
     thumb: '/products/podium.webp'
   },
   {
-    id: 'standee-batch',
+    // Also information kiosks, not A-Type standees — an A-Type is a portrait
+    // screen on folding A-frame legs (brochure p.8-9), nothing like these.
+    id: 'kiosk-batch',
     image: '/installations/11-standee-batch.webp',
-    product: 'A-Type Standee',
+    product: 'Information Kiosk',
     site: 'Peenya Facility',
     location: 'In production',
-    note: 'Batch of powder-coated A-Type standee bodies awaiting panel fitment.',
-    thumb: '/products/a-type-standee.webp'
+    note: 'Batch of powder-coated kiosk bodies awaiting panel fitment.',
+    thumb: '/products/info-kiosk.webp'
   },
   {
     id: 'info-kiosks',
