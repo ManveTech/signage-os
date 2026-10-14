@@ -1,29 +1,23 @@
-import { Capacitor } from '@capacitor/core';
-
 /**
  * Where the API lives.
  *
- * One container answers on two domains: cms.bluestardigitech.com (the
- * dashboard) and api.bluestardigitech.com (what TVs and the marketing site
- * call). In a browser this is therefore same-origin by default — the dashboard
- * served from cms.* talks to /api/v1 on cms.* — which leaves no host to get
- * wrong per environment and no CORS between the dashboard and its own API.
+ * The dashboard (cms.bluestardigitech.com) and the API (api.bluestardigitech.com) are
+ * separate services in separate containers, so this is always an absolute origin — there
+ * is no same-origin shortcut to take.
  *
- * Native builds are the exception — a Capacitor webview loads from
- * https://localhost, so a relative URL would resolve to the device itself.
- * Those builds need an absolute origin, and they use the api.* name because it
- * is the stable public one: a TV in the field should not care what the
- * dashboard is called. Override with VITE_NODE_SERVER_URL for staging builds.
+ * Vite inlines VITE_NODE_SERVER_URL at build time; it is passed as a build arg from
+ * docker-compose.yml. The fallback below is the production API rather than a demo host,
+ * because a build that forgets the variable should reach the real thing instead of quietly
+ * talking to someone else's database — which is what the old `https://dem1.manve.co`
+ * default did.
  *
- * This used to default to a shared demo host, which meant a production build
- * that forgot the variable talked to the demo database without saying so.
+ * Native (Capacitor) builds use the same value: a TV in the field should point at the
+ * stable api.* name, not at whatever the dashboard happens to be called.
  */
-const NATIVE_ORIGIN = 'https://api.bluestardigitech.com';
+const DEFAULT_API_ORIGIN = 'https://api.bluestardigitech.com';
 
 const configured = (import.meta.env?.VITE_NODE_SERVER_URL || '').trim().replace(/\/+$/, '');
 
-export const BACKEND_URL =
-  configured || (Capacitor.isNativePlatform() ? NATIVE_ORIGIN : '');
+export const BACKEND_URL = configured || DEFAULT_API_ORIGIN;
 
-/** Same-origin resolves to `/api/v1` when BACKEND_URL is empty. */
 export const API_BASE = `${BACKEND_URL}/api/v1`;

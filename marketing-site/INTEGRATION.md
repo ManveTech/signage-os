@@ -3,41 +3,23 @@
 Where this stands, and what is left to do. Written as a handoff — pick up from
 "Next up" at the bottom.
 
-## The two halves
+## The three pieces
 
-| Built from | Domains | Image |
-|---|---|---|
-| `marketing-site/` | `bluestardigitech.com`, `www.` | nginx serving the built site |
-| the repo root | `cms.bluestardigitech.com`, `api.bluestardigitech.com` | Node — Express serves `/api/v1` *and* the dashboard |
+| Compose service | Builds from | Domains | Image |
+|---|---|---|---|
+| `api` | `server/Dockerfile` | `api.bluestardigitech.com`, `dem1.manve.co` | Node — Express, `/api/v1` |
+| `cms` | root `Dockerfile` | `cms.bluestardigitech.com`, `blu.manve.co` | nginx — the admin dashboard |
+| `website` | `marketing-site/` | `bluestardigitech.com`, `www.` | nginx — the public site |
 
-Two Docker services. The CMS answers on **two** domains that both reach the
-same container:
+Three containers, one Coolify resource, one compose file. The dashboard and the
+website are two entirely separate React apps that happen to share a repo; the
+only thing joining them is that the website posts leads to the API, and you
+read them in the dashboard.
 
-* `cms.*` — the dashboard and its login. Because Express serves the dashboard
-  and the API together, the dashboard is same-origin with `/api/v1` and needs
-  no API host configured at all.
-* `api.*` — the stable public name. TVs in the field and the marketing site
-  call this one, so neither has to care what the dashboard is called.
-
-This replaced a split of two Coolify apps — `Bluestar-Server` (the Express API)
-and `Frontend` (a static nginx dashboard). The root Dockerfile used to build
-that static image with no API in it, which is why the dashboard had to be told
-at build time where some other service was listening.
-
-They are separate Vite projects with separate `node_modules` and separate
-builds. The site was moved in here on 12 Oct 2026 so both halves live together;
-nothing about either build was otherwise changed.
-
-Three guards keep the nested project from leaking into the CMS's tooling —
-leave them in place:
-
-* `tsconfig.json` → `exclude: ["marketing-site"]`, or the CMS's typecheck
-  compiles the site's sources under the CMS's compiler options.
-* `vite.config.ts` → `server.watch.ignored`, or the CMS dev server reloads on
-  edits to a site it does not serve.
-* `src/index.css` → `@source not "../marketing-site"`, or Tailwind 4's
-  automatic source detection sweeps the site's class names into the dashboard's
-  stylesheet.
+Because the dashboard is served from `cms.*` and calls `api.*`, every request
+it makes is cross-origin: the API host is compiled into the dashboard at build
+time (`VITE_NODE_SERVER_URL`), and the API has to list the dashboard in
+`CORS_ALLOWED_ORIGINS`. Both are wired up in `docker-compose.yml`.
 
 ## Done on the CMS side
 
@@ -107,28 +89,32 @@ Against a throwaway PocketBase with the real schema imported:
 ### 1. Point the domains
 
 **One** Coolify resource (`Frontend`, Base Directory `/`, Compose Location
-`/docker-compose.yml`) builds both services — the same shape as the Manve
-project. Each service is its own container, so Coolify gives each its own
-domain field and its own logs, and one crashing doesn't take the other down.
+`/docker-compose.yml`) builds all three services — the same shape as the Manve
+project. Each is its own container, so Coolify gives each its own domain field
+and its own logs, and one crashing doesn't take the others down.
 
-| Compose service | Folder | Domains to set in Coolify |
+| Compose service | Builds from | Domains to set in Coolify |
 |---|---|---|
-| `cms` | repo root | `cms.` + `api.bluestardigitech.com`, `blu.manve.co`, `dem1.manve.co` |
+| `api` | `server/Dockerfile` | `api.bluestardigitech.com`, `dem1.manve.co` |
+| `cms` | root `Dockerfile` (static dashboard) | `cms.bluestardigitech.com`, `blu.manve.co` |
 | `website` | `marketing-site/` | `bluestardigitech.com`, `www.` |
 
-Separate fields on purpose: either side's domains can change later without
-touching the other.
+Separate fields on purpose: any one of them can move later without touching the
+others.
 
-Two other Coolify apps become redundant — `Bluestar-Server` (the API, now
-inside `cms`) and `Bluestar-Web` (empty). Delete `Bluestar-Server` only after
-`dem1.manve.co` has moved onto this resource and a real TV is confirmed
+The `Bluestar-Server` and `Bluestar-Web` Coolify apps become redundant — the
+API's build moved into the `api` service here. Delete `Bluestar-Server` only
+after `dem1.manve.co` has moved onto this resource and a real TV is confirmed
 syncing; see the legacy-domain note in `docker-compose.yml`.
 
 Note the naming trap: the Coolify service called **CMS is PocketBase**, not the
-dashboard. The dashboard is the app called **Frontend**.
+dashboard. The dashboard is the `cms` service inside the app called
+**Frontend**.
 
-The compose service was renamed `frontend` → `cms`, so after **Reload Compose
-File** the domain fields are bound to the old name — re-assign them.
+Because the dashboard and the API are separate origins, the dashboard's API
+host is compiled in at build time (`VITE_NODE_SERVER_URL`) and the API must
+list the dashboard in `CORS_ALLOWED_ORIGINS`. Both are wired in
+`docker-compose.yml`.
 
 Domain assignment is Coolify UI configuration, not anything in this repo.
 
