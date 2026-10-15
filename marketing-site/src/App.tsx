@@ -36,6 +36,43 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
+  /*
+   * Per-route title, description and canonical.
+   *
+   * index.html carries the homepage's tags, and /enquire was inheriting them
+   * wholesale — same title, same description, same canonical pointing at "/".
+   * A crawler reading that sees two URLs claiming to be the homepage, which is
+   * how a page gets dropped as a duplicate. There is only one other route, so
+   * this is a lookup rather than a helmet library.
+   */
+  useEffect(() => {
+    const meta: Record<string, { title: string; description: string; canonical: string }> = {
+      [ENQUIRE_PATH]: {
+        title: 'Request a Quote | Bluestar Digitech — Digital Signage & Kiosks',
+        description:
+          'Tell us the product, screen size and site and we will come back with a quote. ISO 9001:2015 certified digital standee, touch kiosk and LED video wall manufacturer in Peenya, Bangalore.',
+        canonical: 'https://bluestardigitech.com/enquire'
+      },
+      '/': {
+        title: 'Bluestar Digitech | Digital Signage, Touch Kiosks & LED Video Walls',
+        description:
+          'Bluestar Digitech is an ISO 9001:2015 certified manufacturer of digital standees, interactive touch kiosks, touch tables, digital podiums and LED video walls, fabricated in-house in Peenya, Bangalore.',
+        canonical: 'https://bluestardigitech.com/'
+      }
+    };
+    const m = meta[path] ?? meta['/'];
+    document.title = m.title;
+    const setTag = (selector: string, attr: string, value: string) => {
+      const el = document.head.querySelector(selector);
+      if (el) el.setAttribute(attr, value);
+    };
+    setTag('meta[name="description"]', 'content', m.description);
+    setTag('link[rel="canonical"]', 'href', m.canonical);
+    setTag('meta[property="og:title"]', 'content', m.title);
+    setTag('meta[property="og:description"]', 'content', m.description);
+    setTag('meta[property="og:url"]', 'content', m.canonical);
+  }, [path]);
+
   const goTo = (next: string) => {
     if (window.location.pathname !== next) window.history.pushState({}, '', next);
     setPath(next.replace(/\/+$/, '') || '/');
