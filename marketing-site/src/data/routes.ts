@@ -88,8 +88,15 @@ export const ROUTES: SiteRoute[] = [
 
 export const HOME = ROUTES[0];
 
-/** Paths that appear in the header and footer nav, in order. */
-export const NAV_ROUTES = ROUTES.filter((r) => r.path !== '/' && r.path !== '/enquire');
+/**
+ * Paths in the header and footer nav, in order.
+ *
+ * Home is included. Once the site stopped being one page there was no way to
+ * get back to it from the nav, and the logo only scrolled to the top of
+ * whatever page you were already on. Enquire is excluded — it has its own
+ * button in the bar.
+ */
+export const NAV_ROUTES = ROUTES.filter((r) => r.path !== '/enquire');
 
 /** Cards on the homepage. Same set as the nav, plus their blurbs. */
 export const SECTION_ROUTES = NAV_ROUTES.filter((r) => r.blurb);

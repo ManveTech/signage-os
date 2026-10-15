@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   ChevronRight,
   HelpCircle,
+  Home,
   Mail,
   MapPin,
   Menu,
@@ -110,6 +111,7 @@ export const Navbar: React.FC<NavbarProps> = ({
    * each path with an icon, so a new route cannot silently miss the menu.
    */
   const NAV_ICON: Record<string, typeof Monitor> = {
+    '/': Home,
     '/products': Monitor,
     '/installations': MapPin,
     '/about': ShieldCheck,
@@ -134,9 +136,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           restrained one. A mark in the sticky bar and a lockup in the hero is
           the normal arrangement.
         */}
-        <button
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          aria-label="Bluestar Digitech — back to top"
+        <a
+          href="/"
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+            e.preventDefault();
+            // On the homepage there is nowhere to navigate, so scroll instead.
+            if (currentPath === '/') window.scrollTo({ top: 0, behavior: 'smooth' });
+            else onNavigate('/');
+          }}
+          aria-label="Bluestar Digitech — home"
           className="flex-shrink-0 flex items-center py-1.5 pr-2 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0284c7]/30"
           id="nav-brand-home"
         >
@@ -152,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             decoding="async"
             draggable={false}
           />
-        </button>
+        </a>
 
         {/* Center: Nav Pills (Desktop)
             Real <a href> elements, not buttons — these are the internal links
