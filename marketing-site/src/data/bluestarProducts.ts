@@ -73,8 +73,16 @@ const PLATFORM_SPECS: ProductSpec[] = [
   { label: 'Screen sizes', value: '32" – 65"' }
 ];
 
-// Brochure: "Silver (standard), customizable based on MOQ" + powder-coated/spray finish.
-export const FINISH_OPTIONS = ['Silver (standard)', 'Custom colour (per MOQ)'];
+/*
+ * Black is the standard finish, per Bluestar.
+ *
+ * Note that the 2024 brochure says otherwise — it prints "Silver (standard),
+ * customizable based on MOQ" on the standee spec sheets, which is where the
+ * old value came from. The product renders agree with black: the standees,
+ * A-type, podium, coffee table and LED wall are all dark. Treat the brochure
+ * line as out of date, and update it when it is next reprinted.
+ */
+export const FINISH_OPTIONS = ['Black (standard)', 'Custom colour (per MOQ)'];
 
 export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
   {
