@@ -11,7 +11,6 @@ import { ProcessSection } from './components/ProcessSection';
 import { FaqSection } from './components/FaqSection';
 import { Footer } from './components/Footer';
 import { EnquiryPage, EnquiryPrefill } from './components/EnquiryPage';
-import { SectionGrid } from './components/SectionGrid';
 import { PageHeader } from './components/PageHeader';
 import { PageNextLinks } from './components/PageNextLinks';
 import { ROUTES, routeFor } from './data/routes';
@@ -128,7 +127,7 @@ export default function App() {
               action={quoteAction('Request a quote', 'Tell us which product and we’ll come back with a price.')}
               onNavigate={goTo}
             />
-            <ProductShowcase onRequestQuote={handleQuote} />
+            <ProductShowcase onRequestQuote={handleQuote} showHeading={false} />
             <PageNextLinks currentPath="/products" onNavigate={goTo} />
           </>
         );
@@ -155,7 +154,7 @@ export default function App() {
               intro="ISO 9001:2015 certified precision sheet metal works in Peenya, Bangalore. Cutting, bending, coating, assembly and commissioning all happen under one roof — so nothing gets lost between the metal and the screen."
               onNavigate={goTo}
             />
-            <WhyChooseUs />
+            <WhyChooseUs showHeading={false} />
             <ProcessSection
               onEnquire={() =>
                 handleEnquire({
@@ -179,6 +178,7 @@ export default function App() {
               onNavigate={goTo}
             />
             <FaqSection
+              showHeading={false}
               onEnquire={() =>
                 handleEnquire({
                   context: 'Ask our engineering team anything — specs, mounting, warranty, AMC.'
@@ -208,17 +208,40 @@ export default function App() {
           </>
         );
 
+      /*
+       * The homepage carries every section, as it did before the split. The
+       * dedicated pages above are the addressable copy of each one — the two
+       * coexist deliberately: this page is the scrollable overview, those are
+       * what a search result points at.
+       */
       default:
         return (
           <>
             <HeroSection
               onEnquire={handleEnquire}
               onRequestQuote={handleQuote}
-              onScrollToProducts={() => goTo('/products')}
+              onScrollToProducts={() => handleScrollTo('products')}
             />
             <ClientLogos />
             <CapabilityBanner />
-            <SectionGrid onNavigate={goTo} />
+            <InstallationGallery onRequestQuote={handleQuote} />
+            <ProductShowcase onRequestQuote={handleQuote} />
+            <WhyChooseUs />
+            <ProcessSection
+              onEnquire={() =>
+                handleEnquire({
+                  context:
+                    'Send us a drawing or a screen size — we’ll come back with a quote and a lead time.'
+                })
+              }
+            />
+            <FaqSection
+              onEnquire={() =>
+                handleEnquire({
+                  context: 'Ask our engineering team anything — specs, mounting, warranty, AMC.'
+                })
+              }
+            />
           </>
         );
     }
