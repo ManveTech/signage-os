@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  ArrowLeft, Phone, Mail, MessageCircle, ShieldCheck, Send, Loader2, Check,
-  MapPin, Clock, Factory
+  ArrowLeft,
+  Phone,
+  Mail,
+  ShieldCheck,
+  Send,
+  Loader2,
+  Check,
+  MapPin,
+  Clock,
+  Factory
 } from 'lucide-react';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import { BLUESTAR_PRODUCTS, PANEL_SIZES } from '../data/bluestarProducts';
 import { COMPANY, PHONES, ADDRESS_ONE_LINE, MAPS_URL } from '../data/company';
 import {
@@ -154,7 +163,7 @@ export const EnquiryPage: React.FC<EnquiryPageProps> = ({ prefill, onBack }) => 
                 onClick={() => openWhatsApp(buildEnquiryMessage(details))}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#128c7e] hover:bg-[#0f7a6d] text-white py-3.5 px-6 rounded-full font-bold text-sm transition cursor-pointer"
               >
-                <MessageCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                <WhatsAppIcon className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                 Talk to us now on WhatsApp
               </button>
               <button
@@ -354,7 +363,7 @@ export const EnquiryPage: React.FC<EnquiryPageProps> = ({ prefill, onBack }) => 
                       onClick={() => openWhatsApp(buildEnquiryMessage(details))}
                       className="w-full inline-flex items-center gap-3 bg-[#128c7e] hover:bg-[#0f7a6d] text-white px-4 py-3 rounded-2xl font-bold text-sm transition cursor-pointer"
                     >
-                      <MessageCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                      <WhatsAppIcon className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                       <span className="text-left">WhatsApp {WHATSAPP_DISPLAY}</span>
                     </button>
                     <a

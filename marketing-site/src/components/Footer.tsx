@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BluestarLogo } from './BrandAssets';
-import { Check, Mail, Phone, MapPin, ArrowUpRight, Clock, MessageCircle, Factory, ShieldCheck } from 'lucide-react';
+import { Check, Mail, Phone, MapPin, ArrowUpRight, Clock, Factory, ShieldCheck } from 'lucide-react';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import { COMPANY, PHONES, ADDRESS_ONE_LINE, MAPS_URL } from '../data/company';
 import { whatsappUrl, buildQuoteMessage, WHATSAPP_DISPLAY } from '../data/enquiry';
 import { Reveal } from './Reveal';
@@ -99,7 +100,7 @@ export const Footer: React.FC<FooterProps> = ({ onEnquire }) => {
               rel="noopener noreferrer"
               className="mt-4 inline-flex items-center justify-center gap-2 bg-[#128c7e] hover:bg-[#0f7a6d] text-white py-2.5 px-4 rounded-xl font-bold text-xs transition"
             >
-              <MessageCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+              <WhatsAppIcon className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
               <span>Message us on WhatsApp</span>
             </a>
 

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowUpRight, ShieldCheck, Mail, MapPin, MessageCircle } from 'lucide-react';
+import { ArrowUpRight, ShieldCheck, Mail, MapPin } from 'lucide-react';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import { BluestarLogo, ProductShowcaseLoop } from './BrandAssets';
 import { BLUESTAR_PRODUCTS } from '../data/bluestarProducts';
 import type { EnquiryPrefill } from './EnquiryPage';
@@ -341,7 +342,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               }
               className="flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-[#0b2545] hover:underline cursor-pointer bg-white/70 px-2.5 py-1 rounded-full shadow-sm"
             >
-              <MessageCircle className="w-3.5 h-3.5 text-[#128c7e]" aria-hidden="true" />
+              <WhatsAppIcon className="w-3.5 h-3.5 text-[#128c7e]" aria-hidden="true" />
               <span>Quote on WhatsApp</span>
             </button>
 

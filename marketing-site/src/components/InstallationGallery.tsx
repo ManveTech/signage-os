@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowUpRight, Factory, MessageCircle, X } from 'lucide-react';
+import { ArrowUpRight, Factory, X } from 'lucide-react';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import {
   CARD_OUTDOOR,
   CARD_INSTALLED,
@@ -353,7 +354,7 @@ export const InstallationGallery: React.FC<InstallationGalleryProps> = ({ onRequ
                 }}
                 className="w-full bg-[#128c7e] hover:bg-[#0f7a6d] text-white py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 cursor-pointer"
               >
-                <MessageCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                <WhatsAppIcon className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                 <span>Quote this on WhatsApp</span>
               </button>
             </div>

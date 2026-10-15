@@ -7,9 +7,9 @@ import {
   Ruler,
   ChevronLeft,
   ChevronRight,
-  MessageCircle,
   Check
 } from 'lucide-react';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import {
   BLUESTAR_PRODUCTS,
   FINISH_OPTIONS,
@@ -201,7 +201,7 @@ const ProductCard: React.FC<{
           >
             {sent
               ? <Check className="w-5 h-5 flex-shrink-0" strokeWidth={3} aria-hidden="true" />
-              : <MessageCircle className="w-5 h-5 flex-shrink-0" aria-hidden="true" />}
+              : <WhatsAppIcon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />}
             {/* Short label on phones — the full sentence pushed the pill wide
                 enough to shrink its own type. */}
             <span className="sm:hidden">{sent ? 'Opening WhatsApp' : 'Quote on WhatsApp'}</span>
