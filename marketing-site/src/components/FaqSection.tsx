@@ -41,9 +41,9 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ onEnquire }) => {
         <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-[#0b2545]/15 text-[#0b2545] text-xs font-black uppercase tracking-widest mb-3">
           <HelpCircle className="w-3.5 h-3.5 text-[#0284c7]" /> COMMON QUESTIONS
         </span>
-        <h2 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
+        <h1 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
           FREQUENTLY ASKED QUESTIONS
-        </h2>
+        </h1>
         <p className="mt-2 text-base text-[#18487d]">
           Custom branding, warranties, lead times and specifications — the things people ask us first.
         </p>

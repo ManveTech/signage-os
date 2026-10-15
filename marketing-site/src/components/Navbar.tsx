@@ -15,9 +15,12 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PHONES } from '../data/company';
+import { NAV_ROUTES } from '../data/routes';
 
 interface NavbarProps {
-  onScrollToSection: (sectionId: string) => void;
+  /** Current pathname, so the active page can be marked. */
+  currentPath: string;
+  onNavigate: (path: string) => void;
   onEnquireClick: () => void;
 }
 
@@ -67,7 +70,8 @@ export const AnnouncementBar: React.FC = () => {
 };
 
 export const Navbar: React.FC<NavbarProps> = ({
-  onScrollToSection,
+  currentPath,
+  onNavigate,
   onEnquireClick
 }) => {
   const [scrolled, setScrolled] = useState(false);
@@ -100,19 +104,18 @@ export const Navbar: React.FC<NavbarProps> = ({
    * A phone menu is a list of destinations, nothing more. Each row used to
    * carry an icon, an all-caps title, a coloured badge ("8 Models",
    * "Under One Roof"…) and a two-line description — five things per row, six
-   * rows, which read as a wall rather than a menu. Names and icons only now;
-   * the badges were decoration and the descriptions repeat the sections below.
+   * rows, which read as a wall rather than a menu. Names and icons only now.
+   *
+   * The destinations themselves come from the routes table; this just pairs
+   * each path with an icon, so a new route cannot silently miss the menu.
    */
-  const navMenuItems = [
-    { id: 'products', title: 'Products', icon: Monitor },
-    { id: 'installations', title: 'Installations', icon: MapPin },
-    { id: 'why-us', title: 'Why Choose Us', icon: ShieldCheck },
-    { id: 'process', title: 'How We Build', icon: RotateCw },
-    /* Client Reviews sits here once real testimonials replace the template
-       copy — see the note in App.tsx. */
-    { id: 'faq', title: 'FAQ & Warranty', icon: HelpCircle },
-    { id: 'contact', title: 'Contact', icon: Mail }
-  ];
+  const NAV_ICON: Record<string, typeof Monitor> = {
+    '/products': Monitor,
+    '/installations': MapPin,
+    '/about': ShieldCheck,
+    '/faq': HelpCircle,
+    '/contact': Mail
+  };
 
   return (
     <header
@@ -151,57 +154,32 @@ export const Navbar: React.FC<NavbarProps> = ({
           />
         </button>
 
-        {/* Center: Nav Pills (Desktop) */}
+        {/* Center: Nav Pills (Desktop)
+            Real <a href> elements, not buttons — these are the internal links
+            a crawler follows to find the other pages. The click handler only
+            upgrades a plain left click into a pushState navigation; modified
+            clicks fall through to the browser. */}
         <nav className="hidden md:flex items-center gap-1 bg-[#bddcf8]/60 backdrop-blur-md p-1 rounded-full border border-white/50 shadow-inner">
-          <button
-            onClick={() => onScrollToSection('products')}
-            className="px-3.5 py-1 rounded-full text-xs font-bold text-[#0b2545] hover:bg-white transition-all duration-200 cursor-pointer"
-            id="nav-link-products"
-          >
-            Products
-          </button>
-          <button
-            onClick={() => onScrollToSection('installations')}
-            className="px-3.5 py-1 rounded-full text-xs font-bold text-[#0b2545] hover:bg-white transition-all duration-200 cursor-pointer"
-            id="nav-link-installations"
-          >
-            Installations
-          </button>
-          <button
-            onClick={() => onScrollToSection('why-us')}
-            className="px-3.5 py-1 rounded-full text-xs font-bold text-[#0b2545] hover:bg-white transition-all duration-200 cursor-pointer"
-            id="nav-link-specs"
-          >
-            Why Us &amp; Specs
-          </button>
-          <button
-            onClick={() => onScrollToSection('process')}
-            className="px-3.5 py-1 rounded-full text-xs font-bold text-[#0b2545] hover:bg-white transition-all duration-200 cursor-pointer"
-            id="nav-link-process"
-          >
-            Process
-          </button>
-          {/* <button
-            onClick={() => onScrollToSection('reviews')}
-            className="px-3.5 py-1 rounded-full text-xs font-bold text-[#0b2545] hover:bg-white transition-all duration-200 cursor-pointer"
-            id="nav-link-reviews"
-          >
-            Reviews
-          </button> */}
-          <button
-            onClick={() => onScrollToSection('faq')}
-            className="px-3.5 py-1 rounded-full text-xs font-bold text-[#0b2545] hover:bg-white transition-all duration-200 cursor-pointer"
-            id="nav-link-faq"
-          >
-            FAQ
-          </button>
-          <button
-            onClick={() => onScrollToSection('contact')}
-            className="px-3.5 py-1 rounded-full text-xs font-bold text-[#0b2545] hover:bg-white transition-all duration-200 cursor-pointer"
-            id="nav-link-contact"
-          >
-            Contact
-          </button>
+          {NAV_ROUTES.map((route) => {
+            const active = currentPath === route.path;
+            return (
+              <a
+                key={route.path}
+                href={route.path}
+                aria-current={active ? 'page' : undefined}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                  e.preventDefault();
+                  onNavigate(route.path);
+                }}
+                className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
+                  active ? 'bg-white text-[#0b2545] shadow-sm' : 'text-[#0b2545] hover:bg-white'
+                }`}
+              >
+                {route.label}
+              </a>
+            );
+          })}
         </nav>
 
         {/* Right: Enquiry CTA & Mobile Menu */}
@@ -273,13 +251,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                 {/* Destinations. Name + icon + chevron, nothing else. */}
                 <nav className="flex flex-col">
-                  {navMenuItems.map((item) => {
-                    const IconComponent = item.icon;
+                  {NAV_ROUTES.map((route) => {
+                    const IconComponent = NAV_ICON[route.path] ?? Monitor;
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          onScrollToSection(item.id);
+                      <a
+                        key={route.path}
+                        href={route.path}
+                        aria-current={currentPath === route.path ? 'page' : undefined}
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                          e.preventDefault();
+                          onNavigate(route.path);
                           setMobileMenuOpen(false);
                         }}
                         className="group w-full flex items-center gap-3.5 py-3.5 border-b border-[#0b2545]/8 last:border-0 text-left cursor-pointer"
@@ -290,13 +272,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                           aria-hidden="true"
                         />
                         <span className="flex-1 text-base font-bold text-[#0b2545] group-hover:text-[#0284c7] transition-colors">
-                          {item.title}
+                          {route.label}
                         </span>
                         <ChevronRight
                           className="w-4 h-4 text-[#0b2545]/30 group-hover:text-[#0284c7] transition-colors flex-shrink-0"
                           aria-hidden="true"
                         />
-                      </button>
+                      </a>
                     );
                   })}
                 </nav>

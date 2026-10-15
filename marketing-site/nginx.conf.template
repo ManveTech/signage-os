@@ -20,7 +20,7 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    # The site has exactly two real routes, so they are both named explicitly
+    # The site's routes are named explicitly, one block each,
     # rather than restoring a `try_files ... /index.html` catch-all. That
     # catch-all answered every mistyped or stale URL with the homepage under a
     # 200, which search engines read as a pile of duplicate pages (soft 404s).
@@ -28,9 +28,34 @@ server {
     # without a file extension is redirected to the canonical "/", and missing
     # assets return a genuine 404.
     #
-    # Add a line here if App.tsx ever gains another route — without it, a direct
-    # visit or a refresh on that path 301s back to the homepage.
+    # Add a block here for every path in src/data/routes.ts. Without one, a
+    # direct visit or a refresh on that path 301s back to the homepage.
     location = / {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /products {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /installations {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /about {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /faq {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /contact {
         try_files /index.html =404;
         add_header Cache-Control "no-cache" always;
     }

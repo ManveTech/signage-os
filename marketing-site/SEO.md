@@ -38,38 +38,23 @@ and only when it is confident about a site's structure. You cannot request
 them. Any agency that offers to "add sitelinks" is selling you something that
 does not exist.
 
-**Why this site cannot get them yet.** Sitelinks are built out of *other pages*
-on your site. Right now there are two URLs:
+**Where this site now stands.** The split is done. There are seven real URLs,
+each with its own title, description, canonical and single `h1`, linked from
+the header, the footer and a grid on the homepage:
 
 ```
-/            the entire marketing site
-/enquire     the enquiry form
+/               Home — hero, client logos, capability banner, section grid
+/products       the full product range
+/installations  the site and factory gallery
+/about          why choose us + how we build
+/faq            FAQ, with its FAQPage structured data
+/contact        contact heading + the footer's real details
+/enquire        the enquiry form
 ```
 
-Everything the nav points at — Products, Installations, Why Us, Process, FAQ,
-Contact — is a `#fragment` of the homepage. Search engines discard fragments.
-So from Google's side this is a one-page site, and it has nothing to build
-sitelinks from.
-
-### What would actually earn them
-
-Split the existing sections into real pages. The content already exists and is
-already written; this is a routing and layout job, not a writing one.
-
-| Page | URL | Built from |
-|---|---|---|
-| Home | `/` | hero, a trimmed summary of each section |
-| Products | `/products` | the product carousel, ideally one page per product later |
-| Installations | `/installations` | the gallery |
-| About | `/about` | Why Choose Us + How We Build + the ISO story |
-| FAQ | `/faq` | the FAQ accordion, keeping the `FAQPage` schema |
-| Contact | `/contact` | the footer's contact cards, as a page |
-| Enquire | `/enquire` | done |
-
-Each needs its own `<title>`, its own description, its own canonical, and a
-sitemap entry. The routing mechanism is already in `App.tsx` — it is a lookup
-table, and adding a route is a few lines plus one `location` block in
-`nginx.conf.template`.
+Nothing is duplicated between them — each section lives at exactly one address,
+which is why the homepage carries a grid of links rather than the sections
+themselves.
 
 **Realistic expectation.** Even done perfectly, sitelinks typically appear
 somewhere between a few weeks and a few months after Google has crawled and
@@ -117,7 +102,8 @@ a side effect of a structure that is better anyway.
    not indexed" or "Duplicate".
 7. **Check Core Web Vitals** in Search Console once it has data. The site is
    static and light, so this should be clean.
-8. **Decide on the multi-page split** above. This is the sitelinks work.
+8. **Re-submit the sitemap** after the first deploy — it went from two URLs to
+   seven, and Search Console will not notice on its own.
 
 ### Things to decide, not technical
 

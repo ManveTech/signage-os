@@ -225,13 +225,13 @@ export const InstallationGallery: React.FC<InstallationGalleryProps> = ({ onRequ
         <div className="lg:col-span-6 flex flex-col justify-center text-left max-w-xl">
           
           {/* Main Statement with exact condensed display font and sizing */}
-          <h2
+          <h1
             id="installations-heading"
             className="text-2xl sm:text-3xl md:text-4xl lg:text-[40px] font-black text-[#0b2545] tracking-tight leading-[1.1]"
             style={{ fontFamily: "'Barlow Condensed', 'Outfit', sans-serif" }}
           >
             We keep the whole build under one roof — so nothing gets lost between the metal and the screen.
-          </h2>
+          </h1>
 
           {/* Subtext Body matching reference */}
           <p className="mt-3.5 sm:mt-5 text-sm sm:text-base text-[#334e68] leading-relaxed font-normal">

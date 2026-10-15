@@ -61,9 +61,9 @@ export const WhyChooseUs: React.FC = () => {
         <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-[#0b2545]/15 text-[#0b2545] text-xs font-black uppercase tracking-widest mb-3">
           <ShieldCheck className="w-3.5 h-3.5 text-[#0284c7]" aria-hidden="true" /> ISO 9001:2015 CERTIFIED
         </span>
-        <h2 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
+        <h1 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
           WHY CHOOSE BLUE STAR
-        </h2>
+        </h1>
         <p className="mt-3 text-base sm:text-lg text-[#18487d]">
           Cutting-edge technology, stringent quality control and a team that has been doing this since 2015.
         </p>

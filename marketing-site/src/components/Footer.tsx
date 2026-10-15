@@ -12,9 +12,11 @@ const PRIMARY_PHONE = PHONES[0];
 interface FooterProps {
   /** Opens the enquiry form, so the footer's own CTA is a form and not a scroll. */
   onEnquire: (prefill?: EnquiryPrefill) => void;
+  /** Navigates without a reload. The hrefs stay real for crawlers. */
+  onNavigate: (path: string) => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onEnquire }) => {
+export const Footer: React.FC<FooterProps> = ({ onEnquire, onNavigate }) => {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
@@ -25,6 +27,22 @@ export const Footer: React.FC<FooterProps> = ({ onEnquire }) => {
    * written. Replace this with a real POST (form service or API route) as soon
    * as there is somewhere to send it; the address lives in data/company.ts.
    */
+
+  /*
+   * Footer links were #fragments of a single page. They are real paths now, and
+   * they stay real <a href> values — that is what a crawler follows. The
+   * handler only upgrades a plain left click; modified clicks fall through so
+   * "open in new tab" still works.
+   */
+  const link = (path: string) => ({
+    href: path,
+    onClick: (e: React.MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || (e as React.MouseEvent).button !== 0) return;
+      e.preventDefault();
+      onNavigate(path);
+    }
+  });
+
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes('@')) return;
@@ -262,33 +280,33 @@ export const Footer: React.FC<FooterProps> = ({ onEnquire }) => {
           <div>
             <h3 className="font-extrabold text-white uppercase tracking-wider mb-3">Products</h3>
             <ul className="space-y-0.5 text-[#93bfe8]">
-              <li><a href="#products" className="block py-1.5 hover:text-white transition">Floor Standing Standees</a></li>
-              <li><a href="#products" className="block py-1.5 hover:text-white transition">Self-Service Touch Kiosks</a></li>
-              <li><a href="#products" className="block py-1.5 hover:text-white transition">Active LED Video Walls</a></li>
-              <li><a href="#products" className="block py-1.5 hover:text-white transition">Digital Coffee &amp; Touch Tables</a></li>
-              <li><a href="#products" className="block py-1.5 hover:text-white transition">A-Type Digital Signage</a></li>
+              <li><a {...link('/products')} className="block py-1.5 hover:text-white transition">Floor Standing Standees</a></li>
+              <li><a {...link('/products')} className="block py-1.5 hover:text-white transition">Self-Service Touch Kiosks</a></li>
+              <li><a {...link('/products')} className="block py-1.5 hover:text-white transition">Active LED Video Walls</a></li>
+              <li><a {...link('/products')} className="block py-1.5 hover:text-white transition">Digital Coffee &amp; Touch Tables</a></li>
+              <li><a {...link('/products')} className="block py-1.5 hover:text-white transition">A-Type Digital Signage</a></li>
             </ul>
           </div>
 
           <div>
             <h3 className="font-extrabold text-white uppercase tracking-wider mb-3">Fabrication</h3>
             <ul className="space-y-0.5 text-[#93bfe8]">
-              <li><a href="#why-us" className="block py-1.5 hover:text-white transition">CNC Laser Sheet Cutting</a></li>
-              <li><a href="#why-us" className="block py-1.5 hover:text-white transition">CNC Press-Brake Bending</a></li>
-              <li><a href="#why-us" className="block py-1.5 hover:text-white transition">Powder-Coated Finishing</a></li>
-              <li><a href="#process" className="block py-1.5 hover:text-white transition">Custom Enclosure Design</a></li>
-              <li><a href="#faq" className="block py-1.5 hover:text-white transition">ISO 9001:2015 Standards</a></li>
+              <li><a {...link('/about')} className="block py-1.5 hover:text-white transition">CNC Laser Sheet Cutting</a></li>
+              <li><a {...link('/about')} className="block py-1.5 hover:text-white transition">CNC Press-Brake Bending</a></li>
+              <li><a {...link('/about')} className="block py-1.5 hover:text-white transition">Powder-Coated Finishing</a></li>
+              <li><a {...link('/about')} className="block py-1.5 hover:text-white transition">Custom Enclosure Design</a></li>
+              <li><a {...link('/faq')} className="block py-1.5 hover:text-white transition">ISO 9001:2015 Standards</a></li>
             </ul>
           </div>
 
           <div>
             <h3 className="font-extrabold text-white uppercase tracking-wider mb-3">Company</h3>
             <ul className="space-y-0.5 text-[#93bfe8]">
-              <li><a href="#why-us" className="block py-1.5 hover:text-white transition">Why Choose Us</a></li>
-              <li><a href="#process" className="block py-1.5 hover:text-white transition">How We Build</a></li>
-              <li><a href="#installations" className="block py-1.5 hover:text-white transition">Installation Gallery</a></li>
-              <li><a href="#faq" className="block py-1.5 hover:text-white transition">Warranty &amp; AMC</a></li>
-              <li><a href="#faq" className="block py-1.5 hover:text-white transition">Lead Times</a></li>
+              <li><a {...link('/about')} className="block py-1.5 hover:text-white transition">Why Choose Us</a></li>
+              <li><a {...link('/about')} className="block py-1.5 hover:text-white transition">How We Build</a></li>
+              <li><a {...link('/installations')} className="block py-1.5 hover:text-white transition">Installation Gallery</a></li>
+              <li><a {...link('/faq')} className="block py-1.5 hover:text-white transition">Warranty &amp; AMC</a></li>
+              <li><a {...link('/faq')} className="block py-1.5 hover:text-white transition">Lead Times</a></li>
             </ul>
           </div>
 

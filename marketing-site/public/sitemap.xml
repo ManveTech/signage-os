@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Two real URLs: the homepage and /enquire. The nav targets (#products,
-  #installations, #why-us, #process, #faq, #contact) are fragments of the
-  homepage, and search engines drop fragments, so listing those separately
-  would only create duplicates. The product renders are declared as image entries instead, which
-  is what actually earns extra surface in image search.
+  Generated to match src/data/routes.ts. Every path in that table needs a
+  <url> entry here and a location block in nginx.conf.template; nothing
+  enforces that automatically.
+
+  The product images hang off /products, which is where they are actually
+  rendered. They used to be declared on the homepage because the homepage was
+  the only URL the site had.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
@@ -13,49 +15,85 @@
     <lastmod>2026-10-15</lastmod>
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://bluestardigitech.com/products</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
 
     <image:image>
       <image:loc>https://bluestardigitech.com/products/standee.webp</image:loc>
       <image:title>Floor Standing Digital Standee</image:title>
-      <image:caption>Powder-coated floor standing digital signage standee manufactured by Bluestar Digitech, Bangalore.</image:caption>
+      <image:caption>Indoor floor standing kiosk for high-traffic environments.</image:caption>
     </image:image>
+
     <image:image>
       <image:loc>https://bluestardigitech.com/products/a-type-standee.webp</image:loc>
-      <image:title>A-Type Digital Standee</image:title>
-      <image:caption>A-frame digital signage standee for high-footfall retail interiors.</image:caption>
+      <image:title>A-Type Standee</image:title>
+      <image:caption>Slim-frame digital signage standee in aluminium or mild steel.</image:caption>
     </image:image>
+
     <image:image>
       <image:loc>https://bluestardigitech.com/products/self-service-kiosk.webp</image:loc>
       <image:title>Self-Service Kiosk</image:title>
-      <image:caption>Touch-screen self-service ordering and payment kiosk with custom POS cutouts.</image:caption>
+      <image:caption>Order-and-pay terminal for QSR, retail and healthcare.</image:caption>
     </image:image>
+
     <image:image>
       <image:loc>https://bluestardigitech.com/products/info-kiosk.webp</image:loc>
       <image:title>Information Kiosk</image:title>
-      <image:caption>Interactive wayfinding and information kiosk in a sheet-metal enclosure.</image:caption>
+      <image:caption>Compact wayfinding and enquiry terminal.</image:caption>
     </image:image>
+
     <image:image>
       <image:loc>https://bluestardigitech.com/products/podium.webp</image:loc>
       <image:title>Digital Podium</image:title>
-      <image:caption>Digital lectern and podium with integrated touch display.</image:caption>
+      <image:caption>Touchscreen lectern with a gooseneck mic, for auditoriums and boardrooms.</image:caption>
     </image:image>
+
     <image:image>
       <image:loc>https://bluestardigitech.com/products/touch-table.webp</image:loc>
       <image:title>Multi-Touch Table</image:title>
-      <image:caption>Multi-touch interactive table for showrooms and experience centres.</image:caption>
+      <image:caption>Large-format interactive table in a powder-coated steel body.</image:caption>
     </image:image>
+
     <image:image>
       <image:loc>https://bluestardigitech.com/products/coffee-table.webp</image:loc>
       <image:title>Digital Coffee Table</image:title>
-      <image:caption>Toughened-glass digital coffee table with multi-touch display.</image:caption>
+      <image:caption>Low-height touch surface for lounges and waiting areas.</image:caption>
     </image:image>
+
     <image:image>
       <image:loc>https://bluestardigitech.com/products/led-video-wall.webp</image:loc>
       <image:title>Active LED Video Wall</image:title>
-      <image:caption>Tiled active LED video wall supplied and commissioned across India.</image:caption>
+      <image:caption>Seamless tiled LED display, built to your wall dimensions.</image:caption>
     </image:image>
   </url>
-
+  <url>
+    <loc>https://bluestardigitech.com/installations</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bluestardigitech.com/about</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bluestardigitech.com/faq</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bluestardigitech.com/contact</loc>
+    <lastmod>2026-10-15</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.7</priority>
+  </url>
   <url>
     <loc>https://bluestardigitech.com/enquire</loc>
     <lastmod>2026-10-15</lastmod>

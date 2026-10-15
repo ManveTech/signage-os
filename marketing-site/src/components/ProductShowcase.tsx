@@ -339,9 +339,9 @@ export const ProductShowcase: React.FC<ProductShowcaseProps> = ({ onRequestQuote
         <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-[#0b2545]/15 text-[#0b2545] text-xs font-black uppercase tracking-widest mb-3">
           <LayoutGrid className="w-3.5 h-3.5 text-[#0284c7]" aria-hidden="true" /> PRODUCTS &amp; SERVICES
         </span>
-        <h2 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
+        <h1 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
           EXPLORE THE PRODUCT RANGE
-        </h2>
+        </h1>
         <p className="mt-3 text-base sm:text-lg text-[#18487d]">
           Digital standees, interactive kiosks, touch tables and LED video walls — fabricated to your specification.
         </p>

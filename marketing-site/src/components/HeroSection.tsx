@@ -295,8 +295,16 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         {/* RIGHT COLUMN: Condensed Typography + Explanatory Text + Certification */}
         <div className="lg:col-span-4 relative order-3 lg:order-3 text-center lg:text-left flex flex-col justify-center items-center lg:items-start">
 
-          {/* Big Stacked Headline — from sm up; phones get the copy above. */}
-          <h1
+          {/*
+            From sm up; phones get the copy above. This one is a heading-role
+            div rather than a second <h1>: both renderings carry the same text,
+            and two h1 elements in the markup is untidy. Google indexes mobile
+            first, so the real element stays on the phone copy and this keeps
+            the same semantics for assistive tech.
+          */}
+          <div
+            role="heading"
+            aria-level={1}
             key={active.id}
             className="hidden sm:block hero-headline font-condensed uppercase leading-[0.9] tracking-tight select-none w-full animate-in fade-in duration-500"
           >
@@ -308,7 +316,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 {line}
               </span>
             ))}
-          </h1>
+          </div>
 
           {/* Subtitle Body Copy */}
           <p
