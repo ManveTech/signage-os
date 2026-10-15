@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  LayoutGrid,
   Wrench,
   ShieldCheck,
   Factory,
@@ -335,18 +334,6 @@ export const ProductShowcase: React.FC<ProductShowcaseProps> = ({ onRequestQuote
     <section id="products" className="py-12 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto scroll-mt-24">
 
       {/* Section Header */}
-      <Reveal className="text-center max-w-3xl mx-auto mb-8 sm:mb-10">
-        <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-[#0b2545]/15 text-[#0b2545] text-xs font-black uppercase tracking-widest mb-3">
-          <LayoutGrid className="w-3.5 h-3.5 text-[#0284c7]" aria-hidden="true" /> PRODUCTS &amp; SERVICES
-        </span>
-        <h1 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
-          EXPLORE THE PRODUCT RANGE
-        </h1>
-        <p className="mt-3 text-base sm:text-lg text-[#18487d]">
-          Digital standees, interactive kiosks, touch tables and LED video walls — fabricated to your specification.
-        </p>
-      </Reveal>
-
       {/* Swipeable card carousel */}
       <div
         ref={viewportRef}

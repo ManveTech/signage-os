@@ -12,6 +12,8 @@ import { FaqSection } from './components/FaqSection';
 import { Footer } from './components/Footer';
 import { EnquiryPage, EnquiryPrefill } from './components/EnquiryPage';
 import { SectionGrid } from './components/SectionGrid';
+import { PageHeader } from './components/PageHeader';
+import { PageNextLinks } from './components/PageNextLinks';
 import { ROUTES, routeFor } from './data/routes';
 import { buildQuoteMessage, openWhatsApp, QuoteContext } from './data/enquiry';
 import { CheckCircle } from 'lucide-react';
@@ -105,17 +107,54 @@ export default function App() {
    * between pages: the homepage carries the hero and a grid linking onward,
    * and each section lives at exactly one address.
    */
+  const quoteAction = (label: string, context: string) => ({
+    label,
+    onClick: () => handleEnquire({ context })
+  });
+
+  /*
+   * One section per page. Each inner page opens with a PageHeader — breadcrumb,
+   * h1 and a sentence of context — and closes with links onward, so arriving
+   * from a search result does not feel like landing on an orphaned fragment.
+   */
   const page = () => {
     switch (path) {
       case '/products':
-        return <ProductShowcase onRequestQuote={handleQuote} />;
+        return (
+          <>
+            <PageHeader
+              path="/products"
+              intro="Eight lines, 32&quot; to 65&quot;, fabricated in-house in Peenya. Pick a size and a finish and ask us for a price — the configuration comes with the message."
+              action={quoteAction('Request a quote', 'Tell us which product and we’ll come back with a price.')}
+              onNavigate={goTo}
+            />
+            <ProductShowcase onRequestQuote={handleQuote} />
+            <PageNextLinks currentPath="/products" onNavigate={goTo} />
+          </>
+        );
 
       case '/installations':
-        return <InstallationGallery onRequestQuote={handleQuote} />;
+        return (
+          <>
+            <PageHeader
+              path="/installations"
+              intro="Standees, kiosks, touch tables and LED walls photographed where they ended up — retail floors, hospital lobbies, restaurant entrances, and our own factory before dispatch."
+              onNavigate={goTo}
+            />
+            <InstallationGallery onRequestQuote={handleQuote} />
+            <PageNextLinks currentPath="/installations" onNavigate={goTo} />
+          </>
+        );
 
       case '/about':
         return (
           <>
+            <PageHeader
+              path="/about"
+              heading="About"
+              intro="ISO 9001:2015 certified precision sheet metal works in Peenya, Bangalore. Cutting, bending, coating, assembly and commissioning all happen under one roof — so nothing gets lost between the metal and the screen."
+              onNavigate={goTo}
+            />
             <WhyChooseUs />
             <ProcessSection
               onEnquire={() =>
@@ -125,37 +164,48 @@ export default function App() {
                 })
               }
             />
+            <PageNextLinks currentPath="/about" onNavigate={goTo} />
           </>
         );
 
       case '/faq':
         return (
-          <FaqSection
-            onEnquire={() =>
-              handleEnquire({
-                context: 'Ask our engineering team anything — specs, mounting, warranty, AMC.'
-              })
-            }
-          />
+          <>
+            <PageHeader
+              path="/faq"
+              heading="FAQ"
+              intro="Lead times, warranty and AMC, panel sizes, custom enclosures and commissioning — the things we are asked before every order."
+              action={quoteAction('Ask us something else', 'Ask our engineering team anything — specs, mounting, warranty, AMC.')}
+              onNavigate={goTo}
+            />
+            <FaqSection
+              onEnquire={() =>
+                handleEnquire({
+                  context: 'Ask our engineering team anything — specs, mounting, warranty, AMC.'
+                })
+              }
+            />
+            <PageNextLinks currentPath="/faq" onNavigate={goTo} />
+          </>
         );
 
       /*
-       * Contact has no section of its own — the footer has always carried the
-       * phone numbers, the address and the map link, and it renders on every
-       * page. Rather than write a second set of the same details that can
-       * drift from it, this page is the heading plus that footer.
+       * Contact has no section of its own: the footer has always carried the
+       * numbers, the address and the map link, and it renders on every page.
+       * Writing a second set here would just give them somewhere to drift from.
        */
       case '/contact':
         return (
-          <section className="py-14 sm:py-20 px-4 sm:px-6 lg:px-8 max-w-3xl mx-auto text-center">
-            <h1 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight uppercase">
-              Talk to the factory
-            </h1>
-            <p className="mt-4 text-base sm:text-lg text-[#18487d] leading-relaxed">
-              Send us a drawing, a screen size, or just a rough idea — we’ll come back with a
-              quote. Everything below reaches the people who actually build the units.
-            </p>
-          </section>
+          <>
+            <PageHeader
+              path="/contact"
+              heading="Contact"
+              intro="Send us a drawing, a screen size, or just a rough idea. Everything below reaches the people who actually build the units — no call centre in between."
+              action={quoteAction('Send an enquiry', 'Tell us what you need and we’ll come back with a quote.')}
+              onNavigate={goTo}
+            />
+            <PageNextLinks currentPath="/contact" onNavigate={goTo} />
+          </>
         );
 
       default:

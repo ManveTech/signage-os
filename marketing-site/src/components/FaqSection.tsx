@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, HelpCircle, ArrowUpRight } from 'lucide-react';
+import { ChevronDown, ArrowUpRight } from 'lucide-react';
 import { FAQS } from '../data/faqs';
 import { Reveal } from './Reveal';
 
@@ -37,18 +37,6 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ onEnquire }) => {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: faqJsonLd }} />
 
       {/* Header */}
-      <Reveal className="text-center mb-10 sm:mb-12">
-        <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-[#0b2545]/15 text-[#0b2545] text-xs font-black uppercase tracking-widest mb-3">
-          <HelpCircle className="w-3.5 h-3.5 text-[#0284c7]" /> COMMON QUESTIONS
-        </span>
-        <h1 className="text-3xl sm:text-5xl font-black text-[#0b2545] font-condensed tracking-tight">
-          FREQUENTLY ASKED QUESTIONS
-        </h1>
-        <p className="mt-2 text-base text-[#18487d]">
-          Custom branding, warranties, lead times and specifications — the things people ask us first.
-        </p>
-      </Reveal>
-
       {/* Accordion List */}
       <div className="space-y-3">
         {FAQS.map((faq, idx) => {
