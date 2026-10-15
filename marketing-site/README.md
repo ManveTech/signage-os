@@ -91,12 +91,11 @@ Both are built in `data/enquiry.ts`: `buildQuoteMessage` for the one-tap route,
 - **Confirm the enquiry mailbox.** `data/company.ts` uses
   `info@bluestarmetacraft.com` from the brochure. If the Digitech mailbox is
   live, change `COMPANY.email` and the whole site follows.
-- **Neither form has a backend.** The enquiry form (`EnquiryModal.tsx`) and the
-  catalogue form (`Footer.tsx`) both hand the composed message to the visitor's
-  own WhatsApp or mail client, so a lead is only captured if they press send in
-  that app — nothing is logged on our side. Point the enquiry form's `submit`
-  at a POST endpoint when there is one; the payload shape is already
-  `EnquiryDetails` in `data/enquiry.ts`.
+- **The enquiry form posts to the CMS, the catalogue form does not.** The
+  enquiry page at `/enquire` POSTs to `/api/v1/public/leads` and the lead lands
+  in the dashboard under Enquiries. The footer's catalogue form still just
+  opens a mailto — point it at the same endpoint when convenient.
+
 - **Screen sizes** are stated as the 32"–65" panel range the brochure publishes
   for the standees, applied across the digital products. Narrow a model's
   `displaySizes` in `bluestarProducts.ts` if it is sold in a smaller subset.
