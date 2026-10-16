@@ -20,6 +20,9 @@ const navSections: NavSection[] = [
     id: 'my-screens', label: 'My Screens', icon: <MonitorPlay size={18} />,
     children: [
       { id: 'my-screens-list', label: 'My Screens' },
+      // Client Screens has its own "Add Client Screen"; without this one the
+      // only way to add to your own channel was the button inside My Screens.
+      { id: 'screens-add-my', label: 'Add My Screen' },
       { id: 'screens-groups-my', label: 'Groups' },
       { id: 'screens-logs', label: 'Logs' },
     ]
@@ -207,8 +210,9 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
               {!collapsed && section.children && expandedSections.has(section.id) && (
                 <div className="ml-4 mt-0.5 space-y-0.5">
                   {section.children.map(child => {
-                    const isChildActive = activeView === child.id || 
-                      (child.id === 'my-screens-list' && activeView === 'screens-add-my') ||
+                    // "Add My Screen" is its own row now, so it highlights
+                    // itself rather than borrowing My Screens' highlight.
+                    const isChildActive = activeView === child.id ||
                       (child.id === 'screens-all' && (activeView === 'screens-all' || activeView === 'client-screens' || activeView === 'screens-add'));
                     return (
                       <button

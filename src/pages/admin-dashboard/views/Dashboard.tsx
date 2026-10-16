@@ -153,10 +153,13 @@ export default function Dashboard({
     { label: 'Clients', value: new Set(licenses.map(l => l.assignedUserEmail).filter(Boolean)).size, icon: <Users size={15} />, target: 'users' },
   ];
 
+  // Quick actions are the admin's own shortcuts, so "Add screen" adds to their
+  // own channel. Adding one for a client needs an organization picked first,
+  // which is a different job — that lives under Client Screens.
   const quickActions = [
-    { label: 'Add screen', icon: <Plus size={16} />, target: 'screens-add-client' },
-    { label: 'Upload media', icon: <Upload size={16} />, target: 'media-library' },
-    { label: 'New playlist', icon: <Edit size={16} />, target: 'playlists-create' },
+    { label: 'Add screen', icon: <Plus size={16} />, target: 'screens-add-my' },
+    { label: 'Upload media', icon: <Upload size={16} />, target: 'my-media' },
+    { label: 'New playlist', icon: <Edit size={16} />, target: 'my-create-playlist' },
   ];
 
   const healthTone = totalScreens === 0 ? 'idle' : offlineScreens === 0 ? 'good' : offlineScreens / totalScreens > 0.25 ? 'bad' : 'warn';
