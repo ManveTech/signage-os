@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Search, Film, Image, Upload, Trash2, Trash, CheckCircle, Play, HardDrive,
-  ListVideo, Pencil, X, AlertCircle, Loader2, Check, CloudUpload, Plus
+  ListVideo, Pencil, X, AlertCircle, Loader2, Check, CloudUpload, Plus, ListPlus, Clock
 } from 'lucide-react';
 import MediaThumb, { PreviewMedia } from './MediaThumb';
 import ScreenDetailsSheet from '../screens/ScreenDetailsSheet';
@@ -53,6 +53,11 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
   const [rows, setRows] = useState<UploadRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // "Upload to playlist": the same upload, plus the files are appended to the
+  // playlists picked here. Off for a plain upload and for drag-and-drop.
+  const [toPlaylist, setToPlaylist] = useState(false);
+  const [targetIds, setTargetIds] = useState<string[]>([]);
+  const [slideSeconds, setSlideSeconds] = useState(10);
   const fileInput = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
 
@@ -83,6 +88,10 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
   const usedIn = (m: MediaItem) => playlists.filter(p =>
     (p.slides || []).some(s => s.mediaId === m.id || s.secondMediaId === m.id) || (p.mediaIds || []).includes(m.id));
 
+  // Only your own playlists can be added to — a client's playlist plays a
+  // client's media, and this library is one person's uploads.
+  const myPlaylists = playlists.filter(p => p.createdBy === userEmail);
+
   const q = search.trim().toLowerCase();
   const filtered = media.filter(m =>
     (typeFilter === 'all' || m.type === typeFilter) && (!q || m.title.toLowerCase().includes(q)));
@@ -102,15 +111,23 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
     });
   };
 
+  /** Opens the file picker; `withPlaylists` turns on the playlist step. */
+  const openPicker = (withPlaylists: boolean) => {
+    setToPlaylist(withPlaylists);
+    if (!withPlaylists) setTargetIds([]);
+    fileInput.current?.click();
+  };
+
   const startUpload = async () => {
     const queue = rows.filter(r => r.state === 'waiting' && !r.error);
     if (queue.length === 0) return;
     setUploading(true);
     let ok = 0;
+    const uploaded: MediaItem[] = [];
     for (const row of queue) {
       setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'uploading' } : r)));
       try {
-        await uploadMediaFile(row.file, userEmail);
+        uploaded.push(await uploadMediaFile(row.file, userEmail));
         ok++;
         setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'done' } : r)));
         load();
@@ -119,21 +136,35 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
         setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'failed', message } : r)));
       }
     }
+
+    // Only files that actually reached the server get a slide — a playlist
+    // pointing at a file that failed to upload shows a gap on the TV.
+    const addedTo = toPlaylist
+      ? mediaStore.appendMediaToPlaylists(
+          targetIds,
+          // A video is given its own length; cutting it to the image duration
+          // would stop it part-way with no way to tell from here.
+          uploaded.map(m => ({ id: m.id, duration: m.type === 'video' ? (m.duration || slideSeconds) : slideSeconds }))
+        )
+      : 0;
+
     setUploading(false);
     load();
     if (ok === queue.length) {
-      toast.success(ok === 1 ? 'File uploaded' : `${ok} files uploaded`);
-      setUploadOpen(false);
-      setRows([]);
+      const files = ok === 1 ? 'File uploaded' : `${ok} files uploaded`;
+      toast.success(addedTo > 0 ? `${files} and added to ${addedTo} playlist${addedTo === 1 ? '' : 's'}` : files);
+      closeUpload(true);
     } else if (ok > 0) {
       toast.warning(`${ok} of ${queue.length} uploaded — see the failed ones below`);
     }
   };
 
-  const closeUpload = () => {
-    if (uploading) return;
+  const closeUpload = (force = false) => {
+    if (uploading && !force) return;
     setUploadOpen(false);
     setRows([]);
+    setToPlaylist(false);
+    setTargetIds([]);
   };
 
   // Drop files anywhere on the page.
@@ -214,7 +245,7 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
               : 'Images and videos for your screens'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {media.length > 0 && (
             <button
               onClick={() => { setSelectionMode(v => !v); setSelectedIds([]); }}
@@ -233,13 +264,21 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
               <Trash size={15} /> Delete ({selectedIds.length})
             </button>
           ) : (
-            <button
-              data-tour="media-upload"
-              onClick={() => fileInput.current?.click()}
-              className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold"
-            >
-              <Upload size={15} /> Upload
-            </button>
+            <>
+              <button
+                onClick={() => openPicker(true)}
+                className="flex items-center gap-2 h-10 px-4 bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 rounded-xl text-sm font-semibold"
+              >
+                <ListPlus size={15} /> Upload to playlist
+              </button>
+              <button
+                data-tour="media-upload"
+                onClick={() => openPicker(false)}
+                className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold"
+              >
+                <Upload size={15} /> Upload
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -350,7 +389,7 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
       {!loading && media.length === 0 && (
         <button
           type="button"
-          onClick={() => fileInput.current?.click()}
+          onClick={() => openPicker(false)}
           className="w-full py-14 text-center bg-white rounded-2xl border-2 border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
         >
           <CloudUpload size={32} className="mx-auto text-blue-500 mb-2" />
@@ -381,8 +420,8 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
       {uploadOpen && (
         <ScreenDetailsSheet
           open
-          onClose={closeUpload}
-          title={uploading ? 'Uploading…' : 'Upload files'}
+          onClose={() => closeUpload()}
+          title={uploading ? 'Uploading…' : toPlaylist ? 'Upload to playlist' : 'Upload files'}
           subtitle={limitBytes
             ? `${formatBytes(Math.max(0, limitBytes - usedBytes))} of storage left`
             : `Images up to ${formatBytes(MAX_IMAGE_UPLOAD_BYTES)} · videos up to ${formatBytes(MAX_VIDEO_UPLOAD_BYTES)}`}
@@ -435,13 +474,75 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
                   <Plus size={15} /> Add more files
                 </button>
               )}
+
+              {toPlaylist && !uploading && (
+                <div className="space-y-3 pt-1">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-600 mb-1.5">Add to playlists</p>
+                    {myPlaylists.length === 0 ? (
+                      <p className="text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2.5">
+                        You don't have any playlists yet. The files will still be uploaded — make a playlist and add them from there.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-44 overflow-y-auto border border-slate-100 rounded-xl p-1.5">
+                        {myPlaylists.map(p => {
+                          const picked = targetIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              role="checkbox"
+                              aria-checked={picked}
+                              onClick={() => setTargetIds(prev =>
+                                prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
+                                picked ? 'bg-blue-50' : 'hover:bg-slate-50'
+                              }`}
+                            >
+                              <span className={`w-[18px] h-[18px] rounded-md border flex items-center justify-center shrink-0 ${
+                                picked ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300'
+                              }`}>
+                                {picked && <Check size={12} className="text-white" />}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm text-slate-900 truncate">{p.name}</span>
+                                <span className="block text-[11px] text-slate-500">
+                                  {(p.slides?.length ?? p.mediaIds?.length ?? 0)} item{(p.slides?.length ?? p.mediaIds?.length ?? 0) === 1 ? '' : 's'}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="slide-seconds" className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 mb-1.5">
+                      <Clock size={13} /> Seconds on screen
+                    </label>
+                    <input
+                      id="slide-seconds"
+                      type="number"
+                      min={1}
+                      max={600}
+                      value={slideSeconds}
+                      onChange={e => setSlideSeconds(Math.min(600, Math.max(1, Number(e.target.value) || 1)))}
+                      className="w-28 h-10 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1.5">
+                      Applies to images. Videos play for their own length.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           }
           footer={
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={closeUpload}
+                onClick={() => closeUpload()}
                 disabled={uploading}
                 className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 disabled:opacity-50"
               >
@@ -453,7 +554,10 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
                 disabled={uploading || pending === 0}
                 className="flex-[2] h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold"
               >
-                {uploading ? `Uploading ${Math.min(doneCount + 1, doneCount + pending)}…` : pending === 0 ? 'Nothing to upload' : `Upload ${pending} file${pending === 1 ? '' : 's'}`}
+                {uploading ? `Uploading ${Math.min(doneCount + 1, doneCount + pending)}…`
+                  : pending === 0 ? 'Nothing to upload'
+                  : toPlaylist && targetIds.length > 0 ? `Upload & add to ${targetIds.length} playlist${targetIds.length === 1 ? '' : 's'}`
+                  : `Upload ${pending} file${pending === 1 ? '' : 's'}`}
               </button>
             </div>
           }

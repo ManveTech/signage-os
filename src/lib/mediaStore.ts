@@ -180,6 +180,41 @@ export const mediaStore = {
     });
   },
 
+  /**
+   * Puts freshly uploaded files at the end of each chosen playlist.
+   *
+   * Playlists made before slides existed only carry `mediaIds`, so those are
+   * expanded into slides first — writing a slides array straight onto one of
+   * them would replace everything already in it with just the new files.
+   * `mediaIds` is kept in step because that's what mediaCount is counted from.
+   */
+  appendMediaToPlaylists(playlistIds: string[], items: { id: string; duration: number }[]) {
+    if (playlistIds.length === 0 || items.length === 0) return 0;
+    const targets = new Set(playlistIds);
+    let touched = 0;
+    this.getPlaylists().forEach(p => {
+      if (!targets.has(p.id)) return;
+      const existing = p.slides && p.slides.length
+        ? p.slides
+        : (p.mediaIds || []).map((mediaId, i) => ({
+            id: `slide_${p.id}_${i}`,
+            mediaId,
+            duration: 10,
+            layoutType: 'single' as const
+          }));
+      const added = items.map((m, i) => ({
+        id: `slide_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`,
+        mediaId: m.id,
+        duration: m.duration,
+        layoutType: 'single' as const
+      }));
+      const slides = [...existing, ...added];
+      this.updatePlaylist(p.id, { slides, mediaIds: slides.map(s => s.mediaId) });
+      touched++;
+    });
+    return touched;
+  },
+
   deleteMedia(id: string) {
     const all = this.getMedia();
     const filtered = all.filter(m => m.id !== id);
