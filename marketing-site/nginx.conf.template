@@ -65,6 +65,17 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
+    # TV app downloads: standalone pages, not the React app (see app/index.html).
+    location ~ ^/app/?$ {
+        try_files /app/index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location ~ ^/app/releases/?$ {
+        try_files /app/releases/index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
     location / {
         try_files $uri $uri/ @canonical;
     }

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Monitor, Film, List, BarChart2, Users, Key, Building2,
   Settings, HelpCircle, User, ChevronDown, ChevronRight, Search, LogOut,
   Tv, MonitorPlay, Layers, Tag, CalendarDays, FileBarChart, Shield,
-  MessageSquare, Video, Plug, Inbox, ShieldCheck
+  MessageSquare, Video, Plug, Inbox, ShieldCheck, Package
 } from 'lucide-react';
 
 type NavSection = {
@@ -78,6 +78,7 @@ const navSections: NavSection[] = [
   { id: 'support', label: 'Helpdesk', icon: <MessageSquare size={18} /> },
   { id: 'settings-general', label: 'Settings', icon: <Settings size={18} /> },
   { id: 'integrations', label: 'Integrations', icon: <Plug size={18} /> },
+  { id: 'app-releases', label: 'App Releases', icon: <Package size={18} /> },
   { id: 'admins', label: 'Admin Team', icon: <ShieldCheck size={18} /> },
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
 ];

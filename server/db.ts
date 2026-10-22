@@ -1455,6 +1455,40 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to ensure integrations collection:', integrationsErr.message);
     }
 
+    // Ensure app_releases collection exists — the TV player builds offered at
+    // bluestardigitech.com/app. The files live in R2; this is just the list.
+    // Read publicly through GET /public/app/*, written only by admins through
+    // the server, so every PocketBase rule stays closed.
+    try {
+      await pb.collections.getOne('app_releases');
+    } catch {
+      try {
+        console.log('Creating app_releases collection...');
+        await pb.collections.create({
+          id: 'collappreleases1',
+          name: 'app_releases',
+          type: 'base',
+          fields: [
+            { id: 'apprelversion01', name: 'version', type: 'text', required: true, system: false },
+            { id: 'apprelplatform1', name: 'platform', type: 'text', required: false, system: false },
+            { id: 'apprelnotes0001', name: 'notes', type: 'text', required: false, system: false, max: 2000 },
+            { id: 'apprelfileurl01', name: 'fileUrl', type: 'text', required: true, system: false },
+            { id: 'apprelfilename1', name: 'fileName', type: 'text', required: false, system: false },
+            { id: 'apprelfilesize1', name: 'fileSize', type: 'number', required: false, system: false },
+            { id: 'appreluploader1', name: 'uploadedBy', type: 'text', required: false, system: false },
+            { id: 'apprelcreated01', name: 'created', type: 'autodate', onCreate: true, onUpdate: false, system: false }
+          ],
+          listRule: null,
+          viewRule: null,
+          createRule: null,
+          updateRule: null,
+          deleteRule: null
+        });
+      } catch (appReleasesErr: any) {
+        console.warn('Failed to ensure app_releases collection:', appReleasesErr.message);
+      }
+    }
+
     // Ensure support_docs collection schema has youtubeUrl field
     try {
       console.log('Ensuring support_docs collection schema has youtubeUrl field...');

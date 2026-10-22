@@ -42,6 +42,7 @@ const breadcrumbMap: Record<string, string[]> = {
   'support-docs': ['Helpdesk', 'Guides'],
   integrations: ['Integrations'],
   admins: ['Admin team'],
+  'app-releases': ['App releases'],
   'settings-general': ['Settings'],
   'video-conferencing': ['Video calls'],
   profile: ['Profile'],
@@ -69,6 +70,7 @@ const PAGES: HeaderSearchItem[] = [
   { title: 'Helpdesk', subtitle: 'Tickets, FAQs and guides', type: 'Page', view: 'support-issues' },
   { title: 'Integrations', subtitle: 'Storage, email, Google sign-in', type: 'Page', view: 'integrations' },
   { title: 'Admin team', subtitle: 'Invite and remove admins', type: 'Page', view: 'admins' },
+  { title: 'App releases', subtitle: 'Upload the TV app, download links', type: 'Page', view: 'app-releases' },
   { title: 'Profile & password', type: 'Page', view: 'profile' },
 ];
 

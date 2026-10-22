@@ -18,6 +18,7 @@ import Reports from './views/Reports';
 import Users from './views/Users';
 import Leads from './views/Leads';
 import Admins from './views/Admins';
+import AppReleases from './views/AppReleases';
 import Licenses from './views/Licenses';
 import Organizations from './views/Organizations';
 import LicenseDecoder from './views/LicenseDecoder';
@@ -80,6 +81,7 @@ function renderView(view: string, navigate: (v: string) => void, adminEmail: str
     case 'users': return <Users onNavigate={navigate} />;
     case 'leads': return <Leads />;
     case 'admins': return <Admins userEmail={adminEmail} />;
+    case 'app-releases': return <AppReleases />;
     case 'licenses-management': return <Licenses activeTab="management" onNavigate={navigate} />;
     case 'licenses-payments': return <Licenses activeTab="payments" onNavigate={navigate} />;
     case 'licenses-expirations': return <Licenses activeTab="expirations" onNavigate={navigate} />;

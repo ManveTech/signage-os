@@ -14,6 +14,7 @@ import { clearAllScreenLogs } from '../controllers/screens';
 import { postTicketMessage } from '../controllers/tickets';
 import { getBusinessDetails, putBusinessDetails, getPublicContact } from '../controllers/businessDetails';
 import { createPublicLead } from '../controllers/publicLeads';
+import { getPublicReleases, downloadLatest, uploadRelease, deleteRelease, MAX_APK_BYTES } from '../controllers/appReleases';
 import { getMySettings, updateMySettings, getMyBilling, updateMyBilling } from '../controllers/userSettings';
 import { listBackups, createBackupNow } from '../services/backups';
 import { Readable } from 'stream';
@@ -174,6 +175,13 @@ apiRouter.post('/public/leads', leadLimiter, validateBody(publicLeadSchema), cre
  */
 apiRouter.get('/public/contact', getPublicContact);
 
+/*
+ * TV player downloads for bluestardigitech.com/app. /latest redirects to the
+ * newest APK so the link alone is the download; /releases lists them all.
+ */
+apiRouter.get('/public/app/latest', downloadLatest);
+apiRouter.get('/public/app/releases', getPublicReleases);
+
 // 2. Unprotected Device Hardware Endpoints (Pairing, Heartbeats, Device Status)
 apiRouter.use('/devices', devicesRouter);
 
@@ -192,6 +200,9 @@ apiRouter.use('/media_items', mediaItemsRouter);
 apiRouter.use('/organizations', organizationsRouter);
 apiRouter.use('/video-conference', videoConferenceRouter);
 apiRouter.use('/integrations', integrationsRouter);
+// The APK arrives as the raw request body (see controllers/appReleases.ts).
+apiRouter.post('/app-releases', express.raw({ type: () => true, limit: MAX_APK_BYTES }), uploadRelease);
+apiRouter.delete('/app-releases/:id', deleteRelease);
 
 // 6. Mount Generic PocketBase CRUD Collection Routers
 apiRouter.use('/screens', createCrudRouter('screens'));

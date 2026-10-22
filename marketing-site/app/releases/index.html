@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>All versions — Bluestar Signage app</title>
+    <meta name="description" content="Every release of the Bluestar Digitech signage player for Android TV." />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#0b2545" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <!-- Same constraints as /app (see app/index.html): ES5, no framework, TV-remote friendly. -->
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: #0b2545; color: #fff;
+        font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; padding: 32px 24px;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; }
+      .top { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+      .logo { width: 56px; height: 56px; border-radius: 12px; background: #fff; padding: 6px; }
+      h1 { font-size: 28px; margin: 0; }
+      .sub { color: #c9d6ea; font-size: 16px; margin: 4px 0 0; }
+      .item { background: #13335c; border-radius: 16px; padding: 18px 20px; margin-bottom: 12px; display: flex; align-items: center; gap: 16px; }
+      .info { flex: 1; min-width: 0; }
+      .ver { font-size: 20px; font-weight: 700; }
+      .tag { display: inline-block; background: #16a34a; color: #fff; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+      .meta { color: #9fb3d1; font-size: 15px; margin-top: 2px; }
+      .notes { color: #dbe5f3; font-size: 15px; margin-top: 8px; white-space: pre-line; }
+      .btn {
+        display: inline-block; padding: 14px 24px; border-radius: 12px; background: #2563eb; color: #fff;
+        font-size: 18px; font-weight: 700; text-decoration: none; border: 4px solid transparent; white-space: nowrap;
+      }
+      .btn:focus, .btn:hover { border-color: #fff; outline: none; background: #1d4ed8; }
+      .back { color: #9cc0ff; font-size: 17px; text-decoration: none; padding: 6px; border: 3px solid transparent; border-radius: 8px; }
+      .back:focus, .back:hover { border-color: #9cc0ff; outline: none; }
+      .empty { color: #c9d6ea; font-size: 18px; padding: 24px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <img class="logo" src="/icon-192.png" alt="Bluestar Digitech" />
+        <div>
+          <h1>Bluestar Signage Player</h1>
+          <p class="sub">Every version. Most screens should use the latest.</p>
+        </div>
+      </div>
+
+      <div id="list"><p class="empty">Loading versions…</p></div>
+
+      <p><a class="back" href="/app">&larr; Back to the latest download</a></p>
+    </div>
+
+    <script>
+      (function () {
+        var api = '%VITE_CMS_API%';
+        if (api.charAt(0) === '%') api = 'https://api.bluestardigitech.com/api/v1';
+        api = api.replace(/\/+$/, '');
+        var size = function (b) {
+          return b >= 104858 ? (Math.round(b / 1048576 * 10) / 10) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+        };
+
+        var listEl = document.getElementById('list');
+        var esc = function (s) {
+          return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        };
+        var date = function (iso) {
+          var d = new Date(String(iso).replace(' ', 'T'));
+          return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        };
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', api + '/public/app/releases');
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+          var list = null;
+          try { list = JSON.parse(xhr.responseText); } catch (e) {}
+          if (xhr.status !== 200 || !list) {
+            listEl.innerHTML = '<p class="empty">Couldn’t load the versions. Check the connection and refresh.</p>';
+            return;
+          }
+          if (!list.length) {
+            listEl.innerHTML = '<p class="empty">No versions have been released yet.</p>';
+            return;
+          }
+          var html = '';
+          for (var i = 0; i < list.length; i++) {
+            var r = list[i];
+            html += '<div class="item"><div class="info">'
+              + '<div class="ver">Version ' + esc(r.version) + (i === 0 ? '<span class="tag">Latest</span>' : '') + '</div>'
+              + '<div class="meta">' + esc(date(r.created)) + ' &middot; ' + size(r.fileSize) + '</div>'
+              + (r.notes ? '<div class="notes">' + esc(r.notes) + '</div>' : '')
+              + '</div><a class="btn" href="' + esc(r.fileUrl) + '">Download</a></div>';
+          }
+          listEl.innerHTML = html;
+          var first = listEl.getElementsByTagName('a')[0];
+          try { if (first) first.focus(); } catch (e) {}
+        };
+        xhr.send();
+      })();
+    </script>
+  </body>
+</html>

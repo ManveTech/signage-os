@@ -32,6 +32,7 @@ export const ADMIN_ROUTES: Record<string, string> = {
   'users': '/admin/users',
   'leads': '/admin/leads',
   'admins': '/admin/team',
+  'app-releases': '/admin/app-releases',
   'licenses': '/admin/licenses',
   'licenses-management': '/admin/licenses/management',
   'licenses-payments': '/admin/licenses/payments',

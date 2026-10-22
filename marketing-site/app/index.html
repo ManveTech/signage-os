@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Download the Bluestar Signage app</title>
+    <meta name="description" content="Download the Bluestar Digitech signage player for Android TV and Android displays." />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#0b2545" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <!--
+      Opened on TVs, often in old or stripped-down browsers (Android TV's
+      "Downloader", Puffin, TV Bro). So: no framework, no build step, ES5 only,
+      plain CSS, big focusable targets for a remote's D-pad. The download link
+      is a plain <a> to the API's /latest redirect, so it works with no
+      JavaScript at all; the script only adds the auto-start and the version.
+    -->
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        background: #0b2545; color: #fff;
+        font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        display: flex; align-items: center; justify-content: center;
+        text-align: center; padding: 24px;
+      }
+      .wrap { max-width: 640px; width: 100%; }
+      .logo { width: 72px; height: 72px; border-radius: 16px; background: #fff; padding: 8px; }
+      h1 { font-size: 34px; margin: 20px 0 8px; font-weight: 700; }
+      p { font-size: 18px; line-height: 1.5; color: #c9d6ea; margin: 0 0 8px; }
+      .status { font-size: 20px; color: #fff; margin: 24px 0; min-height: 30px; }
+      .btn {
+        display: inline-block; margin: 8px; padding: 18px 40px; border-radius: 14px;
+        background: #2563eb; color: #fff; font-size: 22px; font-weight: 700;
+        text-decoration: none; border: 4px solid transparent;
+      }
+      .btn:focus, .btn:hover { border-color: #fff; outline: none; background: #1d4ed8; }
+      .link { color: #9cc0ff; font-size: 18px; text-decoration: none; padding: 8px; border: 3px solid transparent; border-radius: 8px; }
+      .link:focus, .link:hover { border-color: #9cc0ff; outline: none; }
+      .steps { text-align: left; display: inline-block; margin-top: 16px; color: #c9d6ea; font-size: 16px; line-height: 1.7; }
+      .steps b { color: #fff; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <img class="logo" src="/icon-192.png" alt="Bluestar Digitech" />
+      <h1>Bluestar Signage Player</h1>
+      <p id="version">The app for your Android TV or display</p>
+
+      <div class="status" id="status">Your download will start in a moment…</div>
+
+      <a class="btn" id="download" href="https://api.bluestardigitech.com/api/v1/public/app/latest" autofocus>Download the app</a>
+      <p><a class="link" href="/app/releases">Older versions</a></p>
+
+      <div class="steps">
+        <b>After it downloads</b><br />
+        1. Open the downloaded file.<br />
+        2. If asked, allow installs from this app or browser.<br />
+        3. Tap <b>Install</b>, then <b>Open</b> — a pairing code appears on screen.
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        // Vite fills this in at build time; a dev build without it still
+        // reaches production rather than a dead URL.
+        var api = '%VITE_CMS_API%';
+        if (api.charAt(0) === '%') api = 'https://api.bluestardigitech.com/api/v1';
+        api = api.replace(/\/+$/, '');
+        var size = function (b) {
+          return b >= 104858 ? (Math.round(b / 1048576 * 10) / 10) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+        };
+
+        var latestUrl = api + '/public/app/latest';
+        var link = document.getElementById('download');
+        var status = document.getElementById('status');
+        var versionEl = document.getElementById('version');
+        link.href = latestUrl;
+        try { link.focus(); } catch (e) {}
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', api + '/public/app/releases');
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+          var list = [];
+          try { list = JSON.parse(xhr.responseText); } catch (e) {}
+          if (xhr.status === 200 && list.length) {
+            versionEl.innerHTML = 'Version ' + list[0].version + ' &middot; ' + size(list[0].fileSize);
+          } else if (xhr.status === 200) {
+            status.innerHTML = 'The app isn’t available for download yet.';
+            link.style.display = 'none';
+            clearTimeout(timer);
+          }
+        };
+        xhr.send();
+
+        // Start the download for them; the button stays for when the browser
+        // blocks it or they need it again.
+        var timer = setTimeout(function () {
+          window.location.href = latestUrl;
+          status.innerHTML = 'Downloading… If nothing happens, press <b>Download the app</b>.';
+        }, 1500);
+      })();
+    </script>
+  </body>
+</html>

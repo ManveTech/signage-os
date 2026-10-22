@@ -25,7 +25,9 @@ function publicBaseUrlFor(cfg: Pick<CloudflareConfig, 'publicUrl' | 'endpoint' |
 export async function uploadToR2(
   buffer: Buffer,
   key: string,
-  mimeType: string
+  mimeType: string,
+  /** Sent back as Content-Disposition — e.g. so an APK downloads under its own name. */
+  contentDisposition?: string
 ): Promise<string> {
   const cfg = await getCloudflareConfig();
   if (!cfg.enabled || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
@@ -38,7 +40,8 @@ export async function uploadToR2(
     Bucket: cfg.bucket,
     Key: key,
     Body: buffer,
-    ContentType: mimeType
+    ContentType: mimeType,
+    ...(contentDisposition ? { ContentDisposition: contentDisposition } : {})
     // Note: Cloudflare R2 does not support ACLs.
     // Public access is controlled at the bucket level via the Cloudflare dashboard.
   }));

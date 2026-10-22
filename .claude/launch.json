@@ -53,6 +53,19 @@
         "dev"
       ],
       "port": 3000
+    },
+    {
+      "name": "marketing-site-local-backend",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_CMS_API=http://127.0.0.1:5099/api/v1",
+        "npm",
+        "--prefix",
+        "marketing-site",
+        "run",
+        "dev"
+      ],
+      "port": 3000
     }
   ]
 }
