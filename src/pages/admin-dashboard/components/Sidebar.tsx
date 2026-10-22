@@ -92,9 +92,9 @@ type Props = {
 };
 
 export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, onLogout }: Props) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['my-screens', 'screens', 'my-channel', 'client-management', 'licenses', 'reports', 'support', 'settings'])
-  );
+  // Every group starts collapsed; the one holding the current page opens
+  // (see the effect after isActive) so you can still see where you are.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Admin profile dynamic states
   const [adminName, setAdminName] = useState(() => localStorage.getItem('signageos_admin_name') || 'Super Admin');
@@ -144,6 +144,12 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
     }
     return activeView === id || activeView.startsWith(id + '-');
   };
+
+  useEffect(() => {
+    const current = navSections.find(s => s.children && isActive(s.id));
+    if (current) setExpandedSections(prev => (prev.has(current.id) ? prev : new Set(prev).add(current.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView]);
 
   return (
     <>

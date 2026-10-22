@@ -56,7 +56,9 @@ type Props = {
 };
 
 export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, onLogout, userEmail = 'priya@demo.com' }: Props) {
-  const [expandedSections] = useState<Set<string>>(new Set(['my-screens', 'my-channel', 'support']));
+  // Every group starts collapsed; the one holding the current page opens
+  // (see the effect after isActive) so you can still see where you are.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Branding states
   const [logo, setLogo] = useState('');
@@ -117,7 +119,12 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
   }, [userEmail]);
 
   const toggleSection = (id: string) => {
-    // Keep submenus permanently expanded / uncollapsed
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const isActive = (section: NavSection) => {
@@ -125,6 +132,12 @@ export default function Sidebar({ activeView, onNavigate, collapsed, onToggle, o
     if (section.children?.some(c => activeView === c.id)) return true;
     return false;
   };
+
+  useEffect(() => {
+    const current = navSections.find(s => s.children && isActive(s));
+    if (current) setExpandedSections(prev => (prev.has(current.id) ? prev : new Set(prev).add(current.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView]);
 
   return (
     <aside className={`hidden md:flex flex-col bg-white border-r border-gray-100 transition-all duration-300 h-full ${collapsed ? 'w-16 overflow-visible' : 'w-60'} min-h-screen`}>
