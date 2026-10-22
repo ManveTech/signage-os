@@ -8,6 +8,9 @@ import { toast } from '../Toast';
 import CustomSelect from '../CustomSelect';
 import ScreenDetailsSheet from '../screens/ScreenDetailsSheet';
 import ConfirmDialog from '../screens/ConfirmDialog';
+import { tidyLogText } from '../../lib/logText';
+
+const tidyLog = (l: any) => ({ ...l, event: tidyLogText(l.event), detail: tidyLogText(l.detail) });
 
 interface ScreenLog {
   id: string;
@@ -124,7 +127,7 @@ export default function LogsView({
     setLoading(true);
     try {
       const data = await fetchPage(1);
-      setLogs([...data].sort((a, b) => new Date(b.created || 0).getTime() - new Date(a.created || 0).getTime()));
+      setLogs([...data].map(tidyLog).sort((a, b) => new Date(b.created || 0).getTime() - new Date(a.created || 0).getTime()));
       setPage(1);
       setHasMore(data.length === PAGE_SIZE);
     } catch (e) {
@@ -142,7 +145,7 @@ export default function LogsView({
     try {
       const data = await fetchPage(page + 1);
       if (data.length) {
-        setLogs(prev => [...prev, ...data].sort((a, b) => new Date(b.created || 0).getTime() - new Date(a.created || 0).getTime()));
+        setLogs(prev => [...prev, ...data.map(tidyLog)].sort((a, b) => new Date(b.created || 0).getTime() - new Date(a.created || 0).getTime()));
         setPage(p => p + 1);
       }
       setHasMore(data.length === PAGE_SIZE);

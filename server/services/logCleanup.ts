@@ -8,8 +8,8 @@ import { pb, ensurePBAuth } from '../db';
  *
  * deleteScreenLogs runs when a screen is deleted. pruneOrphanLogs sweeps up
  * the rest shortly after start and twice a day: a log goes when its screen no
- * longer exists, or when it belongs to an email no account has any more.
- * Server-wide entries (screenId "system", no email) are kept.
+ * longer exists (or it never named one), or when it belongs to an email no
+ * account has any more. Server-wide entries (screenId "system") are kept.
  */
 
 async function deleteIds(ids: string[]) {
@@ -34,9 +34,9 @@ export async function pruneOrphanLogs(): Promise<number> {
       pb.collection('screens').getFullList({ fields: 'id' }),
       pb.collection('users').getFullList({ fields: 'email' }),
     ]);
-    // If either list came back empty something is off (or it's a fresh
-    // install with nothing to prune) — never wipe every log on a bad read.
-    if (screens.length === 0 || users.length === 0) return 0;
+    // No accounts at all means a bad read (the admin's own is always there) —
+    // never wipe every log on that. No screens is real: every log goes.
+    if (users.length === 0) return 0;
     const screenIds = new Set(screens.map((s: any) => s.id));
     const emails = new Set(users.map((u: any) => String(u.email || '').toLowerCase()));
 
@@ -44,7 +44,7 @@ export async function pruneOrphanLogs(): Promise<number> {
     for (let page = 1; ; page++) {
       const res = await pb.collection('screen_logs').getList(page, 500, { fields: 'id,screenId,assignedToUserEmail', skipTotal: true });
       for (const l of res.items as any[]) {
-        const screenGone = l.screenId && l.screenId !== 'system' && !screenIds.has(l.screenId);
+        const screenGone = l.screenId !== 'system' && !screenIds.has(l.screenId || '');
         const ownerGone = l.assignedToUserEmail && !emails.has(String(l.assignedToUserEmail).toLowerCase());
         if (screenGone || ownerGone) orphans.push(l.id);
       }

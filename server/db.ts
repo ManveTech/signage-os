@@ -47,16 +47,22 @@ export function redactSensitiveData(text: string): string {
   try {
     if (PB_URL) {
       const escapedPBUrl = PB_URL.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      result = result.replace(new RegExp(escapedPBUrl, 'gi'), '[POCKETBASE_URL]');
+      result = result.replace(new RegExp(escapedPBUrl, 'gi'), '');
       
       const pbUrlObj = new URL(PB_URL);
       if (pbUrlObj.hostname) {
         const escapedHost = pbUrlObj.hostname.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        result = result.replace(new RegExp(escapedHost, 'gi'), '[POCKETBASE_HOST]');
+        result = result.replace(new RegExp(escapedHost, 'gi'), 'the server');
       }
     }
   } catch (_) {}
-  return result;
+  // Same tidying as src/lib/logText.ts: no product name, short paths.
+  return result
+    .replace(/\[(POCKETBASE|SERVER)_URL\]/g, '')
+    .replace(/\[(POCKETBASE|SERVER)_HOST\]/g, 'the server')
+    .replace(/\/api\/collections\/([\w-]+)\/records/g, '/$1')
+    .replace(/\/api\/v1\//g, '/')
+    .replace(/pocket\s?base/gi, 'database');
 }
 
 // Wrap PocketBase SDK collection create method for screen_logs to automatically redact sensitive URLs
