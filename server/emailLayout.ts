@@ -70,7 +70,7 @@ export async function renderEmail(c: EmailContent): Promise<{ html: string; text
   const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const greeting = c.name ? `Hi ${esc(greetName(c.name))},` : 'Hello,';
   const logo = b.logo.src
-    ? `<img src="${esc(b.logo.src)}" alt="${esc(b.name)}" height="44" style="display:block;height:44px;width:auto;border:0;outline:none">`
+    ? `<img src="${esc(b.logo.src)}" alt="${esc(b.name)}" height="52" style="display:block;height:52px;width:auto;border:0;outline:none">`
     : `<span style="font-size:18px;font-weight:700;color:#0f172a">${esc(b.name)}</span>`;
   const rows = (c.rows || []).map(([k, v]) => `
           <tr>
