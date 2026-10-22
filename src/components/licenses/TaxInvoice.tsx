@@ -1,7 +1,7 @@
 import type { Invoice, BusinessDetails } from '../../lib/licensingStore';
 import { taxSplit, amountInWords, stateCode, stateFromGstin } from '../../lib/gst';
 import { formatDate } from './licenseStatus';
-import defaultLogo from '../../assets/brand-logo.png';
+import defaultLogo from '../../assets/bluestar-logo-on-light.png';
 
 const money = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
