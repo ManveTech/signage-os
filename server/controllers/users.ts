@@ -8,6 +8,7 @@ import { forgetSession } from '../middleware/auth';
 import { removeScreenSchedule } from '../scheduler';
 import { clearScreenCache } from './screens';
 import { notifyScreenConfigChanged } from '../services/screenPush';
+import { removeMediaItem } from './media_items';
 
 function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
@@ -439,6 +440,21 @@ export async function deleteUser(req: any, res: any) {
       ));
     }
 
+    // Optional (?deleteContent=1, a tick-box when removing a client): their
+    // playlists and media go too, files included, freeing the storage.
+    // Invoices, payments and tickets are always kept for the records.
+    let removedMedia = 0, removedPlaylists = 0;
+    if (userEmail && (req.query?.deleteContent === '1' || req.query?.deleteContent === 'true')) {
+      const playlists = await pb.collection('playlists').getFullList({ filter: pb.filter('createdBy = {:email}', { email: userEmail }), fields: 'id' }).catch(() => [] as any[]);
+      for (const p of playlists) {
+        await pb.collection('playlists').delete(p.id).then(() => { removedPlaylists++; }).catch(() => {});
+      }
+      const media = await pb.collection('media_items').getFullList({ filter: pb.filter('uploadedBy = {:email}', { email: userEmail }) }).catch(() => [] as any[]);
+      for (const m of media) {
+        await removeMediaItem(m).then(() => { removedMedia++; }).catch(err => console.warn(`Could not delete media ${m.id}:`, err.message));
+      }
+    }
+
     await pb.collection('users').delete(req.params.id);
     forgetSession(req.params.id);
     logAudit({
@@ -447,7 +463,7 @@ export async function deleteUser(req: any, res: any) {
       action: 'user.deleted',
       targetType: 'users',
       targetId: req.params.id,
-      detail: userEmail ? `email=${userEmail}` : undefined,
+      detail: userEmail ? `email=${userEmail}${removedMedia || removedPlaylists ? `, deleted ${removedMedia} media and ${removedPlaylists} playlists` : ''}` : undefined,
       ip: getClientIp(req)
     });
     res.status(204).end();

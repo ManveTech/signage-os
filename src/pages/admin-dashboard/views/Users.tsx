@@ -5,7 +5,9 @@ import {
 } from 'lucide-react';
 import type { User as UserType } from '../types';
 import { licensingStore, License } from '../../../lib/licensingStore';
-import { pushToDatabase, generateClientPassword, syncCollection } from '../../../lib/syncHelper';
+import { pushToDatabase, generateClientPassword, syncCollection, getHeaders } from '../../../lib/syncHelper';
+import { API_BASE } from '../../../config';
+import { mediaStore } from '../../../lib/mediaStore';
 import { toast } from '../../../components/Toast';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import ConfirmDialog from '../../../components/screens/ConfirmDialog';
@@ -80,6 +82,16 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<UserType | null>(null);
+  // Remove-client option: also delete their playlists and media (files too).
+  const [deleteContent, setDeleteContent] = useState(false);
+  const [, setContentLoaded] = useState(0);
+  const askRemove = (u: UserType) => {
+    setDeleteContent(false);
+    setRemoveTarget(u);
+    // Fresh counts for the tick-box — this page doesn't otherwise load media.
+    Promise.all([syncCollection('media_items', 'signageos_media'), syncCollection('playlists', 'signageos_playlists')])
+      .finally(() => setContentLoaded(n => n + 1));
+  };
 
   // Edit details
   const [editing, setEditing] = useState<UserType | null>(null);
@@ -202,10 +214,21 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
 
   // ── Remove ────────────────────────────────────────────────────────────────
   const removeClient = async (u: UserType) => {
-    const result = await pushToDatabase('users', u.id, null, 'DELETE');
-    if (!result.ok) {
-      toast.error(`Couldn't remove ${u.name}: ${errorText(result)}`);
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/users/${u.id}${deleteContent ? '?deleteContent=1' : ''}`, { method: 'DELETE', headers: getHeaders(), credentials: 'include' });
+    } catch {
+      toast.error(`Couldn't remove ${u.name}: no connection`);
       return;
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      toast.error(`Couldn't remove ${u.name}: ${errorText({ error: body })}`);
+      return;
+    }
+    if (deleteContent) {
+      mediaStore.saveMedia(mediaStore.getMedia().filter(m => m.uploadedBy !== u.email));
+      mediaStore.savePlaylists(mediaStore.getPlaylists().filter(p => p.createdBy !== u.email));
     }
     licenses.filter(l => l.assignedUserEmail === u.email).forEach(l => {
       licensingStore.updateLicense(l.id, { assignedUserEmail: undefined, assignedOrgName: undefined, assignedOrgId: undefined });
@@ -216,8 +239,13 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
     setLicenses(licensingStore.getLicenses());
     setRemoveTarget(null);
     setOpenId(null);
-    toast.success(`${u.name} removed`);
+    toast.success(deleteContent ? `${u.name} removed, with their media and playlists` : `${u.name} removed`);
   };
+
+  const contentOf = (email: string) => ({
+    media: mediaStore.getMedia().filter(m => m.uploadedBy === email).length,
+    playlists: mediaStore.getPlaylists().filter(p => p.createdBy === email).length,
+  });
 
   // ── Add client ────────────────────────────────────────────────────────────
   const openAdd = () => {
@@ -456,7 +484,7 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
                   description: 'Deletes their account; licenses go back to the pool',
                   icon: <Trash2 size={17} />,
                   tone: 'danger' as const,
-                  onClick: () => setRemoveTarget(open)
+                  onClick: () => askRemove(open)
                 }]
               }
             ]}
@@ -720,8 +748,24 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
       {removeTarget && (
         <ConfirmDialog
           title={`Remove ${removeTarget.name}?`}
-          body={<p>Their account is deleted and {licenses.some(l => l.assignedUserEmail === removeTarget.email) ? 'their license goes back to the pool' : 'they lose access'}. Their screens stop playing. This can't be undone.</p>}
-          confirmLabel="Remove client"
+          body={(() => {
+            const c = contentOf(removeTarget.email);
+            return (
+              <div className="space-y-3">
+                <p>Their account is deleted and {licenses.some(l => l.assignedUserEmail === removeTarget.email) ? 'their license goes back to the pool' : 'they lose access'}. Their screens stop playing, clear what they downloaded and show a pairing code. This can't be undone.</p>
+                <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 cursor-pointer select-none">
+                  <input type="checkbox" checked={deleteContent} onChange={e => setDeleteContent(e.target.checked)} className="mt-0.5 w-4 h-4 accent-red-600" />
+                  <span className="text-sm text-slate-700">
+                    <span className="block font-medium text-slate-900">Also delete their media and playlists</span>
+                    <span className="block text-xs text-slate-500 mt-0.5">
+                      {c.media} file{c.media === 1 ? '' : 's'} and {c.playlists} playlist{c.playlists === 1 ? '' : 's'}, files included — frees the storage. Invoices, payments and tickets are kept.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            );
+          })()}
+          confirmLabel={deleteContent ? 'Remove client and content' : 'Remove client'}
           tone="danger"
           onCancel={() => setRemoveTarget(null)}
           onConfirm={() => removeClient(removeTarget)}

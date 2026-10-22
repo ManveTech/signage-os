@@ -179,6 +179,22 @@ export async function uploadMediaItem(req: any, res: any) {
   }
 }
 
+/** Deletes a media item's file from R2 (when it's there) and then the record. */
+export async function removeMediaItem(record: any): Promise<void> {
+  const urlToDelete = record.fileUrl || record.thumbnail;
+  if (urlToDelete && await isR2Enabled()) {
+    const key = await getKeyFromUrl(urlToDelete);
+    if (!key) {
+      // Not in the storage set up in Integrations (e.g. a different public
+      // address) — the record goes, but the file can't be located to delete.
+      console.warn(`[R2] Not deleting the file for media ${record.id}: ${urlToDelete} isn't under the storage's public URL.`);
+    } else {
+      await deleteFromR2(key).catch(err => console.warn(`[R2] R2 deletion failed for key ${key}:`, err.message));
+    }
+  }
+  await pb.collection('media_items').delete(record.id);
+}
+
 export async function deleteMediaItem(req: any, res: any) {
   try {
     const authenticated = await ensurePBAuth();
@@ -196,26 +212,7 @@ export async function deleteMediaItem(req: any, res: any) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Delete from R2 if applicable
-    const urlToDelete = record.fileUrl || record.thumbnail;
-    if (urlToDelete && await isR2Enabled()) {
-      const key = await getKeyFromUrl(urlToDelete);
-      if (!key) {
-        // Not in the storage set up in Integrations (e.g. a different public
-        // address) — the record goes, but the file can't be located to delete.
-        console.warn(`[R2] Not deleting the file for media ${id}: ${urlToDelete} isn't under the storage's public URL.`);
-      }
-      if (key) {
-        console.log(`[R2] Deleting object key: ${key}`);
-        await deleteFromR2(key).then(() => {
-          console.log(`[R2] Successfully deleted object key: ${key}`);
-        }).catch(err => {
-          console.warn(`[R2] R2 deletion failed for key ${key}:`, err.message);
-        });
-      }
-    }
-
-    await pb.collection('media_items').delete(id);
+    await removeMediaItem(record);
     res.status(200).json({ success: true });
   } catch (error: any) {
     console.error('Error in deleteMediaItem:', error);
