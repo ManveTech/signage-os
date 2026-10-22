@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Search, Film, Image, Upload, Trash2, Trash, CheckCircle, Play, HardDrive,
-  ListVideo, Pencil, X, AlertCircle, Loader2, Check, CloudUpload, Plus, ListPlus, Clock
+  Pencil, X, AlertCircle, Loader2, Check, CloudUpload, Plus, ListPlus, Clock
 } from 'lucide-react';
 import MediaThumb, { PreviewMedia } from './MediaThumb';
 import ScreenDetailsSheet from '../screens/ScreenDetailsSheet';
 import ConfirmDialog from '../screens/ConfirmDialog';
+import PlaylistUsage, { playlistsUsing } from './PlaylistUsage';
 import { toast } from '../Toast';
 import { mediaStore, MediaItem, Playlist } from '../../lib/mediaStore';
 import { licensingStore } from '../../lib/licensingStore';
@@ -655,12 +656,7 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
             body={
               <div className="space-y-2">
                 <p>The file is deleted permanently.</p>
-                {using.length > 0 && (
-                  <p className="flex items-start gap-1.5 text-amber-700">
-                    <ListVideo size={14} className="mt-0.5 shrink-0" />
-                    It's in {using.map(p => `“${p.name}”`).join(', ')} — those slides will be removed.
-                  </p>
-                )}
+                <PlaylistUsage playlists={using} />
               </div>
             }
             confirmLabel="Delete file"
@@ -672,22 +668,14 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
       })()}
 
       {bulkConfirm && (() => {
-        const ids = new Set(selectedIds);
-        const affected = playlists.filter(p =>
-          (p.slides || []).some(s => ids.has(s.mediaId) || (s.secondMediaId && ids.has(s.secondMediaId))) ||
-          (p.mediaIds || []).some(id => ids.has(id)));
+        const affected = playlistsUsing(playlists, selectedIds);
         return (
           <ConfirmDialog
             title={`Delete ${selectedIds.length} file${selectedIds.length === 1 ? '' : 's'}?`}
             body={
               <div className="space-y-2">
                 <p>They're deleted permanently.</p>
-                {affected.length > 0 && (
-                  <p className="flex items-start gap-1.5 text-amber-700">
-                    <ListVideo size={14} className="mt-0.5 shrink-0" />
-                    {affected.length} playlist{affected.length === 1 ? ' uses' : 's use'} some of them — those slides will be removed.
-                  </p>
-                )}
+                <PlaylistUsage playlists={affected} files={selectedIds.length} />
               </div>
             }
             confirmLabel="Delete"

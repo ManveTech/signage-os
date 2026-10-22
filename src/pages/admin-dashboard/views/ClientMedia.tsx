@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Search, Film, Image, Youtube, AlignLeft, Layout, Trash2, Trash, CheckCircle, Building2, Play, FolderOpen, HardDrive, ListVideo } from 'lucide-react';
+import { Search, Film, Image, Youtube, AlignLeft, Layout, Trash2, Trash, CheckCircle, Building2, Play, FolderOpen, HardDrive } from 'lucide-react';
 import MediaThumb, { PreviewMedia } from '../../../components/media/MediaThumb';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import ConfirmDialog from '../../../components/screens/ConfirmDialog';
+import PlaylistUsage, { playlistsUsing } from '../../../components/media/PlaylistUsage';
 import CustomSelect from '../../../components/CustomSelect';
 import { toast } from '../../../components/Toast';
 import { mediaStore, MediaItem, Playlist } from '../../../lib/mediaStore';
@@ -358,12 +359,7 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
             body={
               <div className="space-y-2">
                 <p>This deletes the client's file permanently.</p>
-                {using.length > 0 && (
-                  <p className="flex items-start gap-1.5 text-amber-700">
-                    <ListVideo size={14} className="mt-0.5 shrink-0" />
-                    It's in {using.map(p => `“${p.name}”`).join(', ')} — those slides will be removed.
-                  </p>
-                )}
+                <PlaylistUsage playlists={using} />
               </div>
             }
             confirmLabel="Delete file"
@@ -377,7 +373,12 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
       {bulkConfirm && (
         <ConfirmDialog
           title={`Delete ${selectedIds.length} file${selectedIds.length === 1 ? '' : 's'}?`}
-          body={<p>They'll be deleted from the clients' storage and removed from any playlists using them. This can't be undone.</p>}
+          body={
+            <div className="space-y-2">
+              <p>They'll be deleted from the clients' storage. This can't be undone.</p>
+              <PlaylistUsage playlists={playlistsUsing(playlists, selectedIds)} files={selectedIds.length} />
+            </div>
+          }
           confirmLabel="Delete"
           tone="danger"
           onCancel={() => setBulkConfirm(false)}
