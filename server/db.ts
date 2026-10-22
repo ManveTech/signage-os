@@ -1580,6 +1580,14 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         if (missing.length) {
           await pb.collections.update(collName, { fields: [...fields, ...missing.map(f => ({ ...f, required: false, system: false, hidden: false, presentable: false }))] } as any);
           console.log(`Added ${missing.map(f => f.name).join(', ')} to ${collName}`);
+          // A new number field reads as 0 on every existing record, which for
+          // gstPercent would mean "no GST". Everything priced before the rate
+          // could be chosen included 18%, so that's what they get.
+          if (missing.some(f => f.name === 'gstPercent')) {
+            const rows = await pb.collection(collName).getFullList({ fields: 'id' }).catch(() => [] as any[]);
+            for (const r of rows) await pb.collection(collName).update(r.id, { gstPercent: 18 }).catch(() => {});
+            console.log(`Set gstPercent to 18 on ${rows.length} existing ${collName}`);
+          }
         }
       } catch (helpSchemaErr: any) {
         console.warn(`Failed to update ${collName} schema:`, helpSchemaErr.message);

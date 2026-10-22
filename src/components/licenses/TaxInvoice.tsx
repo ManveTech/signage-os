@@ -30,11 +30,10 @@ export default function TaxInvoice({ invoice, biz, planLabel }: { invoice: Invoi
         <div className="min-w-0">
           <img src={biz.logoUrl || defaultLogo} alt={biz.name} className="h-11 w-auto max-w-[200px] object-contain mb-2" />
           <p className="font-semibold text-slate-900">{biz.name || 'BlueStar DigiTech'}</p>
+          {/* What's entered in Billing details. The GSTIN carries the state
+              code, so the state isn't repeated on its own line. */}
           {biz.address && <p className="text-slate-500 whitespace-pre-line">{biz.address}</p>}
-          <p className="text-slate-500">
-            {biz.gstNumber && <>GSTIN <span className="font-mono text-slate-700">{biz.gstNumber}</span> · </>}
-            {supplierState}{stateCode(supplierState) && ` (${stateCode(supplierState)})`}
-          </p>
+          {biz.gstNumber && <p className="text-slate-500">GSTIN <span className="font-mono text-slate-700">{biz.gstNumber}</span></p>}
           {(biz.contactEmail || biz.contactPhone) && <p className="text-slate-500">{[biz.contactEmail, biz.contactPhone].filter(Boolean).join(' · ')}</p>}
         </div>
         <div className="text-right shrink-0">

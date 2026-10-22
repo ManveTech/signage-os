@@ -402,6 +402,9 @@ export function createCrudRouter(collectionName: string) {
       }
 
       if (collectionName === 'screen_groups' && !body.createdBy) body.createdBy = req.user?.email;
+      // Every licence has a GST rate (18% unless chosen) — an empty number
+      // field would read as 0%.
+      if (collectionName === 'licenses' && (body.gstPercent == null || body.gstPercent === '')) body.gstPercent = 18;
       // Tax invoices get their running number and billed-to details here.
       if (collectionName === 'invoices') {
         delete body.number;

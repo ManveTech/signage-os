@@ -78,10 +78,11 @@ export async function billToFor(email: string, fallbackName = ''): Promise<BillT
  */
 export async function prepareInvoice(body: Record<string, any>): Promise<Record<string, any>> {
   if (!body.number) body.number = await nextInvoiceNumber(String(body.issuedDate || istDate()).slice(0, 10));
-  // The GST rate is fixed on the invoice when it's issued, from its licence.
-  if (body.gstPercent == null && body.licenseId) {
-    const lic = await pb.collection('licenses').getOne(String(body.licenseId)).catch(() => null);
-    if (lic) body.gstPercent = typeof lic.gstPercent === 'number' ? lic.gstPercent : 18;
+  // The GST rate is fixed on the invoice when it's issued: its licence's
+  // rate, or 18% when there's no licence to take it from.
+  if (body.gstPercent == null || body.gstPercent === '') {
+    const lic = body.licenseId ? await pb.collection('licenses').getOne(String(body.licenseId)).catch(() => null) : null;
+    body.gstPercent = lic && typeof lic.gstPercent === 'number' ? lic.gstPercent : 18;
   }
   if (!body.billTo || typeof body.billTo !== 'object' || !body.billTo.name) {
     body.billTo = body.clientEmail ? await billToFor(String(body.clientEmail), String(body.clientName || '')) : { name: String(body.clientName || ''), email: '', address: '', state: '', gstin: '' };

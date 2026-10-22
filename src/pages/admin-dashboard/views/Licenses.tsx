@@ -98,6 +98,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   const [revokeTarget, setRevokeTarget] = useState<License | null>(null);
   const [billingOpen, setBillingOpen] = useState(false);
   const [biz, setBiz] = useState<BusinessDetails>(() => licensingStore.getBusinessDetails());
+  // The saved details from the server, not just this browser's cached copy —
+  // invoices opened on a new device showed none of them (only the state).
+  useEffect(() => { licensingStore.fetchBusinessDetails().then(setBiz); }, []);
   const [sending, setSending] = useState<string | null>(null);
 
   useEffect(() => { setTab(initTab); }, [initTab]);
