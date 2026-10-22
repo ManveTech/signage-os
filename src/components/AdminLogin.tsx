@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { rememberToursFromLogin } from '../lib/tour/state';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE } from '../config';
+import { Capacitor } from '@capacitor/core';
 // The dashboards are most of the app's code — loaded on demand (and
 // prefetched right after first paint, below) so startup only has to parse
 // the small login/boot shell, not ~2 MB of JavaScript, before anything shows.
@@ -67,7 +68,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
   // Tenant branding state
   const [branding, setBranding] = useState<{ logoUrl: string | null; companyName: string; primaryColor: string }>({
     logoUrl: null,
-    companyName: 'SignageOS',
+    companyName: 'BlueStar DigiTech',
     primaryColor: '#0EA5E9'
   });
 
@@ -197,6 +198,9 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
   const googleButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Google doesn't allow its sign-in inside an app's built-in browser
+    // (the phone app is one), so the button only shows on the website.
+    if (Capacitor.isNativePlatform()) return;
     fetch(`${API_BASE}/auth/google/config`)
       .then(res => res.json())
       .then(data => setGoogleAuth({ enabled: !!data.enabled, clientId: data.clientId || '' }))
@@ -462,7 +466,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
         </div>
 
         <p className="relative text-white/25 text-[10.5px]">
-          {branding.companyName} Technologies Ltd. &copy; 2026
+          &copy; {new Date().getFullYear()} {branding.companyName}
         </p>
       </div>
 
@@ -733,7 +737,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
           </AnimatePresence>
 
           <p className="lg:hidden text-ink-950/35 text-[10.5px] mt-10">
-            {branding.companyName} Technologies Ltd. &copy; 2026
+            &copy; {new Date().getFullYear()} {branding.companyName}
           </p>
         </motion.div>
       </div>

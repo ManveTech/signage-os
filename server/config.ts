@@ -48,7 +48,12 @@ export const S3_ACCESS_KEY = (process.env.S3_ACCESS_KEY || '').trim();
 export const S3_SECRET = (process.env.S3_SECRET || '').trim();
 
 // CORS Configuration
+// The phone app (Capacitor) loads the dashboard from its own origin —
+// https://localhost on Android, capacitor://localhost on iOS — so those are
+// always allowed; without them every request from the app was refused,
+// sign-in included. Requests still need a valid sign-in token.
+const APP_ORIGINS = ['https://localhost', 'capacitor://localhost'];
 export const CORS_ALLOWED_ORIGINS = process.env.CORS_ALLOWED_ORIGINS
-  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  ? [...process.env.CORS_ALLOWED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean), ...APP_ORIGINS]
   : ['*'];
 

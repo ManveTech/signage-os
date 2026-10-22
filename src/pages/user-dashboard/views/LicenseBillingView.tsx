@@ -10,6 +10,7 @@ import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import TaxInvoice from '../../../components/licenses/TaxInvoice';
 import InvoiceDetailsCard from '../../../components/licenses/InvoiceDetailsCard';
 import { licenseState, licenseAccess, isRenewalDue, formatDate, formatInr, relativeDays, planLabel } from '../../../components/licenses/licenseStatus';
+import { printInvoice } from '../../../lib/printInvoice';
 
 interface Props {
   userEmail: string;
@@ -156,14 +157,6 @@ export default function LicenseBillingView({ userEmail, onNavigate }: Props) {
     }
   };
 
-  // Print only the invoice, not the whole dashboard (see index.css).
-  const printInvoice = () => {
-    document.documentElement.classList.add('print-invoice');
-    const done = () => { document.documentElement.classList.remove('print-invoice'); window.removeEventListener('afterprint', done); };
-    window.addEventListener('afterprint', done);
-    window.print();
-    setTimeout(done, 1000);
-  };
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const main = [...licenses].sort((a, b) => (b.expiryDate || '').localeCompare(a.expiryDate || ''))[0];

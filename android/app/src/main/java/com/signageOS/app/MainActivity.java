@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Before super.onCreate, which is when Capacitor loads its plugins.
         registerPlugin(SgWindowPlugin.class);
+        registerPlugin(SgPrintPlugin.class);
 
         super.onCreate(savedInstanceState);
 

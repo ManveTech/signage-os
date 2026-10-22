@@ -11,4 +11,6 @@ import { StatusBar } from '@capacitor/status-bar';
  * handling, splash and status-bar colouring never ran.
  */
 export const SgWindow = registerPlugin<{ setBackground(opts: { color: string }): Promise<void> }>('SgWindow');
+/** Android's print dialog for the current page (see SgPrintPlugin.java). */
+export const SgPrint = registerPlugin<{ print(opts: { title: string }): Promise<void> }>('SgPrint');
 export { App, Keyboard, SplashScreen, StatusBar };

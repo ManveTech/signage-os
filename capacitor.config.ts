@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.signageOS.app',
-  appName: 'SignageOS',
+  appName: 'BlueStar DigiTech',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
