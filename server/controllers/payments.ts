@@ -6,6 +6,7 @@ import { getRazorpayConfig } from '../integrationsStore';
 import { isRedisReady, acquireLock, releaseLock } from '../redis';
 import { prepareInvoice } from '../services/invoicing';
 import { sendPaymentReceiptEmail } from '../email';
+import { isTestPayment } from '../services/testPayments';
 
 /**
  * The Razorpay client for the keys in Integrations (or the server's
@@ -378,6 +379,47 @@ export async function markInvoicePaid(req: any, res: any) {
   }
 }
 
+/**
+ * Payments recorded before testMode was tracked carry real-looking ids
+ * whether they were test or live, so only Razorpay can tell. Test and live
+ * are separate accounts: with live keys, a payment Razorpay doesn't know was
+ * never real money; with test keys, one it does know is a test. Anything
+ * else (a network error, test keys that don't find it) is left as it is.
+ * Payments confirmed live are remembered so each is only asked about once.
+ */
+const confirmedLive = new Set<string>();
+
+async function flagOldTestPayments(items: any[]): Promise<number> {
+  const unknown = items.filter(p => !isTestPayment(p) && String(p.razorpayPaymentId || '').startsWith('pay_') && !confirmedLive.has(p.razorpayPaymentId));
+  if (unknown.length === 0) return 0;
+  const { rzp, keyId } = await getRazorpay();
+  if (!rzp) return 0;
+  const testKeys = keyId.startsWith('rzp_test_');
+
+  let flagged = 0;
+  await Promise.all(unknown.slice(0, 25).map(async p => {
+    const id = p.razorpayPaymentId;
+    let found: boolean;
+    try {
+      await rzp.payments.fetch(id);
+      found = true;
+    } catch (err: any) {
+      const desc = String(err?.error?.description || err?.message || '');
+      if (!/does not exist|not found/i.test(desc)) return;
+      found = false;
+    }
+    if (found && !testKeys) { confirmedLive.add(id); return; }
+    if (!found && testKeys) return;
+
+    await pb.collection('payments').update(p.id, { testMode: true }).catch(() => null);
+    p.testMode = true;
+    const invoices = await pb.collection('invoices').getFullList({ filter: pb.filter('paymentRef = {:id}', { id }) }).catch(() => []);
+    for (const inv of invoices) await pb.collection('invoices').update(inv.id, { testMode: true }).catch(() => null);
+    flagged++;
+  }));
+  return flagged;
+}
+
 export async function getPaymentHistory(req: any, res: any) {
   try {
     await ensurePBAuth();
@@ -388,10 +430,12 @@ export async function getPaymentHistory(req: any, res: any) {
     const paymentsResult = await pb.collection('payments').getList(1, 500, {
       sort: '-created'
     }).catch(() => ({ items: [] }));
+    const reclassified = await flagOldTestPayments(paymentsResult.items);
 
     res.status(200).json({
       status: 'success',
-      items: paymentsResult.items
+      items: paymentsResult.items,
+      reclassified
     });
   } catch (error: any) {
     console.error('Error fetching payment history:', error);

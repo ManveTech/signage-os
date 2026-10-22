@@ -135,6 +135,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           if (Array.isArray(data.items)) {
             setPayments(data.items);
             localStorage.setItem('signageos_payments', JSON.stringify(data.items));
+            // Older payments Razorpay just confirmed as tests — their invoices
+            // were marked too, so fetch those again.
+            if (data.reclassified > 0) syncCollection('invoices', 'signageos_invoices').finally(load);
             return;
           }
         }
