@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { rememberToursFromLogin } from '../lib/tour/state';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE } from '../config';
 // The dashboards are most of the app's code — loaded on demand (and
@@ -145,6 +146,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       localStorage.setItem('signageos_user_role', data.user.role === 'admin' || data.user.role === 'super_admin' ? 'admin' : 'client');
       localStorage.setItem('signageos_first_time_login', data.user.firstTimeLogin ? 'true' : 'false');
       storeProfileName(data.user.email, data.user.role === 'admin' || data.user.role === 'super_admin', data.user.name);
+      rememberToursFromLogin(data.user.email, data.user.toursSeen);
     }
 
     try {

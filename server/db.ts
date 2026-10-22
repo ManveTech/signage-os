@@ -1524,6 +1524,25 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update support_docs collection schema:', docsSchemaErr.message);
     }
 
+    // Which first-run tours an account has been through, so the tour shows
+    // on its first sign-in only — not again on every new device or browser.
+    // When the field is first added, everyone who has already signed in
+    // counts as having seen both tours; nobody gets it again after an update.
+    try {
+      const usersColl: any = await pb.collections.getOne('users');
+      const uFields = usersColl.fields || [];
+      if (!uFields.some((f: any) => f.name === 'toursSeen')) {
+        await pb.collections.update('users', { fields: [...uFields, { id: 'jsonuserstours01', name: 'toursSeen', type: 'json', maxSize: 2000, required: false, system: false, hidden: false, presentable: false }] } as any);
+        const existing = await pb.collection('users').getFullList({ filter: 'firstTimeLogin = false', fields: 'id' });
+        for (const u of existing) {
+          await pb.collection('users').update(u.id, { toursSeen: ['admin-dashboard', 'user-dashboard'] }).catch(() => {});
+        }
+        console.log(`Added toursSeen to users (${existing.length} existing accounts marked as seen)`);
+      }
+    } catch (toursErr: any) {
+      console.warn('Failed to add toursSeen to users:', toursErr.message);
+    }
+
     // Guides are step-by-step: each step has text and optionally a screenshot
     // with highlighted controls (see server/data/helpDefaults.ts). sortOrder
     // keeps guides and FAQs in the order an admin set rather than by date.

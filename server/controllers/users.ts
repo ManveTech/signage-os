@@ -202,7 +202,7 @@ export async function createUser(req: any, res: any) {
 // excludes role, license/screen counts, feature flags, email, company, and
 // status — the previous version let a client PUT {"role":"super_admin"} on
 // their own id and be granted full admin instantly.
-const SELF_EDITABLE_FIELDS = new Set(['name', 'mobile', 'address', 'password', 'passwordConfirm', 'firstTimeLogin']);
+const SELF_EDITABLE_FIELDS = new Set(['name', 'mobile', 'address', 'password', 'passwordConfirm', 'firstTimeLogin', 'toursSeen']);
 
 export async function updateUser(req: any, res: any) {
   const isAdmin = isAdminUser(req.user);

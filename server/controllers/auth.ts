@@ -61,7 +61,8 @@ export async function login(req: any, res: any) {
           name: user.name || 'Client User',
           role: user.role || 'client',
           organizationId: user.company || null,
-          firstTimeLogin: !!user.firstTimeLogin
+          firstTimeLogin: !!user.firstTimeLogin,
+          toursSeen: Array.isArray(user.toursSeen) ? user.toursSeen : []
         }
       });
     } catch (pbErr: any) {
@@ -173,7 +174,8 @@ export async function googleLogin(req: any, res: any) {
         name: user.name || 'Client User',
         role: user.role || 'client',
         organizationId: user.company || null,
-        firstTimeLogin: !!user.firstTimeLogin
+        firstTimeLogin: !!user.firstTimeLogin,
+        toursSeen: Array.isArray(user.toursSeen) ? user.toursSeen : []
       }
     });
   } catch (error: any) {

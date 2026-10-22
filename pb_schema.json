@@ -281,6 +281,16 @@
       },
       {
         "hidden": false,
+        "id": "jsonuserstours01",
+        "maxSize": 2000,
+        "name": "toursSeen",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
         "id": "boolenablelivechat",
         "name": "enableLiveChat",
         "presentable": false,
