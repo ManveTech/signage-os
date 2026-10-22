@@ -119,11 +119,11 @@ export const supportStore = {
     }
   },
 
-  deleteTicket(id: string) {
-    const tickets = this.getTickets();
-    const filtered = tickets.filter(t => t.id !== id);
-    this.saveTickets(filtered);
-    pushToDatabase('tickets', id, null, 'DELETE');
+  /** Admin only — the server refuses anyone else. */
+  async deleteTicket(id: string): Promise<PushResult> {
+    const res = await pushToDatabase('tickets', id, null, 'DELETE');
+    if (res.ok) this.saveTickets(this.getTickets().filter(t => t.id !== id));
+    return res;
   },
 
   /**

@@ -46,7 +46,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
   // The guide editor: { doc: null } for a new guide.
   const [docForm, setDocForm] = useState<{ doc: SupportDoc | null } | null>(null);
   const [readingDocId, setReadingDocId] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: 'faq' | 'doc'; id: string; title: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: 'faq' | 'doc' | 'ticket'; id: string; title: string } | null>(null);
 
   useEffect(() => { setTab(activeTab); }, [activeTab]);
 
@@ -145,8 +145,17 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
     }
   };
 
-  const doDelete = () => {
+  const doDelete = async () => {
     if (!confirm) return;
+    if (confirm.kind === 'ticket') {
+      const res = await supportStore.deleteTicket(confirm.id);
+      if (res.ok === false) { toast.error(`Couldn't delete: ${res.error || 'please try again'}`); return; }
+      toast.success('Ticket deleted');
+      setConfirm(null);
+      setOpenTicketId(null);
+      load();
+      return;
+    }
     if (confirm.kind === 'faq') supportStore.deleteFAQ(confirm.id);
     else supportStore.deleteDoc(confirm.id);
     toast.success(confirm.kind === 'faq' ? 'FAQ deleted' : 'Guide deleted');
@@ -399,6 +408,10 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
                   ))}
                 </div>
               </div>
+              <button type="button" onClick={() => setConfirm({ kind: 'ticket', id: openTicket.id, title: openTicket.subject })}
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-red-600">
+                <Trash2 size={13} /> Delete ticket
+              </button>
             </div>
           }
           footer={<Composer onSend={text => reply(openTicket.id, { text })} placeholder={`Reply to ${openTicket.clientName || 'the client'}…`} />}
@@ -458,8 +471,10 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
 
       {confirm && (
         <ConfirmDialog
-          title={`Delete this ${confirm.kind === 'faq' ? 'FAQ' : 'guide'}?`}
-          body={<p>“{confirm.title}” disappears from every client's Help Center. This can't be undone.</p>}
+          title={`Delete this ${confirm.kind === 'faq' ? 'FAQ' : confirm.kind === 'ticket' ? 'ticket' : 'guide'}?`}
+          body={confirm.kind === 'ticket'
+            ? <p>“{confirm.title}” and its replies are deleted for you and the client. This can't be undone.</p>
+            : <p>“{confirm.title}” disappears from every client's Help Center. This can't be undone.</p>}
           confirmLabel="Delete"
           tone="danger"
           onCancel={() => setConfirm(null)}
