@@ -452,21 +452,22 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
             {mode === 'my' ? 'Manage bulk actions and assignments for your screens' : 'Manage bulk screen assignments and actions for client organizations'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-3">
           {mode !== 'my' && (
-            <CustomSelect
-              value={selectedOrgFilter}
-              onChange={val => setSelectedOrgFilter(val)}
-              placeholder="All Organizations"
-              options={[
-                { value: '', label: 'All Organizations' },
-                ...organizations.map(org => ({ value: org.id, label: org.name }))
-              ]}
-              className="max-w-[200px] shrink-0"
-              buttonClassName="text-sm py-2 px-3 min-w-[180px]"
-            />
+            <div className="w-48 shrink-0">
+              <CustomSelect
+                value={selectedOrgFilter}
+                onChange={val => setSelectedOrgFilter(val)}
+                placeholder="All Organizations"
+                options={[
+                  { value: '', label: 'All Organizations' },
+                  ...organizations.map(org => ({ value: org.id, label: org.name }))
+                ]}
+                buttonClassName="h-10 text-sm"
+              />
+            </div>
           )}
-          <button data-tour="groups-new" onClick={() => setShowNewGroup(true)} className="whitespace-nowrap shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex-shrink-0">
+          <button data-tour="groups-new" onClick={() => setShowNewGroup(true)} className="h-10 whitespace-nowrap shrink-0 flex items-center justify-center gap-2 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
             <Plus size={16} /> New Group
           </button>
         </div>
