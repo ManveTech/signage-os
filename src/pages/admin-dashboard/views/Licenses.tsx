@@ -245,7 +245,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       }
       if (chargeNow) await issueInvoice(created.id, form.email, today);
       toast.success(
-        chargeNow ? `License created — invoice sent to ${form.email}`
+        // The invoice email goes out with the hourly reminder run (9 am–8 pm IST).
+        chargeNow ? `License created — ${form.email} gets the invoice by email within the hour`
           : payLater ? `License active — first payment due ${formatDate(firstDue)}`
           : 'License added to the pool'
       );
@@ -833,8 +834,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   <label className={labelCls}>First payment</label>
                   <div className="grid grid-cols-2 gap-2">
                     {([
-                      { key: 'now', title: 'Charge now', hint: 'Invoice today' },
-                      { key: 'included', title: 'Pay later', hint: `First ${form.tenure === 'yearly' ? 'year' : 'month'} free` },
+                      { key: 'now', title: 'Start now', hint: 'Invoice today' },
+                      { key: 'included', title: `Start after 1 ${form.tenure === 'yearly' ? 'year' : 'month'}`, hint: `First ${form.tenure === 'yearly' ? 'year' : 'month'} free` },
                     ] as const).map(o => {
                       const active = form.firstPayment === o.key;
                       return (
@@ -854,7 +855,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   <p className="text-xs text-slate-500 mt-1.5">
                     {form.firstPayment === 'now'
                       ? `They get an invoice for ${formatInr(Number(form.price))} (incl. ${formatInr(Number(form.price) - Math.round(Number(form.price) / 1.18))} GST). The licence starts the day they pay and runs one ${form.tenure === 'yearly' ? 'year' : 'month'}.`
-                      : `Active right away, nothing to pay now. Their first payment (${formatInr(Number(form.price))}) is due on ${formatDate(defaultExpiry(form.tenure))} — exactly one ${form.tenure === 'yearly' ? 'year' : 'month'} from today.`}
+                      : `Active right away, nothing to pay now. Their first payment (${formatInr(Number(form.price))}) is due on ${formatDate(defaultExpiry(form.tenure))} — exactly one ${form.tenure === 'yearly' ? 'year' : 'month'} from today — then every ${form.tenure === 'yearly' ? 'year' : 'month'} after that.`}
                   </p>
                 </div>
               )}
