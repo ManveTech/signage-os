@@ -18,6 +18,7 @@ import { STATE_NAMES, stateFromGstin, withGst, withoutGst, DEFAULT_GST_PERCENT, 
 import {
   licenseState, LicenseStateKey, daysUntil, formatDate, formatInr, relativeDays, defaultExpiry, planLabel, localDate, isRenewalDue
 } from '../../../components/licenses/licenseStatus';
+import { printInvoice } from '../../../lib/printInvoice';
 
 type Tab = 'management' | 'expirations' | 'invoices' | 'payments';
 
@@ -352,14 +353,6 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   // Records a payment received outside Razorpay: the server renews the
   // licence exactly as an online payment would (it used to only flip the
   // invoice, leaving the client locked out).
-  // Print only the invoice, not the whole dashboard (see .print-invoice in index.css).
-  const printInvoice = () => {
-    document.documentElement.classList.add('print-invoice');
-    const done = () => { document.documentElement.classList.remove('print-invoice'); window.removeEventListener('afterprint', done); };
-    window.addEventListener('afterprint', done);
-    window.print();
-    setTimeout(done, 1000);
-  };
 
   const markInvoicePaid = async (inv: Invoice) => {
     try {
@@ -495,23 +488,23 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
       {(tab === 'invoices' || tab === 'payments') && (
         <div className="flex flex-wrap items-center gap-2">
-          <div className="w-40">
+          <div className="flex-1 min-w-0 sm:flex-none sm:w-40">
             <CustomSelect value={range} onChange={v => setRange(v as DateRange)} buttonClassName="h-10"
               options={(Object.keys(RANGE_LABEL) as DateRange[]).map(k => ({ value: k, label: RANGE_LABEL[k] }))} />
           </div>
-          {range === 'custom' && (
-            <div className="flex items-center gap-1.5">
-              <input type="date" value={customFrom} max={customTo || undefined} onChange={e => setCustomFrom(e.target.value)} aria-label="From"
-                className="h-10 px-3 text-sm border border-gray-200 rounded-xl bg-white outline-none focus:border-blue-400" />
-              <span className="text-xs text-slate-400">to</span>
-              <input type="date" value={customTo} min={customFrom || undefined} onChange={e => setCustomTo(e.target.value)} aria-label="To"
-                className="h-10 px-3 text-sm border border-gray-200 rounded-xl bg-white outline-none focus:border-blue-400" />
-            </div>
-          )}
-          <div className="w-48">
+          <div className="flex-1 min-w-0 sm:flex-none sm:w-48">
             <CustomSelect value={sortBy} onChange={v => setSortBy(v as SortBy)} buttonClassName="h-10"
               options={(Object.keys(SORT_LABEL) as SortBy[]).map(k => ({ value: k, label: SORT_LABEL[k] }))} />
           </div>
+          {range === 'custom' && (
+            <div className="order-last sm:order-none w-full sm:w-auto flex items-center gap-1.5">
+              <input type="date" value={customFrom} max={customTo || undefined} onChange={e => setCustomFrom(e.target.value)} aria-label="From"
+                className="flex-1 sm:flex-none min-w-0 h-10 px-3 text-sm border border-gray-200 rounded-xl bg-white outline-none focus:border-blue-400" />
+              <span className="text-xs text-slate-400">to</span>
+              <input type="date" value={customTo} min={customFrom || undefined} onChange={e => setCustomTo(e.target.value)} aria-label="To"
+                className="flex-1 sm:flex-none min-w-0 h-10 px-3 text-sm border border-gray-200 rounded-xl bg-white outline-none focus:border-blue-400" />
+            </div>
+          )}
           {(range !== 'all' || sortBy !== 'newest') && (
             <button type="button" onClick={() => { setRange('all'); setCustomFrom(''); setCustomTo(''); setSortBy('newest'); }}
               className="h-10 px-3 text-xs font-semibold text-slate-500 hover:text-slate-800">Reset</button>
