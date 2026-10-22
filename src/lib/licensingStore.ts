@@ -47,6 +47,8 @@ export interface Invoice {
   issuedDate: string;
   /** Running tax-invoice number, e.g. BSD/2026-27/0001 (set by the server). */
   number?: string;
+  /** The seller's details as they were when issued (see server/services/invoicing.ts). */
+  seller?: Partial<BusinessDetails>;
   /** GST rate the total includes, fixed when issued. Missing = 18. */
   gstPercent?: number;
   testMode?: boolean;

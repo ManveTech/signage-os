@@ -12,7 +12,10 @@ const money = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDi
  * (see .print-invoice in index.css). The total includes GST at the
  * invoice's own rate (18% for invoices issued before the rate could be set).
  */
-export default function TaxInvoice({ invoice, biz, planLabel }: { invoice: Invoice; biz: BusinessDetails; planLabel?: string }) {
+export default function TaxInvoice({ invoice, biz: current, planLabel }: { invoice: Invoice; biz: BusinessDetails; planLabel?: string }) {
+  // The seller's details as they were when this invoice was issued; today's
+  // Billing details only for an invoice that predates the copy.
+  const biz: BusinessDetails = invoice.seller?.name ? { ...current, ...invoice.seller } : current;
   const supplierState = biz.state || 'Karnataka';
   const to = invoice.billTo || { name: invoice.clientName, email: invoice.clientEmail, address: '', state: '', gstin: '' };
   const place = to.state || stateFromGstin(to.gstin) || supplierState;

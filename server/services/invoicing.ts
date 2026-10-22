@@ -12,6 +12,24 @@ import { resolveUserOrgId } from './ownership';
 
 export type BillTo = { name: string; email: string; address: string; state: string; gstin: string };
 
+/** The seller's details as printed on an invoice — copied in when it's issued. */
+export type Seller = { name: string; address: string; gstNumber: string; state: string; contactEmail: string; contactPhone: string; logoUrl: string; sac: string };
+
+/** The business details right now (Licensing → Billing details), for a new invoice. */
+export async function currentSeller(): Promise<Seller> {
+  const c = (await getIntegration('business').catch(() => null))?.config || {};
+  return {
+    name: c.name || 'BlueStar DigiTech',
+    address: c.address || '',
+    gstNumber: c.gstNumber || '',
+    state: c.state || 'Karnataka',
+    contactEmail: c.contactEmail || '',
+    contactPhone: c.contactPhone || '',
+    logoUrl: c.logoUrl || '',
+    sac: c.sac || '997331',
+  };
+}
+
 const istDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
 
 /** "2026-27" for any date from 1 Apr 2026 to 31 Mar 2027. */
@@ -84,6 +102,9 @@ export async function prepareInvoice(body: Record<string, any>): Promise<Record<
     const lic = body.licenseId ? await pb.collection('licenses').getOne(String(body.licenseId)).catch(() => null) : null;
     body.gstPercent = lic && typeof lic.gstPercent === 'number' ? lic.gstPercent : 18;
   }
+  // An issued invoice keeps the seller's details as they were that day —
+  // editing Billing details later only changes invoices issued after.
+  if (!body.seller || typeof body.seller !== 'object' || !body.seller.name) body.seller = await currentSeller();
   if (!body.billTo || typeof body.billTo !== 'object' || !body.billTo.name) {
     body.billTo = body.clientEmail ? await billToFor(String(body.clientEmail), String(body.clientName || '')) : { name: String(body.clientName || ''), email: '', address: '', state: '', gstin: '' };
   }

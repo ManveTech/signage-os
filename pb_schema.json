@@ -3711,6 +3711,16 @@
       },
       {
         "hidden": false,
+        "id": "jsoninvoicesellr1",
+        "maxSize": 2000000,
+        "name": "seller",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
         "onCreate": true,

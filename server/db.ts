@@ -1572,6 +1572,8 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       // GST rate charged on top of the licence's price (missing = 18%).
       ['licenses', [{ id: 'numlicensesgst001', name: 'gstPercent', type: 'number' }]],
       ['invoices', [{ id: 'numinvoicesgst001', name: 'gstPercent', type: 'number' }]],
+      // The seller's details as they were when the invoice was issued.
+      ['invoices', [{ id: 'jsoninvoicesellr1', name: 'seller', type: 'json', maxSize: 2000000 }]],
     ] as const) {
       try {
         const coll: any = await pb.collections.getOne(collName);
@@ -1583,6 +1585,14 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
           // A new number field reads as 0 on every existing record, which for
           // gstPercent would mean "no GST". Everything priced before the rate
           // could be chosen included 18%, so that's what they get.
+          // Invoices issued before the snapshot existed get today's details.
+          if (missing.some(f => f.name === 'seller')) {
+            const { currentSeller } = await import('./services/invoicing');
+            const seller = await currentSeller();
+            const rows = await pb.collection(collName).getFullList({ fields: 'id' }).catch(() => [] as any[]);
+            for (const r of rows) await pb.collection(collName).update(r.id, { seller }).catch(() => {});
+            console.log(`Saved the seller's details on ${rows.length} existing invoices`);
+          }
           if (missing.some(f => f.name === 'gstPercent')) {
             const rows = await pb.collection(collName).getFullList({ fields: 'id' }).catch(() => [] as any[]);
             for (const r of rows) await pb.collection(collName).update(r.id, { gstPercent: 18 }).catch(() => {});
