@@ -1,6 +1,6 @@
 # Help guide screenshots
 
-The built-in Help Center guides (`src/lib/helpGuides.ts`) show screenshots of
+The standard Help Center guides (`server/data/helpDefaults.ts`) show screenshots of
 the client dashboard with numbered highlights. These scripts make them, so
 they can be redone whenever a page changes.
 
@@ -9,7 +9,8 @@ they can be redone whenever a page changes.
   two playlists, a licence and an invoice. Local test data only.
 - `capture.mjs` signs in as that client in a headless Chrome, walks through
   each shot, measures where the highlighted controls are, and writes
-  `public/help/<shot>.webp` and `src/components/support/helpShots.json`.
+  `public/help/<shot>.webp` and `server/data/helpShots.json`, which the
+  standard guides in `server/data/helpDefaults.ts` use.
 
 ## Running it
 

@@ -6,7 +6,7 @@
  * records where the highlighted controls sit — so the boxes and arrows in
  * the guides are measured, not eyeballed.
  *
- * Writes public/help/<shot>.webp and src/components/support/helpShots.json.
+ * Writes public/help/<shot>.webp and server/data/helpShots.json.
  * See README.md in this folder for how to run it.
  */
 import { spawn, execFileSync } from 'child_process';
@@ -22,7 +22,7 @@ const EMAIL = 'priya@cafearoma.in';
 const PASSWORD = 'ClientPass123';
 const W = 1280, H = 800, DPR = 1.5;
 const OUT_IMG = path.join(ROOT, 'public/help');
-const OUT_JSON = path.join(ROOT, 'src/components/support/helpShots.json');
+const OUT_JSON = path.join(ROOT, 'server/data/helpShots.json');
 const TMP = fs.mkdtempSync('/tmp/help-capture-');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));

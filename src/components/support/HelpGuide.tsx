@@ -1,62 +1,66 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { ArrowLeft, Clock, Lightbulb, Maximize2, X } from 'lucide-react';
-import type { HelpGuide as Guide } from '../../lib/helpGuides';
-import shots from './helpShots.json';
-
-type Mark = { kind: 'box' | 'arrow'; n?: number; x: number; y: number; w: number; h: number };
-type Shot = { src: string; w: number; h: number; marks: Mark[] };
+import type { GuideMark, GuideStep, SupportDoc } from '../../lib/supportStore';
+import { youtubeId } from './supportUi';
 
 const ACCENT = '#F97316';
-const PAD = 7;
+
+/** Rough reading time: a short intro plus about 40 seconds a step. */
+export function guideMinutes(doc: SupportDoc) {
+  return Math.max(1, Math.round(0.5 + (doc.steps?.length || 0) * 0.7));
+}
 
 /**
- * Draws a guide's highlights over its screenshot. Marks are stored as
- * percentages of the page, so they stay on target at any width.
+ * Draws a step's highlights over its screenshot. Marks are stored as
+ * percentages of the image, so they stay on target at any width, and are
+ * numbered by position — the step's text refers to them as (1), (2)…
  *
  * box   — an outline around the control.
  * arrow — the same, plus an arrow pointing in from the emptier side.
- * Both carry the step's number, which the text refers to as (1), (2)…
  */
-function Overlay({ shot }: { shot: Shot }) {
-  const { w: W, h: H } = shot;
+export function MarksOverlay({ marks, w, h, draft }: { marks: GuideMark[]; w: number; h: number; draft?: GuideMark | null }) {
+  // Sizes are in image pixels; scale them so they read the same on any image.
+  const u = w / 1280;
+  const pad = 7 * u;
+  const all = draft ? [...marks, draft] : marks;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
+    <svg viewBox={`0 0 ${w} ${h}`} className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
       <defs>
         <marker id="help-arrowhead" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill={ACCENT} />
         </marker>
       </defs>
-      {shot.marks.map((m, i) => {
-        const x = (m.x / 100) * W - PAD, y = (m.y / 100) * H - PAD;
-        const w = (m.w / 100) * W + PAD * 2, h = (m.h / 100) * H + PAD * 2;
-        const cx = x + w / 2, cy = y + h / 2;
+      {all.map((m, i) => {
+        const x = (m.x / 100) * w - pad, y = (m.y / 100) * h - pad;
+        const bw = (m.w / 100) * w + pad * 2, bh = (m.h / 100) * h + pad * 2;
+        const cx = x + bw / 2, cy = y + bh / 2;
 
-        // The arrow comes from whichever side has more room.
         let arrow: { x1: number; y1: number; x2: number; y2: number } | null = null;
         if (m.kind === 'arrow') {
-          const len = 120;
-          if (cx > W * 0.55) arrow = { x1: x - len, y1: cy + len * 0.55, x2: x - 6, y2: cy + 4 };
-          else if (x + w + len < W) arrow = { x1: x + w + len, y1: cy + len * 0.55, x2: x + w + 6, y2: cy + 4 };
-          else arrow = { x1: cx - len * 0.4, y1: y + h + len, x2: cx, y2: y + h + 6 };
+          const len = 120 * u;
+          if (cx > w * 0.55) arrow = { x1: x - len, y1: cy + len * 0.55, x2: x - 6 * u, y2: cy + 4 * u };
+          else if (x + bw + len < w) arrow = { x1: x + bw + len, y1: cy + len * 0.55, x2: x + bw + 6 * u, y2: cy + 4 * u };
+          else arrow = { x1: cx - len * 0.4, y1: y + bh + len, x2: cx, y2: y + bh + 6 * u };
         }
-        // Number sits at the arrow's tail, or on the box's top-left corner.
-        const bx = Math.min(Math.max(arrow ? arrow.x1 : x, 22), W - 22);
-        const by = Math.min(Math.max(arrow ? arrow.y1 : y, 22), H - 22);
+        const r = 19 * u;
+        const bx = Math.min(Math.max(arrow ? arrow.x1 : x, r + 3), w - r - 3);
+        const by = Math.min(Math.max(arrow ? arrow.y1 : y, r + 3), h - r - 3);
+        const isDraft = draft && i === all.length - 1;
 
         return (
-          <g key={i}>
-            <rect x={x} y={y} width={w} height={h} rx={12} fill="rgba(249,115,22,0.08)" stroke="#fff" strokeWidth={9} />
-            <rect x={x} y={y} width={w} height={h} rx={12} fill="none" stroke={ACCENT} strokeWidth={4.5} />
+          <g key={i} opacity={isDraft ? 0.7 : 1}>
+            <rect x={x} y={y} width={bw} height={bh} rx={12 * u} fill="rgba(249,115,22,0.08)" stroke="#fff" strokeWidth={9 * u} />
+            <rect x={x} y={y} width={bw} height={bh} rx={12 * u} fill="none" stroke={ACCENT} strokeWidth={4.5 * u} />
             {arrow && (
               <>
-                <line {...arrow} stroke="#fff" strokeWidth={13} strokeLinecap="round" />
-                <line {...arrow} stroke={ACCENT} strokeWidth={7} strokeLinecap="round" markerEnd="url(#help-arrowhead)" />
+                <line {...arrow} stroke="#fff" strokeWidth={13 * u} strokeLinecap="round" />
+                <line {...arrow} stroke={ACCENT} strokeWidth={7 * u} strokeLinecap="round" markerEnd="url(#help-arrowhead)" />
               </>
             )}
-            {m.n != null && (
+            {!isDraft && (
               <g>
-                <circle cx={bx} cy={by} r={19} fill={ACCENT} stroke="#fff" strokeWidth={4} />
-                <text x={bx} y={by + 7.5} textAnchor="middle" fontSize={21} fontWeight={700} fill="#fff" fontFamily="system-ui, sans-serif">{m.n}</text>
+                <circle cx={bx} cy={by} r={r} fill={ACCENT} stroke="#fff" strokeWidth={4 * u} />
+                <text x={bx} y={by + 7.5 * u} textAnchor="middle" fontSize={21 * u} fontWeight={700} fill="#fff" fontFamily="system-ui, sans-serif">{i + 1}</text>
               </g>
             )}
           </g>
@@ -66,8 +70,18 @@ function Overlay({ shot }: { shot: Shot }) {
   );
 }
 
-function GuideShot({ id, alt }: { id: string; alt: string }) {
-  const shot = (shots as Record<string, Shot>)[id];
+/** Image size: stored with the step, or read from the image once it loads. */
+function useImageSize(step: GuideStep) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(step.imageW && step.imageH ? { w: step.imageW, h: step.imageH } : null);
+  useEffect(() => { setSize(step.imageW && step.imageH ? { w: step.imageW, h: step.imageH } : null); }, [step.image, step.imageW, step.imageH]);
+  const onLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    if (!size) setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
+  };
+  return { size, onLoad };
+}
+
+export function GuideShot({ step, alt }: { step: GuideStep; alt: string }) {
+  const { size, onLoad } = useImageSize(step);
   const [zoomed, setZoomed] = useState(false);
 
   useEffect(() => {
@@ -77,11 +91,11 @@ function GuideShot({ id, alt }: { id: string; alt: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomed]);
 
-  if (!shot) return null;
+  if (!step.image) return null;
   const figure = (
     <span className="relative block">
-      <img src={shot.src} alt={alt} width={shot.w} height={shot.h} loading="lazy" className="block w-full h-auto" />
-      <Overlay shot={shot} />
+      <img src={step.image} alt={alt} width={size?.w} height={size?.h} loading="lazy" onLoad={onLoad} className="block w-full h-auto" />
+      {size && step.marks && step.marks.length > 0 && <MarksOverlay marks={step.marks} w={size.w} h={size.h} />}
     </span>
   );
 
@@ -110,37 +124,54 @@ function GuideShot({ id, alt }: { id: string; alt: string }) {
   );
 }
 
-/** A built-in guide, read in place of the Help Center list. */
-export function GuideArticle({ guide, onBack, related }: { guide: Guide; onBack: () => void; related?: { guide: Guide; open: () => void }[] }) {
-  useEffect(() => { window.scrollTo?.({ top: 0 }); document.querySelector('main')?.scrollTo?.({ top: 0 }); }, [guide.id]);
+/** A step-by-step guide, read in place of the Help Center list. */
+export function GuideArticle({ doc, onBack, related, actions }: {
+  doc: SupportDoc;
+  onBack: () => void;
+  related?: { doc: SupportDoc; open: () => void }[];
+  /** Admin's Edit / Delete buttons. */
+  actions?: ReactNode;
+}) {
+  useEffect(() => { document.querySelector('main')?.scrollTo?.({ top: 0 }); }, [doc.id]);
+  const steps = doc.steps || [];
 
   return (
     <article className="max-w-3xl">
-      <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-blue-600 mb-4">
-        <ArrowLeft size={15} /> All help
-      </button>
-      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{guide.category}</p>
-      <h2 className="display text-2xl sm:text-3xl text-ink-950 mt-1">{guide.title}</h2>
-      <p className="text-sm text-slate-600 mt-1.5">{guide.summary}</p>
-      <p className="flex items-center gap-1.5 text-xs text-slate-400 mt-2"><Clock size={12} /> {guide.minutes} min</p>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-blue-600">
+          <ArrowLeft size={15} /> All help
+        </button>
+        {actions}
+      </div>
+      {doc.category && <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{doc.category}</p>}
+      <h2 className="display text-2xl sm:text-3xl text-ink-950 mt-1">{doc.title}</h2>
+      {doc.content && <p className="text-sm text-slate-600 mt-1.5 whitespace-pre-line">{doc.content}</p>}
+      <p className="flex items-center gap-1.5 text-xs text-slate-400 mt-2"><Clock size={12} /> {guideMinutes(doc)} min</p>
 
       <ol className="mt-6 space-y-6">
-        {guide.steps.map((step, i) => (
+        {steps.map((step, i) => (
           <li key={i} className="flex gap-3 sm:gap-4">
             <span className="w-7 h-7 shrink-0 rounded-full bg-blue-600 text-white text-sm font-semibold flex items-center justify-center mt-0.5">{i + 1}</span>
             <div className="flex-1 min-w-0 space-y-3">
-              <p className="text-[15px] leading-relaxed text-slate-800">{step.text}</p>
-              {step.shot && <GuideShot id={step.shot} alt={`${guide.title} — step ${i + 1}`} />}
+              <p className="text-[15px] leading-relaxed text-slate-800 whitespace-pre-line">{step.text}</p>
+              {step.image && <GuideShot step={step} alt={`${doc.title} — step ${i + 1}`} />}
             </div>
           </li>
         ))}
       </ol>
 
-      {guide.tips && guide.tips.length > 0 && (
+      {youtubeId(doc.youtubeUrl) && (
+        <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-slate-900 mt-8">
+          <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${youtubeId(doc.youtubeUrl)}`} title={doc.title}
+            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+        </div>
+      )}
+
+      {doc.tips && doc.tips.length > 0 && (
         <div className="mt-8 rounded-2xl bg-amber-50 border border-amber-100 p-4">
           <p className="flex items-center gap-2 text-sm font-semibold text-amber-900"><Lightbulb size={16} /> Good to know</p>
           <ul className="mt-2 space-y-1.5">
-            {guide.tips.map((t, i) => <li key={i} className="text-sm text-amber-900/90 leading-relaxed">• {t}</li>)}
+            {doc.tips.map((t, i) => <li key={i} className="text-sm text-amber-900/90 leading-relaxed">• {t}</li>)}
           </ul>
         </div>
       )}
@@ -150,8 +181,8 @@ export function GuideArticle({ guide, onBack, related }: { guide: Guide; onBack:
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">Related</p>
           <div className="flex flex-wrap gap-2">
             {related.map(r => (
-              <button key={r.guide.id} type="button" onClick={r.open} className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-sm text-slate-700 hover:border-blue-300 hover:text-blue-700">
-                {r.guide.title}
+              <button key={r.doc.id} type="button" onClick={r.open} className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-sm text-slate-700 hover:border-blue-300 hover:text-blue-700">
+                {r.doc.title}
               </button>
             ))}
           </div>

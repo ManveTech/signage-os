@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, MessageSquare, HelpCircle, BookOpen, Edit2, Trash2, Compass } from 'lucide-react';
-import { supportStore, Ticket, FAQ, SupportDoc } from '../../../lib/supportStore';
+import { Plus, Search, MessageSquare, HelpCircle, BookOpen, Edit2, Trash2, Compass, Sparkles, Loader2 } from 'lucide-react';
+import { supportStore, Ticket, FAQ, SupportDoc, byHelpOrder } from '../../../lib/supportStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import { toast } from '../../../components/Toast';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import ConfirmDialog from '../../../components/screens/ConfirmDialog';
 import { StatusPill, PRIORITY, TICKET_STATUS, TicketThread, Composer, GuideBody, timeAgo } from '../../../components/support/supportUi';
 import { GuideArticle } from '../../../components/support/HelpGuide';
-import { HELP_GUIDES, HELP_FAQS } from '../../../lib/helpGuides';
+import HelpGuideEditor, { GuideDraft } from '../../../components/support/HelpGuideEditor';
 import { runTour } from '../../../lib/tour/runner';
 import { getAdminTourSteps } from '../../../lib/tour/adminTour';
 import { markTourSeen } from '../../../lib/tour/state';
 
 type Tab = 'issues' | 'faq' | 'docs';
-const CATEGORIES = ['General', 'Screens', 'Playlists', 'Media', 'Billing', 'Troubleshooting', 'Tutorial'];
 
 const inputCls = 'w-full h-11 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white';
 const areaCls = 'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 resize-none leading-relaxed';
@@ -35,15 +34,17 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
   const [tab, setTab] = useState<Tab>(activeTab);
   const [tickets, setTickets] = useState<Ticket[]>(() => supportStore.getTickets());
   const [faqs, setFaqs] = useState<FAQ[]>(() => supportStore.getFAQs());
-  // Built-in guides (lib/helpGuides.ts) — every client sees them; read-only here.
+  // Step-by-step guides open as a page; plain-text ones in a sheet.
   const [readingGuideId, setReadingGuideId] = useState<string | null>(null);
+  const [addingDefaults, setAddingDefaults] = useState(false);
   const [docs, setDocs] = useState<SupportDoc[]>(() => supportStore.getDocs());
   const [search, setSearch] = useState('');
   const [ticketFilter, setTicketFilter] = useState<'active' | 'done' | 'all'>('active');
 
   const [openTicketId, setOpenTicketId] = useState<string | null>(null);
   const [faqForm, setFaqForm] = useState<{ id?: string; question: string; answer: string } | null>(null);
-  const [docForm, setDocForm] = useState<{ id?: string; title: string; category: string; content: string; youtubeUrl: string } | null>(null);
+  // The guide editor: { doc: null } for a new guide.
+  const [docForm, setDocForm] = useState<{ doc: SupportDoc | null } | null>(null);
   const [readingDocId, setReadingDocId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'faq' | 'doc'; id: string; title: string } | null>(null);
 
@@ -75,11 +76,11 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
     .filter(t => ticketFilter === 'all' || (ticketFilter === 'active' ? isActive(t) : !isActive(t)))
     .filter(t => !q || [t.subject, t.clientEmail, t.clientName, t.description].some(v => (v || '').toLowerCase().includes(q)))
     .sort((a, b) => Number(waitingOnUs(b)) - Number(waitingOnUs(a)) || sortKey(b) - sortKey(a));
-  const visibleFaqs = faqs.filter(f => !q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
-  const visibleDocs = docs.filter(d => !q || [d.title, d.category, d.content].some(v => (v || '').toLowerCase().includes(q)));
-  const builtInFaqs = HELP_FAQS.filter(f => !q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
-  const builtInGuides = HELP_GUIDES.filter(g => !q || [g.title, g.summary, g.category, ...g.steps.map(st => st.text)].some(v => v.toLowerCase().includes(q)));
-  const readingGuide = readingGuideId ? HELP_GUIDES.find(g => g.id === readingGuideId) : null;
+  const visibleFaqs = [...faqs].sort(byHelpOrder).filter(f => !q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
+  const visibleDocs = [...docs].sort(byHelpOrder).filter(d => !q || [d.title, d.category, d.content].some(v => (v || '').toLowerCase().includes(q)));
+  const readingGuide = readingGuideId ? docs.find(d => d.id === readingGuideId) : null;
+  const openGuide = (d: SupportDoc) => (d.steps?.length ? setReadingGuideId(d.id) : setReadingDocId(d.id));
+  const hasStepGuides = docs.some(d => d.steps?.length);
 
   // ── Tickets ──────────────────────────────────────────────────────────────
   const reply = async (id: string, body: { text?: string; status?: Ticket['status'] }) => {
@@ -112,22 +113,36 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
     load();
   };
 
-  const saveDoc = async () => {
-    if (!docForm) return;
-    const title = docForm.title.trim();
-    const content = docForm.content.trim();
-    if (!title || !content) { toast.warning('A guide needs a title and some text'); return; }
-    const data = { title, category: docForm.category, content, youtubeUrl: docForm.youtubeUrl.trim() };
-    if (docForm.id) {
-      const res = await supportStore.updateDoc(docForm.id, data);
-      if (res.ok === false) { toast.error(`Couldn't save: ${res.error}`); return; }
+  const saveDoc = async (draft: GuideDraft): Promise<boolean> => {
+    const existing = docForm?.doc;
+    if (existing) {
+      const res = await supportStore.updateDoc(existing.id, draft);
+      if (res.ok === false) { toast.error(`Couldn't save: ${res.error}`); return false; }
       toast.success('Guide updated');
     } else {
-      supportStore.addDoc({ ...data, images: [] });
-      toast.success('Guide published');
+      supportStore.addDoc({ ...draft, images: [] });
+      toast.success('Guide published — clients see it in their Help Center');
     }
-    setDocForm(null);
     load();
+    return true;
+  };
+
+  /** Adds the standard guides and FAQs; anything already there by title is left alone. */
+  const addDefaults = async () => {
+    setAddingDefaults(true);
+    try {
+      const r = await supportStore.addDefaultHelp();
+      await Promise.all([
+        syncCollection('faqs', 'signageos_faqs', { force: true }),
+        syncCollection('support_docs', 'signageos_docs', { force: true }),
+      ]);
+      load();
+      toast.success(r.guides || r.faqs ? `Added ${r.guides} guide${r.guides === 1 ? '' : 's'} and ${r.faqs} FAQ${r.faqs === 1 ? '' : 's'}` : 'You already have all the standard guides and FAQs');
+    } catch (e: any) {
+      toast.error(e.message || 'Could not add the standard guides');
+    } finally {
+      setAddingDefaults(false);
+    }
   };
 
   const doDelete = () => {
@@ -138,6 +153,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
     setConfirm(null);
     setFaqForm(null);
     setReadingDocId(null);
+    setReadingGuideId(null);
     load();
   };
 
@@ -165,7 +181,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
           </button>
         )}
         {tab === 'docs' && (
-          <button onClick={() => setDocForm({ title: '', category: 'General', content: '', youtubeUrl: '' })} className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium">
+          <button onClick={() => { setReadingGuideId(null); setDocForm({ doc: null }); }} className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium">
             <Plus size={16} /> New guide
           </button>
         )}
@@ -174,8 +190,8 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
       <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl md:max-w-md">
         {([
           { key: 'issues', label: 'Tickets', count: activeCount, alert: true },
-          { key: 'faq', label: 'FAQs', count: HELP_FAQS.length + faqs.length },
-          { key: 'docs', label: 'Guides', count: HELP_GUIDES.length + docs.length },
+          { key: 'faq', label: 'FAQs', count: faqs.length },
+          { key: 'docs', label: 'Guides', count: docs.length },
         ] as const).map(t => (
           <button
             key={t.key}
@@ -256,92 +272,98 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
       {/* ── FAQs ────────────────────────────────────────────────────────── */}
       {tab === 'faq' && (
         <div className="space-y-4">
-          {builtInFaqs.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Built in · every client sees these</p>
-              <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
-                {builtInFaqs.map(f => (
-                  <div key={f.id} className="flex items-start gap-3 px-4 py-3.5">
-                    <HelpCircle size={16} className="text-slate-300 mt-0.5 shrink-0" />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-medium text-slate-900">{f.question}</span>
-                      <span className="block text-xs text-slate-500 mt-0.5">{f.answer}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
+          {!hasStepGuides && (
+            <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+              <span className="w-9 h-9 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><Sparkles size={17} /></span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold text-slate-900">Start with the standard guides</span>
+                <span className="block text-xs text-slate-600 mt-0.5">10 step-by-step guides with screenshots and 13 FAQs — adding a screen, playlists, media, groups, billing and more. Edit or delete any of them afterwards.</span>
+              </span>
+              <button type="button" onClick={addDefaults} disabled={addingDefaults} className="shrink-0 h-9 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium flex items-center gap-1.5">
+                {addingDefaults && <Loader2 size={14} className="animate-spin" />} Add them
+              </button>
             </div>
           )}
-          <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Added by you</p>
-            {visibleFaqs.length > 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
-                {visibleFaqs.map(f => (
-                  <button key={f.id} type="button" onClick={() => setFaqForm({ id: f.id, question: f.question, answer: f.answer })} className="w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-slate-50">
-                    <HelpCircle size={16} className="text-blue-600 mt-0.5 shrink-0" />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-medium text-slate-900">{f.question}</span>
-                      <span className="block text-xs text-slate-500 mt-0.5 line-clamp-2">{f.answer}</span>
-                    </span>
-                    <Edit2 size={14} className="text-slate-300 mt-1 shrink-0" />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
-                <HelpCircle size={30} className="mx-auto text-gray-300 mb-2" />
-                <p className="text-sm font-medium text-gray-700">{faqs.length ? 'No FAQs match' : 'None of your own yet'}</p>
-                <p className="text-xs text-gray-500 mt-1">Add answers specific to your business — clients see them after the built-in ones.</p>
-              </div>
-            )}
-          </div>
+          {visibleFaqs.length > 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+              {visibleFaqs.map(f => (
+                <button key={f.id} type="button" onClick={() => setFaqForm({ id: f.id, question: f.question, answer: f.answer })} className="w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-slate-50">
+                  <HelpCircle size={16} className="text-blue-600 mt-0.5 shrink-0" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium text-slate-900">{f.question}</span>
+                    <span className="block text-xs text-slate-500 mt-0.5 line-clamp-2">{f.answer}</span>
+                  </span>
+                  <Edit2 size={14} className="text-slate-300 mt-1 shrink-0" />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+              <HelpCircle size={30} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm font-medium text-gray-700">{faqs.length ? 'No FAQs match' : 'No FAQs yet'}</p>
+              <p className="text-xs text-gray-500 mt-1">Answer common questions once — clients find them in their Help Center.</p>
+            </div>
+          )}
         </div>
       )}
 
       {/* ── Guides ──────────────────────────────────────────────────────── */}
-      {tab === 'docs' && readingGuide && (
-        <GuideArticle guide={readingGuide} onBack={() => setReadingGuideId(null)} />
+      {tab === 'docs' && docForm && (
+        <HelpGuideEditor key={docForm.doc?.id || 'new'} initial={docForm.doc} onCancel={() => setDocForm(null)} onSave={saveDoc} />
       )}
 
-      {tab === 'docs' && !readingGuide && (
+      {tab === 'docs' && !docForm && readingGuide && (
+        <GuideArticle
+          doc={readingGuide}
+          onBack={() => setReadingGuideId(null)}
+          actions={
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setDocForm({ doc: readingGuide })} className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 flex items-center gap-1.5"><Edit2 size={14} /> Edit</button>
+              <button type="button" onClick={() => setConfirm({ kind: 'doc', id: readingGuide.id, title: readingGuide.title })} className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-red-600 flex items-center gap-1.5"><Trash2 size={14} /> Delete</button>
+            </div>
+          }
+        />
+      )}
+
+      {tab === 'docs' && !docForm && !readingGuide && (
         <div className="space-y-4">
-          {builtInGuides.length > 0 && (
-            <div>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Built in · step-by-step with screenshots</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                {builtInGuides.map(g => (
-                  <button key={g.id} type="button" onClick={() => setReadingGuideId(g.id)} className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 p-4">
-                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold">{g.category}</span>
-                    <span className="block text-sm font-semibold text-slate-900 mt-2">{g.title}</span>
-                    <span className="block text-xs text-slate-500 mt-1 line-clamp-2">{g.summary}</span>
-                  </button>
-                ))}
-              </div>
+          {!hasStepGuides && (
+            <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+              <span className="w-9 h-9 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><Sparkles size={17} /></span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold text-slate-900">Start with the standard guides</span>
+                <span className="block text-xs text-slate-600 mt-0.5">10 step-by-step guides with screenshots and 13 FAQs — adding a screen, playlists, media, groups, billing and more. Edit or delete any of them afterwards.</span>
+              </span>
+              <button type="button" onClick={addDefaults} disabled={addingDefaults} className="shrink-0 h-9 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium flex items-center gap-1.5">
+                {addingDefaults && <Loader2 size={14} className="animate-spin" />} Add them
+              </button>
             </div>
           )}
-          <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Added by you</p>
-            {visibleDocs.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                {visibleDocs.map(d => (
-                  <button key={d.id} type="button" onClick={() => setReadingDocId(d.id)} className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 hover:shadow-sm p-4 transition-colors">
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold">{d.category}</span>
-                      {d.youtubeUrl && <span className="text-[10px] text-slate-400">Has video</span>}
-                    </span>
-                    <span className="block text-sm font-semibold text-slate-900 mt-2">{d.title}</span>
-                    <span className="block text-xs text-slate-500 mt-1 line-clamp-2 whitespace-pre-line">{d.content}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
-                <BookOpen size={30} className="mx-auto text-gray-300 mb-2" />
-                <p className="text-sm font-medium text-gray-700">{docs.length ? 'No guides match' : 'None of your own yet'}</p>
-                <p className="text-xs text-gray-500 mt-1">Step-by-step help articles, optionally with a YouTube video.</p>
-              </div>
-            )}
-          </div>
+          {visibleDocs.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {visibleDocs.map(d => (
+                <button key={d.id} type="button" onClick={() => openGuide(d)} className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 hover:shadow-sm p-4 transition-colors">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold">{d.category}</span>
+                    <span className="text-[10px] text-slate-400">{d.steps?.length ? `${d.steps.length} steps` : d.youtubeUrl ? 'Has video' : ''}</span>
+                  </span>
+                  <span className="block text-sm font-semibold text-slate-900 mt-2">{d.title}</span>
+                  <span className="block text-xs text-slate-500 mt-1 line-clamp-2 whitespace-pre-line">{d.content}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+              <BookOpen size={30} className="mx-auto text-gray-300 mb-2" />
+              <p className="text-sm font-medium text-gray-700">{docs.length ? 'No guides match' : 'No guides yet'}</p>
+              <p className="text-xs text-gray-500 mt-1">Step-by-step help with screenshots, or a simple text article.</p>
+            </div>
+          )}
+          {hasStepGuides && (
+            <button type="button" onClick={addDefaults} disabled={addingDefaults} className="text-xs font-medium text-slate-500 hover:text-blue-600 px-1">
+              {addingDefaults ? 'Adding…' : 'Add any standard guides and FAQs that are missing'}
+            </button>
+          )}
         </div>
       )}
 
@@ -427,58 +449,10 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
           groups={[{
             title: 'Guide',
             actions: [
-              { key: 'edit', label: 'Edit guide', icon: <Edit2 size={17} />, onClick: () => setDocForm({ id: readingDoc.id, title: readingDoc.title, category: readingDoc.category, content: readingDoc.content, youtubeUrl: readingDoc.youtubeUrl || '' }) },
+              { key: 'edit', label: 'Edit guide', icon: <Edit2 size={17} />, onClick: () => { setReadingDocId(null); setDocForm({ doc: readingDoc }); } },
               { key: 'del', label: 'Delete guide', icon: <Trash2 size={17} />, tone: 'danger' as const, onClick: () => setConfirm({ kind: 'doc', id: readingDoc.id, title: readingDoc.title }) },
             ]
           }]}
-        />
-      )}
-
-      {/* ── Guide editor ────────────────────────────────────────────────── */}
-      {docForm && (
-        <ScreenDetailsSheet
-          open
-          onClose={() => setDocForm(null)}
-          title={docForm.id ? 'Edit guide' : 'New guide'}
-          details={[]}
-          groups={[]}
-          hero={
-            <div className="space-y-4">
-              <div>
-                <label className={labelCls}>Title</label>
-                <input value={docForm.title} onChange={e => setDocForm(f => f && ({ ...f, title: e.target.value }))} placeholder="Setting up a portrait screen" className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Category</label>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map(c => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setDocForm(f => f && ({ ...f, category: c }))}
-                      className={`h-8 px-3 rounded-full border text-xs font-medium ${docForm.category === c ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'}`}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className={labelCls}>Text</label>
-                <textarea rows={9} value={docForm.content} onChange={e => setDocForm(f => f && ({ ...f, content: e.target.value }))} placeholder={'1. Open Screens\n2. Tap Add screen\n…'} className={areaCls} />
-              </div>
-              <div>
-                <label className={labelCls}>YouTube video <span className="text-slate-400 font-normal">(optional)</span></label>
-                <input type="url" value={docForm.youtubeUrl} onChange={e => setDocForm(f => f && ({ ...f, youtubeUrl: e.target.value }))} placeholder="https://youtu.be/…" className={inputCls} autoCapitalize="none" />
-              </div>
-            </div>
-          }
-          footer={
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setDocForm(null)} className="flex-1 h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700">Cancel</button>
-              <button type="button" onClick={saveDoc} className="flex-[2] h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">{docForm.id ? 'Save' : 'Publish guide'}</button>
-            </div>
-          }
         />
       )}
 

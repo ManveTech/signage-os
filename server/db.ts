@@ -1524,6 +1524,30 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update support_docs collection schema:', docsSchemaErr.message);
     }
 
+    // Guides are step-by-step: each step has text and optionally a screenshot
+    // with highlighted controls (see server/data/helpDefaults.ts). sortOrder
+    // keeps guides and FAQs in the order an admin set rather than by date.
+    for (const [collName, extra] of [
+      ['support_docs', [
+        { id: 'jsonsupportsteps1', name: 'steps', type: 'json', maxSize: 2000000 },
+        { id: 'jsonsupporttips01', name: 'tips', type: 'json', maxSize: 200000 },
+        { id: 'numsupportsort001', name: 'sortOrder', type: 'number' },
+      ]],
+      ['faqs', [{ id: 'numfaqssortorder1', name: 'sortOrder', type: 'number' }]],
+    ] as const) {
+      try {
+        const coll: any = await pb.collections.getOne(collName);
+        const fields = coll.fields || [];
+        const missing = extra.filter(f => !fields.some((x: any) => x.name === f.name));
+        if (missing.length) {
+          await pb.collections.update(collName, { fields: [...fields, ...missing.map(f => ({ ...f, required: false, system: false, hidden: false, presentable: false }))] } as any);
+          console.log(`Added ${missing.map(f => f.name).join(', ')} to ${collName}`);
+        }
+      } catch (helpSchemaErr: any) {
+        console.warn(`Failed to update ${collName} schema:`, helpSchemaErr.message);
+      }
+    }
+
     // Helpdesk conversation thread on tickets (admin <-> client replies), and
     // the "business" settings row that holds the invoice billing details
     // (previously saved only in the admin's own browser).
@@ -1635,7 +1659,7 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
 
     // Earlier versions seeded a "Using YouTube Videos" guide on every boot —
     // for a feature the platform doesn't have. Clients now get built-in
-    // guides (src/lib/helpGuides.ts), so remove the seeded one. Only the exact
+    // guides (server/data/helpDefaults.ts), so remove the seeded one. Only the exact
     // seeded guide goes: it's matched on its title and its opening text, so a
     // guide an admin wrote under the same title stays.
     try {

@@ -15,6 +15,7 @@ import { postTicketMessage } from '../controllers/tickets';
 import { getBusinessDetails, putBusinessDetails, getPublicContact } from '../controllers/businessDetails';
 import { createPublicLead } from '../controllers/publicLeads';
 import { getPublicReleases, downloadLatest, uploadRelease, deleteRelease, MAX_APK_BYTES } from '../controllers/appReleases';
+import { addDefaultHelp, uploadHelpImage } from '../controllers/helpContent';
 import { getMySettings, updateMySettings, getMyBilling, updateMyBilling } from '../controllers/userSettings';
 import { listBackups, createBackupNow } from '../services/backups';
 import { Readable } from 'stream';
@@ -203,6 +204,9 @@ apiRouter.use('/integrations', integrationsRouter);
 // The APK arrives as the raw request body (see controllers/appReleases.ts).
 apiRouter.post('/app-releases', express.raw({ type: () => true, limit: MAX_APK_BYTES }), uploadRelease);
 apiRouter.delete('/app-releases/:id', deleteRelease);
+// Help Center content (guides and FAQs themselves go through the CRUD routes below).
+apiRouter.post('/help/defaults', addDefaultHelp);
+apiRouter.post('/help/images', express.raw({ type: () => true, limit: '8mb' }), uploadHelpImage);
 
 // 6. Mount Generic PocketBase CRUD Collection Routers
 apiRouter.use('/screens', createCrudRouter('screens'));

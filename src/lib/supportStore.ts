@@ -1,5 +1,7 @@
 import { pushToDatabase, generatePocketBaseId, PushResult } from './syncHelper';
 import { apiPost } from './screenActions';
+import { API_BASE } from '../config';
+import { getAuthToken } from './authStorage';
 
 export interface TicketMessage {
   id: string;
@@ -27,16 +29,49 @@ export interface FAQ {
   id: string;
   question: string;
   answer: string;
+  sortOrder?: number;
+}
+
+/** A highlight on a guide screenshot, in percent of the image. Numbered by position. */
+export interface GuideMark {
+  kind: 'box' | 'arrow';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface GuideStep {
+  /** Refers to the marks as (1), (2)… */
+  text: string;
+  image?: string;
+  imageW?: number;
+  imageH?: number;
+  marks?: GuideMark[];
 }
 
 export interface SupportDoc {
   id: string;
   title: string;
   category: string;
+  /** The summary on step-by-step guides; the whole text on simple ones. */
   content: string;
   images: string[]; // base64 strings
   youtubeUrl?: string;
+  steps?: GuideStep[];
+  tips?: string[];
+  sortOrder?: number;
   createdDate: string;
+}
+
+/** Guide categories, in the order the Help Center shows them. */
+export const HELP_CATEGORIES = ['Getting started', 'Screens', 'Content', 'Plan & billing', 'Troubleshooting', 'General'];
+
+/** Admin's order first (sortOrder), then oldest first, so new ones land at the end. */
+export function byHelpOrder<T extends { sortOrder?: number; created?: string; createdDate?: string }>(a: T, b: T): number {
+  const ao = a.sortOrder ?? Number.MAX_SAFE_INTEGER, bo = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+  if (ao !== bo) return ao - bo;
+  return String((a as any).created || a.createdDate || '').localeCompare(String((b as any).created || b.createdDate || ''));
 }
 
 const INITIAL_TICKETS: Ticket[] = [];
@@ -138,10 +173,28 @@ export const supportStore = {
     pushToDatabase('faqs', id, null, 'DELETE');
   },
 
+  /** Adds the standard guides and FAQs; skips any whose title or question already exists. */
+  async addDefaultHelp(): Promise<{ guides: number; faqs: number }> {
+    return apiPost('/help/defaults', {});
+  },
+
+  /** Uploads a guide screenshot and returns its URL. */
+  async uploadHelpImage(file: File): Promise<string> {
+    const res = await fetch(`${API_BASE}/help/images`, {
+      method: 'POST',
+      headers: { 'Content-Type': file.type, ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}) },
+      credentials: 'include',
+      body: file,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+    return data.url;
+  },
+
   getDocs(): SupportDoc[] {
-    // Guides added from the admin Helpdesk. The built-in ones live in
-    // lib/helpGuides.ts. This used to seed a "Using YouTube Videos" guide for
-    // a feature the platform doesn't have — browsers that still hold it drop it.
+    // Guides from the database, edited in the admin Helpdesk. This used to
+    // seed a "Using YouTube Videos" guide for a feature the platform doesn't
+    // have — browsers that still hold it drop it.
     const data = localStorage.getItem('signageos_docs');
     const docs: SupportDoc[] = data ? JSON.parse(data) : [];
     return docs.filter(d => d.id !== 'youtube-guide-doc');

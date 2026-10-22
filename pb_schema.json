@@ -3113,6 +3113,18 @@
       },
       {
         "hidden": false,
+        "id": "numfaqssortorder1",
+        "max": null,
+        "min": null,
+        "name": "sortOrder",
+        "onlyInt": false,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
         "onCreate": true,
@@ -3226,6 +3238,38 @@
         "required": false,
         "system": false,
         "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "jsonsupportsteps1",
+        "maxSize": 2000000,
+        "name": "steps",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "jsonsupporttips01",
+        "maxSize": 200000,
+        "name": "tips",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "numsupportsort001",
+        "max": null,
+        "min": null,
+        "name": "sortOrder",
+        "onlyInt": false,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
       },
       {
         "hidden": false,

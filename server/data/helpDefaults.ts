@@ -1,39 +1,39 @@
+import fs from 'fs';
+import path from 'path';
+
 /**
- * The built-in Help Center: step-by-step guides and FAQs for clients.
+ * The standard Help Center content: step-by-step guides and FAQs for clients.
  *
- * These ship with the dashboard rather than living in the database, so every
- * account has them from the first sign-in and they change in the same commit
- * as the screens they describe. Guides and FAQs added from the admin
- * Helpdesk still appear alongside, under the team's own heading.
+ * Guides and FAQs live in the database (support_docs, faqs) so they can be
+ * edited from the admin Helpdesk. This is only the starting set, added when
+ * an admin presses "Add the standard guides" — see addDefaultHelp() below.
+ * Adding skips anything with the same title (or question), so edited or
+ * deleted guides are never overwritten or brought back on their own.
  *
- * Screenshots and the positions of their highlights come from
- * scripts/help-guides/capture.mjs (see helpShots.json). When a page changes,
- * re-run it rather than editing the numbers by hand.
+ * Screenshots live in public/help and the positions of their highlights in
+ * helpShots.json, both made by scripts/help-guides/capture.mjs.
  */
 
 export type GuideCategory = 'Getting started' | 'Screens' | 'Content' | 'Plan & billing';
 
-export interface GuideStep {
+interface GuideStep {
   /** Plain text. Numbers like (1) refer to the numbered marks on the screenshot. */
   text: string;
   /** Key into helpShots.json. */
   shot?: string;
 }
 
-export interface HelpGuide {
+interface HelpGuide {
   id: string;
   title: string;
   category: GuideCategory;
   summary: string;
-  /** Rough reading time, shown on the card. */
   minutes: number;
   steps: GuideStep[];
   tips?: string[];
 }
 
-export const GUIDE_CATEGORIES: GuideCategory[] = ['Getting started', 'Screens', 'Content', 'Plan & billing'];
-
-export const HELP_GUIDES: HelpGuide[] = [
+const HELP_GUIDES: HelpGuide[] = [
   {
     id: 'first-sign-in',
     title: 'Sign in for the first time',
@@ -194,7 +194,7 @@ export const HELP_GUIDES: HelpGuide[] = [
   },
 ];
 
-export const HELP_FAQS: { id: string; question: string; answer: string }[] = [
+const HELP_FAQS: { id: string; question: string; answer: string }[] = [
   { id: 'faq-screens-limit', question: 'How many screens can I connect?',
     answer: 'As many as your plan includes — License & Billing shows the number and how many you are using. To add more, press "Need more screens or storage?" on that page.' },
   { id: 'faq-files', question: 'Which files can I upload, and how big?',
@@ -222,3 +222,37 @@ export const HELP_FAQS: { id: string; question: string; answer: string }[] = [
   { id: 'faq-password', question: 'I forgot my password.',
     answer: 'Press "Forgot password?" on the sign-in page and enter your email. The link we send works once, for 15 minutes.' },
 ];
+
+type Shot = { src: string; w: number; h: number; marks: { kind: 'box' | 'arrow'; n?: number; x: number; y: number; w: number; h: number }[] };
+
+function loadShots(): Record<string, Shot> {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'helpShots.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+/** The guides as support_docs records, screenshots and highlights attached. */
+export function defaultGuideRecords() {
+  const shots = loadShots();
+  return HELP_GUIDES.map((g, i) => ({
+    title: g.title,
+    category: g.category,
+    content: g.summary,
+    sortOrder: (i + 1) * 10,
+    tips: g.tips || [],
+    images: [],
+    youtubeUrl: '',
+    steps: g.steps.map(st => {
+      const shot = st.shot ? shots[st.shot] : undefined;
+      return shot
+        ? { text: st.text, image: shot.src, imageW: shot.w, imageH: shot.h, marks: shot.marks.map(({ kind, x, y, w, h }) => ({ kind, x, y, w, h })) }
+        : { text: st.text };
+    }),
+  }));
+}
+
+export function defaultFaqRecords() {
+  return HELP_FAQS.map((f, i) => ({ question: f.question, answer: f.answer, sortOrder: (i + 1) * 10 }));
+}
