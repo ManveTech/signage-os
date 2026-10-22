@@ -191,6 +191,66 @@ export async function sendBillingReminderEmail(opts: BillingReminderOptions): Pr
   }
 }
 
+const appLink = (hashPath: string) => {
+  const base = (process.env.APP_URL || process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  return base ? `${base}/#${hashPath}` : undefined;
+};
+const inrAmount = (n: number) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
+const longDate = (d: string) => {
+  const t = new Date(`${String(d).slice(0, 10)}T00:00:00Z`);
+  return isNaN(t.getTime()) ? String(d) : t.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+};
+
+/** Sent once per payment — online, via Razorpay's webhook, or recorded by hand. */
+export async function sendPaymentReceiptEmail(opts: {
+  toEmail: string;
+  licenseName: string;
+  amount: number;
+  paidOn: string;
+  validUntil: string;
+  invoiceNumber?: string;
+  paymentRef: string;
+}): Promise<ReminderResult> {
+  const manual = opts.paymentRef.startsWith('manual_');
+  const rows: [string, string][] = [
+    ['License', opts.licenseName || '—'],
+    ['Amount paid', inrAmount(opts.amount)],
+    ['Paid on', longDate(opts.paidOn)],
+    ['Active until', longDate(opts.validUntil)],
+  ];
+  if (opts.invoiceNumber) rows.push(['Invoice', opts.invoiceNumber]);
+  rows.push(['Payment', manual ? 'Recorded by our team' : opts.paymentRef]);
+  return sendBillingReminderEmail({
+    toEmail: opts.toEmail,
+    subject: `Payment received — ${inrAmount(opts.amount)}`,
+    headline: 'Payment received — thank you',
+    message: `We've received your payment for "${opts.licenseName}". Your license is active until ${longDate(opts.validUntil)}.`,
+    rows,
+    ctaLabel: 'View invoice',
+    ctaUrl: appLink('/license-billing'),
+    tone: 'info',
+    callout: 'Your invoice is in License & Billing, where you can print it or save it as a PDF.',
+  });
+}
+
+/** Security notice after a password change — so an unexpected one gets noticed. */
+export async function sendPasswordChangedEmail(opts: { toEmail: string; byAdmin?: boolean }): Promise<ReminderResult> {
+  const when = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return sendBillingReminderEmail({
+    toEmail: opts.toEmail,
+    subject: 'Your password was changed',
+    headline: 'Your password was changed',
+    message: opts.byAdmin
+      ? `An administrator changed the password for ${opts.toEmail} on ${when} (IST). Use the new password they gave you to sign in.`
+      : `The password for ${opts.toEmail} was changed on ${when} (IST). If this was you, there's nothing to do.`,
+    rows: [['Account', opts.toEmail], ['Changed', `${when} IST`]],
+    ctaLabel: 'Reset my password',
+    ctaUrl: appLink('/forgot-password'),
+    tone: 'warn',
+    callout: "Didn't change it? Reset your password now with the button below, then let us know.",
+  });
+}
+
 /** Same layout as the billing reminder — used for other account notices (e.g. screen offline alerts). */
 export const sendNoticeEmail = sendBillingReminderEmail;
 

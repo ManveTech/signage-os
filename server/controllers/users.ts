@@ -1,7 +1,7 @@
 import PocketBase from 'pocketbase';
 import { pb, ensurePBAuth } from '../db';
 import { PB_URL } from '../config';
-import { sendCredentialsEmail } from '../email';
+import { sendCredentialsEmail, sendPasswordChangedEmail } from '../email';
 import { appBaseUrl } from '../utils/appUrl';
 import { logAudit, getClientIp } from '../services/auditLog';
 import { forgetSession } from '../middleware/auth';
@@ -229,6 +229,9 @@ export async function updateUser(req: any, res: any) {
       } catch (_) { /* best-effort — don't block the update if this lookup fails */ }
     }
 
+    // Who to tell about a password change once it's saved. Not when someone
+    // sets their first password at first sign-in — they just did it.
+    let passwordNotice: { byAdmin: boolean } | null = null;
     if (!body.password) {
       delete body.password;
       delete body.passwordConfirm;
@@ -251,6 +254,7 @@ export async function updateUser(req: any, res: any) {
         } catch (_) { /* best-effort — falls through to requiring verification */ }
 
         if (!isFirstTimeLoginChange) {
+          passwordNotice = { byAdmin: false };
           const currentPassword = req.body.currentPassword;
           if (!currentPassword) {
             return res.status(400).json({ error: 'Current password is required to change your password.' });
@@ -263,6 +267,7 @@ export async function updateUser(req: any, res: any) {
           }
         }
       }
+      if (!isSelf) passwordNotice = { byAdmin: true };
       delete body.currentPassword;
       body.passwordConfirm = body.password;
       // If changing password, set firstTimeLogin to false unless explicitly overridden
@@ -272,6 +277,7 @@ export async function updateUser(req: any, res: any) {
     }
     const record = await pb.collection('users').update(req.params.id, body);
     forgetSession(req.params.id);
+    if (passwordNotice && record.email) sendPasswordChangedEmail({ toEmail: record.email, byAdmin: passwordNotice.byAdmin }).catch(() => {});
 
     if (isAdmin && typeof body.role === 'string' && body.role !== previousRole) {
       logAudit({

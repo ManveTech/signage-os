@@ -3,7 +3,7 @@ import PocketBase from 'pocketbase';
 import { PB_URL, APP_URL } from '../config';
 import { pb, ensurePBAuth } from '../db';
 import { signJwt, verifyJwt } from '../middleware/auth';
-import { sendPasswordResetEmail } from '../email';
+import { sendPasswordResetEmail, sendPasswordChangedEmail } from '../email';
 import { logAudit, getClientIp } from '../services/auditLog';
 import { getGoogleOAuthConfig } from '../integrationsStore';
 import { redis, isRedisReady } from '../redis';
@@ -330,6 +330,8 @@ export async function resetPassword(req: any, res: any) {
       passwordConfirm: password,
       firstTimeLogin: false
     });
+
+    sendPasswordChangedEmail({ toEmail: payload.email }).catch(() => {});
 
     logAudit({
       actorId: userId,

@@ -5,6 +5,7 @@ import { logAudit, getClientIp } from '../services/auditLog';
 import { getRazorpayConfig } from '../integrationsStore';
 import { isRedisReady, acquireLock, releaseLock } from '../redis';
 import { prepareInvoice } from '../services/invoicing';
+import { sendPaymentReceiptEmail } from '../email';
 
 /**
  * The Razorpay client for the keys in Integrations (or the server's
@@ -209,15 +210,17 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     filter: pb.filter('licenseId = {:licenseId} && status = "unpaid"', { licenseId })
   }).catch(() => [] as any[]);
   const paid = { status: 'paid', paidDate: istStamp().slice(0, 10), paymentRef: paymentId };
+  let invoiceNumber = '';
   if (unpaid.length > 0) {
     // The settled invoice shows what was actually charged (prices include GST).
     for (const [i, inv] of unpaid.entries()) {
       const patch: Record<string, any> = i === 0 ? { ...paid, amount: Math.round(amount) } : { ...paid };
       if (!inv.number) Object.assign(patch, await prepareInvoice({ ...inv, number: '' }).then(b => ({ number: b.number, billTo: b.billTo })));
       await pb.collection('invoices').update(inv.id, patch).catch(() => {});
+      if (i === 0) invoiceNumber = patch.number || inv.number || '';
     }
   } else {
-    await pb.collection('invoices').create(await prepareInvoice({
+    const created = await pb.collection('invoices').create(await prepareInvoice({
       licenseId,
       licenseName: license.name,
       clientName: license.assignedOrgName || 'Client',
@@ -227,6 +230,21 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
       issuedDate: istStamp().slice(0, 10),
       ...paid,
     }));
+    invoiceNumber = created.number || '';
+  }
+
+  // The receipt. Once per payment: processPaymentOnce guards everything above.
+  if (license.assignedUserEmail) {
+    sendPaymentReceiptEmail({
+      toEmail: license.assignedUserEmail,
+      licenseName: license.name,
+      amount,
+      paidOn: istStamp().slice(0, 10),
+      validUntil: newExpiryStr,
+      invoiceNumber,
+      paymentRef: paymentId,
+    }).then(r => { if (r !== 'sent') console.warn(`[Receipt] Not sent to ${license.assignedUserEmail}: ${r}`); })
+      .catch(err => console.error('[Receipt] Failed:', err.message));
   }
 }
 
