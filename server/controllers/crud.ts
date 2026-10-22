@@ -1,4 +1,5 @@
 import express from 'express';
+import { deleteScreenLogs } from '../services/logCleanup';
 import { pb, ensurePBAuth } from '../db';
 import { refreshDeviceStatusesForList, getLiveScreenMetrics } from './screens';
 import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '../scheduler';
@@ -634,6 +635,7 @@ export function createCrudRouter(collectionName: string) {
       // Cancel cron job if screen is deleted
       if (collectionName === 'screens') {
         removeScreenSchedule(req.params.id);
+        deleteScreenLogs(req.params.id).catch(() => {});
       } else if (collectionName === 'playlists' && playlistName) {
         // Clear both active assignments and scheduled swaps on screens referencing this playlist
         await syncPlaylistDeletion(playlistName, req.params.id);

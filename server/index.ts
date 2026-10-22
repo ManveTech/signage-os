@@ -29,6 +29,7 @@ import apiRouter from './routes';
 import { startScheduler } from './scheduler';
 import { listenToCollectionChanges } from './cache_invalidator';
 import { configureBackups } from './services/backups';
+import './services/logCleanup';
 import { ensureRedisRunning, isRedisReady, redis } from './redis';
 import { apiLimiter } from './middleware/rateLimiter';
 import { getActiveConference, setActiveConference, clearActiveConference, clearActiveConferencesForConference } from './videoConferenceState';
