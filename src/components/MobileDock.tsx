@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import {
   LayoutDashboard, MonitorPlay, Tv, Key, Menu, LogOut, Film, Users, Building2, BarChart3,
   Settings as SettingsIcon, ScanLine, Plus, FileText, Plug, HelpCircle, Layers, Monitor,
-  CalendarDays, Video, ChevronRight, ListVideo, Inbox,
+  CalendarDays, Video, ChevronRight, ListVideo, Inbox, ShieldCheck,
 } from 'lucide-react';
 import { licensingStore } from '../lib/licensingStore';
 import { supportStore } from '../lib/supportStore';
@@ -126,6 +126,7 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
             { id: 'support-issues', label: 'Helpdesk', icon: HelpCircle, badge: badges.more },
             { id: 'video-conferencing', label: 'Video calls', icon: Video },
             { id: 'integrations', label: 'Integrations', icon: Plug },
+            { id: 'admins', label: 'Admin team', icon: ShieldCheck },
             { id: 'settings-general', label: 'Settings', icon: SettingsIcon },
             { id: 'licenses-code', label: 'License code', icon: ScanLine },
           ] },

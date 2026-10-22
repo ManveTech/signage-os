@@ -68,15 +68,24 @@ export async function sendCredentialsEmail({ toEmail, userName, role, tempPasswo
     console.log(`To: ${toEmail} | Role: ${role}`);
     // Passwords stay out of production logs.
     if (process.env.NODE_ENV !== 'production') console.log(`Temporary Password: ${tempPassword}`);
-    return true;
+    // Nothing was sent. Saying otherwise has the admin tell someone to
+    // check an inbox that will stay empty.
+    return false;
   }
 
+  // An admin invite reads differently from a client's welcome: they're joining
+  // the team that runs the system, not getting a dashboard of their own.
+  const isAdminInvite = role === 'super_admin' || role === 'admin';
+  const headline = isAdminInvite ? 'You\'ve been added as an admin' : 'Your dashboard is ready';
+
   const mail = await renderEmail({
-    preheader: 'Your dashboard is ready — here is how to sign in.',
-    headline: 'Your dashboard is ready',
+    preheader: isAdminInvite ? 'Your admin access is ready — here is how to sign in.' : 'Your dashboard is ready — here is how to sign in.',
+    headline,
     name: userName,
     paragraphs: [
-      'An account has been set up for you. Sign in with the details below — you\'ll be asked to choose your own password the first time.',
+      isAdminInvite
+        ? 'You\'ve been given admin access to the signage dashboard. Sign in with the details below — you\'ll be asked to choose your own password the first time.'
+        : 'An account has been set up for you. Sign in with the details below — you\'ll be asked to choose your own password the first time.',
     ],
     rows: [
       ...(loginUrl ? [['Sign-in page', loginUrl.replace(/^https?:\/\//, '')] as [string, string]] : []),
@@ -89,7 +98,7 @@ export async function sendCredentialsEmail({ toEmail, userName, role, tempPasswo
   });
 
   try {
-    const info = await transporter.sendMail({ from: await fromLine(), to: toEmail, subject: 'Your dashboard is ready', ...mail });
+    const info = await transporter.sendMail({ from: await fromLine(), to: toEmail, subject: headline, ...mail });
     console.log(`Welcome email sent to ${toEmail}. MessageID: ${info.messageId}`);
     return true;
   } catch (error: any) {

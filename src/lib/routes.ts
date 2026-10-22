@@ -31,6 +31,7 @@ export const ADMIN_ROUTES: Record<string, string> = {
   'reports-logs': '/admin/reports/logs',
   'users': '/admin/users',
   'leads': '/admin/leads',
+  'admins': '/admin/team',
   'licenses': '/admin/licenses',
   'licenses-management': '/admin/licenses/management',
   'licenses-payments': '/admin/licenses/payments',

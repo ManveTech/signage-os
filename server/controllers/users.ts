@@ -168,8 +168,9 @@ export async function createUser(req: any, res: any) {
     }
 
     // Send credentials email
+    let emailSent = false;
     if (body.sendEmail !== false) {
-      await sendCredentialsEmail({
+      emailSent = await sendCredentialsEmail({
         toEmail: record.email,
         userName: record.name,
         role: record.role,
@@ -188,7 +189,9 @@ export async function createUser(req: any, res: any) {
       ip: getClientIp(req)
     });
 
-    res.status(201).json(record);
+    // emailSent lets the dashboard say whether the login details actually went
+    // out, rather than promising an email that SMTP never delivered.
+    res.status(201).json({ ...record, emailSent });
   } catch (error: any) {
     console.error('Error creating user:', error);
     res.status(500).json({ error: error.message || 'Error creating user', details: error.response?.data || error.data });
@@ -381,6 +384,13 @@ export async function deleteUser(req: any, res: any) {
     // itself shouldn't disappear just because the account that made it did.
     const deletedUser = await pb.collection('users').getOne(req.params.id).catch(() => null);
     const userEmail = deletedUser?.email;
+
+    // Admins can remove each other but not themselves. Only an admin can get
+    // here, so this also means the last admin can never be removed — which
+    // would leave nobody able to sign in to run the system.
+    if (deletedUser && deletedUser.id === req.user?.id) {
+      return res.status(400).json({ error: "You can't remove your own account." });
+    }
 
     if (userEmail) {
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

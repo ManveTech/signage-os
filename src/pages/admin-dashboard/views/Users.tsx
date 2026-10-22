@@ -263,7 +263,9 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
     }
     await refresh();
     setAddOpen(false);
-    toast.success(draft.sendEmail ? `Client added — login details emailed to ${draft.email.trim()}` : 'Client added');
+    if (!draft.sendEmail) toast.success('Client added');
+    else if (result.data?.emailSent) toast.success(`Client added — login details emailed to ${draft.email.trim()}`);
+    else toast.warning('Client added, but the email didn\'t go out — check Integrations → Email, and share the password yourself');
   };
 
   const open = openId ? users.find(u => u.id === openId) : null;
