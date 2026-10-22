@@ -113,9 +113,11 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
     return '';
   };
 
+  // TVs that belong to no account (waiting to pair, or released when their
+  // client was removed) can't be grouped — All Screens lists them apart.
   const myScreens = mode === 'my'
     ? screens.filter(s => s.assignedToUserEmail === userEmail)
-    : screens;
+    : screens.filter(s => !!s.assignedToUserEmail);
 
   const screensInGroup = (groupId: string) => myScreens.filter(s => s.groupId === groupId);
   const ungroupedScreens = myScreens.filter(s => !s.groupId && (!selectedOrgFilter || getScreenOrgId(s) === selectedOrgFilter));
@@ -666,7 +668,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
       {addScreensTo && (() => {
         const group = groups.find(g => g.id === addScreensTo)!;
         const available = screens.filter(s => {
-          if (s.groupId) return false;
+          if (s.groupId || !s.assignedToUserEmail) return false;
           const sOrgId = getScreenOrgId(s);
           if (!group.orgId) {
             return s.assignedToUserEmail === userEmail;
