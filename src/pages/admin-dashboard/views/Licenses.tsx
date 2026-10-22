@@ -86,6 +86,11 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState<LicenseStateKey | 'all'>('all');
   const [invoiceFilter, setInvoiceFilter] = useState<'unpaid' | 'paid' | 'all'>('all');
+  // Date range and order for the Invoices and Payments lists (shared by both).
+  const [range, setRange] = useState<DateRange>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [sortBy, setSortBy] = useState<SortBy>('newest');
 
   const [openLicenseId, setOpenLicenseId] = useState<string | null>(null);
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
@@ -392,18 +397,27 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   ].filter(g => g.rows.length > 0);
 
   const unpaidInvoices = invoices.filter(i => i.status === 'unpaid');
-  const visibleInvoices = invoices
+  const [rangeFrom, rangeTo] = rangeBounds(range, customFrom, customTo);
+  const inRange = (d?: string) => { const day = (d || '').slice(0, 10); return (!rangeFrom || day >= rangeFrom) && (!rangeTo || day <= rangeTo); };
+  const invoiceDate = (i: Invoice) => i.issuedDate || (i as any).created || '';
+  const invoicesInRange = invoices.filter(i => inRange(invoiceDate(i)));
+  const visibleInvoices = sortRows(invoices
     .filter(i => invoiceFilter === 'all' || i.status === invoiceFilter)
-    .filter(i => !q || [i.clientName, i.clientEmail, i.licenseName].some(v => (v || '').toLowerCase().includes(q)));
+    .filter(i => inRange(invoiceDate(i)))
+    .filter(i => !q || [i.clientName, i.clientEmail, i.licenseName].some(v => (v || '').toLowerCase().includes(q))), sortBy, invoiceDate);
 
-  const visiblePayments = payments.filter(p => !q || [p.clientName, p.clientEmail, p.licenseName, p.razorpayPaymentId].some(v => (v || '').toLowerCase().includes(q)));
+  const visiblePayments = sortRows(payments
+    .filter(p => inRange(p.paymentDate))
+    .filter(p => !q || [p.clientName, p.clientEmail, p.licenseName, p.razorpayPaymentId].some(v => (v || '').toLowerCase().includes(q))), sortBy, p => p.paymentDate || '');
   const monthKey = new Date().toISOString().slice(0, 7);
   // Totals count real money only; test payments are listed and tagged, not added up.
   const testPayments = payments.filter(isTestPayment);
   const realPayments = payments.filter(p => !isTestPayment(p));
   const testInvoices = invoices.filter(isTestInvoice);
   const collectedThisMonth = realPayments.filter(p => (p.paymentDate || '').startsWith(monthKey)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-  const collectedTotal = realPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  // The second card follows the date range; with no range it's all time.
+  const realInRange = realPayments.filter(p => inRange(p.paymentDate));
+  const collectedTotal = realInRange.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
   const tabCount: Record<Tab, number> = {
     management: licenses.length,
@@ -476,6 +490,32 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             placeholder={tab === 'management' ? 'Search licenses or clients' : tab === 'invoices' ? 'Search invoices' : 'Search payments'}
             className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white"
           />
+        </div>
+      )}
+
+      {(tab === 'invoices' || tab === 'payments') && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-40">
+            <CustomSelect value={range} onChange={v => setRange(v as DateRange)} buttonClassName="h-10"
+              options={(Object.keys(RANGE_LABEL) as DateRange[]).map(k => ({ value: k, label: RANGE_LABEL[k] }))} />
+          </div>
+          {range === 'custom' && (
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={customFrom} max={customTo || undefined} onChange={e => setCustomFrom(e.target.value)} aria-label="From"
+                className="h-10 px-3 text-sm border border-gray-200 rounded-xl bg-white outline-none focus:border-blue-400" />
+              <span className="text-xs text-slate-400">to</span>
+              <input type="date" value={customTo} min={customFrom || undefined} onChange={e => setCustomTo(e.target.value)} aria-label="To"
+                className="h-10 px-3 text-sm border border-gray-200 rounded-xl bg-white outline-none focus:border-blue-400" />
+            </div>
+          )}
+          <div className="w-48">
+            <CustomSelect value={sortBy} onChange={v => setSortBy(v as SortBy)} buttonClassName="h-10"
+              options={(Object.keys(SORT_LABEL) as SortBy[]).map(k => ({ value: k, label: SORT_LABEL[k] }))} />
+          </div>
+          {(range !== 'all' || sortBy !== 'newest') && (
+            <button type="button" onClick={() => { setRange('all'); setCustomFrom(''); setCustomTo(''); setSortBy('newest'); }}
+              className="h-10 px-3 text-xs font-semibold text-slate-500 hover:text-slate-800">Reset</button>
+          )}
         </div>
       )}
 
@@ -646,9 +686,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         <>
           <div className="flex gap-2">
             {([
-              { key: 'all', label: 'All', count: invoices.length },
-              { key: 'unpaid', label: 'Unpaid', count: unpaidInvoices.length },
-              { key: 'paid', label: 'Paid', count: invoices.length - unpaidInvoices.length },
+              { key: 'all', label: 'All', count: invoicesInRange.length },
+              { key: 'unpaid', label: 'Unpaid', count: invoicesInRange.filter(i => i.status === 'unpaid').length },
+              { key: 'paid', label: 'Paid', count: invoicesInRange.filter(i => i.status === 'paid').length },
             ] as const).map(c => {
               const active = invoiceFilter === c.key;
               return (
@@ -709,7 +749,7 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               <p className="text-xl font-semibold text-slate-900 mt-1">{formatInr(collectedThisMonth)}</p>
             </div>
             <div className="bg-white rounded-2xl border border-slate-100 p-4">
-              <p className="text-xs text-slate-500">All time · {realPayments.length} payment{realPayments.length === 1 ? '' : 's'}</p>
+              <p className="text-xs text-slate-500">{RANGE_LABEL[range]} · {realInRange.length} payment{realInRange.length === 1 ? '' : 's'}</p>
               <p className="text-xl font-semibold text-slate-900 mt-1">{formatInr(collectedTotal)}</p>
             </div>
           </div>
@@ -1187,6 +1227,49 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 }
 
 /** Shown only when there are test records: one button to clear them all. */
+type DateRange = 'all' | 'this-month' | 'last-month' | 'last-3-months' | 'this-year' | 'custom';
+type SortBy = 'newest' | 'oldest' | 'amount-high' | 'amount-low';
+
+const RANGE_LABEL: Record<DateRange, string> = {
+  'all': 'All time',
+  'this-month': 'This month',
+  'last-month': 'Last month',
+  'last-3-months': 'Last 3 months',
+  'this-year': 'This year',
+  'custom': 'Custom range',
+};
+const SORT_LABEL: Record<SortBy, string> = {
+  'newest': 'Newest first',
+  'oldest': 'Oldest first',
+  'amount-high': 'Amount: high to low',
+  'amount-low': 'Amount: low to high',
+};
+
+/** [from, to] as YYYY-MM-DD in local time; '' means open-ended. */
+function rangeBounds(range: DateRange, from: string, to: string): [string, string] {
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  switch (range) {
+    case 'this-month': return [ymd(new Date(y, m, 1)), ''];
+    case 'last-month': return [ymd(new Date(y, m - 1, 1)), ymd(new Date(y, m, 0))];
+    case 'last-3-months': return [ymd(new Date(y, m - 2, 1)), ''];
+    case 'this-year': return [`${y}-01-01`, ''];
+    case 'custom': return [from, to];
+    default: return ['', ''];
+  }
+}
+
+function sortRows<T extends { amount?: number | string }>(rows: T[], sortBy: SortBy, dateOf: (r: T) => string): T[] {
+  const amt = (r: T) => Number(r.amount) || 0;
+  return [...rows].sort((a, b) => {
+    if (sortBy === 'amount-high') return amt(b) - amt(a);
+    if (sortBy === 'amount-low') return amt(a) - amt(b);
+    const cmp = dateOf(a).localeCompare(dateOf(b));
+    return sortBy === 'oldest' ? cmp : -cmp;
+  });
+}
+
 function TestCleanup({ count, noun, note, onDelete }: { count: number; noun: string; note: string; onDelete: () => void }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
