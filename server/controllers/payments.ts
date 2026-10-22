@@ -1,77 +1,20 @@
 import { pb, ensurePBAuth } from '../db';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
-import { updateEnvFile } from '../utils/env';
 import { logAudit, getClientIp } from '../services/auditLog';
-import { RAZORPAY_WEBHOOK_SECRET, RAZORPAY_KEY_ID } from '../config';
+import { getRazorpayConfig } from '../integrationsStore';
 import { isRedisReady, acquireLock, releaseLock } from '../redis';
 import { prepareInvoice } from '../services/invoicing';
 
-// Placeholder used only when no real key is configured — deliberately not
-// shaped like a real Razorpay key id (the old fallback, 'rzp_live_...', could
-// be mistaken for a real production key if it ever showed up in a log or a
-// support screenshot).
-const UNCONFIGURED_KEY_ID_PLACEHOLDER = 'razorpay_not_configured';
-
-function getRazorpayInstance() {
-  const keyId = process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
-  if (!keySecret) {
-    return null;
-  }
-  return new Razorpay({
-    key_id: keyId,
-    key_secret: keySecret
-  });
-}
-
-export async function getRazorpayConfig(req: any, res: any) {
-  try {
-    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
-      return res.status(403).json({ message: 'Access denied.' });
-    }
-    res.status(200).json({
-      keyId: process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID || UNCONFIGURED_KEY_ID_PLACEHOLDER,
-      keySecret: process.env.RAZORPAY_KEY_SECRET ? '••••••••••••' : ''
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
-}
-
-export async function saveRazorpayConfig(req: any, res: any) {
-  try {
-    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
-      return res.status(403).json({ message: 'Access denied.' });
-    }
-    const { keyId, keySecret } = req.body;
-    if (!keyId) {
-      return res.status(400).json({ message: 'Key ID is required.' });
-    }
-
-    const updates: Record<string, string> = {
-      RAZORPAY_KEY_ID: keyId
-    };
-
-    if (keySecret && keySecret !== '••••••••••••') {
-      updates.RAZORPAY_KEY_SECRET = keySecret;
-    }
-
-    await updateEnvFile(updates);
-
-    logAudit({
-      actorId: req.user?.id,
-      actorEmail: req.user?.email,
-      action: 'payment_gateway.credentials_changed',
-      targetType: 'razorpay_config',
-      detail: `keyId updated${updates.RAZORPAY_KEY_SECRET ? '; secret rotated' : ''}`,
-      ip: getClientIp(req)
-    });
-
-    res.status(200).json({ message: 'Razorpay credentials saved and applied.' });
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
+/**
+ * The Razorpay client for the keys in Integrations (or the server's
+ * environment). null when no key pair is set — every payment path refuses
+ * then, rather than falling back to anything that could be faked.
+ */
+async function getRazorpay(): Promise<{ rzp: Razorpay | null; keyId: string; keySecret: string; webhookSecret: string }> {
+  const cfg = await getRazorpayConfig();
+  const rzp = cfg.enabled ? new Razorpay({ key_id: cfg.keyId, key_secret: cfg.keySecret }) : null;
+  return { rzp, keyId: cfg.keyId, keySecret: cfg.keySecret, webhookSecret: cfg.webhookSecret };
 }
 
 export async function createOrder(req: any, res: any) {
@@ -82,7 +25,7 @@ export async function createOrder(req: any, res: any) {
       return res.status(400).json({ message: 'License ID is required.' });
     }
 
-    const rzp = getRazorpayInstance();
+    const { rzp, keyId } = await getRazorpay();
     if (!rzp) {
       // There used to be a "demo mode" here that handed back a fake order id
       // when no secret was configured — and the matching verify step accepted
@@ -121,7 +64,7 @@ export async function createOrder(req: any, res: any) {
       orderId: order.id,
       amount: order.amount,
       currency: 'INR',
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID || RAZORPAY_KEY_ID
+      razorpayKeyId: keyId
     });
   } catch (error: any) {
     console.error('Error creating payment order:', error);
@@ -295,8 +238,7 @@ export async function verifyPayment(req: any, res: any) {
       return res.status(400).json({ message: 'Missing payment details or License ID.' });
     }
 
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    const rzp = getRazorpayInstance();
+    const { rzp, keySecret } = await getRazorpay();
     if (!keySecret || !rzp) {
       // No secret means no way to prove a payment happened — never fall back
       // to trusting the client (the old 'simulated_sig' / demo-mode path).
@@ -442,11 +384,12 @@ export async function handleWebhook(req: any, res: any) {
     // this handler and anyone forging a "payment.captured" event to activate
     // a license for free. Never remove this check without also re-adding the
     // JWT requirement in middleware/auth.ts.
-    if (RAZORPAY_WEBHOOK_SECRET) {
+    const { rzp: webhookRzp, webhookSecret } = await getRazorpay();
+    if (webhookSecret) {
       const signature = req.headers['x-razorpay-signature'];
       const rawBody: Buffer | undefined = req.rawBody;
       const expectedSig = rawBody
-        ? crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest('hex')
+        ? crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex')
         : '';
       const sigBuf = Buffer.from(String(signature || ''));
       const expectedSigBuf = Buffer.from(expectedSig);
@@ -465,7 +408,7 @@ export async function handleWebhook(req: any, res: any) {
     } else {
       // No secret configured — refusing to process unverifiable payment
       // events rather than silently trusting an unauthenticated request.
-      console.error('[Razorpay Webhook] RAZORPAY_WEBHOOK_SECRET is not set — refusing to process webhook. Configure it in Razorpay Dashboard > Webhooks and in .env.');
+      console.error('[Razorpay Webhook] No webhook secret — refusing to process webhook. Set it in Admin > Integrations > Razorpay and in Razorpay Dashboard > Webhooks.');
       return res.status(503).json({ message: 'Webhook not configured.' });
     }
 
@@ -491,8 +434,7 @@ export async function handleWebhook(req: any, res: any) {
       let matchingLicense: any = null;
       const notedIds = [paymentEntity.notes?.licenseId, payload.order?.entity?.notes?.licenseId].filter(Boolean);
       if (notedIds.length === 0 && orderId) {
-        const rzp = getRazorpayInstance();
-        const order = rzp ? await rzp.orders.fetch(orderId).catch(() => null) : null;
+        const order = webhookRzp ? await webhookRzp.orders.fetch(orderId).catch(() => null) : null;
         if ((order as any)?.notes?.licenseId) notedIds.push((order as any).notes.licenseId);
       }
       for (const id of notedIds) {

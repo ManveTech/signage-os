@@ -1,5 +1,5 @@
 import { pb, ensurePBAuth } from '../db';
-import { getIntegration, saveIntegration, recordTestResult, IntegrationType, getSmtpConfig, getCloudflareConfig, getGoogleOAuthConfig } from '../integrationsStore';
+import { getIntegration, saveIntegration, recordTestResult, IntegrationType, getSmtpConfig, getCloudflareConfig, getGoogleOAuthConfig, getRazorpayConfig } from '../integrationsStore';
 import { testR2Connection } from '../r2';
 import { testSmtpConnection, sendSmtpTestEmail } from '../email';
 import { configureBackups } from '../services/backups';
@@ -10,33 +10,37 @@ function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
 }
 
-const VALID_TYPES: IntegrationType[] = ['cloudflare', 'smtp', 'oauth_google'];
+const VALID_TYPES: IntegrationType[] = ['cloudflare', 'smtp', 'oauth_google', 'razorpay'];
 
-// The one field per integration type that's a real secret — never
-// re-displayed to the browser once saved. GET responses replace it with
+// The fields per integration type that are real secrets — never
+// re-displayed to the browser once saved. GET responses replace each with
 // this sentinel so the dashboard can show "a secret is set" without ever
 // exposing the value again; a PUT that echoes the sentinel back unchanged
 // tells saveIntegration to keep whatever's already stored instead of
 // overwriting it with the literal placeholder string.
 // ('business' holds the invoice billing details — no secrets, not listed
 // on the Integrations page; see controllers/businessDetails.ts.)
-const SECRET_FIELD: Partial<Record<IntegrationType, string>> = {
-  cloudflare: 'secretAccessKey',
-  smtp: 'password',
-  oauth_google: 'clientSecret'
+const SECRET_FIELDS: Partial<Record<IntegrationType, string[]>> = {
+  cloudflare: ['secretAccessKey'],
+  smtp: ['password'],
+  oauth_google: ['clientSecret'],
+  razorpay: ['keySecret', 'webhookSecret'],
 };
 export const SECRET_MASK = '__SECRET_UNCHANGED__';
 
 function maskConfig(type: IntegrationType, config: Record<string, any>): Record<string, any> {
-  const field = SECRET_FIELD[type];
   const masked = { ...config };
-  if (!field) return masked;
-  if (masked[field]) {
-    masked[field] = SECRET_MASK;
-  } else {
-    masked[field] = '';
-  }
+  for (const field of SECRET_FIELDS[type] || []) masked[field] = masked[field] ? SECRET_MASK : '';
   return masked;
+}
+
+/** Puts back any saved secret the dashboard sent as the mask. */
+function unmask(type: IntegrationType, config: Record<string, any>, saved?: Record<string, any>): Record<string, any> {
+  const out = { ...config };
+  for (const field of SECRET_FIELDS[type] || []) {
+    if (out[field] === SECRET_MASK) out[field] = saved?.[field] || '';
+  }
+  return out;
 }
 
 export async function listIntegrations(req: any, res: any) {
@@ -50,6 +54,7 @@ export async function listIntegrations(req: any, res: any) {
       // environment variables (used when nothing is enabled here), or none.
       const live = type === 'smtp' ? await getSmtpConfig()
         : type === 'cloudflare' ? await getCloudflareConfig()
+        : type === 'razorpay' ? await getRazorpayConfig()
         : await getGoogleOAuthConfig();
       const source = rec?.enabled ? 'dashboard' : live.enabled ? 'environment' : 'off';
       return {
@@ -83,12 +88,7 @@ export async function updateIntegration(req: any, res: any) {
       return res.status(400).json({ error: 'config object is required.' });
     }
 
-    const secretField = SECRET_FIELD[type];
-    const finalConfig = { ...config };
-    if (finalConfig[secretField] === SECRET_MASK) {
-      const existing = await getIntegration(type);
-      finalConfig[secretField] = existing?.config?.[secretField] || '';
-    }
+    const finalConfig = unmask(type, config, (await getIntegration(type))?.config);
 
     const saved = await saveIntegration(type, finalConfig, !!enabled);
     // The backups bucket lives in the File storage settings.
@@ -121,12 +121,8 @@ export async function testIntegrationConnection(req: any, res: any) {
     // saved yet), falling back to what's already stored so a saved,
     // untouched integration can still be re-tested from the same button.
     const bodyConfig = req.body?.config;
-    const secretField = SECRET_FIELD[type];
     const existing = await getIntegration(type);
-    const cfg: Record<string, any> = { ...(existing?.config || {}), ...(bodyConfig || {}) };
-    if (cfg[secretField] === SECRET_MASK) {
-      cfg[secretField] = existing?.config?.[secretField] || '';
-    }
+    const cfg: Record<string, any> = unmask(type, { ...(existing?.config || {}), ...(bodyConfig || {}) }, existing?.config);
 
     let result: { ok: boolean; error?: string; note?: string };
     if (type === 'cloudflare') {
@@ -144,6 +140,8 @@ export async function testIntegrationConnection(req: any, res: any) {
         username: cfg.username || '',
         password: cfg.password || ''
       });
+    } else if (type === 'razorpay') {
+      result = await testRazorpayKeys(String(cfg.keyId || '').trim(), String(cfg.keySecret || '').trim(), !!String(cfg.webhookSecret || '').trim());
     } else {
       // oauth_google: there is no non-interactive way to verify a client
       // id/secret pair without actually running a real Google sign-in — the
@@ -173,6 +171,27 @@ export async function testIntegrationConnection(req: any, res: any) {
   } catch (error: any) {
     console.error(`Error testing ${type} integration:`, error);
     res.status(500).json({ ok: false, error: error.message || 'Error testing integration' });
+  }
+}
+
+/**
+ * A read-only call with the keys — listing at most one payment — which
+ * Razorpay answers only if the key id and secret are a real, matching pair.
+ * Nothing is created or charged.
+ */
+async function testRazorpayKeys(keyId: string, keySecret: string, hasWebhookSecret: boolean): Promise<{ ok: boolean; error?: string; note?: string }> {
+  if (!keyId || !keySecret) return { ok: false, error: 'Enter the Key ID and Key Secret.' };
+  if (!/^rzp_(test|live)_/.test(keyId)) return { ok: false, error: 'The Key ID should start with rzp_test_ or rzp_live_.' };
+  try {
+    const r = await fetch('https://api.razorpay.com/v1/payments?count=1', {
+      headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}` },
+    });
+    if (r.status === 401) return { ok: false, error: 'Razorpay rejected these keys — check the Key ID and Key Secret match.' };
+    if (!r.ok) return { ok: false, error: `Razorpay answered ${r.status}. Try again in a moment.` };
+    const mode = keyId.startsWith('rzp_live_') ? 'Live mode — real payments.' : 'Test mode — no real money moves.';
+    return { ok: true, note: `Keys accepted. ${mode}${hasWebhookSecret ? '' : ' Add the webhook secret too, so payments are confirmed even if the customer closes the page.'}` };
+  } catch (e: any) {
+    return { ok: false, error: e.message || 'Could not reach Razorpay.' };
   }
 }
 

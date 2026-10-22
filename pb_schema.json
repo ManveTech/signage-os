@@ -4131,7 +4131,8 @@
           "cloudflare",
           "smtp",
           "oauth_google",
-          "business"
+          "business",
+          "razorpay"
         ]
       },
       {

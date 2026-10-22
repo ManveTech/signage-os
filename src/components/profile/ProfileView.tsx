@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import DefaultAvatar from '../DefaultAvatar';
-import { User as UserIcon, Camera, Eye, EyeOff, Key, Lock, CreditCard, Palette, Image as ImageIcon, ChevronRight, Check } from 'lucide-react';
+import { User as UserIcon, Camera, Eye, EyeOff, Key, Lock, Palette, Image as ImageIcon, ChevronRight, Check } from 'lucide-react';
 import { API_BASE } from '../../config';
 import { getAuthToken } from '../../lib/authStorage';
 import { pushToDatabase, syncCollection } from '../../lib/syncHelper';
@@ -9,8 +9,6 @@ import { toast } from '../Toast';
 import AvatarCropper from './AvatarCropper';
 import { licenseState, formatDate, planLabel } from '../licenses/licenseStatus';
 
-// Matches the server's mask for a saved Razorpay secret (controllers/payments.ts).
-const RZP_SECRET_MASK = '••••••••••••';
 
 const inputCls = 'w-full h-11 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white disabled:bg-slate-50 disabled:text-slate-500';
 const labelCls = 'block text-xs font-medium text-slate-600 mb-1.5';
@@ -63,8 +61,6 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
   const [showPw, setShowPw] = useState(false);
   const [savingPw, setSavingPw] = useState(false);
 
-  const [rzp, setRzp] = useState({ keyId: '', secret: '' });
-  const [savingRzp, setSavingRzp] = useState(false);
 
   const [license, setLicense] = useState<License | undefined>(() => (admin ? undefined : licensingStore.getUserLicense(userEmail) || undefined));
   const [org, setOrg] = useState<any>(null);
@@ -90,11 +86,9 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
       .catch(() => { /* keep cached values */ });
 
     if (admin) {
+      // Razorpay keys moved to Integrations; drop what old builds cached here.
       localStorage.removeItem('signageos_admin_rzp_secret');
-      fetch(`${API_BASE}/payments/config`, { headers: authHeaders() })
-        .then(res => (res.ok ? res.json() : Promise.reject()))
-        .then(data => setRzp({ keyId: data.keyId || '', secret: data.keySecret || '' }))
-        .catch(() => setRzp(r => ({ ...r, keyId: localStorage.getItem('signageos_admin_rzp_key') || '' })));
+      localStorage.removeItem('signageos_admin_rzp_key');
     } else {
       // Old builds stored Razorpay credentials for clients in this browser.
       localStorage.removeItem(`signageos_user_rzp_key_${userEmail}`);
@@ -218,28 +212,6 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
       toast.error("Can't reach the server");
     } finally {
       setSavingPw(false);
-    }
-  };
-
-  // ── Razorpay (admin) ─────────────────────────────────────────────────────
-  const saveRazorpay = async () => {
-    if (!rzp.keyId.trim()) { toast.warning('Enter the Razorpay Key ID'); return; }
-    setSavingRzp(true);
-    try {
-      const res = await fetch(`${API_BASE}/payments/config`, {
-        method: 'POST',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyId: rzp.keyId.trim(), keySecret: rzp.secret }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { toast.error(data.message || 'Could not save the Razorpay keys'); return; }
-      localStorage.setItem('signageos_admin_rzp_key', rzp.keyId.trim());
-      if (rzp.secret && rzp.secret !== RZP_SECRET_MASK) setRzp(r => ({ ...r, secret: RZP_SECRET_MASK }));
-      toast.success('Razorpay keys saved');
-    } catch {
-      toast.error("Can't reach the server");
-    } finally {
-      setSavingRzp(false);
     }
   };
 
@@ -384,35 +356,6 @@ export default function ProfileView({ role, userEmail, onNavigate }: { role: 'ad
           </button>
         </div>
       </Section>
-
-      {admin && (
-        <Section title="Razorpay" description="Keys used to take license payments from clients" icon={<CreditCard size={17} />}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Key ID</label>
-              <input value={rzp.keyId} onChange={e => setRzp(r => ({ ...r, keyId: e.target.value }))} placeholder="rzp_live_…" className={`${inputCls} font-mono`} autoCapitalize="none" />
-            </div>
-            <div>
-              <label className={labelCls}>Key secret</label>
-              <input
-                type="password"
-                value={rzp.secret}
-                onFocus={() => rzp.secret === RZP_SECRET_MASK && setRzp(r => ({ ...r, secret: '' }))}
-                onChange={e => setRzp(r => ({ ...r, secret: e.target.value }))}
-                placeholder={rzp.secret === '' ? 'Leave empty to keep the saved secret' : ''}
-                className={`${inputCls} font-mono`}
-                autoComplete="off"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-slate-400 mt-2">The secret is stored on the server only and never shown again after saving.</p>
-          <div className="flex justify-end mt-4">
-            <button type="button" onClick={saveRazorpay} disabled={savingRzp} className="h-10 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold">
-              {savingRzp ? 'Saving…' : 'Save keys'}
-            </button>
-          </div>
-        </Section>
-      )}
 
       {!admin && license?.whiteLabel && (
         <Section title="Branding" description="Your name and logo in the dashboard and on your screens' start-up" icon={<Palette size={17} />}>

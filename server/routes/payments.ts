@@ -3,8 +3,6 @@ import {
   createOrder, 
   verifyPayment, 
   handleWebhook,
-  getRazorpayConfig,
-  saveRazorpayConfig,
   getPaymentHistory,
   markInvoicePaid
 } from '../controllers/payments';
@@ -14,8 +12,6 @@ import { paymentLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 
-router.get('/config', getRazorpayConfig);
-router.post('/config', saveRazorpayConfig);
 router.get('/history', getPaymentHistory);
 // paymentLimiter existed in rateLimiter.ts (10/hour) but was never actually
 // wired to these routes, so creating/verifying a payment only ever got the

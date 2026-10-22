@@ -4,7 +4,7 @@ import {
   SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_SENDER_EMAIL, SMTP_SENDER_NAME
 } from './config';
 
-export type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'business';
+export type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'razorpay' | 'business';
 
 export interface IntegrationRecord {
   id: string;
@@ -152,6 +152,35 @@ export async function getGoogleOAuthConfig(): Promise<GoogleOAuthConfig> {
     };
   }
   return { enabled: false, clientId: '', clientSecret: '' };
+}
+
+export interface RazorpayConfig {
+  enabled: boolean;
+  keyId: string;
+  keySecret: string;
+  /** Verifies Razorpay's webhook calls — set the same one in Razorpay's dashboard. */
+  webhookSecret: string;
+}
+
+/**
+ * Razorpay keys saved in Integrations win; otherwise the server's environment
+ * (RAZORPAY_KEY_ID / _KEY_SECRET / _WEBHOOK_SECRET). Keys used to be saved
+ * from the admin's Profile page into a .env file inside the container, which
+ * every redeploy replaced.
+ */
+export async function getRazorpayConfig(): Promise<RazorpayConfig> {
+  const rec = await getIntegration('razorpay');
+  if (rec && rec.enabled) {
+    return {
+      enabled: !!(rec.config.keyId && rec.config.keySecret),
+      keyId: String(rec.config.keyId || '').trim(),
+      keySecret: String(rec.config.keySecret || '').trim(),
+      webhookSecret: String(rec.config.webhookSecret || '').trim(),
+    };
+  }
+  const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
+  const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+  return { enabled: !!(keyId && keySecret), keyId, keySecret, webhookSecret: (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim() };
 }
 
 // Upserts the config for a given integration type, preserving any secret

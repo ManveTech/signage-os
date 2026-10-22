@@ -1,5 +1,5 @@
 import { useEffect, useState, ReactNode } from 'react';
-import { Cloud, Mail, KeyRound, CheckCircle2, XCircle, Loader2, ChevronRight, Send, PlugZap, Eye, EyeOff } from 'lucide-react';
+import { Cloud, Mail, KeyRound, CheckCircle2, XCircle, Loader2, ChevronRight, Send, PlugZap, Eye, EyeOff, CreditCard, Copy, Check } from 'lucide-react';
 import { API_BASE } from '../../../config';
 import { getHeaders } from '../../../lib/syncHelper';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
@@ -7,7 +7,7 @@ import { toast } from '../../../components/Toast';
 import BackupsCard from '../../../components/settings/BackupsCard';
 import MediaMovePanel from '../../../components/settings/MediaMovePanel';
 
-type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google';
+type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'razorpay';
 type Source = 'dashboard' | 'environment' | 'off';
 
 interface IntegrationState {
@@ -21,7 +21,9 @@ interface IntegrationState {
 }
 
 const SECRET_MASK = '__SECRET_UNCHANGED__';
-const SECRET_FIELD: Record<IntegrationType, string> = { cloudflare: 'secretAccessKey', smtp: 'password', oauth_google: 'clientSecret' };
+const SECRET_FIELDS: Record<IntegrationType, string[]> = {
+  cloudflare: ['secretAccessKey'], smtp: ['password'], oauth_google: ['clientSecret'], razorpay: ['keySecret', 'webhookSecret'],
+};
 
 type FieldDef = { key: string; label: string; type?: 'text' | 'password' | 'number'; placeholder?: string; help?: string; wide?: boolean };
 
@@ -43,6 +45,11 @@ const FIELDS: Record<IntegrationType, FieldDef[]> = {
     { key: 'senderEmail', label: 'Send from', placeholder: 'noreply@yourdomain.com' },
     { key: 'senderName', label: 'Sender name', placeholder: 'BlueStar DigiTech' },
   ],
+  razorpay: [
+    { key: 'keyId', label: 'Key ID', placeholder: 'rzp_live_…', help: 'Razorpay Dashboard → Account & Settings → API keys. rzp_test_ keys take test payments only.', wide: true },
+    { key: 'keySecret', label: 'Key secret', type: 'password', wide: true },
+    { key: 'webhookSecret', label: 'Webhook secret', type: 'password', help: 'The secret you set when adding the webhook below in Razorpay. Without it, a payment is only confirmed if the customer stays on the page.', wide: true },
+  ],
   oauth_google: [
     { key: 'clientId', label: 'Client ID', placeholder: 'xxxx.apps.googleusercontent.com', wide: true },
     { key: 'clientSecret', label: 'Client secret', type: 'password', wide: true },
@@ -62,6 +69,12 @@ const META: Record<IntegrationType, { title: string; purpose: string; offNote: s
     offNote: 'Off — no emails are sent.',
     icon: <Mail size={18} />,
   },
+  razorpay: {
+    title: 'Razorpay',
+    purpose: 'Online payments for licences — clients pay invoices and renew from License & Billing',
+    offNote: 'Off — clients can\'t pay online; record payments by hand on their invoices.',
+    icon: <CreditCard size={18} />,
+  },
   oauth_google: {
     title: 'Google sign-in',
     purpose: '“Continue with Google” on the login page',
@@ -70,7 +83,7 @@ const META: Record<IntegrationType, { title: string; purpose: string; offNote: s
   },
 };
 
-const ORDER: IntegrationType[] = ['cloudflare', 'smtp', 'oauth_google'];
+const ORDER: IntegrationType[] = ['cloudflare', 'smtp', 'razorpay', 'oauth_google'];
 
 function emptyState(type: IntegrationType): IntegrationState {
   const config: Record<string, string> = {};
@@ -101,12 +114,14 @@ function SourcePill({ source }: { source: Source }) {
  */
 export default function Integrations() {
   const [states, setStates] = useState<Record<IntegrationType, IntegrationState>>({
-    cloudflare: emptyState('cloudflare'), smtp: emptyState('smtp'), oauth_google: emptyState('oauth_google'),
+    cloudflare: emptyState('cloudflare'), smtp: emptyState('smtp'), oauth_google: emptyState('oauth_google'), razorpay: emptyState('razorpay'),
   });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [open, setOpen] = useState<IntegrationType | null>(null);
-  const [draft, setDraft] = useState<{ config: Record<string, string>; enabled: boolean; hasSecret: boolean } | null>(null);
+  // savedSecrets: secret fields that already have a value on the server.
+  const [draft, setDraft] = useState<{ config: Record<string, string>; enabled: boolean; savedSecrets: string[] } | null>(null);
+  const [copied, setCopied] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [busy, setBusy] = useState<'save' | 'test' | null>(null);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -127,11 +142,12 @@ export default function Integrations() {
 
   const openSheet = (type: IntegrationType) => {
     const st = states[type];
-    const secret = SECRET_FIELD[type];
     // A saved secret arrives as the mask — show an empty box with a "saved"
     // hint; leaving it empty keeps the saved one.
-    const hasSecret = st.config[secret] === SECRET_MASK;
-    setDraft({ config: { ...st.config, [secret]: hasSecret ? '' : st.config[secret] }, enabled: st.enabled, hasSecret });
+    const savedSecrets = SECRET_FIELDS[type].filter(k => st.config[k] === SECRET_MASK);
+    const config = { ...st.config };
+    savedSecrets.forEach(k => { config[k] = ''; });
+    setDraft({ config, enabled: st.enabled, savedSecrets });
     setShowSecret(false);
     setTestResult(null);
     setOpen(type);
@@ -139,9 +155,8 @@ export default function Integrations() {
 
   const payloadConfig = (type: IntegrationType) => {
     if (!draft) return {};
-    const secret = SECRET_FIELD[type];
     const config: Record<string, unknown> = { ...draft.config };
-    if (!draft.config[secret] && draft.hasSecret) config[secret] = SECRET_MASK;
+    for (const k of draft.savedSecrets) if (!draft.config[k]) config[k] = SECRET_MASK;
     if (type === 'smtp' && draft.config.port) config.port = Number(draft.config.port);
     return config;
   };
@@ -149,9 +164,9 @@ export default function Integrations() {
   const dirty = (() => {
     if (!open || !draft) return false;
     const st = states[open];
-    const secret = SECRET_FIELD[open];
-    return draft.enabled !== st.enabled || !!draft.config[secret] ||
-      FIELDS[open].some(f => f.key !== secret && (draft.config[f.key] || '') !== (st.config[f.key] || ''));
+    const secrets = SECRET_FIELDS[open];
+    return draft.enabled !== st.enabled || secrets.some(k => !!draft.config[k]) ||
+      FIELDS[open].some(f => !secrets.includes(f.key) && (draft.config[f.key] || '') !== (st.config[f.key] || ''));
   })();
 
   const save = async () => {
@@ -274,7 +289,7 @@ export default function Integrations() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {FIELDS[open].map(f => {
-                  const isSecret = f.key === SECRET_FIELD[open];
+                  const isSecret = SECRET_FIELDS[open].includes(f.key);
                   return (
                     <label key={f.key} className={`block ${f.wide ? 'sm:col-span-2' : ''}`}>
                       <span className="block text-xs font-semibold text-slate-600 mb-1">{f.label}</span>
@@ -283,7 +298,7 @@ export default function Integrations() {
                           type={isSecret && !showSecret ? 'password' : f.type === 'number' ? 'number' : 'text'}
                           value={draft.config[f.key] || ''}
                           onChange={e => setDraft(d => d && ({ ...d, config: { ...d.config, [f.key]: e.target.value } }))}
-                          placeholder={isSecret && draft.hasSecret ? 'Saved — leave empty to keep it' : f.placeholder}
+                          placeholder={isSecret && draft.savedSecrets.includes(f.key) ? 'Saved — leave empty to keep it' : f.placeholder}
                           autoComplete="off"
                           className={`w-full h-11 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white ${isSecret ? 'pr-10' : ''}`}
                         />
@@ -300,6 +315,20 @@ export default function Integrations() {
               </div>
 
               {open === 'cloudflare' && <MediaMovePanel refreshKey={st.enabled ? 1 : 0} />}
+
+              {open === 'razorpay' && (
+                <div className="rounded-xl border border-slate-200 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-700">Webhook — add this in Razorpay</p>
+                  <p className="text-[11px] text-slate-500">Razorpay Dashboard → Account & Settings → Webhooks → Add new webhook. Paste this URL, set a secret (put the same one above), and tick <span className="font-medium text-slate-700">payment.captured</span>, <span className="font-medium text-slate-700">order.paid</span> and <span className="font-medium text-slate-700">payment.failed</span>.</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 min-w-0 truncate text-xs bg-slate-50 rounded-lg px-2.5 py-2 text-slate-700">{`${API_BASE}/payments/webhook`}</code>
+                    <button type="button" onClick={() => { navigator.clipboard?.writeText(`${API_BASE}/payments/webhook`); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                      className="w-9 h-9 shrink-0 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50" aria-label="Copy webhook URL">
+                      {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {testResult && (
                 <p className={`flex items-start gap-1.5 text-xs p-3 rounded-xl ${testResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>

@@ -1524,6 +1524,19 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update support_docs collection schema:', docsSchemaErr.message);
     }
 
+    // Razorpay keys are kept in Integrations like the other services.
+    try {
+      const integ: any = await pb.collections.getOne('integrations');
+      const typeField = (integ.fields || []).find((f: any) => f.name === 'type');
+      if (typeField && Array.isArray(typeField.values) && !typeField.values.includes('razorpay')) {
+        typeField.values = [...typeField.values, 'razorpay'];
+        await pb.collections.update('integrations', { fields: integ.fields } as any);
+        console.log('Added razorpay to the integrations types');
+      }
+    } catch (integErr: any) {
+      console.warn('Failed to add razorpay to integrations:', integErr.message);
+    }
+
     // Which first-run tours an account has been through, so the tour shows
     // on its first sign-in only — not again on every new device or browser.
     // When the field is first added, everyone who has already signed in
