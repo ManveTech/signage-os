@@ -166,12 +166,18 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
     return () => window.removeEventListener('app-resumed', handleAppResumed);
   }, [isNative]);
 
+
+  // First time login states
+  const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
+
   // First-run orientation tour. Only on the dashboard route (not e.g. deep in
   // Settings after a refresh) and only once per account — replayable anytime
   // from Support's "Take the tour" button. The delay lets the dashboard's own
   // first paint and KPI fetch settle before the tour measures anything.
   useEffect(() => {
     if (activeView !== 'dashboard') return;
+    // Not over the "set your password" screen — this runs again once it closes.
+    if (isFirstLogin) return;
     if (getPendingPairCode()) return; // pairing a TV first — the tour can wait
     if (hasSeenTour('admin-dashboard', userEmail)) return;
     const timer = setTimeout(() => {
@@ -183,10 +189,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
     }, 900);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // First time login states
-  const [isFirstLogin, setIsFirstLogin] = useState(() => localStorage.getItem('signageos_first_time_login') === 'true');
+  }, [isFirstLogin]);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passError, setPassError] = useState('');
