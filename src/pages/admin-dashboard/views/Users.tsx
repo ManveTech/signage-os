@@ -82,14 +82,21 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<UserType | null>(null);
-  // Remove-client option: also delete their playlists and media (files too).
+  // Remove-client options: delete all their data; delete their enquiries.
   const [deleteContent, setDeleteContent] = useState(false);
+  const [deleteEnquiries, setDeleteEnquiries] = useState(false);
   const [, setContentLoaded] = useState(0);
   const askRemove = (u: UserType) => {
     setDeleteContent(false);
+    setDeleteEnquiries(false);
     setRemoveTarget(u);
-    // Fresh counts for the tick-box — this page doesn't otherwise load media.
-    Promise.all([syncCollection('media_items', 'signageos_media'), syncCollection('playlists', 'signageos_playlists')])
+    // Fresh counts for the tick-boxes — this page doesn't otherwise load these.
+    Promise.all([
+      syncCollection('media_items', 'signageos_media'),
+      syncCollection('playlists', 'signageos_playlists'),
+      syncCollection('tickets', 'signageos_tickets'),
+      syncCollection('leads', 'signageos_leads'),
+    ])
       .finally(() => setContentLoaded(n => n + 1));
   };
 
@@ -216,7 +223,8 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
   const removeClient = async (u: UserType) => {
     let res: Response;
     try {
-      res = await fetch(`${API_BASE}/users/${u.id}${deleteContent ? '?deleteContent=1' : ''}`, { method: 'DELETE', headers: getHeaders(), credentials: 'include' });
+      const qs = [deleteContent && 'deleteContent=1', deleteEnquiries && 'deleteEnquiries=1'].filter(Boolean).join('&');
+      res = await fetch(`${API_BASE}/users/${u.id}${qs ? `?${qs}` : ''}`, { method: 'DELETE', headers: getHeaders(), credentials: 'include' });
     } catch {
       toast.error(`Couldn't remove ${u.name}: no connection`);
       return;
@@ -239,13 +247,20 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
     setLicenses(licensingStore.getLicenses());
     setRemoveTarget(null);
     setOpenId(null);
-    toast.success(deleteContent ? `${u.name} removed, with their media and playlists` : `${u.name} removed`);
+    toast.success(deleteContent ? `${u.name} and all their data removed` : `${u.name} removed`);
   };
 
-  const contentOf = (email: string) => ({
-    media: mediaStore.getMedia().filter(m => m.uploadedBy === email).length,
-    playlists: mediaStore.getPlaylists().filter(p => p.createdBy === email).length,
-  });
+  const contentOf = (email: string) => {
+    const mine = (key: string, field: string) => JSON.parse(localStorage.getItem(key) || '[]').filter((r: any) => String(r[field] || '').toLowerCase() === email.toLowerCase()).length;
+    return {
+      screens: screens.filter(sc => sc.assignedToUserEmail === email).length,
+      media: mediaStore.getMedia().filter(m => m.uploadedBy === email).length,
+      playlists: mediaStore.getPlaylists().filter(p => p.createdBy === email).length,
+      tickets: mine('signageos_tickets', 'clientEmail'),
+      enquiries: mine('signageos_leads', 'email'),
+    };
+  };
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
   // ── Add client ────────────────────────────────────────────────────────────
   const openAdd = () => {
@@ -756,16 +771,23 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
                 <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 cursor-pointer select-none">
                   <input type="checkbox" checked={deleteContent} onChange={e => setDeleteContent(e.target.checked)} className="mt-0.5 w-4 h-4 accent-red-600" />
                   <span className="text-sm text-slate-700">
-                    <span className="block font-medium text-slate-900">Also delete their media and playlists</span>
+                    <span className="block font-medium text-slate-900">Also delete all their data</span>
                     <span className="block text-xs text-slate-500 mt-0.5">
-                      {c.media} file{c.media === 1 ? '' : 's'} and {c.playlists} playlist{c.playlists === 1 ? '' : 's'}, files included — frees the storage. Invoices, payments and tickets are kept.
+                      {plural(c.screens, 'screen')}, {plural(c.media, 'file')} (freeing the storage), {plural(c.playlists, 'playlist')} and {plural(c.tickets, 'ticket')}, plus their groups, screen history, video calls and organization. Invoices and payments are kept for your records.
                     </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 cursor-pointer select-none">
+                  <input type="checkbox" checked={deleteEnquiries} onChange={e => setDeleteEnquiries(e.target.checked)} className="mt-0.5 w-4 h-4 accent-red-600" />
+                  <span className="text-sm text-slate-700">
+                    <span className="block font-medium text-slate-900">Also delete their website enquiries</span>
+                    <span className="block text-xs text-slate-500 mt-0.5">{c.enquiries ? `${c.enquiries} enquir${c.enquiries === 1 ? 'y' : 'ies'} from ${removeTarget.email}` : `None from ${removeTarget.email}`}</span>
                   </span>
                 </label>
               </div>
             );
           })()}
-          confirmLabel={deleteContent ? 'Remove client and content' : 'Remove client'}
+          confirmLabel={deleteContent ? 'Remove client and all data' : 'Remove client'}
           tone="danger"
           onCancel={() => setRemoveTarget(null)}
           onConfirm={() => removeClient(removeTarget)}

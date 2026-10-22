@@ -399,12 +399,44 @@ export async function deleteUser(req: any, res: any) {
       return res.status(400).json({ error: "You can't remove your own account." });
     }
 
+    // Two tick-boxes on "Remove client":
+    //   ?deleteContent=1   everything of theirs goes — screens, media (files
+    //                      too), playlists, groups, screen logs, tickets,
+    //                      video calls and their organisation if nobody else
+    //                      is in it. Invoices, payments and the audit log are
+    //                      always kept (billing records must be kept for GST),
+    //                      and licences go back to the pool either way.
+    //   ?deleteEnquiries=1 their website enquiries too.
+    const flag = (v: any) => v === '1' || v === 'true';
+    const purge = !!userEmail && flag(req.query?.deleteContent);
+    const purgeEnquiries = !!userEmail && flag(req.query?.deleteEnquiries);
+    const removed: Record<string, number> = {};
+    const count = (what: string) => { removed[what] = (removed[what] || 0) + 1; };
+    const byEmail = (field: string) => pb.filter(`${field} = {:email}`, { email: userEmail });
+
+    // Their organisation(s), found before licences are unassigned below.
+    let orgIds: string[] = [];
+    if (purge) {
+      const lics = await pb.collection('licenses').getFullList({ filter: byEmail('assignedUserEmail'), fields: 'assignedOrgId' }).catch(() => [] as any[]);
+      const orgs = await pb.collection('organizations').getFullList({ filter: byEmail('email'), fields: 'id' }).catch(() => [] as any[]);
+      orgIds = Array.from(new Set([...lics.map((l: any) => l.assignedOrgId), ...orgs.map((o: any) => o.id)].filter(Boolean)));
+    }
+
     if (userEmail) {
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       const orphanedScreens = await pb.collection('screens').getFullList({
         filter: pb.filter('assignedToUserEmail = {:email}', { email: userEmail })
       }).catch(() => [] as any[]);
-      await Promise.all(orphanedScreens.map((screen: any) => {
+      await Promise.all(orphanedScreens.map(async (screen: any) => {
+        if (purge) {
+          // Deleted outright. The TV is told "removed" and goes back to a
+          // pairing code, clearing what it downloaded, the same as a reset.
+          await pb.collection('screens').delete(screen.id).then(() => count('screens')).catch(() => {});
+          removeScreenSchedule(screen.id);
+          await clearScreenCache(screen.id, screen.hardware_uuid).catch(() => {});
+          notifyScreenConfigChanged(screen.id);
+          return;
+        }
         let pairingCode = '';
         for (let i = 0; i < 6; i++) pairingCode += chars.charAt(Math.floor(Math.random() * chars.length));
         return pb.collection('screens').update(screen.id, {
@@ -440,18 +472,45 @@ export async function deleteUser(req: any, res: any) {
       ));
     }
 
-    // Optional (?deleteContent=1, a tick-box when removing a client): their
-    // playlists and media go too, files included, freeing the storage.
-    // Invoices, payments and tickets are always kept for the records.
-    let removedMedia = 0, removedPlaylists = 0;
-    if (userEmail && (req.query?.deleteContent === '1' || req.query?.deleteContent === 'true')) {
-      const playlists = await pb.collection('playlists').getFullList({ filter: pb.filter('createdBy = {:email}', { email: userEmail }), fields: 'id' }).catch(() => [] as any[]);
-      for (const p of playlists) {
-        await pb.collection('playlists').delete(p.id).then(() => { removedPlaylists++; }).catch(() => {});
+    if (purge) {
+      const all = (coll: string, filter: string) => pb.collection(coll).getFullList({ filter }).catch(() => [] as any[]);
+      const drop = async (coll: string, rows: any[]) => {
+        for (const r of rows) await pb.collection(coll).delete(r.id).then(() => count(coll)).catch(() => {});
+      };
+
+      await drop('playlists', await all('playlists', byEmail('createdBy')));
+      for (const m of await all('media_items', byEmail('uploadedBy'))) {
+        await removeMediaItem(m).then(() => count('media_items')).catch(err => console.warn(`Could not delete media ${m.id}:`, err.message));
       }
-      const media = await pb.collection('media_items').getFullList({ filter: pb.filter('uploadedBy = {:email}', { email: userEmail }) }).catch(() => [] as any[]);
-      for (const m of media) {
-        await removeMediaItem(m).then(() => { removedMedia++; }).catch(err => console.warn(`Could not delete media ${m.id}:`, err.message));
+      const orgFilter = orgIds.map((_, i) => `orgId = {:o${i}}`).join(' || ');
+      const orgParams = Object.fromEntries(orgIds.map((id, i) => [`o${i}`, id]));
+      await drop('screen_groups', await all('screen_groups', orgFilter
+        ? pb.filter(`createdBy = {:email} || ${orgFilter}`, { email: userEmail, ...orgParams })
+        : byEmail('createdBy')));
+      await drop('screen_logs', await all('screen_logs', byEmail('assignedToUserEmail')));
+      await drop('tickets', await all('tickets', byEmail('clientEmail')));
+      const vcOrg = orgIds.map((_, i) => `organizationId = {:o${i}}`).join(' || ');
+      await drop('video_conferences', await all('video_conferences', pb.filter(
+        `adminUserId = {:uid}${vcOrg ? ` || ${vcOrg}` : ''}`, { uid: req.params.id, ...orgParams })));
+
+      // The organisation goes only if nobody else is in it.
+      for (const orgId of orgIds) {
+        const org = await pb.collection('organizations').getOne(orgId).catch(() => null);
+        if (!org) continue;
+        const otherUsers = await pb.collection('users').getFullList({
+          filter: pb.filter('company = {:name} && id != {:uid}', { name: org.name || '', uid: req.params.id }), fields: 'id'
+        }).catch(() => [] as any[]);
+        const otherLicences = await pb.collection('licenses').getFullList({ filter: pb.filter('assignedOrgId = {:id}', { id: orgId }), fields: 'id' }).catch(() => [] as any[]);
+        if (otherUsers.length === 0 && otherLicences.length === 0) {
+          await pb.collection('organizations').delete(orgId).then(() => count('organizations')).catch(() => {});
+        }
+      }
+    }
+
+    if (purgeEnquiries) {
+      const leads = await pb.collection('leads').getFullList({ filter: pb.filter('email ~ {:email}', { email: userEmail }) }).catch(() => [] as any[]);
+      for (const l of leads.filter((x: any) => String(x.email || '').trim().toLowerCase() === userEmail.toLowerCase())) {
+        await pb.collection('leads').delete(l.id).then(() => count('leads')).catch(() => {});
       }
     }
 
@@ -463,10 +522,10 @@ export async function deleteUser(req: any, res: any) {
       action: 'user.deleted',
       targetType: 'users',
       targetId: req.params.id,
-      detail: userEmail ? `email=${userEmail}${removedMedia || removedPlaylists ? `, deleted ${removedMedia} media and ${removedPlaylists} playlists` : ''}` : undefined,
+      detail: userEmail ? `email=${userEmail}${Object.keys(removed).length ? `, deleted ${Object.entries(removed).map(([k, n]) => `${n} ${k}`).join(', ')}` : ''}` : undefined,
       ip: getClientIp(req)
     });
-    res.status(204).end();
+    res.status(200).json({ removed });
   } catch (error: any) {
     console.error('Error deleting user:', error);
     res.status(500).json({ error: error.message || 'Error deleting user' });
