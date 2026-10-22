@@ -1,5 +1,5 @@
 import type { Invoice, BusinessDetails } from '../../lib/licensingStore';
-import { taxSplit, amountInWords, stateCode, stateFromGstin } from '../../lib/gst';
+import { taxSplit, amountInWords, stateCode, stateFromGstin, DEFAULT_GST_PERCENT } from '../../lib/gst';
 import { formatDate } from './licenseStatus';
 import defaultLogo from '../../assets/bluestar-logo-on-light.png';
 
@@ -9,13 +9,16 @@ const money = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDi
  * A GST tax invoice (or receipt once paid): supplier and recipient with
  * GSTINs, place of supply, SAC, the CGST+SGST or IGST split, the total in
  * words and the payment reference. Rendered on screen and printed to A4
- * (see .print-invoice in index.css). Prices include GST.
+ * (see .print-invoice in index.css). The total includes GST at the
+ * invoice's own rate (18% for invoices issued before the rate could be set).
  */
 export default function TaxInvoice({ invoice, biz, planLabel }: { invoice: Invoice; biz: BusinessDetails; planLabel?: string }) {
   const supplierState = biz.state || 'Karnataka';
   const to = invoice.billTo || { name: invoice.clientName, email: invoice.clientEmail, address: '', state: '', gstin: '' };
   const place = to.state || stateFromGstin(to.gstin) || supplierState;
-  const t = taxSplit(Number(invoice.amount) || 0, supplierState, place);
+  const rate = typeof invoice.gstPercent === 'number' ? invoice.gstPercent : DEFAULT_GST_PERCENT;
+  const t = taxSplit(Number(invoice.amount) || 0, supplierState, place, rate);
+  const half = `${+(rate / 2).toFixed(2)}%`;
   const paid = invoice.status === 'paid';
   const ref = invoice.paymentRef ? (invoice.paymentRef.startsWith('manual_') ? 'Recorded by hand' : invoice.paymentRef) : '';
   const cell = 'px-3 py-2';
@@ -85,13 +88,15 @@ export default function TaxInvoice({ invoice, biz, planLabel }: { invoice: Invoi
         <table className="w-full sm:w-72">
           <tbody>
             <tr><td className="py-1 text-slate-500">Taxable value</td><td className="py-1 text-right">{money(t.taxable)}</td></tr>
-            {t.intra ? (
+            {rate === 0 ? (
+              <tr><td className="py-1 text-slate-500">GST 0%</td><td className="py-1 text-right">{money(0)}</td></tr>
+            ) : t.intra ? (
               <>
-                <tr><td className="py-1 text-slate-500">CGST 9%</td><td className="py-1 text-right">{money(t.cgst)}</td></tr>
-                <tr><td className="py-1 text-slate-500">SGST 9%</td><td className="py-1 text-right">{money(t.sgst)}</td></tr>
+                <tr><td className="py-1 text-slate-500">CGST {half}</td><td className="py-1 text-right">{money(t.cgst)}</td></tr>
+                <tr><td className="py-1 text-slate-500">SGST {half}</td><td className="py-1 text-right">{money(t.sgst)}</td></tr>
               </>
             ) : (
-              <tr><td className="py-1 text-slate-500">IGST 18%</td><td className="py-1 text-right">{money(t.igst)}</td></tr>
+              <tr><td className="py-1 text-slate-500">IGST {rate}%</td><td className="py-1 text-right">{money(t.igst)}</td></tr>
             )}
             <tr className="border-t border-slate-300"><td className="pt-2 font-bold text-slate-900">Total</td><td className="pt-2 text-right font-bold text-slate-900 text-base">{money(Number(invoice.amount) || 0)}</td></tr>
           </tbody>

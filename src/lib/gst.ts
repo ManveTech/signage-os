@@ -13,15 +13,23 @@ export const stateCode = (state: string) => Object.entries(GST_STATES).find(([, 
 export const stateFromGstin = (gstin?: string) => (gstin ? GST_STATES[gstin.slice(0, 2)] || '' : '');
 export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
-export const GST_RATE = 0.18;
+/** The rate when a licence or invoice doesn't say — every one made before the rate could be set. */
+export const DEFAULT_GST_PERCENT = 18;
+export const GST_PRESETS = [0, 5, 12, 18, 28];
+
+/** Price before GST + the rate → what the client is charged (whole rupees). */
+export const withGst = (base: number, percent: number) => Math.round((Number(base) || 0) * (1 + (Number(percent) || 0) / 100));
+/** The reverse, for showing an existing price in the form. */
+export const withoutGst = (total: number, percent: number) => Math.round((Number(total) || 0) / (1 + (Number(percent) || 0) / 100));
 
 /**
- * Prices include GST. Same state as the supplier → CGST 9% + SGST 9%;
- * any other state → IGST 18%. Amounts are rounded to the paisa, with the
- * tax absorbing any rounding so the parts always add up to the total.
+ * The total includes GST at `percent`. Same state as the supplier → CGST +
+ * SGST at half the rate each; any other state → IGST at the full rate.
+ * Amounts are rounded to the paisa, with the tax absorbing any rounding so
+ * the parts always add up to the total.
  */
-export function taxSplit(total: number, supplierState: string, placeOfSupply: string) {
-  const taxable = Math.round((total / (1 + GST_RATE)) * 100) / 100;
+export function taxSplit(total: number, supplierState: string, placeOfSupply: string, percent: number = DEFAULT_GST_PERCENT) {
+  const taxable = Math.round((total / (1 + percent / 100)) * 100) / 100;
   const tax = Math.round((total - taxable) * 100) / 100;
   const intra = !placeOfSupply || placeOfSupply === supplierState;
   if (intra) {

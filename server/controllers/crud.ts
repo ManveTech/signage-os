@@ -9,6 +9,7 @@ import { notifyScreenConfigChanged, notifyScreensConfigChanged } from '../servic
 import { resolveUserOrgId, groupBelongsTo } from '../services/ownership';
 import { loadUsablePlaylist } from '../scheduler';
 import { prepareInvoice } from '../services/invoicing';
+import { isTestPayment, isTestInvoice } from '../services/testPayments';
 import { annotateSleep, cleanScreenSchedule, cleanGroupSchedule } from '../services/sleep';
 
 // --- Tenancy rules for the generic CRUD router -----------------------------
@@ -580,6 +581,15 @@ export function createCrudRouter(collectionName: string) {
         const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
         if (!(await isOwnRecord(collectionName, record, req.user))) {
           return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+
+      // Billing records are kept (GST needs them for 6 years). Only test
+      // payments — and invoices settled by one — can be removed, by anyone.
+      if (collectionName === 'payments' || collectionName === 'invoices') {
+        const rec = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id)).catch(() => null);
+        if (rec && !(collectionName === 'payments' ? isTestPayment(rec) : isTestInvoice(rec))) {
+          return res.status(403).json({ error: 'Only test payments and their invoices can be deleted. Real billing records are kept for GST.' });
         }
       }
 

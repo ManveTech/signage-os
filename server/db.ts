@@ -1566,6 +1566,12 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         { id: 'numsupportsort001', name: 'sortOrder', type: 'number' },
       ]],
       ['faqs', [{ id: 'numfaqssortorder1', name: 'sortOrder', type: 'number' }]],
+      // Made with Razorpay test keys (see services/testPayments.ts).
+      ['payments', [{ id: 'boolpaymentstest1', name: 'testMode', type: 'bool' }]],
+      ['invoices', [{ id: 'boolinvoicestest1', name: 'testMode', type: 'bool' }]],
+      // GST rate charged on top of the licence's price (missing = 18%).
+      ['licenses', [{ id: 'numlicensesgst001', name: 'gstPercent', type: 'number' }]],
+      ['invoices', [{ id: 'numinvoicesgst001', name: 'gstPercent', type: 'number' }]],
     ] as const) {
       try {
         const coll: any = await pb.collections.getOne(collName);

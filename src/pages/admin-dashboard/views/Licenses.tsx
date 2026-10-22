@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import { API_BASE } from '../../../config';
 import { licensingStore, License, PaymentRecord, Invoice, BusinessDetails } from '../../../lib/licensingStore';
-import { syncCollection } from '../../../lib/syncHelper';
+import { syncCollection, pushToDatabase } from '../../../lib/syncHelper';
+import { isTestPayment, isTestInvoice } from '../../../lib/testPayments';
 import { getAuthToken } from '../../../lib/authStorage';
 import { apiPost } from '../../../lib/screenActions';
 import { toast } from '../../../components/Toast';
@@ -13,7 +14,7 @@ import CustomSelect from '../../../components/CustomSelect';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import ConfirmDialog from '../../../components/screens/ConfirmDialog';
 import TaxInvoice from '../../../components/licenses/TaxInvoice';
-import { STATE_NAMES, stateFromGstin } from '../../../lib/gst';
+import { STATE_NAMES, stateFromGstin, withGst, withoutGst, DEFAULT_GST_PERCENT, GST_PRESETS } from '../../../lib/gst';
 import {
   licenseState, LicenseStateKey, daysUntil, formatDate, formatInr, relativeDays, defaultExpiry, planLabel, localDate, isRenewalDue
 } from '../../../components/licenses/licenseStatus';
@@ -52,7 +53,9 @@ function Toggle({ checked, onChange, label, hint, icon }: { checked: boolean; on
 
 type FormState = {
   name: string;
-  price: number;
+  /** Before GST — the client is charged withGst(basePrice, gst). */
+  basePrice: number;
+  gst: number;
   tenure: 'monthly' | 'yearly';
   email: string;
   expiry: string;
@@ -67,7 +70,7 @@ type FormState = {
 };
 
 const emptyForm = (): FormState => ({
-  name: '', price: 1000, tenure: 'monthly', email: '', expiry: defaultExpiry('monthly'), expiryTouched: false,
+  name: '', basePrice: 1000, gst: DEFAULT_GST_PERCENT, tenure: 'monthly', email: '', expiry: defaultExpiry('monthly'), expiryTouched: false,
   storage: 5, devices: 5, whiteLabel: false, videoConferencing: false, status: 'active', firstPayment: 'now'
 });
 
@@ -87,6 +90,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
   const [openLicenseId, setOpenLicenseId] = useState<string | null>(null);
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
   const [openPaymentId, setOpenPaymentId] = useState<string | null>(null);
+  // Deleting test payments / their invoices — the only billing records that can go.
+  const [deleteRecord, setDeleteRecord] = useState<{ kind: 'invoice' | 'payment'; ids: string[]; label: string } | null>(null);
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null);
   const [editing, setEditing] = useState<License | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -122,12 +127,42 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         const res = await fetch(`${API_BASE}/payments/history`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data.items) && data.items.length > 0) { setPayments(data.items); return; }
+          // The server's list, even when empty — falling back to the cached
+          // copy here kept showing payments that had been deleted.
+          if (Array.isArray(data.items)) {
+            setPayments(data.items);
+            localStorage.setItem('signageos_payments', JSON.stringify(data.items));
+            return;
+          }
         }
       } catch { /* fall back to local */ }
       setPayments(licensingStore.getPayments());
     })();
   }, []);
+
+  const removeRecord = async (r: { kind: 'invoice' | 'payment'; ids: string[]; label: string }) => {
+    const coll = r.kind === 'invoice' ? 'invoices' : 'payments';
+    const gone: string[] = [];
+    for (const id of r.ids) {
+      const res = await pushToDatabase(coll, id, null, 'DELETE');
+      if (res.ok) gone.push(id);
+    }
+    if (r.kind === 'invoice') {
+      localStorage.setItem('signageos_invoices', JSON.stringify(licensingStore.getInvoices().filter(i => !gone.includes(i.id))));
+      setInvoices(list => list.filter(i => !gone.includes(i.id)));
+      setOpenInvoiceId(null);
+    } else {
+      setPayments(list => {
+        const next = list.filter(p => !gone.includes(p.id));
+        localStorage.setItem('signageos_payments', JSON.stringify(next));
+        return next;
+      });
+      setOpenPaymentId(null);
+    }
+    setDeleteRecord(null);
+    if (gone.length === r.ids.length) toast.success(`Deleted ${gone.length} test ${r.kind}${gone.length === 1 ? '' : 's'}`);
+    else toast.error(`Deleted ${gone.length} of ${r.ids.length} — the rest couldn't be deleted`);
+  };
 
   const goTab = (t: Tab) => {
     setTab(t);
@@ -168,7 +203,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
     setEditing(lic);
     setForm({
       name: lic.name,
-      price: lic.price,
+      basePrice: withoutGst(lic.price, lic.gstPercent ?? DEFAULT_GST_PERCENT),
+      gst: lic.gstPercent ?? DEFAULT_GST_PERCENT,
       tenure: lic.tenure,
       email: lic.assignedUserEmail || '',
       expiry: lic.expiryDate || defaultExpiry(lic.tenure),
@@ -185,7 +221,9 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
   const setF = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm(f => ({ ...f, [key]: value }));
 
-  const pricingChanged = !!editing && (Number(form.price) !== editing.price || form.tenure !== editing.tenure);
+  // What the client pays: the price plus GST at the chosen rate.
+  const total = withGst(form.basePrice, form.gst);
+  const pricingChanged = !!editing && (total !== editing.price || form.gst !== (editing.gstPercent ?? DEFAULT_GST_PERCENT) || form.tenure !== editing.tenure);
 
   const issueInvoice = async (licenseId: string, email: string, dueDate: string) => {
     const user = clients.find(u => u.email === email);
@@ -196,7 +234,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       clientName: user?.name || orgFor(email).name || 'Client',
       clientEmail: email,
       // Prices include GST — the invoice total is what Razorpay charges.
-      amount: Math.round(Number(form.price)),
+      amount: total,
+      gstPercent: form.gst,
       dueDate,
       status: 'unpaid',
       issuedDate: localDate(),
@@ -206,7 +245,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
   const saveForm = async () => {
     if (!form.name.trim()) { toast.warning('Give the license a name'); return; }
-    if (!(Number(form.price) >= 0)) { toast.warning('Enter a valid price'); return; }
+    if (!(Number(form.basePrice) >= 0)) { toast.warning('Enter a valid price'); return; }
+    if (!(Number(form.gst) >= 0 && Number(form.gst) <= 100)) { toast.warning('GST should be between 0 and 100%'); return; }
     if (!form.expiry) { toast.warning('Pick an expiry date'); return; }
     const org = form.email ? orgFor(form.email) : { id: undefined, name: undefined };
 
@@ -226,7 +266,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       const { license: created, result } = await licensingStore.createLicense({
         id: '',
         name: form.name.trim(),
-        price: Number(form.price),
+        price: total,
+        gstPercent: Number(form.gst),
         tenure: form.tenure,
         assignedOrgId: org.id,
         assignedOrgName: org.name,
@@ -261,7 +302,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
       const status = pricingChanged && form.email && lapsed ? 'pending_payment' : form.status;
       const res = await licensingStore.updateLicense(editing.id, {
         name: form.name.trim(),
-        price: Number(form.price),
+        price: total,
+        gstPercent: Number(form.gst),
         tenure: form.tenure,
         assignedOrgId: org.id,
         assignedOrgName: org.name,
@@ -350,8 +392,12 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
   const visiblePayments = payments.filter(p => !q || [p.clientName, p.clientEmail, p.licenseName, p.razorpayPaymentId].some(v => (v || '').toLowerCase().includes(q)));
   const monthKey = new Date().toISOString().slice(0, 7);
-  const collectedThisMonth = payments.filter(p => (p.paymentDate || '').startsWith(monthKey)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-  const collectedTotal = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  // Totals count real money only; test payments are listed and tagged, not added up.
+  const testPayments = payments.filter(isTestPayment);
+  const realPayments = payments.filter(p => !isTestPayment(p));
+  const testInvoices = invoices.filter(isTestInvoice);
+  const collectedThisMonth = realPayments.filter(p => (p.paymentDate || '').startsWith(monthKey)).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const collectedTotal = realPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
   const tabCount: Record<Tab, number> = {
     management: licenses.length,
@@ -613,6 +659,10 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               );
             })}
           </div>
+          {testInvoices.length > 0 && (
+            <TestCleanup count={testInvoices.length} noun="invoice" note="Paid by test payments, not real money."
+              onDelete={() => setDeleteRecord({ kind: 'invoice', ids: testInvoices.map(i => i.id), label: `${testInvoices.length} test invoice${testInvoices.length === 1 ? '' : 's'}` })} />
+          )}
           {visibleInvoices.length > 0 ? (
             <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
               {visibleInvoices.map(inv => (
@@ -621,7 +671,10 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                     <Receipt size={16} />
                   </span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-medium text-slate-900 truncate">{inv.clientName}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-sm font-medium text-slate-900 truncate">{inv.clientName}</span>
+                      {isTestInvoice(inv) && <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px] font-semibold">TEST</span>}
+                    </span>
                     <span className="block text-xs text-slate-500 truncate">{inv.licenseName} · due {formatDate(inv.dueDate)}</span>
                   </span>
                   <span className="text-right shrink-0">
@@ -650,17 +703,24 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
               <p className="text-xl font-semibold text-slate-900 mt-1">{formatInr(collectedThisMonth)}</p>
             </div>
             <div className="bg-white rounded-2xl border border-slate-100 p-4">
-              <p className="text-xs text-slate-500">All time · {payments.length} payment{payments.length === 1 ? '' : 's'}</p>
+              <p className="text-xs text-slate-500">All time · {realPayments.length} payment{realPayments.length === 1 ? '' : 's'}</p>
               <p className="text-xl font-semibold text-slate-900 mt-1">{formatInr(collectedTotal)}</p>
             </div>
           </div>
+          {testPayments.length > 0 && (
+            <TestCleanup count={testPayments.length} noun="payment" note="Made in testing — no real money moved. Left out of the totals above."
+              onDelete={() => setDeleteRecord({ kind: 'payment', ids: testPayments.map(p => p.id), label: `${testPayments.length} test payment${testPayments.length === 1 ? '' : 's'}` })} />
+          )}
           {visiblePayments.length > 0 ? (
             <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
               {visiblePayments.map(p => (
                 <button key={p.id} type="button" onClick={() => setOpenPaymentId(p.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
                   <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><CreditCard size={16} /></span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-medium text-slate-900 truncate">{p.clientName || p.clientEmail}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-sm font-medium text-slate-900 truncate">{p.clientName || p.clientEmail}</span>
+                      {isTestPayment(p) && <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[10px] font-semibold">TEST</span>}
+                    </span>
                     <span className="block text-xs text-slate-500 truncate">{p.licenseName} · {formatDate(p.paymentDate)}</span>
                   </span>
                   <span className="text-sm font-semibold text-slate-900 shrink-0">{formatInr(p.amount)}</span>
@@ -747,13 +807,23 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           footer={
             <button type="button" onClick={printInvoice} className="w-full h-11 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 flex items-center justify-center gap-2"><Printer size={15} /> Print / save PDF</button>
           }
-          groups={openInvoice.status === 'unpaid' ? [{
-            title: 'Collect payment',
-            actions: [
-              { key: 'remind', label: 'Email payment reminder', description: `Sends a pay link to ${openInvoice.clientEmail}`, icon: <Send size={17} />, onClick: () => remind({ invoiceId: openInvoice.id }, openInvoice.id) },
-              { key: 'paid', label: 'Mark as paid', description: 'Received outside Razorpay — renews the licence like an online payment', icon: <CheckCircle size={17} />, onClick: () => markInvoicePaid(openInvoice) },
-            ]
-          }] : []}
+          groups={[
+            ...(openInvoice.status === 'unpaid' ? [{
+              title: 'Collect payment',
+              actions: [
+                { key: 'remind', label: 'Email payment reminder', description: `Sends a pay link to ${openInvoice.clientEmail}`, icon: <Send size={17} />, onClick: () => remind({ invoiceId: openInvoice.id }, openInvoice.id) },
+                { key: 'paid', label: 'Mark as paid', description: 'Received outside Razorpay — renews the licence like an online payment', icon: <CheckCircle size={17} />, onClick: () => markInvoicePaid(openInvoice) },
+              ]
+            }] : []),
+            ...(isTestInvoice(openInvoice) ? [{
+              title: 'Test invoice',
+              actions: [{
+                key: 'delete', label: 'Delete test invoice', description: 'Paid by a test payment — no real money',
+                icon: <Trash2 size={17} />, tone: 'danger' as const,
+                onClick: () => setDeleteRecord({ kind: 'invoice', ids: [openInvoice.id], label: `${openInvoice.number || 'This invoice'} (${formatInr(openInvoice.amount)})` }),
+              }],
+            }] : []),
+          ]}
         />
       )}
 
@@ -771,7 +841,14 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
             { label: 'Razorpay payment', value: <span className="font-mono text-xs">{openPayment.razorpayPaymentId || '—'}</span> },
             { label: 'Razorpay order', value: <span className="font-mono text-xs">{openPayment.razorpayOrderId || '—'}</span> },
           ]}
-          groups={[]}
+          groups={isTestPayment(openPayment) ? [{
+            title: 'Test payment',
+            actions: [{
+              key: 'delete', label: 'Delete test payment', description: 'Not a real Razorpay payment — no money moved',
+              icon: <Trash2 size={17} />, tone: 'danger' as const,
+              onClick: () => setDeleteRecord({ kind: 'payment', ids: [openPayment.id], label: `This payment (${formatInr(openPayment.amount)}, ${openPayment.clientName || openPayment.clientEmail})` }),
+            }],
+          }] : []}
         />
       )}
 
@@ -793,9 +870,32 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={labelCls}>Price (₹, incl. GST)</label>
-                  <input type="number" inputMode="numeric" min={0} value={form.price} onChange={e => setF('price', Number(e.target.value))} className={inputCls} />
+                  <label className={labelCls}>Price before GST (₹)</label>
+                  <input type="number" inputMode="numeric" min={0} value={form.basePrice} onChange={e => setF('basePrice', Number(e.target.value))} className={inputCls} />
                 </div>
+                <div>
+                  <label className={labelCls}>GST</label>
+                  <div className="relative">
+                    <input type="number" inputMode="decimal" min={0} max={100} step="0.01" value={form.gst} onChange={e => setF('gst', Number(e.target.value))} className={`${inputCls} pr-8`} list="gst-presets" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none">%</span>
+                    <datalist id="gst-presets">{GST_PRESETS.map(g => <option key={g} value={g} />)}</datalist>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 -mt-1">
+                {GST_PRESETS.map(g => (
+                  <button key={g} type="button" onClick={() => setF('gst', g)}
+                    className={`h-7 px-2.5 rounded-full border text-xs font-medium ${form.gst === g ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                    {g}%
+                  </button>
+                ))}
+              </div>
+              <p className="-mt-1 text-sm text-slate-700 bg-slate-50 rounded-xl px-3 py-2.5">
+                Client pays <span className="font-semibold text-slate-900">{formatInr(total)}</span>
+                <span className="text-slate-500"> = {formatInr(form.basePrice)} + {formatInr(total - Number(form.basePrice || 0))} GST ({form.gst}%) — charged through Razorpay</span>
+              </p>
+
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className={labelCls}>Billed</label>
                   <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl h-11">
@@ -854,8 +954,8 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
                   </div>
                   <p className="text-xs text-slate-500 mt-1.5">
                     {form.firstPayment === 'now'
-                      ? `They get an invoice for ${formatInr(Number(form.price))} (incl. ${formatInr(Number(form.price) - Math.round(Number(form.price) / 1.18))} GST). The licence starts the day they pay and runs one ${form.tenure === 'yearly' ? 'year' : 'month'}.`
-                      : `Active right away, nothing to pay now. Their first payment (${formatInr(Number(form.price))}) is due on ${formatDate(defaultExpiry(form.tenure))} — exactly one ${form.tenure === 'yearly' ? 'year' : 'month'} from today — then every ${form.tenure === 'yearly' ? 'year' : 'month'} after that.`}
+                      ? `They get an invoice for ${formatInr(total)} (incl. ${formatInr(total - Number(form.basePrice || 0))} GST). The licence starts the day they pay and runs one ${form.tenure === 'yearly' ? 'year' : 'month'}.`
+                      : `Active right away, nothing to pay now. Their first payment (${formatInr(total)}) is due on ${formatDate(defaultExpiry(form.tenure))} — exactly one ${form.tenure === 'yearly' ? 'year' : 'month'} from today — then every ${form.tenure === 'yearly' ? 'year' : 'month'} after that.`}
                   </p>
                 </div>
               )}
@@ -1053,6 +1153,17 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
         />
       )}
 
+      {deleteRecord && (
+        <ConfirmDialog
+          title={deleteRecord.ids.length === 1 ? `Delete this test ${deleteRecord.kind}?` : `Delete ${deleteRecord.ids.length} test ${deleteRecord.kind}s?`}
+          body={<p>{deleteRecord.label} {deleteRecord.ids.length === 1 ? 'is' : 'are'} deleted for good. {deleteRecord.kind === 'payment' ? 'These are test payments — no real money moved.' : 'These were paid by test payments.'} Licenses aren't changed, and real payments and invoices can't be deleted.</p>}
+          confirmLabel={`Delete ${deleteRecord.ids.length === 1 ? '' : `${deleteRecord.ids.length} `}test ${deleteRecord.kind}${deleteRecord.ids.length === 1 ? '' : 's'}`}
+          tone="danger"
+          onCancel={() => setDeleteRecord(null)}
+          onConfirm={() => removeRecord(deleteRecord)}
+        />
+      )}
+
       {revokeTarget && (
         <ConfirmDialog
           title={`Revoke “${revokeTarget.name}”?`}
@@ -1065,6 +1176,21 @@ export default function Licenses({ activeTab: initTab = 'management', onNavigate
           onConfirm={() => revoke(revokeTarget)}
         />
       )}
+    </div>
+  );
+}
+
+/** Shown only when there are test records: one button to clear them all. */
+function TestCleanup({ count, noun, note, onDelete }: { count: number; noun: string; note: string; onDelete: () => void }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-slate-900">{count} test {noun}{count === 1 ? '' : 's'}</span>
+        <span className="block text-xs text-slate-500">{note}</span>
+      </span>
+      <button type="button" onClick={onDelete} className="shrink-0 h-9 px-3.5 rounded-xl border border-red-200 bg-white text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-1.5">
+        <Trash2 size={14} /> Delete {count === 1 ? 'it' : 'all'}
+      </button>
     </div>
   );
 }

@@ -183,6 +183,9 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
   const amount = typeof chargedAmount === 'number' && chargedAmount > 0 ? chargedAmount : license.price;
 
   const newExpiryStr = nextExpiryAfterPayment(license.expiryDate, license.tenure);
+  // Made with Razorpay test keys — marked so it can be told apart (and
+  // deleted) later. Payments recorded by hand are always real.
+  const testMode = !paymentId.startsWith('manual_') && (await getRazorpayConfig()).keyId.startsWith('rzp_test_');
 
   await pb.collection('licenses').update(licenseId, {
     status: 'active',
@@ -198,7 +201,8 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
     paymentDate: istStamp(),
     status: 'success',
     razorpayPaymentId: paymentId,
-    razorpayOrderId: orderId
+    razorpayOrderId: orderId,
+    testMode
   };
   if (unmatched) await pb.collection('payments').update(unmatched.id, paymentRecord);
   else await pb.collection('payments').create(paymentRecord);
@@ -209,7 +213,7 @@ async function verifyAndProcessPayment(licenseId: string, paymentId: string, ord
   const unpaid = await pb.collection('invoices').getFullList({
     filter: pb.filter('licenseId = {:licenseId} && status = "unpaid"', { licenseId })
   }).catch(() => [] as any[]);
-  const paid = { status: 'paid', paidDate: istStamp().slice(0, 10), paymentRef: paymentId };
+  const paid = { status: 'paid', paidDate: istStamp().slice(0, 10), paymentRef: paymentId, testMode };
   let invoiceNumber = '';
   if (unpaid.length > 0) {
     // The settled invoice shows what was actually charged (prices include GST).

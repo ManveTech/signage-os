@@ -8,6 +8,8 @@ export interface License {
   assignedOrgName?: string;
   assignedUserEmail?: string;
   price: number;
+  /** GST % charged on top; price already includes it. Missing = 18. */
+  gstPercent?: number;
   tenure: 'monthly' | 'yearly';
   status: 'active' | 'expired' | 'pending_payment';
   expiryDate: string;
@@ -29,6 +31,8 @@ export interface PaymentRecord {
   status: 'success' | 'failed';
   razorpayPaymentId: string;
   razorpayOrderId: string;
+  /** Made with Razorpay test keys (see lib/testPayments.ts). */
+  testMode?: boolean;
 }
 
 export interface Invoice {
@@ -43,6 +47,9 @@ export interface Invoice {
   issuedDate: string;
   /** Running tax-invoice number, e.g. BSD/2026-27/0001 (set by the server). */
   number?: string;
+  /** GST rate the total includes, fixed when issued. Missing = 18. */
+  gstPercent?: number;
+  testMode?: boolean;
   /** Who it's billed to, as it was when issued. */
   billTo?: { name: string; email: string; address: string; state: string; gstin: string };
   paidDate?: string;
