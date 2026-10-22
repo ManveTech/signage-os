@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, MessageSquare, HelpCircle, BookOpen, Edit2, Trash2, Compass, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, Search, MessageSquare, HelpCircle, BookOpen, Edit2, Trash2, Compass, Loader2 } from 'lucide-react';
 import { supportStore, Ticket, FAQ, SupportDoc, byHelpOrder } from '../../../lib/supportStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import { toast } from '../../../components/Toast';
@@ -274,7 +274,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
         <div className="space-y-4">
           {!hasStepGuides && (
             <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-              <span className="w-9 h-9 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><Sparkles size={17} /></span>
+              <span className="w-9 h-9 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><BookOpen size={17} /></span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-semibold text-slate-900">Start with the standard guides</span>
                 <span className="block text-xs text-slate-600 mt-0.5">10 step-by-step guides with screenshots and 13 FAQs — adding a screen, playlists, media, groups, billing and more. Edit or delete any of them afterwards.</span>
@@ -329,7 +329,7 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
         <div className="space-y-4">
           {!hasStepGuides && (
             <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-              <span className="w-9 h-9 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><Sparkles size={17} /></span>
+              <span className="w-9 h-9 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><BookOpen size={17} /></span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-semibold text-slate-900">Start with the standard guides</span>
                 <span className="block text-xs text-slate-600 mt-0.5">10 step-by-step guides with screenshots and 13 FAQs — adding a screen, playlists, media, groups, billing and more. Edit or delete any of them afterwards.</span>
