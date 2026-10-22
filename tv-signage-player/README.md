@@ -14,8 +14,8 @@ To update the Server URL or the PocketBase URL:
    package com.example
 
    object AppConfig {
-       const val SERVER_URL = "https://dem1.manve.co"
-       const val POCKETBASE_URL = "https://demo.manve.co"
+       const val SERVER_URL = "https://api.bluestardigitech.com"
+       const val POCKETBASE_URL = "https://db.bluestardigitech.com"
    }
    ```
 

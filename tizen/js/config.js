@@ -3,8 +3,8 @@
  */
 
 window.SignageConfig = (function () {
-    const SERVER_URL = 'https://dem1.manve.co';
-    let POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || 'https://demo.manve.co';
+    const SERVER_URL = 'https://api.bluestardigitech.com';
+    let POCKETBASE_URL = localStorage.getItem('signage_tizen_pb_url') || 'https://db.bluestardigitech.com';
 
     const KEYS = {
         UUID: 'signage_tizen_uuid',
