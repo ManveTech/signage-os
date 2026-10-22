@@ -139,35 +139,12 @@ export const supportStore = {
   },
 
   getDocs(): SupportDoc[] {
+    // Guides added from the admin Helpdesk. The built-in ones live in
+    // lib/helpGuides.ts. This used to seed a "Using YouTube Videos" guide for
+    // a feature the platform doesn't have — browsers that still hold it drop it.
     const data = localStorage.getItem('signageos_docs');
-    if (!data) {
-      const defaultDocs: SupportDoc[] = [{
-        id: 'youtube-guide-doc',
-        title: 'Using YouTube Videos',
-        category: 'Tutorial',
-        content: `Supported URLs:
-• youtube.com/watch?v=
-• youtu.be/
-
-How It Works:
-1. Paste YouTube URL
-2. System validates link
-3. Video added to media library
-4. Add to playlist
-5. Assigned screens receive update automatically
-
-Notes:
-- Internet connection required
-- Private videos not supported
-- Age restricted videos may not play
-- Deleted videos are skipped automatically`,
-        images: [],
-        createdDate: new Date().toISOString().split('T')[0]
-      }];
-      localStorage.setItem('signageos_docs', JSON.stringify(defaultDocs));
-      return defaultDocs;
-    }
-    return JSON.parse(data);
+    const docs: SupportDoc[] = data ? JSON.parse(data) : [];
+    return docs.filter(d => d.id !== 'youtube-guide-doc');
   },
 
   saveDocs(docs: SupportDoc[]) {

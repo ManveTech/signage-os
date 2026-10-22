@@ -1,16 +1,27 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, MessageSquare, HelpCircle, BookOpen, ChevronDown, Compass, CheckCircle, LifeBuoy } from 'lucide-react';
+import { Plus, Search, MessageSquare, HelpCircle, BookOpen, ChevronDown, Compass, CheckCircle, LifeBuoy, Rocket, Monitor, Film, CreditCard, ChevronRight } from 'lucide-react';
 import { supportStore, Ticket, FAQ, SupportDoc } from '../../../lib/supportStore';
 import { syncCollection } from '../../../lib/syncHelper';
 import { toast } from '../../../components/Toast';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import { StatusPill, PRIORITY, TicketThread, Composer, GuideBody, timeAgo } from '../../../components/support/supportUi';
+import { GuideArticle } from '../../../components/support/HelpGuide';
+import { HELP_GUIDES, HELP_FAQS, GUIDE_CATEGORIES, GuideCategory, HelpGuide } from '../../../lib/helpGuides';
 import { runTour } from '../../../lib/tour/runner';
 import { getUserTourSteps } from '../../../lib/tour/userTour';
 import { markTourSeen } from '../../../lib/tour/state';
 
 type Tab = 'tickets' | 'help';
+
+const CATEGORY_ICON: Record<GuideCategory, ReactNode> = {
+  'Getting started': <Rocket size={16} />,
+  Screens: <Monitor size={16} />,
+  Content: <Film size={16} />,
+  'Plan & billing': <CreditCard size={16} />,
+};
+
+const guideText = (g: HelpGuide) => [g.title, g.summary, g.category, ...g.steps.map(s => s.text), ...(g.tips || [])].join(' ').toLowerCase();
 
 const inputCls = 'w-full h-11 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white';
 const labelCls = 'block text-xs font-medium text-slate-600 mb-1.5';
@@ -32,6 +43,7 @@ export default function Support({ activeTab = 'tickets', userEmail = '', onNavig
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
   const [openTicketId, setOpenTicketId] = useState<string | null>(null);
   const [readingDocId, setReadingDocId] = useState<string | null>(null);
+  const [readingGuideId, setReadingGuideId] = useState<string | null>(null);
   const [newTicket, setNewTicket] = useState<{ subject: string; priority: Ticket['priority']; description: string } | null>(null);
 
   useEffect(() => { setTab(activeTab); }, [activeTab]);
@@ -86,7 +98,11 @@ export default function Support({ activeTab = 'tickets', userEmail = '', onNavig
   };
 
   const q = search.trim().toLowerCase();
-  const visibleFaqs = faqs.filter(f => !q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
+  // Built-in FAQs first, then any the team added from the Helpdesk.
+  const allFaqs = [...HELP_FAQS, ...faqs];
+  const visibleFaqs = allFaqs.filter(f => !q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
+  const visibleGuides = HELP_GUIDES.filter(g => !q || guideText(g).includes(q));
+  const readingGuide = readingGuideId ? HELP_GUIDES.find(g => g.id === readingGuideId) : null;
   const visibleDocs = docs.filter(d => !q || [d.title, d.category, d.content].some(v => (v || '').toLowerCase().includes(q)));
   const lastActivity = (t: Ticket) => (t.messages?.length ? t.messages[t.messages.length - 1].at : (t.lastUpdated || t.createdDate || (t as any).created));
   const sorted = [...tickets].sort((a, b) => (new Date(lastActivity(b)).getTime() || 0) - (new Date(lastActivity(a)).getTime() || 0));
@@ -159,16 +175,46 @@ export default function Support({ activeTab = 'tickets', userEmail = '', onNavig
         )
       )}
 
-      {tab === 'help' && (
-        <div className="space-y-4">
+      {tab === 'help' && readingGuide && (
+        <GuideArticle
+          guide={readingGuide}
+          onBack={() => setReadingGuideId(null)}
+          related={HELP_GUIDES.filter(g => g.category === readingGuide.category && g.id !== readingGuide.id).map(g => ({ guide: g, open: () => setReadingGuideId(g.id) }))}
+        />
+      )}
+
+      {tab === 'help' && !readingGuide && (
+        <div className="space-y-5">
           <div className="relative md:max-w-md">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search help — e.g. pair a screen" className="w-full h-11 pl-10 pr-4 text-sm border border-gray-200 rounded-xl outline-none focus:border-blue-400 bg-white" />
           </div>
 
-          {visibleDocs.length > 0 && (
+          {visibleGuides.length > 0 && (q ? (
             <div>
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Guides</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {visibleGuides.map(g => <GuideCard key={g.id} guide={g} onOpen={() => setReadingGuideId(g.id)} />)}
+              </div>
+            </div>
+          ) : (
+            GUIDE_CATEGORIES.map(cat => {
+              const list = visibleGuides.filter(g => g.category === cat);
+              if (!list.length) return null;
+              return (
+                <div key={cat}>
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">{cat}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {list.map(g => <GuideCard key={g.id} guide={g} onOpen={() => setReadingGuideId(g.id)} />)}
+                  </div>
+                </div>
+              );
+            })
+          ))}
+
+          {visibleDocs.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">From our team</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {visibleDocs.map(d => (
                   <button key={d.id} type="button" onClick={() => setReadingDocId(d.id)} className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 p-4 flex items-start gap-3">
@@ -204,7 +250,7 @@ export default function Support({ activeTab = 'tickets', userEmail = '', onNavig
             </div>
           )}
 
-          {visibleDocs.length === 0 && visibleFaqs.length === 0 && (
+          {visibleGuides.length === 0 && visibleDocs.length === 0 && visibleFaqs.length === 0 && (
             <div className="py-10 text-center bg-white rounded-2xl border border-dashed border-gray-200">
               <HelpCircle size={28} className="mx-auto text-gray-300 mb-2" />
               <p className="text-sm text-gray-600">{q ? `Nothing found for “${search}”` : 'No help articles yet'}</p>
@@ -314,5 +360,19 @@ export default function Support({ activeTab = 'tickets', userEmail = '', onNavig
         />
       )}
     </div>
+  );
+}
+
+function GuideCard({ guide, onOpen }: { guide: HelpGuide; onOpen: () => void }) {
+  return (
+    <button type="button" onClick={onOpen} className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-blue-200 hover:shadow-sm p-4 flex items-start gap-3 transition-colors">
+      <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">{CATEGORY_ICON[guide.category]}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm font-medium text-slate-900">{guide.title}</span>
+        <span className="block text-xs text-slate-500 mt-0.5 line-clamp-2">{guide.summary}</span>
+        <span className="block text-[11px] text-slate-400 mt-1.5">{guide.steps.length} steps · {guide.minutes} min</span>
+      </span>
+      <ChevronRight size={16} className="text-slate-300 mt-2.5 shrink-0" />
+    </button>
   );
 }

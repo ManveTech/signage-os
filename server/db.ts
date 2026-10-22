@@ -1633,49 +1633,21 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.warn('Failed to update organizations collection schema:', orgsErr.message);
     }
 
-    // Ensure Using YouTube Videos documentation exists in support_docs
+    // Earlier versions seeded a "Using YouTube Videos" guide on every boot —
+    // for a feature the platform doesn't have. Clients now get built-in
+    // guides (src/lib/helpGuides.ts), so remove the seeded one. Only the exact
+    // seeded guide goes: it's matched on its title and its opening text, so a
+    // guide an admin wrote under the same title stays.
     try {
-      console.log('Checking for Using YouTube Videos documentation...');
-      const docsList = await pb.collection('support_docs').getList(1, 1, {
-        filter: 'title = "Using YouTube Videos"'
-      });
-      if (docsList.items.length === 0) {
-        console.log('Seeding Using YouTube Videos documentation...');
-        await pb.collection('support_docs').create({
-          title: "Using YouTube Videos",
-          category: "Tutorial",
-          content: `Supported URLs:
-• youtube.com/watch?v=
-• youtu.be/
-
-How It Works:
-1. Paste YouTube URL
-2. System validates link
-3. Video added to media library
-4. Add to playlist
-5. Assigned screens receive update automatically
-
-Notes:
-- Internet connection required
-- Private videos not supported
-- Age restricted videos may not play
-- Deleted videos are skipped automatically`,
-          images: [],
-          createdDate: new Date().toISOString().split('T')[0]
-        });
-        console.log('YouTube tutorial seeded successfully in support_docs');
-      } else {
-        // Earlier versions seeded this guide with a placeholder video that
-        // was actually a music video (dQw4w9WgXcQ) and re-added it on every
-        // boot. Clear it; an admin can attach a real tutorial video.
-        const existing = docsList.items[0];
-        if ((existing.youtubeUrl || '').includes('dQw4w9WgXcQ')) {
-          await pb.collection('support_docs').update(existing.id, { youtubeUrl: '' });
-          console.log('Removed placeholder video from Using YouTube Videos documentation');
+      const seeded = await pb.collection('support_docs').getFullList({ filter: 'title = "Using YouTube Videos"' });
+      for (const doc of seeded) {
+        if (String(doc.content || '').startsWith('Supported URLs:\n• youtube.com/watch?v=')) {
+          await pb.collection('support_docs').delete(doc.id);
+          console.log('Removed the old seeded "Using YouTube Videos" guide');
         }
       }
     } catch (docErr: any) {
-      console.warn('Failed to seed support document:', docErr.message);
+      console.warn('Failed to remove the old seeded guide:', docErr.message);
     }
 
     // These collections were all left with every rule set to "" (fully

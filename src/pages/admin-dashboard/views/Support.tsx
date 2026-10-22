@@ -7,6 +7,8 @@ import { toast } from '../../../components/Toast';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
 import ConfirmDialog from '../../../components/screens/ConfirmDialog';
 import { StatusPill, PRIORITY, TICKET_STATUS, TicketThread, Composer, GuideBody, timeAgo } from '../../../components/support/supportUi';
+import { GuideArticle } from '../../../components/support/HelpGuide';
+import { HELP_GUIDES, HELP_FAQS } from '../../../lib/helpGuides';
 import { runTour } from '../../../lib/tour/runner';
 import { getAdminTourSteps } from '../../../lib/tour/adminTour';
 import { markTourSeen } from '../../../lib/tour/state';
@@ -33,6 +35,8 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
   const [tab, setTab] = useState<Tab>(activeTab);
   const [tickets, setTickets] = useState<Ticket[]>(() => supportStore.getTickets());
   const [faqs, setFaqs] = useState<FAQ[]>(() => supportStore.getFAQs());
+  // Built-in guides (lib/helpGuides.ts) — every client sees them; read-only here.
+  const [readingGuideId, setReadingGuideId] = useState<string | null>(null);
   const [docs, setDocs] = useState<SupportDoc[]>(() => supportStore.getDocs());
   const [search, setSearch] = useState('');
   const [ticketFilter, setTicketFilter] = useState<'active' | 'done' | 'all'>('active');
@@ -73,6 +77,9 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
     .sort((a, b) => Number(waitingOnUs(b)) - Number(waitingOnUs(a)) || sortKey(b) - sortKey(a));
   const visibleFaqs = faqs.filter(f => !q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
   const visibleDocs = docs.filter(d => !q || [d.title, d.category, d.content].some(v => (v || '').toLowerCase().includes(q)));
+  const builtInFaqs = HELP_FAQS.filter(f => !q || f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
+  const builtInGuides = HELP_GUIDES.filter(g => !q || [g.title, g.summary, g.category, ...g.steps.map(st => st.text)].some(v => v.toLowerCase().includes(q)));
+  const readingGuide = readingGuideId ? HELP_GUIDES.find(g => g.id === readingGuideId) : null;
 
   // ── Tickets ──────────────────────────────────────────────────────────────
   const reply = async (id: string, body: { text?: string; status?: Ticket['status'] }) => {
@@ -167,8 +174,8 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
       <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl md:max-w-md">
         {([
           { key: 'issues', label: 'Tickets', count: activeCount, alert: true },
-          { key: 'faq', label: 'FAQs', count: faqs.length },
-          { key: 'docs', label: 'Guides', count: docs.length },
+          { key: 'faq', label: 'FAQs', count: HELP_FAQS.length + faqs.length },
+          { key: 'docs', label: 'Guides', count: HELP_GUIDES.length + docs.length },
         ] as const).map(t => (
           <button
             key={t.key}
@@ -248,50 +255,94 @@ export default function Support({ activeTab = 'issues', onNavigate, userEmail = 
 
       {/* ── FAQs ────────────────────────────────────────────────────────── */}
       {tab === 'faq' && (
-        visibleFaqs.length > 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
-            {visibleFaqs.map(f => (
-              <button key={f.id} type="button" onClick={() => setFaqForm({ id: f.id, question: f.question, answer: f.answer })} className="w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-slate-50">
-                <HelpCircle size={16} className="text-blue-600 mt-0.5 shrink-0" />
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-medium text-slate-900">{f.question}</span>
-                  <span className="block text-xs text-slate-500 mt-0.5 line-clamp-2">{f.answer}</span>
-                </span>
-                <Edit2 size={14} className="text-slate-300 mt-1 shrink-0" />
-              </button>
-            ))}
+        <div className="space-y-4">
+          {builtInFaqs.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Built in · every client sees these</p>
+              <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                {builtInFaqs.map(f => (
+                  <div key={f.id} className="flex items-start gap-3 px-4 py-3.5">
+                    <HelpCircle size={16} className="text-slate-300 mt-0.5 shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-slate-900">{f.question}</span>
+                      <span className="block text-xs text-slate-500 mt-0.5">{f.answer}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Added by you</p>
+            {visibleFaqs.length > 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                {visibleFaqs.map(f => (
+                  <button key={f.id} type="button" onClick={() => setFaqForm({ id: f.id, question: f.question, answer: f.answer })} className="w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-slate-50">
+                    <HelpCircle size={16} className="text-blue-600 mt-0.5 shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-slate-900">{f.question}</span>
+                      <span className="block text-xs text-slate-500 mt-0.5 line-clamp-2">{f.answer}</span>
+                    </span>
+                    <Edit2 size={14} className="text-slate-300 mt-1 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+                <HelpCircle size={30} className="mx-auto text-gray-300 mb-2" />
+                <p className="text-sm font-medium text-gray-700">{faqs.length ? 'No FAQs match' : 'None of your own yet'}</p>
+                <p className="text-xs text-gray-500 mt-1">Add answers specific to your business — clients see them after the built-in ones.</p>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
-            <HelpCircle size={30} className="mx-auto text-gray-300 mb-2" />
-            <p className="text-sm font-medium text-gray-700">{faqs.length ? 'No FAQs match' : 'No FAQs yet'}</p>
-            <p className="text-xs text-gray-500 mt-1">Answer common questions once — clients find them in their Help Center.</p>
-          </div>
-        )
+        </div>
       )}
 
       {/* ── Guides ──────────────────────────────────────────────────────── */}
-      {tab === 'docs' && (
-        visibleDocs.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {visibleDocs.map(d => (
-              <button key={d.id} type="button" onClick={() => setReadingDocId(d.id)} className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 hover:shadow-sm p-4 transition-colors">
-                <span className="flex items-center justify-between gap-2">
-                  <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold">{d.category}</span>
-                  {d.youtubeUrl && <span className="text-[10px] text-slate-400">Has video</span>}
-                </span>
-                <span className="block text-sm font-semibold text-slate-900 mt-2">{d.title}</span>
-                <span className="block text-xs text-slate-500 mt-1 line-clamp-2 whitespace-pre-line">{d.content}</span>
-              </button>
-            ))}
+      {tab === 'docs' && readingGuide && (
+        <GuideArticle guide={readingGuide} onBack={() => setReadingGuideId(null)} />
+      )}
+
+      {tab === 'docs' && !readingGuide && (
+        <div className="space-y-4">
+          {builtInGuides.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Built in · step-by-step with screenshots</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {builtInGuides.map(g => (
+                  <button key={g.id} type="button" onClick={() => setReadingGuideId(g.id)} className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 p-4">
+                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold">{g.category}</span>
+                    <span className="block text-sm font-semibold text-slate-900 mt-2">{g.title}</span>
+                    <span className="block text-xs text-slate-500 mt-1 line-clamp-2">{g.summary}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Added by you</p>
+            {visibleDocs.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {visibleDocs.map(d => (
+                  <button key={d.id} type="button" onClick={() => setReadingDocId(d.id)} className="w-full text-left bg-white rounded-2xl border border-slate-100 hover:border-slate-200 hover:shadow-sm p-4 transition-colors">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold">{d.category}</span>
+                      {d.youtubeUrl && <span className="text-[10px] text-slate-400">Has video</span>}
+                    </span>
+                    <span className="block text-sm font-semibold text-slate-900 mt-2">{d.title}</span>
+                    <span className="block text-xs text-slate-500 mt-1 line-clamp-2 whitespace-pre-line">{d.content}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
+                <BookOpen size={30} className="mx-auto text-gray-300 mb-2" />
+                <p className="text-sm font-medium text-gray-700">{docs.length ? 'No guides match' : 'None of your own yet'}</p>
+                <p className="text-xs text-gray-500 mt-1">Step-by-step help articles, optionally with a YouTube video.</p>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="py-14 text-center bg-white rounded-2xl border border-dashed border-gray-200">
-            <BookOpen size={30} className="mx-auto text-gray-300 mb-2" />
-            <p className="text-sm font-medium text-gray-700">{docs.length ? 'No guides match' : 'No guides yet'}</p>
-            <p className="text-xs text-gray-500 mt-1">Step-by-step help articles, optionally with a YouTube video.</p>
-          </div>
-        )
+        </div>
       )}
 
       {/* ── Ticket conversation ─────────────────────────────────────────── */}
