@@ -236,7 +236,9 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     try {
       const { SocialLogin } = await import('@capgo/capacitor-social-login');
       await SocialLogin.initialize({ google: { webClientId: googleAuth.clientId } });
-      const res = await SocialLogin.login({ provider: 'google', options: { scopes: ['email', 'profile'] } });
+      // No extra scopes: the ID token already carries the email and name,
+      // and asking for scopes would need a custom MainActivity on Android.
+      const res = await SocialLogin.login({ provider: 'google', options: {} });
       const idToken = res.provider === 'google' && 'idToken' in res.result ? res.result.idToken : null;
       if (!idToken) throw new Error('Google didn\'t return a sign-in token.');
       await handleGoogleCredential({ credential: idToken });
