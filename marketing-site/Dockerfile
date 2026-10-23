@@ -23,6 +23,14 @@ ENV VITE_CMS_API=$VITE_CMS_API
 
 RUN npm run build
 
+# Fail the build rather than ship an image without its pages: with no
+# dist/index.html, nginx:alpine's own "Welcome to nginx!" page is what gets
+# served on the homepage (seen 2026-10-23). A failed build leaves the running
+# site up and puts the reason in Coolify's log.
+RUN for f in index.html app/index.html app/releases/index.html privacy/index.html; do \
+      test -s "dist/$f" || { echo "Build output is missing dist/$f"; ls -R dist | head -50; exit 1; }; \
+    done
+
 # Stage 2: Serve with high-performance Nginx
 FROM nginx:alpine AS runner
 
@@ -32,7 +40,10 @@ ENV PORT=80
 # Copy custom Nginx configuration template for dynamic port substitution
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
-# Copy compiled static assets from builder stage
+# Copy compiled static assets from builder stage. The base image's sample
+# homepage goes first, so it can never be served as ours (50x.html stays —
+# nginx.conf.template uses it for error pages).
+RUN rm -f /usr/share/nginx/html/index.html
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Expose port 80 by default
