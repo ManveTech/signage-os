@@ -368,12 +368,10 @@ export const Footer: React.FC<FooterProps> = ({ onEnquire, onNavigate }) => {
           <div>
             {COMPANY.brand} · {COMPANY.tagline} · Since {COMPANY.since}
           </div>
-          {/*
-            "Privacy Policy / Terms of Service / Quality Policy" used to sit here
-            as <span>s styled with cursor-pointer and a hover colour — they
-            looked like links and did nothing. There are no policy pages yet, so
-            they are out until there are; add them back as real <a href> then.
-          */}
+          <div>
+            {/* A real page (privacy/index.html), served on its own like /app. */}
+            <a href="/privacy" className="hover:underline">Privacy Policy</a>
+          </div>
         </div>
 
       </div>

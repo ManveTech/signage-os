@@ -76,6 +76,12 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
+    # Privacy policy: a standalone page (Google Play links to it).
+    location ~ ^/privacy/?$ {
+        try_files /privacy/index.html =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
     location / {
         try_files $uri $uri/ @canonical;
     }

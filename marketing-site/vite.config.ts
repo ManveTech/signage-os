@@ -19,6 +19,7 @@ export default defineConfig(() => {
           main: path.resolve(__dirname, 'index.html'),
           app: path.resolve(__dirname, 'app/index.html'),
           appReleases: path.resolve(__dirname, 'app/releases/index.html'),
+          privacy: path.resolve(__dirname, 'privacy/index.html'),
         },
       },
     },
