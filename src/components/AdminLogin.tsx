@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { rememberToursFromLogin } from '../lib/tour/state';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE } from '../config';
+import { API_BASE, PRIVACY_URL } from '../config';
 import { Capacitor } from '@capacitor/core';
 // The dashboards are most of the app's code — loaded on demand (and
 // prefetched right after first paint, below) so startup only has to parse
@@ -495,7 +495,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
         </div>
 
         <p className="relative text-white/25 text-[10.5px]">
-          &copy; {new Date().getFullYear()} {branding.companyName}
+          &copy; {new Date().getFullYear()} {branding.companyName} · <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white/60 underline underline-offset-2">Privacy Policy</a>
         </p>
       </div>
 
@@ -783,7 +783,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
           </AnimatePresence>
 
           <p className="lg:hidden text-ink-950/35 text-[10.5px] mt-10">
-            &copy; {new Date().getFullYear()} {branding.companyName}
+            &copy; {new Date().getFullYear()} {branding.companyName} · <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">Privacy Policy</a>
           </p>
         </motion.div>
       </div>

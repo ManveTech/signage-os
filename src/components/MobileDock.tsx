@@ -9,6 +9,7 @@ import {
 import { licensingStore } from '../lib/licensingStore';
 import { supportStore } from '../lib/supportStore';
 import { licenseState } from './licenses/licenseStatus';
+import { PRIVACY_URL } from '../config';
 
 type TabId = 'dashboard' | 'screens' | 'playlists' | 'licenses' | 'more';
 type Item = { id: string; label: string; icon: React.ElementType; badge?: number };
@@ -261,6 +262,11 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
               >
                 <LogOut size={16} /> Log out
               </button>
+            )}
+            {sheet === 'more' && (
+              <a href={PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="block mt-3 text-center text-xs text-slate-400 underline underline-offset-2">
+                Privacy Policy
+              </a>
             )}
           </div>
         </>

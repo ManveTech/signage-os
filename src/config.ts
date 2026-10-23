@@ -21,3 +21,6 @@ const configured = (import.meta.env?.VITE_NODE_SERVER_URL || '').trim().replace(
 export const BACKEND_URL = configured || DEFAULT_API_ORIGIN;
 
 export const API_BASE = `${BACKEND_URL}/api/v1`;
+
+/** The privacy policy (marketing-site/privacy). Google Play requires a link to it inside the app. */
+export const PRIVACY_URL = 'https://bluestardigitech.com/privacy';
