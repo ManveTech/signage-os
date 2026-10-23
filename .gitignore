@@ -125,3 +125,6 @@ dump.rdb
 # End of https://mrkandreev.name/snippets/gitignore-generator/#Node
 # Generated paste-block for Coolify env vars — contains real secrets.
 coolify-env.local.txt
+
+# Signed Play Store bundles (built locally, uploaded to Play Console)
+release/
