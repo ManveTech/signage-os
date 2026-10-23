@@ -68,7 +68,7 @@ The app is for BlueStar business customers; an account is needed to use it.
 **App category:** Business  **Tags:** Business, Productivity
 
 **Contact details:**
-- Email: info@bluestarmetacraft.com (the website's contact — change if support should go elsewhere)
+- Email: bluestar.digitech@gmail.com
 - Website: https://bluestardigitech.com
 - Privacy policy: https://bluestardigitech.com/privacy
 
