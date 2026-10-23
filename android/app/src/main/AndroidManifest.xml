@@ -42,15 +42,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Required for downloading and saving media files -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-                     android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-                     android:maxSdkVersion="32" />
-
-    <!-- Android 13+ (API 33+) granular media permissions -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!-- No storage or media permissions: uploads go through the system
+         file/photo picker (the WebView's file input), which needs none.
+         Google Play rejects broad photo/video access (READ_MEDIA_IMAGES /
+         READ_MEDIA_VIDEO) for apps that aren't photo managers. -->
 
     <!-- Optional: For keeping screen awake during signage display -->
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />

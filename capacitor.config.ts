@@ -9,6 +9,15 @@ const config: CapacitorConfig = {
     // Only allow cleartext in development. Production should use HTTPS only.
     cleartext: process.env.NODE_ENV === 'development'
   },
+  plugins: {
+    // Only Google sign-in is used. Every other provider is left out of the
+    // build: the Facebook one ships Facebook's SDK, whose advertising-ID
+    // permissions contradict the Play listing (no ads, no device IDs).
+    SocialLogin: {
+      providers: { google: true, facebook: false, apple: false, twitter: false, linkedin: false, tiktok: false, telegram: false },
+      logLevel: 1,
+    },
+  },
   android: {
     // Disable mixed content - all resources should be HTTPS in production
     allowMixedContent: process.env.NODE_ENV === 'development',
