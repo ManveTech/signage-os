@@ -6,7 +6,11 @@
 # Stage 1: Build the Vite production bundle
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+# Not /app: the site has its own app/ folder (the TV download page,
+# bluestardigitech.com/app), and with the build running in /app as well Vite
+# silently drops the homepage — the image then served nginx's sample page
+# (2026-10-23). Any other directory name is fine.
+WORKDIR /site
 
 # Copy package manifests and install dependencies
 COPY package.json package-lock.json ./
@@ -44,7 +48,7 @@ COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 # homepage goes first, so it can never be served as ours (50x.html stays —
 # nginx.conf.template uses it for error pages).
 RUN rm -f /usr/share/nginx/html/index.html
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /site/dist /usr/share/nginx/html
 
 # Expose port 80 by default
 EXPOSE 80
