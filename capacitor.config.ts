@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.signageOS.app',
+  appId: 'com.bluestardigitech.app',
   appName: 'BlueStar DigiTech',
   webDir: 'dist',
   server: {
