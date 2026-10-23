@@ -127,7 +127,9 @@ new, update both.
 |---|---|
 | Does your app collect or share any of the required user data types? | **Yes** |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** (HTTPS only) |
-| Which ways can users request that their data is deleted? | **Users can request that data is deleted** — by email, as described in the privacy policy. Accounts are created by BlueStar, not in the app, so no in-app sign-up/deletion flow is required |
+| Account creation methods | **My app does not allow users to create an account** |
+| Can users log in with accounts created outside the app? | **Yes** — created through a **service subscription** (and **enterprise accounts** for a client's team) |
+| Do you provide a way to request data deletion? | **Yes** — `https://bluestardigitech.com/privacy#delete-account` |
 
 **Data types — collected** (none are *shared*: the providers that handle data
 for us, i.e. hosting, Razorpay and Google, are service providers, which Play
@@ -142,14 +144,17 @@ does not count as sharing). None are processed only on-device unless noted.
 | Personal info → **User IDs** | Yes | Required | App functionality, Account management, Fraud prevention/security |
 | Financial info → **Payment info** | Yes (entered on Razorpay's checkout inside the app) | Optional (only when paying in-app) | App functionality |
 | Financial info → **Purchase history** | Yes (licence payments, invoices) | Required | App functionality, Account management |
+| Financial info → **Other financial info** | Yes (GST number for invoices) | Optional | App functionality |
 | Photos and videos → **Photos** | Yes (images uploaded for screens) | Optional | App functionality |
 | Photos and videos → **Videos** | Yes (videos uploaded for screens) | Optional | App functionality |
 | Messages → **Other in-app messages** | Yes (support tickets) | Optional | App functionality (customer support) |
+| App activity → **Other user-generated content** | Yes (playlists, schedules, screen names) | Optional | App functionality |
+| App activity → **Other actions** | Yes (security log of important account actions) | Required | Fraud prevention, security and compliance |
 
 **Not collected** — answer "No" for: location, contacts, calendar, health &
 fitness, web browsing history, files & docs, audio, device or other IDs (the
-phone app doesn't read any; screen IDs belong to the TVs), app activity and
-diagnostics (no analytics or crash-reporting SDKs).
+phone app doesn't read any; screen IDs belong to the TVs), app info and
+performance (no analytics or crash-reporting SDKs).
 
 Notes for the form:
 - **Camera:** used only to scan a pairing QR code; the image never leaves the
