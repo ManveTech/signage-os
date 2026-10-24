@@ -286,7 +286,7 @@ export const WhyChooseUs: React.FC<WhyChooseUsProps> = ({ showHeading = true }) 
         </div>
 
         <p className="mt-5 text-[11px] text-[#18487d] leading-relaxed">
-          Panels are offered from 32&quot; to 65&quot; across the digital range; LED walls are
+          Panels are offered from 16.5&quot; to 65&quot; across the digital range; LED walls are
           built to your wall. Figures for the Floor Standing and A-Type standees are from our
           published spec sheets — everything else is built to order, so ask us for the exact
           specification of your configuration.

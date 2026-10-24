@@ -123,7 +123,7 @@ export default function App() {
           <>
             <PageHeader
               path="/products"
-              intro="Eight lines, 32&quot; to 65&quot;, fabricated in-house in Peenya. Pick a size and a finish and ask us for a price — the configuration comes with the message."
+              intro="Eight lines, 16.5&quot; to 65&quot;, fabricated in-house in Peenya. Pick a size and a finish and ask us for a price — the configuration comes with the message."
               action={quoteAction('Request a quote', 'Tell us which product and we’ll come back with a price.')}
               onNavigate={goTo}
             />

@@ -73,6 +73,15 @@ const PLATFORM_SPECS: ProductSpec[] = [
   { label: 'Screen sizes', value: '32" – 65"' }
 ];
 
+/** The platform specs with a model's own screen sizes in place of the range. */
+const specsWithSizes = (sizes: string[]): ProductSpec[] =>
+  PLATFORM_SPECS.map(s => (s.label === 'Screen sizes' ? { ...s, value: sizes.join(' · ') } : s));
+
+// Per Bluestar (2026-10-24): these two are built on smaller panels than the
+// standees and tables.
+const SELF_SERVICE_KIOSK_SIZES = ['16.5"', '21.5"'];
+const DIGITAL_PODIUM_SIZES = ['21.5"'];
+
 /*
  * Black is the standard finish, per Bluestar.
  *
@@ -150,10 +159,10 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
       { value: '40', unit: 'W', label: 'Max Power', sub: 'Consumption' },
       { value: '5', unit: 'W×2', label: 'Built-in Audio', sub: '8 Ohm Speakers' }
     ],
-    displaySizes: PANEL_SIZES,
+    displaySizes: SELF_SERVICE_KIOSK_SIZES,
     material: 'Powder-coated steel',
     features: ['Integrated payment terminal', 'Receipt printer bay', 'Powder-coated steel body'],
-    specs: PLATFORM_SPECS,
+    specs: specsWithSizes(SELF_SERVICE_KIOSK_SIZES),
     image: '/products/self-service-kiosk.webp',
     master: 'assets/masters/products/self-service-kiosk.png',
     orientation: 'portrait',
@@ -193,10 +202,10 @@ export const BLUESTAR_PRODUCTS: BluestarProduct[] = [
       { value: '40', unit: 'W', label: 'Max Power', sub: 'Consumption' },
       { value: '5', unit: 'W×2', label: 'Built-in Audio', sub: '8 Ohm Speakers' }
     ],
-    displaySizes: PANEL_SIZES,
+    displaySizes: DIGITAL_PODIUM_SIZES,
     material: 'Powder-coated steel',
     features: ['Angled touchscreen top', 'Gooseneck microphone', 'Cable-managed column'],
-    specs: PLATFORM_SPECS,
+    specs: specsWithSizes(DIGITAL_PODIUM_SIZES),
     image: '/products/podium.webp',
     master: 'assets/masters/products/podium.webp',
     orientation: 'portrait',

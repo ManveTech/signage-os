@@ -42,8 +42,8 @@ export const ROUTES: SiteRoute[] = [
     label: 'Products',
     title: `Products | Digital Standees & Touch Kiosks — ${BRAND}`,
     description:
-      'Floor standing standees, A-type standees, self-service and information kiosks, digital podiums, multi-touch tables and LED video walls — 32" to 65", powder-coated and built to specification.',
-    blurb: 'Eight product lines, 32" to 65", each built to your specification.'
+      'Floor standing standees, A-type standees, self-service and information kiosks, digital podiums, multi-touch tables and LED video walls — 16.5" to 65", powder-coated and built to specification.',
+    blurb: 'Eight product lines, 16.5" to 65", each built to your specification.'
   },
   {
     path: '/installations',
