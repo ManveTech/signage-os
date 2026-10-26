@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Plus, Search, Edit2, Trash2, Mail, Phone, Key, Users as UsersIcon, RefreshCw, Copy, Check,
-  Radio, MessageSquare, Camera, Video
+  Radio, MessageSquare, Camera, Video, Palette
 } from 'lucide-react';
 import type { User as UserType } from '../types';
 import { licensingStore, License } from '../../../lib/licensingStore';
@@ -279,7 +279,8 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
       setStep(2);
     } else if (step === 2) {
       if (!draft.company.trim()) { toast.warning('Enter the organization name'); return; }
-      if (!draft.licenseId) { toast.warning('Pick a license for this client'); return; }
+      // A license is no longer required here — see the note on the license
+      // step. The client simply shows as "No license" until one is assigned.
       if (!draft.password) setDraft(d => ({ ...d, password: generateClientPassword(d.name) }));
       setStep(3);
     }
@@ -297,7 +298,12 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
       password: draft.password,
       sendEmail: draft.sendEmail,
       role: 'org_admin',
-      ...features,
+      // Don't record video-call sub-features as enabled on a client whose
+      // license has no video calling — the toggles aren't even shown then,
+      // so their defaults would have been saved without anyone choosing them.
+      ...(selectedPoolLicense?.enableVideoConferencing
+        ? features
+        : { enableBroadcasting: false, enableLiveChat: false, enableCameraMonitoring: false }),
     }, 'POST');
     setOnboarding(false);
     if (!result.ok) {
@@ -654,14 +660,20 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
                         ))}
                       </div>
                     ) : (
+                      // Leaving for Licensing threw away everything typed so
+                      // far, and there was no way past this step — so running
+                      // out of free licenses meant you couldn't add a client
+                      // at all. The account can be made now and the license
+                      // attached later from the client's own page.
                       <div className="text-sm text-slate-600 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
-                        Every license is already assigned. Create a new one first.
-                        {onNavigate && (
-                          <button type="button" onClick={() => { setAddOpen(false); onNavigate('licenses-management'); }} className="block mt-2 text-blue-600 font-medium">
-                            Go to Licensing →
-                          </button>
-                        )}
+                        Every license is already assigned. You can still add this client and
+                        give them a license later — their screens won't play until you do.
                       </div>
+                    )}
+                    {poolLicenses.length > 0 && draft.licenseId && (
+                      <button type="button" onClick={() => setDraft(d => ({ ...d, licenseId: '' }))} className="mt-2 text-xs text-slate-500 hover:text-slate-700">
+                        Add without a license for now
+                      </button>
                     )}
                   </div>
                 </>
@@ -675,7 +687,7 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
                       ['Email', draft.email],
                       ['Phone', draft.mobile],
                       ['Organization', draft.company],
-                      ['License', selectedPoolLicense ? `${selectedPoolLicense.name} · ${planLabel(selectedPoolLicense)}` : '—'],
+                      ['License', selectedPoolLicense ? `${selectedPoolLicense.name} · ${planLabel(selectedPoolLicense)}` : 'None — assign one later'],
                     ].map(([k, v]) => (
                       <div key={k} className="flex items-center justify-between gap-4 px-4 py-2.5">
                         <dt className="text-xs text-slate-500 shrink-0">{k}</dt>
@@ -712,16 +724,38 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
                     <FeatureToggle checked={draft.sendEmail} onChange={v => setDraft(d => ({ ...d, sendEmail: v }))} label="Email the login details" hint={`Sends the sign-in link and password to ${draft.email || 'the client'}`} icon={<Mail size={17} />} />
                   </div>
 
+                  {/* All three of these are video-call capabilities — the
+                      server only ever honours them when the client's license
+                      turns video conferencing on. Offering them regardless
+                      (and switched on by default) promised a client features
+                      their license doesn't carry. */}
                   <div>
                     <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 px-1">Features</p>
-                    <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
-                      <FeatureToggle checked={features.enableBroadcasting} onChange={v => setFeatures(f => ({ ...f, enableBroadcasting: v }))} label="Live broadcasting" hint="Broadcast video or their screen to all TVs" icon={<Radio size={17} />} />
-                      <FeatureToggle checked={features.enableLiveChat} onChange={v => setFeatures(f => ({ ...f, enableLiveChat: v }))} label="Live messages" hint="Pop-up messages on their TVs" icon={<MessageSquare size={17} />} />
-                      <FeatureToggle checked={features.enableCameraMonitoring} onChange={v => setFeatures(f => ({ ...f, enableCameraMonitoring: v }))} label="Camera monitoring" hint="View their TVs' camera feeds" icon={<Camera size={17} />} />
-                    </div>
-                    <p className="flex items-center gap-1.5 text-xs text-slate-500 mt-2 px-1">
-                      <Video size={13} /> Video calls: {selectedPoolLicense?.enableVideoConferencing ? 'included with this license' : 'not included in this license'}
-                    </p>
+                    {selectedPoolLicense?.enableVideoConferencing ? (
+                      <>
+                        <div className="rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden">
+                          <FeatureToggle checked={features.enableBroadcasting} onChange={v => setFeatures(f => ({ ...f, enableBroadcasting: v }))} label="Live broadcasting" hint="Broadcast video or their screen to all TVs" icon={<Radio size={17} />} />
+                          <FeatureToggle checked={features.enableLiveChat} onChange={v => setFeatures(f => ({ ...f, enableLiveChat: v }))} label="Live messages" hint="Pop-up messages on their TVs" icon={<MessageSquare size={17} />} />
+                          <FeatureToggle checked={features.enableCameraMonitoring} onChange={v => setFeatures(f => ({ ...f, enableCameraMonitoring: v }))} label="Camera monitoring" hint="View their TVs' camera feeds" icon={<Camera size={17} />} />
+                        </div>
+                        <p className="flex items-center gap-1.5 text-xs text-slate-500 mt-2 px-1">
+                          <Video size={13} /> Video calls are included with this license.
+                        </p>
+                      </>
+                    ) : (
+                      <div className="rounded-2xl border border-slate-100 px-4 py-3 space-y-1.5">
+                        <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <Video size={13} /> Video calls: not included{selectedPoolLicense ? ' in this license' : ' — no license yet'}
+                        </p>
+                        <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <Palette size={13} /> White label: {selectedPoolLicense?.whiteLabel ? 'included' : 'not included'}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Broadcasting, live messages and camera monitoring come with video calls.
+                          Turn them on from the license under Licensing.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -740,7 +774,6 @@ export default function Users({ onNavigate }: { onNavigate?: (view: string) => v
                 <button
                   type="button"
                   onClick={nextStep}
-                  disabled={step === 2 && poolLicenses.length === 0}
                   className="flex-[2] h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold"
                 >
                   Next
