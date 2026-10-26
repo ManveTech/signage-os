@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { scheduleLabel } from '../../../../components/screens/scheduleLabel';
 import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, AlertCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser , Layers, ChevronRight, RotateCcw } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
+import { scheduleError, todayIst } from '../../../../lib/scheduleTime';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import CustomSelect from '../../../../components/CustomSelect';
@@ -144,7 +145,11 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
   const [isScheduledNew, setIsScheduledNew] = useState(false);
   const [isScheduledEdit, setIsScheduledEdit] = useState(false);
 
+  // Every one of these is opened from the group's details sheet, which sits at
+  // z-[300]; the modals below are z-50, so leaving the sheet open rendered
+  // them behind it and the tap looked like it did nothing at all.
   const handleStartEdit = (group: ScreenGroup) => {
+    setOpenGroupId(null);
     setEditGroup({ ...group });
     setIsScheduledEdit(!!group.schedulePlaylist);
   };
@@ -156,11 +161,13 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
   const [playlistAssignTime, setPlaylistAssignTime] = useState('');
 
   const handleStartPlaylistAssignDirect = (group: ScreenGroup) => {
+    setOpenGroupId(null);
     setAssignPlaylistDirectTo(group);
     setPlaylistToAssign(group.playlist || '');
   };
 
   const handleStartPlaylistSchedule = (group: ScreenGroup) => {
+    setOpenGroupId(null);
     setSchedulePlaylistTo(group);
     setPlaylistToAssign(group.schedulePlaylist || '');
     setPlaylistAssignDate(group.scheduleDate || new Date().toISOString().split('T')[0]);
@@ -206,6 +213,12 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
   const handleSavePlaylistSchedule = () => {
     if (!schedulePlaylistTo) return;
     const playlistName = playlistToAssign;
+    // A switch already in the past never fires — the server only looks
+    // forward — so it would sit in the list looking scheduled forever.
+    if (playlistName) {
+      const problem = scheduleError(playlistAssignDate, playlistAssignTime);
+      if (problem) { addToast(problem, 'error'); return; }
+    }
     const updated = groups.map(g => g.id === schedulePlaylistTo.id ? {
       ...g,
       schedulePlaylist: playlistName || undefined,
@@ -246,6 +259,10 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
 
   const handleCreateGroup = async () => {
     if (!newGroup.name.trim()) return;
+    if (isScheduledNew && newGroup.schedulePlaylist) {
+      const problem = scheduleError(newGroup.scheduleDate, newGroup.scheduleTime);
+      if (problem) { addToast(problem, 'error'); return; }
+    }
     const draft: ScreenGroup = {
       ...newGroup,
       id: `g${Date.now()}`,
@@ -274,6 +291,10 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
 
   const handleEditSave = () => {
     if (!editGroup) return;
+    if (isScheduledEdit && editGroup.schedulePlaylist) {
+      const problem = scheduleError(editGroup.scheduleDate, editGroup.scheduleTime);
+      if (problem) { addToast(problem, 'error'); return; }
+    }
     const updatedGroup: ScreenGroup = {
       ...editGroup,
       playlist: isScheduledEdit ? (editGroup.playlist || '') : editGroup.playlist,
@@ -617,7 +638,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                     label: 'Add screens',
                     description: 'Choose screens to join this group',
                     icon: <UserPlus size={17} />,
-                    onClick: () => setAddScreensTo(group.id)
+                    onClick: () => { setOpenGroupId(null); setAddScreensTo(group.id); }
                   },
                   {
                     key: 'sync',
@@ -657,7 +678,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   description: groupScreens.length ? `Its ${groupScreens.length} screen${groupScreens.length === 1 ? '' : 's'} stay, just ungrouped` : 'This can\'t be undone',
                   icon: <Trash2 size={17} />,
                   tone: 'danger' as const,
-                  onClick: () => setDeleteGroup(group)
+                  onClick: () => { setOpenGroupId(null); setDeleteGroup(group); }
                 }]
               }
             ]}
@@ -679,15 +700,15 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
         });
         return (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAddScreensTo(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-5 border-b border-gray-100">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
                 <div>
                   <h2 className="text-base font-semibold text-gray-900">Add Screens</h2>
                   <p className="text-xs text-gray-500 mt-0.5">Assign ungrouped screens to <strong>{group.name}</strong></p>
                 </div>
                 <button onClick={() => setAddScreensTo(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
               </div>
-              <div className="p-5 max-h-80 overflow-y-auto space-y-2">
+              <div className="flex-1 overflow-y-auto p-5 space-y-2">
                 {available.length === 0 ? (
                   <div className="py-8 text-center text-sm text-gray-400">All screens are already in a group</div>
                 ) : available.map(screen => (
@@ -709,7 +730,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   </div>
                 ))}
               </div>
-              <div className="px-5 pb-5">
+              <div className="px-5 py-4 border-t border-gray-100 shrink-0">
                 <button onClick={() => setAddScreensTo(null)} className="w-full py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Done</button>
               </div>
             </div>
@@ -720,12 +741,12 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
       {/* Edit Group Modal */}
       {editGroup && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditGroup(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
               <h2 className="text-base font-semibold text-gray-900">Edit Group</h2>
               <button onClick={() => setEditGroup(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Group Name</label>
                 <input value={editGroup.name} onChange={e => setEditGroup(p => p && ({ ...p, name: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
@@ -862,7 +883,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">Switch Date</label>
-                      <input type="date" value={editGroup.scheduleDate || ''} onChange={e => setEditGroup(p => p && ({ ...p, scheduleDate: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+                      <input type="date" min={todayIst()} value={editGroup.scheduleDate || ''} onChange={e => setEditGroup(p => p && ({ ...p, scheduleDate: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">Switch Time</label>
@@ -872,7 +893,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                 </div>
               )}
              </div>
-            <div className="flex gap-3 px-5 pb-5">
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100 shrink-0">
               <button 
                 onClick={() => {
                   setDeleteGroup(editGroup);
@@ -894,12 +915,12 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
       {/* New Group Modal */}
       {showNewGroup && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowNewGroup(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
               <h2 className="text-base font-semibold text-gray-900">New Group</h2>
               <button onClick={() => setShowNewGroup(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Group Name</label>
                 <input value={newGroup.name} onChange={e => setNewGroup(p => ({ ...p, name: e.target.value }))} placeholder="e.g. North Zone Stores" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
@@ -989,7 +1010,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">Switch Date</label>
-                      <input type="date" value={newGroup.scheduleDate || ''} onChange={e => setNewGroup(p => ({ ...p, scheduleDate: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+                      <input type="date" min={todayIst()} value={newGroup.scheduleDate || ''} onChange={e => setNewGroup(p => ({ ...p, scheduleDate: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">Switch Time</label>
@@ -999,7 +1020,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                 </div>
               )}
             </div>
-            <div className="flex gap-3 px-5 pb-5">
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100 shrink-0">
               <button onClick={() => setShowNewGroup(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
               <button onClick={handleCreateGroup} disabled={!newGroup.name.trim()} className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"><Plus size={15} /> Create</button>
             </div>
@@ -1078,15 +1099,15 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
       {/* Assign Playlist Modal (Direct) */}
       {assignPlaylistDirectTo && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAssignPlaylistDirectTo(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Assign Playlist</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Assign playlist to <strong>{assignPlaylistDirectTo.name}</strong> immediately</p>
               </div>
               <button onClick={() => setAssignPlaylistDirectTo(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Select Playlist</label>
                 <CustomSelect 
@@ -1101,7 +1122,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                 />
               </div>
             </div>
-            <div className="flex gap-3 px-5 pb-5">
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100 shrink-0">
               <button onClick={() => setAssignPlaylistDirectTo(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
               <button onClick={handleSavePlaylistDirect} className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Check size={15} /> Save Assignment</button>
             </div>
@@ -1112,15 +1133,15 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
       {/* Schedule Playlist Modal */}
       {schedulePlaylistTo && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSchedulePlaylistTo(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Schedule Playlist</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Schedule playlist for <strong>{schedulePlaylistTo.name}</strong></p>
               </div>
               <button onClick={() => setSchedulePlaylistTo(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X size={18} /></button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">Select Playlist</label>
                 <CustomSelect 
@@ -1137,7 +1158,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assignment Date</label>
-                  <input type="date" value={playlistAssignDate} onChange={e => setPlaylistAssignDate(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
+                  <input type="date" min={todayIst()} value={playlistAssignDate} onChange={e => setPlaylistAssignDate(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-400" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Assignment Time</label>
@@ -1145,7 +1166,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
                 </div>
               </div>
             </div>
-            <div className="flex gap-3 px-5 pb-5">
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100 shrink-0">
               <button onClick={() => setSchedulePlaylistTo(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
               <button onClick={handleSavePlaylistSchedule} className="flex-1 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"><Check size={15} /> Save Schedule</button>
             </div>
