@@ -126,7 +126,11 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       setEditingPlaylistId(id);
       setSelectedPlaylistId(id);
       setPlaylistName(play.name);
-      setPlaylistDesc(play.slides ? '' : 'Loaded from older layout');
+      // Both of these are stored now. They used to have no column on the
+      // playlists collection, so the form threw them away on save and reopened
+      // showing its defaults — which read as "I can't change the category".
+      setPlaylistDesc(play.description || '');
+      setCategory(play.category || 'Advertising');
       setPlaylistOrientation(play.orientation || 'horizontal');
       setPlaylistFlipped(!!play.flipped);
       // The toggle itself isn't stored (PocketBase has no field for it) — only
@@ -526,6 +530,8 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       // Update existing playlist
       mediaStore.updatePlaylist(editingPlaylistId, {
         name: playlistName,
+        category,
+        description: playlistDesc,
         active: true,
         scheduleStatus: 'Running',
         mediaIds: playlistItems.map(item => item.mediaId),
@@ -549,6 +555,8 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       // Create new playlist
       mediaStore.createPlaylist({
         name: playlistName,
+        category,
+        description: playlistDesc,
         active: true,
         scheduleStatus: 'Running',
         createdBy: userEmail,

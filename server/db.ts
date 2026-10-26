@@ -774,6 +774,40 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         console.log('Programmatically added flipped field to playlists collection');
       }
 
+      // The Create Playlist form has always offered "Content Category" and
+      // "Description", but neither had a column to land in — PocketBase drops
+      // unknown fields silently, so both were thrown away on save and the form
+      // showed its defaults again the next time the playlist was opened.
+      if (!pFields.some((f: any) => f.name === 'category')) {
+        pFields.push({
+          id: 'textplaylistcategory',
+          name: 'category',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'Content category shown on the playlist form',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added category field to playlists collection');
+      }
+
+      if (!pFields.some((f: any) => f.name === 'description')) {
+        pFields.push({
+          id: 'textplaylistdesc',
+          name: 'description',
+          type: 'text',
+          required: false,
+          system: false,
+          help: 'Free-text notes about the playlist',
+          hidden: false,
+          presentable: false
+        });
+        playlistsUpdated = true;
+        console.log('Programmatically added description field to playlists collection');
+      }
+
       if (playlistsUpdated) {
         playlistsCollection.fields = pFields;
         await pb.collections.update('playlists', playlistsCollection);

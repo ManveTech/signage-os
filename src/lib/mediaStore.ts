@@ -39,6 +39,10 @@ export interface Playlist {
   scheduleStatus: 'Running' | 'Scheduled' | 'Paused';
   createdDate: string;
   createdBy: string; // client email or 'admin'
+  /** "Content Category" on the create form. Free text, not enforced anywhere. */
+  category?: string;
+  /** Free-text notes from the create form. */
+  description?: string;
   mediaIds: string[];
   assignedScreenIds: string[];
   allowCustomOrientation?: boolean;
