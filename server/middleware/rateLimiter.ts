@@ -139,15 +139,22 @@ export const authLimiter = rateLimit({
 });
 
 /**
- * Media upload rate limiter - 20 uploads per hour
+ * Media upload rate limiter - 200 uploads per hour.
+ *
+ * This counts per IP, so a whole office shares one allowance. At the old
+ * limit of 20, loading the images for a single campaign — or a few people
+ * working at once — ran out part-way through and the rest of the batch came
+ * back as a bare "could not upload". Total storage is still capped per client
+ * by their plan's storageLimit, and per file by MAX_*_UPLOAD_BYTES, so this
+ * only governs how fast files may arrive.
  */
 export const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    error: 'Upload limit exceeded. Please try again later.',
+    error: 'Too many uploads in the last hour. Wait a few minutes and upload the rest.',
     retryAfter: 3600
   },
   ...(isRedisReady() ? { store: new RedisStore('upload:') as any } : {})
