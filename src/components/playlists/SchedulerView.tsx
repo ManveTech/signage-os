@@ -6,24 +6,19 @@ import CustomSelect from '../CustomSelect';
 import { toast } from '../Toast';
 import { mediaStore, Playlist, Screen } from '../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../lib/syncHelper';
+import { istToEpoch, epochToIst, scheduleError } from '../../lib/scheduleTime';
 
 /**
  * Scheduled playlist switches: "at this date and time, switch this screen to
  * that playlist". One switch per screen; the server runs it on time (India
  * time — screens have no time zone of their own) even if nobody has the
  * dashboard open.
+ *
+ * The India-time helpers moved to lib/scheduleTime so the group and screen
+ * schedulers can reject past times the same way this page always has.
  */
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-const pad = (n: number) => String(n).padStart(2, '0');
-
-/** Epoch ms for a date + time entered as India time. */
-const istToEpoch = (date: string, time: string) => Date.parse(`${date}T${time.slice(0, 5)}:00+05:30`);
-/** Date/time fields (India time) for an epoch. */
-const epochToIst = (ms: number) => {
-  const d = new Date(ms + IST_OFFSET_MS);
-  return { date: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`, time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` };
-};
 
 function when(date: string, time: string) {
   const at = istToEpoch(date, time);
@@ -132,10 +127,7 @@ export default function SchedulerView({ userEmail, isAdmin = false }: { userEmai
   const formError = !editing ? ''
     : !editing.screenId ? 'Choose a screen'
     : !editing.playlistId ? 'Choose a playlist'
-    : !editing.date || !editing.time ? 'Pick a date and time'
-    : !Number.isFinite(editingWhen) ? 'That date isn\'t valid'
-    : editingWhen <= Date.now() ? 'That time has already passed'
-    : '';
+    : scheduleError(editing.date, editing.time);
   const replacing = editing?.isNew && editingScreen?.schedulePlaylist ? editingScreen : null;
 
   const save = async () => {

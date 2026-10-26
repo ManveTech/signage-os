@@ -14,6 +14,7 @@ import { pingScreen, unlinkScreen, pairTvToScreen, setScreenSleep } from '../../
 import SleepScheduleEditor from '../../../../components/screens/SleepScheduleEditor';
 import { sleepingLine, sleepDetail } from '../../../../lib/sleepSchedule';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
+import { scheduleError, todayIst } from '../../../../lib/scheduleTime';
 import { licensingStore } from '../../../../lib/licensingStore';
 import CustomSelect from '../../../../components/CustomSelect';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
@@ -469,6 +470,12 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
 
   const handleScheduleSave = () => {
     if (!scheduleScreen) return;
+    // The server's scheduler only looks forward, so a switch set in the past
+    // never runs — it just sits on the screen looking scheduled.
+    if (scheduleEnabled) {
+      const problem = scheduleError(scheduleScreen.scheduleDate, scheduleScreen.scheduleTime);
+      if (problem) { addToast(problem, 'error'); return; }
+    }
     const finalScreen = scheduleEnabled
       ? scheduleScreen
       : { ...scheduleScreen, schedulePlaylist: '', scheduleDate: '', scheduleTime: '' };
@@ -1323,7 +1330,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-[10px] font-medium text-gray-500 mb-1">Date</label>
-                            <input type="date" value={editScreen.scheduleDate || ''} onChange={e => setEditScreen(p => p && ({ ...p, scheduleDate: e.target.value }))} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-xl text-xs outline-none focus:border-blue-400 bg-white" />
+                            <input type="date" min={todayIst()} value={editScreen.scheduleDate || ''} onChange={e => setEditScreen(p => p && ({ ...p, scheduleDate: e.target.value }))} className="w-full px-2.5 py-1.5 border border-gray-200 rounded-xl text-xs outline-none focus:border-blue-400 bg-white" />
                           </div>
                           <div>
                             <label className="block text-[10px] font-medium text-gray-500 mb-1">Time</label>
@@ -1441,7 +1448,7 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                           <input
                             type="date"
                             value={scheduleScreen.scheduleDate || ''}
-                            min={new Date().toISOString().split('T')[0]}
+                            min={todayIst()}
                             onChange={e => setScheduleScreen(p => p && ({ ...p, scheduleDate: e.target.value }))}
                             className="w-full px-3 py-2 border border-indigo-200 rounded-xl text-sm outline-none focus:border-indigo-400 bg-white"
                           />
