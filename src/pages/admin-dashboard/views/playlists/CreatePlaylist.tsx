@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { checkFiles, uploadMediaFile } from '../../../../lib/mediaUpload';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
+import { makeOursTest } from '../../../../lib/adminOwnership';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
 import { toast } from '../../../../components/Toast';
@@ -30,6 +31,11 @@ interface Props {
 }
 
 export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigate, isMyChannel }: Props) {
+  // In My Channel the owner is "us" — any admin login, since the admins are
+  // one business — rather than whoever happens to be signed in. For a
+  // client's assets it stays that exact client. See lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
+  const targetOwns = (email?: string) => (isMyChannel ? isOurs(email) : email === targetUserEmail);
   // Target Client User Email for playlist creation
   const [targetUserEmail, setTargetUserEmail] = useState<string>(() => {
     if (isMyChannel) return userEmail;
@@ -150,7 +156,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
   const loadPlaylists = () => {
     const all = mediaStore.getPlaylists();
-    setExistingPlaylists(all.filter(p => p.createdBy === targetUserEmail));
+    setExistingPlaylists(all.filter(p => targetOwns(p.createdBy)));
   };
 
   const loadPlaylistForEditing = (id: string) => {
@@ -290,11 +296,11 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
   const loadMedia = () => {
     const all = mediaStore.getMedia();
-    const clientMedia = all.filter(m => m.uploadedBy === targetUserEmail);
+    const clientMedia = all.filter(m => targetOwns(m.uploadedBy));
     setMediaList(clientMedia);
 
     syncCollection('media_items', 'signageos_media').then(updatedMedia => {
-      const updatedClientMedia = updatedMedia.filter(m => m.uploadedBy === targetUserEmail);
+      const updatedClientMedia = updatedMedia.filter(m => targetOwns(m.uploadedBy));
       setMediaList(updatedClientMedia);
     });
 
@@ -627,7 +633,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
         onNavigate('my-playlists');
       } else {
         // Back to the list the playlist now shows up in.
-        onNavigate(targetUserEmail !== userEmail ? 'client-playlists' : 'playlists-all');
+        onNavigate(isOurs(targetUserEmail) ? 'playlists-all' : 'client-playlists');
       }
     }
   };

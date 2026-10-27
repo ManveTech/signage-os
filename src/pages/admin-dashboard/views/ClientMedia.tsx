@@ -7,6 +7,7 @@ import PlaylistUsage, { playlistsUsing } from '../../../components/media/Playlis
 import CustomSelect from '../../../components/CustomSelect';
 import { toast } from '../../../components/Toast';
 import { mediaStore, MediaItem, Playlist } from '../../../lib/mediaStore';
+import { makeOursTest } from '../../../lib/adminOwnership';
 import { licensingStore, License } from '../../../lib/licensingStore';
 import { syncCollection } from '../../../lib/syncHelper';
 
@@ -29,6 +30,7 @@ function youtubeId(url: string) {
  * used, and delete.
  */
 export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmail?: string } = {}) {
+  const isOurs = makeOursTest(userEmail);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
@@ -44,7 +46,9 @@ export default function ClientMedia({ userEmail = 'admin@demo.com' }: { userEmai
   const [bulkConfirm, setBulkConfirm] = useState(false);
 
   const load = () => {
-    setMedia(mediaStore.getMedia().filter(m => m.uploadedBy && m.uploadedBy !== userEmail && m.uploadedBy !== 'admin'));
+    // "Everyone except me" put another admin's uploads in with the
+    // clients' — the same mistake Client Screens made. See lib/adminOwnership.
+    setMedia(mediaStore.getMedia().filter(m => m.uploadedBy && !isOurs(m.uploadedBy) && m.uploadedBy !== 'admin'));
     setPlaylists(mediaStore.getPlaylists());
     setLicenses(licensingStore.getLicenses());
   };
