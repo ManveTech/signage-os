@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { scheduleLabel } from '../../../../components/screens/scheduleLabel';
 import { Plus, Monitor, RefreshCw, List, Users, Building, Edit, Trash2, X, Check, CheckCircle, AlertCircle, BookOpen, ChevronDown, UserPlus, UserMinus, Calendar, Eraser , Layers, ChevronRight, RotateCcw } from 'lucide-react';
 import { mediaStore } from '../../../../lib/mediaStore';
+import { makeOursTest } from '../../../../lib/adminOwnership';
 import { scheduleError, todayIst } from '../../../../lib/scheduleTime';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
@@ -37,6 +38,9 @@ type Toast = { id: number; message: string; type: 'success' | 'error' };
 const emptyGroup = (): Omit<ScreenGroup, 'id'> => ({ name: '', desc: '', color: 'blue', playlist: '', library: '', orgId: '', schedulePlaylist: '', scheduleDate: '', scheduleTime: '', volume: 80, clear_cache: false, force_sync: false });
 
 export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'admin@demo.com' }: { mode?: 'my' | 'all'; onNavigate?: (v: string) => void; userEmail?: string }) {
+  // Our own screens, counting every admin account — not just whoever is
+  // signed in. See lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
   const [groups, setGroups] = useState<ScreenGroup[]>(() => {
     const data = localStorage.getItem('signageos_groups');
     return data ? JSON.parse(data) : [];
@@ -79,20 +83,20 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
   // Playlists a group's screens may play: that client's own, or ones the
   // admin made. (The pickers listed every client's playlists.)
   const playlistsForGroup = (g?: { orgId?: string } | null) => {
-    if (mode === 'my' || !g?.orgId) return userPlaylists.filter(p => p.createdBy === userEmail);
+    if (mode === 'my' || !g?.orgId) return userPlaylists.filter(p => isOurs(p.createdBy));
     const org = organizations.find(o => o.id === g.orgId);
     const owners = new Set([org?.email, ...licensingStore.getLicenses().filter(l => l.assignedOrgId === g.orgId).map(l => l.assignedUserEmail)].filter(Boolean));
-    return userPlaylists.filter(p => owners.has(p.createdBy) || p.createdBy === userEmail);
+    return userPlaylists.filter(p => owners.has(p.createdBy) || isOurs(p.createdBy));
   };
 
   const filteredPlaylists = userPlaylists.filter(p => {
     if (mode === 'my') {
-      return p.createdBy === userEmail;
+      return isOurs(p.createdBy);
     } else {
       if (selectedOrgFilter) {
         const org = organizations.find(o => o.id === selectedOrgFilter);
         const orgEmail = org?.email;
-        return !orgEmail || p.createdBy === orgEmail || p.createdBy === userEmail;
+        return !orgEmail || p.createdBy === orgEmail || isOurs(p.createdBy);
       }
       return true;
     }
@@ -117,7 +121,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
   // TVs that belong to no account (waiting to pair, or released when their
   // client was removed) can't be grouped — All Screens lists them apart.
   const myScreens = mode === 'my'
-    ? screens.filter(s => s.assignedToUserEmail === userEmail)
+    ? screens.filter(s => isOurs(s.assignedToUserEmail))
     : screens.filter(s => !!s.assignedToUserEmail);
 
   const screensInGroup = (groupId: string) => myScreens.filter(s => s.groupId === groupId);
@@ -693,7 +697,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
           if (s.groupId || !s.assignedToUserEmail) return false;
           const sOrgId = getScreenOrgId(s);
           if (!group.orgId) {
-            return s.assignedToUserEmail === userEmail;
+            return isOurs(s.assignedToUserEmail);
           } else {
             return sOrgId === group.orgId;
           }

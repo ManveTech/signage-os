@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
 import { mediaStore } from '../../../lib/mediaStore';
+import { makeOursTest } from '../../../lib/adminOwnership';
 import { syncCollection } from '../../../lib/syncHelper';
 import { formatInr, isRenewalDue } from '../../../components/licenses/licenseStatus';
 
@@ -51,6 +52,9 @@ export default function Dashboard({
   userEmail = 'admin@demo.com',
   onNavigate = () => {}
 }: { userEmail?: string; onNavigate?: (view: string) => void } = {}) {
+  // Our own screens, counting every admin account — not just whoever is
+  // signed in. See lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
   const [, setRefreshTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showAllAttention, setShowAllAttention] = useState(false);
@@ -81,8 +85,8 @@ export default function Dashboard({
   const pairedScreens = screens.filter(s => s.status !== 'pairing' && s.status !== 'unlinked' && !!s.assignedToUserEmail);
   const notLinked = screens.filter(s => s.status === 'unlinked').length;
   const unpairedDevices = screens.length - pairedScreens.length;
-  const mine = pairedScreens.filter(s => s.assignedToUserEmail === userEmail);
-  const clients = pairedScreens.filter(s => s.assignedToUserEmail !== userEmail);
+  const mine = pairedScreens.filter(s => isOurs(s.assignedToUserEmail));
+  const clients = pairedScreens.filter(s => !isOurs(s.assignedToUserEmail));
   const clientAccounts = new Set(clients.map(s => s.assignedToUserEmail)).size;
 
   const totalScreens = pairedScreens.length;

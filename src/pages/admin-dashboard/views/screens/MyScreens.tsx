@@ -14,6 +14,7 @@ import { pingScreen, unlinkScreen, pairTvToScreen, setScreenSleep } from '../../
 import SleepScheduleEditor from '../../../../components/screens/SleepScheduleEditor';
 import { sleepingLine, sleepDetail } from '../../../../lib/sleepSchedule';
 import { mediaStore, Playlist } from '../../../../lib/mediaStore';
+import { makeOursTest } from '../../../../lib/adminOwnership';
 import { scheduleError, todayIst } from '../../../../lib/scheduleTime';
 import { licensingStore } from '../../../../lib/licensingStore';
 import CustomSelect from '../../../../components/CustomSelect';
@@ -165,15 +166,18 @@ type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' }
 type ViewMode = 'grid' | 'list';
 
 export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: { onNavigate: (v: string) => void; userEmail?: string }) {
+  // Our own screens, counting every admin account — not just whoever is
+  // signed in. See lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
   const [screens, setScreens] = useState<Screen[]>(() =>
-    mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail)
+    mediaStore.getScreens().filter(s => isOurs(s.assignedToUserEmail))
   );
   const [groups, setGroups] = useState<any[]>(() => {
     const data = localStorage.getItem('signageos_groups');
     return data ? JSON.parse(data) : [];
   });
   const [userPlaylists, setUserPlaylists] = useState<Playlist[]>(() =>
-    mediaStore.getPlaylists().filter(p => p.createdBy === userEmail)
+    mediaStore.getPlaylists().filter(p => isOurs(p.createdBy))
   );
   const [licenses, setLicenses] = useState(() => licensingStore.getLicenses());
   const [mediaList, setMediaList] = useState(() => mediaStore.getMedia());
@@ -214,7 +218,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const refreshData = () => {
       syncCollection('screens', 'signageos_screens').then(serverScreens => {
         if (serverScreens && serverScreens.length > 0) {
-          setScreens(serverScreens.filter(s => s.assignedToUserEmail === userEmail));
+          setScreens(serverScreens.filter(s => isOurs(s.assignedToUserEmail)));
           mediaStore.saveScreens(serverScreens);
         }
       });
@@ -224,7 +228,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const interval = setInterval(refreshData, 5000);
 
     const handleScreensUpdate = () => {
-      const local = mediaStore.getScreens().filter(s => s.assignedToUserEmail === userEmail);
+      const local = mediaStore.getScreens().filter(s => isOurs(s.assignedToUserEmail));
       setScreens(local);
     };
 
@@ -238,7 +242,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     });
     syncCollection('playlists', 'signageos_playlists').then(serverPlaylists => {
       if (serverPlaylists.length > 0) {
-        setUserPlaylists(serverPlaylists.filter(p => p.createdBy === userEmail));
+        setUserPlaylists(serverPlaylists.filter(p => isOurs(p.createdBy)));
       }
     });
     syncCollection('licenses', 'signageos_licenses').then(serverLicenses => {
@@ -263,7 +267,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     if (org) return org.name;
     const lic = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
     if (lic?.assignedOrgName) return lic.assignedOrgName;
-    if (screen.assignedToUserEmail === userEmail) return 'Admin Org';
+    if (isOurs(screen.assignedToUserEmail)) return 'Admin Org';
     return screen.assignedToUserEmail || 'None';
   };
 
@@ -286,7 +290,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const allScreens = mediaStore.getScreens();
     const updated = allScreens.filter(s => s.id !== deleteScreen.id);
     mediaStore.saveScreens(updated);
-    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    setScreens(updated.filter(s => isOurs(s.assignedToUserEmail)));
     pushToDatabase('screens', deleteScreen.id, null, 'DELETE');
     setDeleteScreen(null);
     addToast(`"${deleteScreen.name}" removed from your screens`);
@@ -296,7 +300,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const allScreens = mediaStore.getScreens();
     const updated = allScreens.filter(s => !selectedIds.includes(s.id));
     mediaStore.saveScreens(updated);
-    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    setScreens(updated.filter(s => isOurs(s.assignedToUserEmail)));
     selectedIds.forEach(id => pushToDatabase('screens', id, null, 'DELETE'));
     setSelectedIds([]);
     setIsSelectionMode(false);
@@ -321,7 +325,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const allScreens = mediaStore.getScreens();
     const updatedAll = allScreens.map(s => s.id === id ? { ...s, ...patch } as Screen : s);
     mediaStore.saveScreens(updatedAll);
-    setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+    setScreens(updatedAll.filter(s => isOurs(s.assignedToUserEmail)));
   };
 
   // Pause keeps the playlist assigned — the TV shows a "paused" screen until
@@ -416,7 +420,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const allScreens = mediaStore.getScreens();
     const updatedAll = allScreens.map(s => s.id === screen.id ? updatedScreen : s);
     mediaStore.saveScreens(updatedAll);
-    setScreens(updatedAll.filter(s => s.assignedToUserEmail === userEmail));
+    setScreens(updatedAll.filter(s => isOurs(s.assignedToUserEmail)));
     pushToDatabase('screens', screen.id, updatedScreen, 'PUT');
     addToast(`"${screen.name}" removed from group`);
   };
@@ -439,7 +443,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     }
     const updated = mediaStore.getScreens().map(s => s.id === editScreen.id ? finalScreen : s);
     mediaStore.saveScreens(updated);
-    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    setScreens(updated.filter(s => isOurs(s.assignedToUserEmail)));
     setEditScreen(null);
     addToast(`"${editScreen.name}" updated`);
   };
@@ -458,7 +462,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     const allScreens = mediaStore.getScreens();
     const updated = allScreens.map(s => s.id === finalScreen.id ? finalScreen : s);
     mediaStore.saveScreens(updated);
-    setScreens(updated.filter(s => s.assignedToUserEmail === userEmail));
+    setScreens(updated.filter(s => isOurs(s.assignedToUserEmail)));
     pushToDatabase('screens', finalScreen.id, finalScreen, 'PUT');
     setScheduleScreen(null);
     setScheduleEnabled(false);
@@ -469,7 +473,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     if (!assignScreen) return;
     mediaStore.assignPlaylistToScreen(assignScreen.id, playlist.id);
     const allScreens = mediaStore.getScreens();
-    setScreens(allScreens.filter(s => s.assignedToUserEmail === userEmail));
+    setScreens(allScreens.filter(s => isOurs(s.assignedToUserEmail)));
     fetch(`${API_BASE}/screens/${assignScreen.id}/assign-playlist`, {
       method: 'PUT',
       headers: {

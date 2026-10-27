@@ -9,6 +9,7 @@ import ConfirmDialog from '../screens/ConfirmDialog';
 import PlaylistUsage, { playlistsUsing } from './PlaylistUsage';
 import { toast } from '../Toast';
 import { mediaStore, MediaItem, Playlist } from '../../lib/mediaStore';
+import { makeOursTest } from '../../lib/adminOwnership';
 import { licensingStore } from '../../lib/licensingStore';
 import { syncCollection } from '../../lib/syncHelper';
 import { checkFiles, formatBytes, uploadMediaFile, FileCheck } from '../../lib/mediaUpload';
@@ -67,8 +68,14 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
   const fileInput = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
 
+  // "Mine" means this client for a client, and the business for an admin —
+  // every admin login is the same company, so one admin's uploads must not
+  // disappear from another's library. See lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
+  const owned = (email?: string) => (isAdmin ? isOurs(email) : email === userEmail);
+
   const load = () => {
-    setMedia(mediaStore.getMedia().filter(m => m.uploadedBy === userEmail));
+    setMedia(mediaStore.getMedia().filter(m => owned(m.uploadedBy)));
     setPlaylists(mediaStore.getPlaylists());
     // Same rule as the server: a client's storage is the sum of their active
     // plans. Admins aren't plan-limited.
@@ -96,7 +103,7 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
 
   // Only your own playlists can be added to — a client's playlist plays a
   // client's media, and this library is one person's uploads.
-  const myPlaylists = playlists.filter(p => p.createdBy === userEmail);
+  const myPlaylists = playlists.filter(p => owned(p.createdBy));
 
   const q = search.trim().toLowerCase();
   const filtered = media.filter(m =>

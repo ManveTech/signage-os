@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, ScanLine, CheckCircle2, AlertCircle, Monitor } from 'lucide-react';
 import { API_BASE } from '../../config';
 import { mediaStore } from '../../lib/mediaStore';
+import { makeOursTest } from '../../lib/adminOwnership';
 import { licensingStore, License } from '../../lib/licensingStore';
 import { pushToDatabase, syncCollection } from '../../lib/syncHelper';
 import { getAuthToken } from '../../lib/authStorage';
@@ -63,6 +64,8 @@ export default function AddScreenFlow({
   /** Admin, adding a client's screen from a TV's QR: "it's for my own channel". */
   onSwitchToMine?: () => void;
 }) {
+  // Our own records span every admin login — see lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
     name: '',
@@ -121,7 +124,7 @@ export default function AddScreenFlow({
     if (mode === 'admin-client') return !!g.orgId && (!form.organization || g.orgId === form.organization);
     return !license?.assignedOrgId || g.orgId === license.assignedOrgId;
   });
-  const availablePlaylists = playlists.filter(p => !ownerEmail || p.createdBy === ownerEmail || (mode !== 'client' && p.createdBy === userEmail));
+  const availablePlaylists = playlists.filter(p => !ownerEmail || p.createdBy === ownerEmail || (mode !== 'client' && isOurs(p.createdBy)));
   const selectedGroup = form.group ? groups.find(g => g.id === form.group) : null;
 
   const location = [form.city.trim(), form.state].filter(Boolean).join(', ');

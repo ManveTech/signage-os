@@ -3,6 +3,7 @@ import { Wifi, WifiOff, RefreshCw, AlertTriangle, Terminal, FileText, Trash2, Se
 import { API_BASE } from '../../config';
 import { getAuthToken } from '../../lib/authStorage';
 import { mediaStore } from '../../lib/mediaStore';
+import { makeOursTest } from '../../lib/adminOwnership';
 import { syncCollection } from '../../lib/syncHelper';
 import { toast } from '../Toast';
 import CustomSelect from '../CustomSelect';
@@ -100,6 +101,8 @@ export default function LogsView({
   role: 'admin' | 'user';
   onNavigate?: (view: string) => void;
 }) {
+  // Our own records span every admin login — see lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
   const [logs, setLogs] = useState<ScreenLog[]>([]);
   const [typeFilter, setTypeFilter] = useState('all');
   const [userFilter, setUserFilter] = useState('all');
@@ -345,7 +348,7 @@ export default function LogsView({
                 label: `Go to ${screen.name}`,
                 description: 'Open the screen list to check or act on it',
                 icon: <Monitor size={17} />,
-                onClick: () => onNavigate(role === 'admin' ? (screen.assignedToUserEmail === userEmail ? 'my-screens-list' : 'screens-all') : 'my-screens-list')
+                onClick: () => onNavigate(role === 'admin' ? (isOurs(screen.assignedToUserEmail) ? 'my-screens-list' : 'screens-all') : 'my-screens-list')
               }]
             }] : []}
           />

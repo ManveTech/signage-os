@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Search, ListVideo, Play, Pause, Edit, Trash2, ChevronRight, CheckCircle, Trash, Monitor, Layers, Building2, Check } from 'lucide-react';
 import { mediaStore, Playlist, Screen } from '../../lib/mediaStore';
+import { makeOursTest } from '../../lib/adminOwnership';
 import { syncCollection } from '../../lib/syncHelper';
 import ScreenDetailsSheet from '../screens/ScreenDetailsSheet';
 import ConfirmDialog from '../screens/ConfirmDialog';
@@ -55,9 +56,14 @@ export default function PlaylistsView({
   /** View id of the screen groups page. */
   groupsView?: string;
 }) {
+  // scope 'mine' is a client's own channel, or — for an admin — the
+  // business's, which spans every admin login rather than just the one signed
+  // in. 'clients' is its complement, so it has to use the same test or our own
+  // playlists would show up as a customer's. See lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
   const isOwn = (p: Playlist) => (scope === 'mine'
-    ? p.createdBy === userEmail
-    : !!p.createdBy && p.createdBy !== userEmail && p.createdBy !== 'admin');
+    ? isOurs(p.createdBy)
+    : !!p.createdBy && !isOurs(p.createdBy) && p.createdBy !== 'admin');
   const [playlists, setPlaylists] = useState<Playlist[]>(() => mediaStore.getPlaylists().filter(isOwn));
   const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens());
   const [groups, setGroups] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_groups') || '[]'));

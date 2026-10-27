@@ -10,6 +10,7 @@ import { pingScreen, unlinkScreen, pairTvToScreen, setScreenSleep } from '../../
 import SleepScheduleEditor from '../../../../components/screens/SleepScheduleEditor';
 import { sleepingLine, sleepDetail } from '../../../../lib/sleepSchedule';
 import { mediaStore } from '../../../../lib/mediaStore';
+import { makeOursTest } from '../../../../lib/adminOwnership';
 import { pushToDatabase, syncCollection } from '../../../../lib/syncHelper';
 import CustomSelect from '../../../../components/CustomSelect';
 import ScreenSubNav from '../../../../components/ScreenSubNav';
@@ -81,6 +82,9 @@ const groupColorMap: Record<string, { bg: string; text: string; border: string }
 type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' };
 
 export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }: { onNavigate: (v: string) => void; userEmail?: string }) {
+  // Our own screens, counting every admin account — not just whoever is
+  // signed in. See lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
   const [screens, setScreens] = useState<Screen[]>(() => mediaStore.getScreens());
   const [groups, setGroups] = useState<any[]>(() => {
     const data = localStorage.getItem('signageos_groups');
@@ -141,7 +145,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
     if (org) return org.name;
     const lic = licenses.find(l => l.assignedUserEmail === screen.assignedToUserEmail);
     if (lic?.assignedOrgName) return lic.assignedOrgName;
-    if (screen.assignedToUserEmail === userEmail) return 'Admin Org';
+    if (isOurs(screen.assignedToUserEmail)) return 'Admin Org';
     return screen.assignedToUserEmail || 'None';
   };
 
@@ -348,7 +352,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
     const gp = groups.find(g => g.id === editScreen.groupId);
     // The group's playlist, looked up among those this screen's owner can use
     // (by name across every account, it could pick another client's).
-    const usable = mediaStore.getPlaylists().filter(p => !p.createdBy || p.createdBy === editScreen.assignedToUserEmail || p.createdBy === userEmail);
+    const usable = mediaStore.getPlaylists().filter(p => !p.createdBy || p.createdBy === editScreen.assignedToUserEmail || isOurs(p.createdBy));
     const groupPlaylist = gp?.playlist ? usable.find(p => p.name === gp.playlist) : undefined;
     const finalScreen = {
       ...editScreen,
@@ -826,7 +830,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
                         return '';
                       })();
                       const filteredGroups = groups.filter(g => {
-                        if (editScreen.assignedToUserEmail === userEmail) {
+                        if (isOurs(editScreen.assignedToUserEmail)) {
                           return !g.orgId;
                         } else {
                           return g.orgId === screenOrgId;
@@ -849,7 +853,7 @@ export default function AllScreens({ onNavigate, userEmail = 'admin@demo.com' }:
                 // A group with a playlist decides it; otherwise the screen's own.
                 const gp = editScreen.groupId ? groups.find(g => g.id === editScreen.groupId) : undefined;
                 if (gp?.playlist) return null;
-                const options = mediaStore.getPlaylists().filter(p => !p.createdBy || p.createdBy === editScreen.assignedToUserEmail || p.createdBy === userEmail);
+                const options = mediaStore.getPlaylists().filter(p => !p.createdBy || p.createdBy === editScreen.assignedToUserEmail || isOurs(p.createdBy));
                 return (
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1.5">Playlist</label>

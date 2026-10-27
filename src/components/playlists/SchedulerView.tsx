@@ -4,6 +4,7 @@ import ScreenDetailsSheet from '../screens/ScreenDetailsSheet';
 import ConfirmDialog from '../screens/ConfirmDialog';
 import CustomSelect from '../CustomSelect';
 import { toast } from '../Toast';
+import { makeOursTest } from '../../lib/adminOwnership';
 import { mediaStore, Playlist, Screen } from '../../lib/mediaStore';
 import { pushToDatabase, syncCollection } from '../../lib/syncHelper';
 import { istToEpoch, epochToIst, scheduleError } from '../../lib/scheduleTime';
@@ -56,6 +57,8 @@ function quickPicks() {
 const isPlayable = (s: Screen) => s.status !== 'pairing' && s.status !== 'unlinked';
 
 export default function SchedulerView({ userEmail, isAdmin = false }: { userEmail: string; isAdmin?: boolean }) {
+  // Our own records span every admin login — see lib/adminOwnership.
+  const isOurs = makeOursTest(userEmail);
   const [screens, setScreens] = useState<Screen[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [orgs, setOrgs] = useState<any[]>(() => JSON.parse(localStorage.getItem('signageos_organizations') || '[]'));
@@ -93,7 +96,7 @@ export default function SchedulerView({ userEmail, isAdmin = false }: { userEmai
   const playlistsFor = (screen?: Screen) => {
     if (!screen) return [];
     const owner = screen.assignedToUserEmail || userEmail;
-    return playlists.filter(p => p.createdBy === owner || (isAdmin && (p.createdBy === userEmail || p.createdBy === 'admin')));
+    return playlists.filter(p => p.createdBy === owner || (isAdmin && (isOurs(p.createdBy) || p.createdBy === 'admin')));
   };
 
   const scheduled = useMemo(() => screens
