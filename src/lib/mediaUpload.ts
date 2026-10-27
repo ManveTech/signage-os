@@ -1,5 +1,6 @@
 import { mediaStore, MediaItem } from './mediaStore';
 import { maxUploadBytesFor } from './uploadLimits';
+import { requestUploadUrl, putToStorage, DirectUploadUnavailable } from './directUpload';
 
 /**
  * The one place that turns a picked file into a media item — used by the
@@ -162,17 +163,31 @@ async function optimiseImage(file: File): Promise<{ blob: Blob; width: number; h
   }
 }
 
-/** Uploads one already-checked file for `owner`. Throws with a readable message on failure. */
-export async function uploadMediaFile(file: File, owner: string, title?: string): Promise<MediaItem> {
+/**
+ * Uploads one already-checked file for `owner`.
+ *
+ * Tries object storage directly first — the browser PUTs the file itself and
+ * nothing is ever base64-encoded, which is what made large videos fail. Falls
+ * back to posting the bytes through the API when storage isn't set up for it,
+ * or when the server is older than that endpoint.
+ *
+ * Throws with a readable message on failure.
+ */
+export async function uploadMediaFile(
+  file: File,
+  owner: string,
+  title?: string,
+  onProgress?: (fraction: number) => void
+): Promise<MediaItem> {
   const isVideo = mimeOf(file).startsWith('video/');
   const cleanTitle = (title || '').trim() || file.name.replace(/\.[^/.]+$/, '');
   const expiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   if (isVideo) {
-    const [info, dataUrl] = await Promise.all([videoInfo(file), readAsDataUrl(file)]);
-    return mediaStore.uploadMedia({
+    const info = await videoInfo(file);
+    const common = {
       title: cleanTitle,
-      type: 'video',
+      type: 'video' as const,
       duration: info.duration,
       resolution: `${info.width}x${info.height}`,
       fileSize: formatBytes(file.size),
@@ -186,16 +201,21 @@ export async function uploadMediaFile(file: File, owner: string, title?: string)
       width: info.width,
       height: info.height,
       mimeType: mimeOf(file),
-      fileData: dataUrl.split(',')[1],
       fileName: file.name
-    });
+    };
+
+    const key = await sendDirect(file, mimeOf(file), owner, onProgress);
+    if (key) return mediaStore.uploadMedia({ ...common, r2Key: key });
+
+    // Fallback: the whole file as base64 in a JSON body.
+    const dataUrl = await readAsDataUrl(file);
+    return mediaStore.uploadMedia({ ...common, fileData: dataUrl.split(',')[1] });
   }
 
   const img = await optimiseImage(file);
-  const dataUrl = await readAsDataUrl(img.blob);
-  return mediaStore.uploadMedia({
+  const common = {
     title: cleanTitle,
-    type: 'image',
+    type: 'image' as const,
     duration: 10,
     // 0 when the browser couldn't decode it to measure — better blank than "0 × 0".
     resolution: img.width && img.height ? `${img.width}x${img.height}` : '',
@@ -204,11 +224,50 @@ export async function uploadMediaFile(file: File, owner: string, title?: string)
     uploadedBy: owner,
     expiryDate,
     tags: ['uploaded', 'image'],
-    thumbnail: dataUrl,
     width: img.width,
     height: img.height,
     mimeType: img.mimeType,
-    fileData: dataUrl.split(',')[1],
     fileName: img.fileName
-  });
+  };
+
+  const key = await sendDirect(img.blob, img.mimeType, owner, onProgress, img.fileName);
+  if (key) {
+    // No data URL on this path, and none needed: the server points the
+    // thumbnail at the stored file.
+    return mediaStore.uploadMedia({ ...common, thumbnail: '', r2Key: key });
+  }
+
+  const dataUrl = await readAsDataUrl(img.blob);
+  return mediaStore.uploadMedia({ ...common, thumbnail: dataUrl, fileData: dataUrl.split(',')[1] });
+}
+
+/**
+ * Put the bytes in storage and return the key, or null to use the old path.
+ *
+ * Only "storage isn't available" returns null. A real failure — refused,
+ * connection lost, over quota — is thrown, because retrying a 200 MB video
+ * through the base64 path would fail far more slowly and for a reason that
+ * has nothing to do with what actually went wrong.
+ */
+async function sendDirect(
+  blob: Blob,
+  mimeType: string,
+  owner: string,
+  onProgress?: (fraction: number) => void,
+  fileName?: string
+): Promise<string | null> {
+  let target;
+  try {
+    target = await requestUploadUrl({
+      fileName: fileName || (blob as File).name || 'upload',
+      mimeType,
+      fileSizeBytes: blob.size,
+      uploadedBy: owner
+    });
+  } catch (err) {
+    if (err instanceof DirectUploadUnavailable) return null;
+    throw err;
+  }
+  await putToStorage(target, blob, onProgress);
+  return target.key;
 }

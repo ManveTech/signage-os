@@ -1,5 +1,5 @@
 import { pb, ensurePBAuth } from '../db';
-import { uploadToR2, deleteFromR2, getKeyFromUrl, isR2Enabled } from '../r2';
+import { uploadToR2, deleteFromR2, getKeyFromUrl, isR2Enabled, presignR2Upload, headR2Object, publicUrlForKey } from '../r2';
 import crypto from 'crypto';
 import { MAX_VIDEO_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES } from '../uploadLimits';
 
@@ -34,6 +34,90 @@ function buildR2Key(fileName: string): string {
   return `media/${year}/${month}/${uuid}/${safe}`;
 }
 
+/**
+ * Bytes this uploader may still store, or null when they aren't capped.
+ *
+ * Pulled out of uploadMediaItem so the presign endpoint can turn an upload
+ * down before the file is sent, rather than after it has already been put in
+ * the bucket. Admins aren't plan-limited; nor is anyone with no active plan.
+ */
+async function remainingQuotaBytes(req: any): Promise<number | null> {
+  if (isAdminUser(req.user)) return null;
+  const uploaderEmail = req.body.uploadedBy;
+  const licensesResult = await pb.collection('licenses').getList(1, 100, {
+    filter: pb.filter('assignedUserEmail = {:email} && status = "active"', { email: uploaderEmail })
+  }).catch(() => ({ items: [] as any[] }));
+
+  const licenseItems: any[] = licensesResult.items;
+  if (licenseItems.length === 0) return null;
+
+  const storageLimitBytes = licenseItems.reduce((sum: number, lic: any) => sum + (lic.storageLimit || 0), 0) * 1024 * 1024 * 1024;
+  const existingItems: any[] = await pb.collection('media_items').getFullList({
+    filter: pb.filter('uploadedBy = {:email}', { email: uploaderEmail }),
+    fields: 'fileSizeBytes'
+  }).catch(() => [] as any[]);
+  const currentUsageBytes = existingItems.reduce((sum: number, item: any) => sum + (item.fileSizeBytes || 0), 0);
+  return storageLimitBytes - currentUsageBytes;
+}
+
+const quotaMessage = (remaining: number) =>
+  `Storage limit reached. You have ${(Math.max(0, remaining) / (1024 * 1024 * 1024)).toFixed(2)}GB left on your plan.`;
+
+/**
+ * Hand back a short-lived URL the browser can PUT a file straight to R2.
+ *
+ * The alternative — base64 inside a JSON body — needed the whole file in
+ * memory several times over and fell apart on a phone somewhere above 100 MB.
+ * Here the bytes go browser → R2 and this server only writes the record
+ * afterwards, so a 300 MB video costs it nothing but two small requests.
+ *
+ * Everything checkable before the bytes exist is checked here; the real size
+ * is confirmed from the bucket in uploadMediaItem, because a client-reported
+ * length can't be trusted and the signature can't pin it.
+ */
+export async function createMediaUploadUrl(req: any, res: any) {
+  try {
+    const authenticated = await ensurePBAuth();
+    if (!authenticated) {
+      return res.status(503).json({ error: 'PocketBase admin authentication failed' });
+    }
+    if (!isAdminUser(req.user) || !req.body.uploadedBy) {
+      req.body.uploadedBy = req.user?.email;
+    }
+
+    // Without a bucket there is nowhere to PUT to. The dashboard reads this
+    // code and falls back to sending the file through this server instead.
+    if (!(await isR2Enabled())) {
+      return res.status(409).json({ error: 'Direct upload is not available', code: 'direct_upload_unavailable' });
+    }
+
+    const { fileName, mimeType } = req.body;
+    const fileSizeBytes = Number(req.body.fileSizeBytes) || 0;
+    if (!fileName) return res.status(400).json({ error: 'fileName is required' });
+    if (!ALLOWED_MEDIA_MIME_TYPES.has(mimeType)) {
+      return res.status(400).json({ error: `Unsupported file type: ${mimeType || 'unknown'}. Only image and video files are allowed.` });
+    }
+
+    const maxBytes = mimeType.startsWith('video/') ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+    if (fileSizeBytes > maxBytes) {
+      const limitMB = maxBytes / (1024 * 1024);
+      return res.status(413).json({ error: `File too large. Maximum allowed size is ${limitMB}MB for ${mimeType.startsWith('video/') ? 'videos' : 'images'}.` });
+    }
+
+    const remaining = await remainingQuotaBytes(req);
+    if (remaining !== null && fileSizeBytes > remaining) {
+      return res.status(413).json({ error: quotaMessage(remaining) });
+    }
+
+    const key = buildR2Key(fileName);
+    const uploadUrl = await presignR2Upload(key, mimeType);
+    res.json({ uploadUrl, key, mimeType, expiresIn: 900 });
+  } catch (error: any) {
+    console.error('Error creating upload URL:', error);
+    res.status(500).json({ error: error.message || 'Could not start the upload' });
+  }
+}
+
 export async function uploadMediaItem(req: any, res: any) {
   try {
     const authenticated = await ensurePBAuth();
@@ -48,7 +132,17 @@ export async function uploadMediaItem(req: any, res: any) {
       req.body.uploadedBy = req.user?.email;
     }
 
-    const { fileData, fileName, mimeType } = req.body;
+    const { fileData, fileName, mimeType, r2Key } = req.body;
+
+    // The file is already in the bucket — the browser PUT it there with a
+    // presigned URL and we only have to record it. Everything below this
+    // branch is the older base64-in-JSON path, which has to stay: a phone app
+    // bundles its own copy of the dashboard, so installed versions go on
+    // using it until they are updated.
+    if (r2Key && !fileData) {
+      return finishDirectUpload(req, res, String(r2Key));
+    }
+
     if (!fileData || !fileName) {
       return res.status(400).json({ error: 'fileData and fileName are required for image/video upload' });
     }
@@ -71,32 +165,12 @@ export async function uploadMediaItem(req: any, res: any) {
       return res.status(413).json({ error: `File too large. Maximum allowed size is ${limitMB}MB for ${mimeType?.startsWith('video/') ? 'videos' : 'images'}.` });
     }
 
-    // Enforce the license's storage plan — previously this only capped a
-    // single file's size, so a customer could upload unlimited files
-    // indefinitely regardless of their plan's storageLimit (the dashboard
-    // only ever compared usage to the limit for its own progress-bar
-    // display, never to block an upload). Admins aren't plan-limited.
-    if (!isAdminUser(req.user)) {
-      const uploaderEmail = req.body.uploadedBy;
-      const licensesResult = await pb.collection('licenses').getList(1, 100, {
-        filter: pb.filter('assignedUserEmail = {:email} && status = "active"', { email: uploaderEmail })
-      }).catch(() => ({ items: [] as any[] }));
-
-      const licenseItems: any[] = licensesResult.items;
-      if (licenseItems.length > 0) {
-        const storageLimitBytes = licenseItems.reduce((sum: number, lic: any) => sum + (lic.storageLimit || 0), 0) * 1024 * 1024 * 1024;
-        const existingItems: any[] = await pb.collection('media_items').getFullList({
-          filter: pb.filter('uploadedBy = {:email}', { email: uploaderEmail }),
-          fields: 'fileSizeBytes'
-        }).catch(() => [] as any[]);
-        const currentUsageBytes = existingItems.reduce((sum: number, item: any) => sum + (item.fileSizeBytes || 0), 0);
-
-        if (currentUsageBytes + fileBuffer.length > storageLimitBytes) {
-          const limitGB = (storageLimitBytes / (1024 * 1024 * 1024)).toFixed(1);
-          const usedGB = (currentUsageBytes / (1024 * 1024 * 1024)).toFixed(2);
-          return res.status(413).json({ error: `Storage limit reached. Your plan allows ${limitGB}GB and you've already used ${usedGB}GB.` });
-        }
-      }
+    // Enforce the license's storage plan — a per-file size cap alone let a
+    // customer upload unlimited files regardless of their plan's
+    // storageLimit. Shared with the presigned path via remainingQuotaBytes.
+    const remaining = await remainingQuotaBytes(req);
+    if (remaining !== null && fileBuffer.length > remaining) {
+      return res.status(413).json({ error: quotaMessage(remaining) });
     }
 
     // Calculate SHA-256 checksum
@@ -177,6 +251,76 @@ export async function uploadMediaItem(req: any, res: any) {
     console.error('Error in uploadMediaItem:', error);
     res.status(500).json({ error: error.message || 'Error uploading media item' });
   }
+}
+
+/**
+ * Writes the record for a file the browser already PUT to R2.
+ *
+ * The size and type are read back off the bucket rather than taken from the
+ * request: this server never saw the bytes, so the request body is the one
+ * thing here that a caller controls completely. An object that breaks a limit
+ * is deleted again — otherwise a rejected upload would stay in the bucket,
+ * billable and orphaned, with no record pointing at it.
+ */
+async function finishDirectUpload(req: any, res: any, key: string) {
+  const head = await headR2Object(key);
+  if (!head) {
+    return res.status(400).json({ error: "That upload didn't arrive — try again." });
+  }
+
+  const discard = async (status: number, error: string) => {
+    await deleteFromR2(key).catch(err => console.warn(`[R2] Could not remove rejected upload ${key}:`, err?.message));
+    return res.status(status).json({ error });
+  };
+
+  // Read the type off the stored object, and treat this check as load-bearing
+  // rather than a second opinion: R2 does not enforce the Content-Type the URL
+  // was signed with (verified — a PUT declaring text/html against a URL signed
+  // for video/mp4 is accepted and stored as text/html). So presigning for an
+  // allowed type does not guarantee an allowed type arrived. Anything that
+  // would be served back as something other than an image or a video is
+  // rejected here and deleted again.
+  const mimeType = head.mimeType;
+  if (!ALLOWED_MEDIA_MIME_TYPES.has(mimeType)) {
+    return discard(400, `Unsupported file type: ${mimeType || 'unknown'}. Only image and video files are allowed.`);
+  }
+
+  const maxBytes = mimeType.startsWith('video/') ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+  if (head.size > maxBytes) {
+    const limitMB = maxBytes / (1024 * 1024);
+    return discard(413, `File too large. Maximum allowed size is ${limitMB}MB for ${mimeType.startsWith('video/') ? 'videos' : 'images'}.`);
+  }
+
+  const remaining = await remainingQuotaBytes(req);
+  if (remaining !== null && head.size > remaining) {
+    return discard(413, quotaMessage(remaining));
+  }
+
+  const fileUrl = await publicUrlForKey(key);
+  const recordData: Record<string, any> = {
+    thumbnail: fileUrl,
+    fileUrl,
+    mimeType,
+    // R2's ETag for a single-part PUT is the MD5 of the body. It isn't the
+    // SHA-256 the base64 path stores, but it is a real integrity value for a
+    // file this server never had in hand.
+    checksum: head.etag,
+    width: req.body.width || 0,
+    height: req.body.height || 0,
+    fileSizeBytes: head.size,
+  };
+
+  const fields = ['title', 'type', 'duration', 'resolution', 'fileSize', 'uploadedBy', 'expiryDate', 'status', 'tags'];
+  fields.forEach(field => {
+    if (req.body[field] !== undefined) recordData[field] = req.body[field];
+  });
+  if (req.body.id && /^[a-z0-9]{15}$/.test(req.body.id)) {
+    recordData['id'] = req.body.id;
+  }
+
+  const record = await pb.collection('media_items').create(recordData);
+  console.log(`Direct upload recorded: ${record.id} (${head.size} bytes at ${key})`);
+  res.status(201).json(record);
 }
 
 /** Deletes a media item's file from R2 (when it's there) and then the record. */

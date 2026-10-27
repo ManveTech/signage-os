@@ -19,7 +19,12 @@ const TYPES: { key: string; label: string; icon: typeof Film }[] = [
   { key: 'video', label: 'Videos', icon: Film },
 ];
 
-type UploadRow = FileCheck & { state: 'waiting' | 'uploading' | 'done' | 'failed'; message?: string };
+type UploadRow = FileCheck & {
+  state: 'waiting' | 'uploading' | 'done' | 'failed';
+  message?: string;
+  /** 0-1 while uploading. Only the direct-to-storage path reports it. */
+  progress?: number;
+};
 
 const formatDate = (d?: string) => {
   if (!d) return '';
@@ -128,7 +133,9 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
     for (const row of queue) {
       setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'uploading' } : r)));
       try {
-        uploaded.push(await uploadMediaFile(row.file, userEmail));
+        uploaded.push(await uploadMediaFile(row.file, userEmail, undefined, fraction => {
+          setRows(prev => prev.map(r => (r.file === row.file ? { ...r, progress: fraction } : r)));
+        }));
         ok++;
         setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'done' } : r)));
         load();
@@ -450,7 +457,9 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm text-slate-900 truncate">{r.file.name}</span>
                       <span className={`block text-xs ${r.error || r.state === 'failed' ? 'text-rose-600' : 'text-slate-500 truncate'}`}>
-                        {r.error || r.message || (r.state === 'uploading' ? 'Uploading…' : r.state === 'done' ? 'Uploaded' : formatBytes(r.file.size))}
+                        {r.error || r.message || (r.state === 'uploading'
+                          ? (r.progress !== undefined ? `Uploading ${Math.round(r.progress * 100)}%` : 'Uploading…')
+                          : r.state === 'done' ? 'Uploaded' : formatBytes(r.file.size))}
                       </span>
                     </span>
                     {r.state === 'waiting' && !uploading && (

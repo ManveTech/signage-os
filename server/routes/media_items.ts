@@ -1,5 +1,5 @@
 import express from 'express';
-import { uploadMediaItem, deleteMediaItem } from '../controllers/media_items';
+import { uploadMediaItem, deleteMediaItem, createMediaUploadUrl } from '../controllers/media_items';
 import { createCrudRouter } from '../controllers/crud';
 import { uploadLimiter } from '../middleware/rateLimiter';
 
@@ -8,6 +8,12 @@ const router = express.Router();
 // Custom upload interceptor — uploadLimiter existed in rateLimiter.ts (20/hour)
 // but was never actually wired to this route, so uploads only ever got the
 // generic 100-req/min API limit instead of the intended per-hour cap.
+// Start a direct-to-R2 upload: the browser PUTs the file to the URL this
+// returns, so the bytes never pass through this server. Counts against the
+// same hourly allowance as a finished upload, since it's the step that lets
+// one happen.
+router.post('/upload-url', uploadLimiter, createMediaUploadUrl);
+
 router.post('/', uploadLimiter, uploadMediaItem);
 
 // Custom delete interceptor (cleans up R2 object before removing PocketBase record)

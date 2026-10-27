@@ -28,6 +28,8 @@ export interface MediaItem {
   mimeType?: string;
   fileData?: string;
   fileName?: string;
+  /** Object-storage key when the browser uploaded straight to storage. */
+  r2Key?: string;
 }
 
 export interface Playlist {
