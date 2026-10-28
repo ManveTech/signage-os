@@ -4,7 +4,7 @@ import {
   SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_SENDER_EMAIL, SMTP_SENDER_NAME
 } from './config';
 
-export type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'razorpay' | 'business';
+export type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'razorpay' | 'business' | 'turn';
 
 export interface IntegrationRecord {
   id: string;
@@ -181,6 +181,29 @@ export async function getRazorpayConfig(): Promise<RazorpayConfig> {
   const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
   const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
   return { enabled: !!(keyId && keySecret), keyId, keySecret, webhookSecret: (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim() };
+}
+
+export interface TurnConfig {
+  enabled: boolean;
+  /** Cloudflare Realtime TURN key: its id and API token. */
+  keyId: string;
+  apiToken: string;
+}
+
+/**
+ * Video-call relay (TURN). Saved in Integrations, or from the environment
+ * (CLOUDFLARE_TURN_KEY_ID / CLOUDFLARE_TURN_API_TOKEN) when nothing is saved.
+ */
+export async function getTurnConfig(): Promise<TurnConfig> {
+  const rec = await getIntegration('turn');
+  if (rec && rec.enabled) {
+    const keyId = String(rec.config.keyId || '').trim();
+    const apiToken = String(rec.config.apiToken || '').trim();
+    return { enabled: !!(keyId && apiToken), keyId, apiToken };
+  }
+  const keyId = (process.env.CLOUDFLARE_TURN_KEY_ID || '').trim();
+  const apiToken = (process.env.CLOUDFLARE_TURN_API_TOKEN || '').trim();
+  return { enabled: !!(keyId && apiToken), keyId, apiToken };
 }
 
 // Upserts the config for a given integration type, preserving any secret

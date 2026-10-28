@@ -8,8 +8,16 @@ import {
   removeScreenFromConference,
   updateConferenceSettings
 } from '../controllers/videoConference';
+import { getIceServers, getIceTransportPolicy } from '../services/iceServers';
 
 const router = express.Router();
+
+// GET /api/v1/video-conference/ice-servers — STUN/TURN servers for the
+// caller's side of a call (the TV gets the same list with the call itself).
+// Before /:conferenceId, which would otherwise swallow this path.
+router.get('/ice-servers', async (_req, res) => {
+  res.json({ iceServers: await getIceServers(), iceTransportPolicy: getIceTransportPolicy() });
+});
 
 // POST /api/v1/video-conference/initiate
 router.post('/initiate', initiateConference);

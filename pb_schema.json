@@ -4184,7 +4184,8 @@
           "smtp",
           "oauth_google",
           "business",
-          "razorpay"
+          "razorpay",
+          "turn"
         ]
       },
       {

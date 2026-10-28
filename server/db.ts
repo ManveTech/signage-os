@@ -1573,6 +1573,12 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         await pb.collections.update('integrations', { fields: integ.fields } as any);
         console.log('Added razorpay to the integrations types');
       }
+      // Video-call relay (TURN) credentials — see services/iceServers.ts.
+      if (typeField && Array.isArray(typeField.values) && !typeField.values.includes('turn')) {
+        typeField.values = [...typeField.values, 'turn'];
+        await pb.collections.update('integrations', { fields: integ.fields } as any);
+        console.log('Added turn to the integrations types');
+      }
     } catch (integErr: any) {
       console.warn('Failed to add razorpay to integrations:', integErr.message);
     }

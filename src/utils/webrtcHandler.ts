@@ -4,7 +4,8 @@
  */
 
 export interface WebRTCConfig {
-  iceServers?: Array<{ urls: string | string[] }>;
+  iceServers?: RTCIceServer[];
+  iceTransportPolicy?: RTCIceTransportPolicy;
   videoBitrate?: number;
   audioBitrate?: number;
 }
@@ -53,7 +54,8 @@ export class WebRTCHandler {
     if (this.peerConnection) return this.peerConnection;
 
     this.peerConnection = new RTCPeerConnection({
-      iceServers: this.config.iceServers
+      iceServers: this.config.iceServers,
+      iceTransportPolicy: this.config.iceTransportPolicy || 'all'
     });
 
     // Log ICE connection state

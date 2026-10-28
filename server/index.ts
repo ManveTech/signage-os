@@ -33,6 +33,7 @@ import './services/logCleanup';
 import { ensureRedisRunning, isRedisReady, redis } from './redis';
 import { apiLimiter } from './middleware/rateLimiter';
 import { realClientIp } from './middleware/realClientIp';
+import { getIceServers, getIceTransportPolicy } from './services/iceServers';
 import { getActiveConference, setActiveConference, clearActiveConference, clearActiveConferencesForConference } from './videoConferenceState';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { verifySession } from './middleware/auth';
@@ -361,7 +362,8 @@ io.on('connection', (socket) => {
     const active = await getActiveConference(displayId);
     if (active) {
       console.log(`[Socket.io] Display ${displayId} reconnected mid-conference ${active.conferenceId}, replaying conference:initiated`);
-      socket.emit('conference:initiated', active);
+      // Fresh relay credentials: the stored ones may be hours old.
+      socket.emit('conference:initiated', { ...active, iceServers: await getIceServers(), iceTransportPolicy: getIceTransportPolicy() });
       if (active.conferenceId) {
         io.to(`conference-${active.conferenceId}`).emit('screen:rejoined', {
           screenId: displayId,
@@ -448,7 +450,9 @@ io.on('connection', (socket) => {
     const screenIds = requested.filter(id => targets.includes(id));
     console.log(`[Socket.io] Conference ${conferenceId} initiated for screens:`, screenIds);
 
-    const payload = { ...data, targetScreenIds: screenIds };
+    // The TV gets the relay (TURN) servers with the call, so they never have
+    // to be built into the app — see services/iceServers.ts.
+    const payload = { ...data, targetScreenIds: screenIds, iceServers: await getIceServers(), iceTransportPolicy: getIceTransportPolicy() };
     for (const screenId of screenIds) {
       io.to(`screen-${screenId}`).emit('conference:initiated', payload);
       await setActiveConference(screenId, payload);

@@ -1,5 +1,5 @@
 import { useEffect, useState, ReactNode } from 'react';
-import { Cloud, Mail, KeyRound, CheckCircle2, XCircle, Loader2, ChevronRight, Send, PlugZap, Eye, EyeOff, CreditCard, Copy, Check } from 'lucide-react';
+import { Cloud, Mail, KeyRound, CheckCircle2, XCircle, Loader2, ChevronRight, Send, PlugZap, Eye, EyeOff, CreditCard, Copy, Check, Video } from 'lucide-react';
 import { API_BASE } from '../../../config';
 import { getHeaders } from '../../../lib/syncHelper';
 import ScreenDetailsSheet from '../../../components/screens/ScreenDetailsSheet';
@@ -7,7 +7,7 @@ import { toast } from '../../../components/Toast';
 import BackupsCard from '../../../components/settings/BackupsCard';
 import MediaMovePanel from '../../../components/settings/MediaMovePanel';
 
-type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'razorpay';
+type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'razorpay' | 'turn';
 type Source = 'dashboard' | 'environment' | 'off';
 
 interface IntegrationState {
@@ -22,7 +22,7 @@ interface IntegrationState {
 
 const SECRET_MASK = '__SECRET_UNCHANGED__';
 const SECRET_FIELDS: Record<IntegrationType, string[]> = {
-  cloudflare: ['secretAccessKey'], smtp: ['password'], oauth_google: ['clientSecret'], razorpay: ['keySecret', 'webhookSecret'],
+  cloudflare: ['secretAccessKey'], smtp: ['password'], oauth_google: ['clientSecret'], razorpay: ['keySecret', 'webhookSecret'], turn: ['apiToken'],
 };
 
 type FieldDef = { key: string; label: string; type?: 'text' | 'password' | 'number'; placeholder?: string; help?: string; wide?: boolean };
@@ -50,6 +50,10 @@ const FIELDS: Record<IntegrationType, FieldDef[]> = {
     { key: 'keySecret', label: 'Key secret', type: 'password', wide: true },
     { key: 'webhookSecret', label: 'Webhook secret', type: 'password', help: 'The secret you set when adding the webhook below in Razorpay. Without it, a payment is only confirmed if the customer stays on the page.', wide: true },
   ],
+  turn: [
+    { key: 'keyId', label: 'TURN key ID', placeholder: 'e.g. 3f2c…', help: 'Cloudflare dashboard → Realtime → TURN Server → Create TURN key. Copy the key ID shown.', wide: true },
+    { key: 'apiToken', label: 'API token', type: 'password', help: 'Shown once when the key is created, next to the key ID.', wide: true },
+  ],
   oauth_google: [
     { key: 'clientId', label: 'Client ID', placeholder: 'xxxx.apps.googleusercontent.com', wide: true },
     { key: 'clientSecret', label: 'Client secret', type: 'password', wide: true },
@@ -75,6 +79,12 @@ const META: Record<IntegrationType, { title: string; purpose: string; offNote: s
     offNote: 'Off — clients can\'t pay online; record payments by hand on their invoices.',
     icon: <CreditCard size={18} />,
   },
+  turn: {
+    title: 'Video-call relay',
+    purpose: 'Lets video calls connect on mobile data and strict office or government networks (Cloudflare TURN)',
+    offNote: 'Off — calls only connect where the caller and the TV can reach each other directly.',
+    icon: <Video size={18} />,
+  },
   oauth_google: {
     title: 'Google sign-in',
     purpose: '“Continue with Google” on the login page',
@@ -83,7 +93,7 @@ const META: Record<IntegrationType, { title: string; purpose: string; offNote: s
   },
 };
 
-const ORDER: IntegrationType[] = ['cloudflare', 'smtp', 'razorpay', 'oauth_google'];
+const ORDER: IntegrationType[] = ['cloudflare', 'smtp', 'razorpay', 'turn', 'oauth_google'];
 
 function emptyState(type: IntegrationType): IntegrationState {
   const config: Record<string, string> = {};
@@ -114,7 +124,7 @@ function SourcePill({ source }: { source: Source }) {
  */
 export default function Integrations() {
   const [states, setStates] = useState<Record<IntegrationType, IntegrationState>>({
-    cloudflare: emptyState('cloudflare'), smtp: emptyState('smtp'), oauth_google: emptyState('oauth_google'), razorpay: emptyState('razorpay'),
+    cloudflare: emptyState('cloudflare'), smtp: emptyState('smtp'), oauth_google: emptyState('oauth_google'), razorpay: emptyState('razorpay'), turn: emptyState('turn'),
   });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);

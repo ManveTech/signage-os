@@ -1,5 +1,6 @@
 import { pb, ensurePBAuth } from '../db';
-import { getIntegration, saveIntegration, recordTestResult, IntegrationType, getSmtpConfig, getCloudflareConfig, getGoogleOAuthConfig, getRazorpayConfig } from '../integrationsStore';
+import { getIntegration, saveIntegration, recordTestResult, IntegrationType, getSmtpConfig, getCloudflareConfig, getGoogleOAuthConfig, getRazorpayConfig, getTurnConfig } from '../integrationsStore';
+import { fetchCloudflareIceServers, clearIceServerCache } from '../services/iceServers';
 import { testR2Connection } from '../r2';
 import { testSmtpConnection, sendSmtpTestEmail } from '../email';
 import { configureBackups } from '../services/backups';
@@ -10,7 +11,7 @@ function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
 }
 
-const VALID_TYPES: IntegrationType[] = ['cloudflare', 'smtp', 'oauth_google', 'razorpay'];
+const VALID_TYPES: IntegrationType[] = ['cloudflare', 'smtp', 'oauth_google', 'razorpay', 'turn'];
 
 // The fields per integration type that are real secrets — never
 // re-displayed to the browser once saved. GET responses replace each with
@@ -25,6 +26,7 @@ const SECRET_FIELDS: Partial<Record<IntegrationType, string[]>> = {
   smtp: ['password'],
   oauth_google: ['clientSecret'],
   razorpay: ['keySecret', 'webhookSecret'],
+  turn: ['apiToken'],
 };
 export const SECRET_MASK = '__SECRET_UNCHANGED__';
 
@@ -55,6 +57,7 @@ export async function listIntegrations(req: any, res: any) {
       const live = type === 'smtp' ? await getSmtpConfig()
         : type === 'cloudflare' ? await getCloudflareConfig()
         : type === 'razorpay' ? await getRazorpayConfig()
+        : type === 'turn' ? await getTurnConfig()
         : await getGoogleOAuthConfig();
       const source = rec?.enabled ? 'dashboard' : live.enabled ? 'environment' : 'off';
       return {
@@ -93,6 +96,7 @@ export async function updateIntegration(req: any, res: any) {
     const saved = await saveIntegration(type, finalConfig, !!enabled);
     // The backups bucket lives in the File storage settings.
     if (type === 'cloudflare') await configureBackups().catch(() => {});
+    if (type === 'turn') clearIceServerCache();
     res.json({
       type,
       config: maskConfig(type, saved.config),
@@ -142,6 +146,21 @@ export async function testIntegrationConnection(req: any, res: any) {
       });
     } else if (type === 'razorpay') {
       result = await testRazorpayKeys(String(cfg.keyId || '').trim(), String(cfg.keySecret || '').trim(), !!String(cfg.webhookSecret || '').trim());
+    } else if (type === 'turn') {
+      // Asks Cloudflare for real relay credentials — the same request a call makes.
+      const keyId = String(cfg.keyId || '').trim();
+      const apiToken = String(cfg.apiToken || '').trim();
+      if (!keyId || !apiToken) {
+        result = { ok: false, error: 'Both the TURN key ID and its API token are needed.' };
+      } else {
+        try {
+          const servers = await fetchCloudflareIceServers(keyId, apiToken);
+          const relays = servers.flatMap(s => (Array.isArray(s.urls) ? s.urls : [s.urls])).filter(u => u.startsWith('turn')).length;
+          result = { ok: true, note: `Cloudflare issued relay credentials (${relays} relay address${relays === 1 ? '' : 'es'}). Calls will use them from now on.` };
+        } catch (e: any) {
+          result = { ok: false, error: e.message || 'Cloudflare did not accept the key.' };
+        }
+      }
     } else {
       // oauth_google: there is no non-interactive way to verify a client
       // id/secret pair without actually running a real Google sign-in — the
