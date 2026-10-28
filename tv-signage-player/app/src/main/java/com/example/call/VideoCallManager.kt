@@ -349,10 +349,22 @@ class VideoCallManager(private val context: Context) {
         pc.addTrack(videoTrack, listOf("stream0"))
     }
 
+    // The caller sends its ICE candidates right after the offer, and each
+    // signal is handled in its own coroutine — so a candidate could reach
+    // addIceCandidate while the offer was still being applied, and be
+    // rejected (there is no remote description yet). They wait here instead.
+    private val pendingCandidates = mutableListOf<IceCandidate>()
+    private var remoteDescriptionSet = false
+
     private suspend fun handleOffer(signal: JSONObject) {
         val pc = peerConnection ?: return
         val sdp = SessionDescription(SessionDescription.Type.OFFER, signal.optString("sdp"))
         setRemoteDescription(pc, sdp)
+        val queued = synchronized(pendingCandidates) {
+            remoteDescriptionSet = true
+            pendingCandidates.toList().also { pendingCandidates.clear() }
+        }
+        queued.forEach { pc.addIceCandidate(it) }
 
         val answer = createAnswer(pc)
         setLocalDescription(pc, answer)
@@ -376,7 +388,11 @@ class VideoCallManager(private val context: Context) {
             signal.optInt("sdpMLineIndex"),
             signal.optString("candidate")
         )
-        pc.addIceCandidate(candidate)
+        val ready = synchronized(pendingCandidates) {
+            if (!remoteDescriptionSet) pendingCandidates.add(candidate)
+            remoteDescriptionSet
+        }
+        if (ready) pc.addIceCandidate(candidate)
     }
 
     fun toggleMic() {
@@ -394,6 +410,10 @@ class VideoCallManager(private val context: Context) {
     fun endCall(notifyServer: Boolean = true) {
         // Already torn down (or mid-teardown via the re-entrant path below) — nothing to do.
         if (peerConnection == null && currentConferenceId == null && _callState.value is CallState.Idle) return
+        synchronized(pendingCandidates) {
+            pendingCandidates.clear()
+            remoteDescriptionSet = false
+        }
 
         val conferenceId = currentConferenceId
         if (conferenceId != null && notifyServer) {
