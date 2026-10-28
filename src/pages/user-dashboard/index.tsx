@@ -354,8 +354,12 @@ export default function UserDashboard({ onLogout, userEmail = 'priya@demo.com', 
       <MobileDock activeView={activeView} onNavigate={handleNavigate} onLogout={onLogout} role="user" />
 
       {/* First Time Login Password Reset & WhiteLabel Onboarding Modal */}
+      {/* Sits above the phone dock (z-210) and its sheets (z-200): at z-50
+          the dock stayed tappable over this, so the one screen that has to
+          be dealt with before anything else could be walked straight past —
+          Screens, Content, even More > Log out. */}
       {isFirstLogin && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn select-none">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[400] animate-fadeIn select-none">
           <div className="relative w-full max-w-md bg-slate-900 text-white rounded-3xl overflow-hidden shadow-2xl border border-slate-800 p-8 space-y-6 animate-scaleIn">
             <div className="text-center space-y-2 py-2">
               <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-full flex items-center justify-center mx-auto text-blue-500">
