@@ -246,10 +246,22 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       const msg = String(err?.message || err || '');
       // Closing the account picker isn't an error worth showing.
       if (!/cancel/i.test(msg)) {
-        console.error('Native Google sign-in error:', err);
-        setErrorMessage(/no credentials|no account/i.test(msg)
-          ? 'Add a Google account to this phone first (Settings → Accounts), then try again.'
-          : 'Google sign-in didn\'t work. Please try again or use your email and password.');
+        // Log the raw error: the message shown has to stay general, but
+        // without this there is no way to tell these cases apart from a bug
+        // report, and they need completely different fixes.
+        console.error('Native Google sign-in error:', err, { code: err?.code, message: msg });
+        setErrorMessage(
+          /no credentials|no account/i.test(msg)
+            ? 'Add a Google account to this phone first (Settings → Accounts), then try again.'
+            // Google rejects the app itself, not the account: the certificate
+            // that signed this build isn't registered against the app's
+            // Android OAuth client. Each signing key needs its own — debug,
+            // upload, and the one Play re-signs with — so a sideloaded build
+            // can work while the Play install doesn't, on the same phone.
+            : /developer_error|\b10\b|signature|certificate|not registered/i.test(msg)
+            ? 'This build isn\'t approved for Google sign-in. Use your email and password, and tell us which phone and where you installed the app from.'
+            : 'Google sign-in didn\'t work. Please try again or use your email and password.'
+        );
       }
     } finally {
       setNativeGoogleBusy(false);
