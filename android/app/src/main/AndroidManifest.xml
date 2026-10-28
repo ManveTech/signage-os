@@ -55,6 +55,11 @@
          also run on camera-less hardware; the scanner falls back to manual
          entry when access is denied or unavailable. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Video calls (Calls in the app) send the caller's voice. Without these
+         Android refuses the microphone, and the in-app browser then refuses
+         the whole camera+mic request — the TV got neither picture nor sound. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
