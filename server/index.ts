@@ -32,6 +32,7 @@ import { configureBackups } from './services/backups';
 import './services/logCleanup';
 import { ensureRedisRunning, isRedisReady, redis } from './redis';
 import { apiLimiter } from './middleware/rateLimiter';
+import { realClientIp } from './middleware/realClientIp';
 import { getActiveConference, setActiveConference, clearActiveConference, clearActiveConferencesForConference } from './videoConferenceState';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { verifySession } from './middleware/auth';
@@ -128,6 +129,9 @@ app.use((req, res, next) => {
 
 // Cookie parser middleware - must be before routes that need req.cookies
 app.use(cookieParser());
+
+// The visitor's real address behind Cloudflare, before anything keys on req.ip.
+app.use(realClientIp);
 
 // Apply global rate limiting to all API requests (except health checks)
 app.use('/api', apiLimiter);

@@ -28,9 +28,8 @@ export function logAudit(entry: AuditLogEntry): void {
 
 /** Best-effort client IP extraction, accounting for a reverse proxy (Coolify/nginx) in front of the app. */
 export function getClientIp(req: any): string {
-  const forwarded = req.headers?.['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) {
-    return forwarded.split(',')[0].trim();
-  }
+  // req.ip is the real visitor's address: Express resolves the proxy hop and
+  // middleware/realClientIp.ts the Cloudflare one. X-Forwarded-For's first
+  // entry, used before, is whatever the client chose to send.
   return req.ip || req.socket?.remoteAddress || 'unknown';
 }
