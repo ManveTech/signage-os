@@ -46,7 +46,14 @@ export async function setActiveConference(screenId: string, data: any): Promise<
 
   if (isRedisReady()) {
     try {
+      // The screen leaves the call it was in before (if any), so cleaning up
+      // that old call later can't touch this new one.
+      const prevRaw = await redis.get(`${SCREEN_KEY_PREFIX}${screenId}`);
+      const prevConf = prevRaw ? JSON.parse(prevRaw)?.conferenceId : undefined;
       const multi = redis.multi();
+      if (prevConf && prevConf !== data?.conferenceId) {
+        multi.srem(`${CONFERENCE_INDEX_PREFIX}${prevConf}`, screenId);
+      }
       multi.set(`${SCREEN_KEY_PREFIX}${screenId}`, JSON.stringify(data));
       if (data?.conferenceId) {
         multi.sadd(`${CONFERENCE_INDEX_PREFIX}${data.conferenceId}`, screenId);
@@ -95,11 +102,17 @@ export async function clearActiveConference(screenId: string): Promise<void> {
 export async function clearActiveConferencesForConference(conferenceId: string): Promise<string[]> {
   const clearedScreenIds = new Set<string>();
 
+  // Only screens still in THIS call: a screen may have moved on to a newer
+  // call (the caller closed their tab and rang again), and clearing it then
+  // hung up the new call — and erased its record — when the old one's
+  // cleanup ran 15 seconds later.
   const memberSet = memoryConferenceIndex.get(conferenceId);
   if (memberSet) {
     for (const screenId of memberSet) {
-      memoryFallback.delete(screenId);
-      clearedScreenIds.add(screenId);
+      if (memoryFallback.get(screenId)?.conferenceId === conferenceId) {
+        memoryFallback.delete(screenId);
+        clearedScreenIds.add(screenId);
+      }
     }
     memoryConferenceIndex.delete(conferenceId);
   }
@@ -108,15 +121,17 @@ export async function clearActiveConferencesForConference(conferenceId: string):
     try {
       const indexKey = `${CONFERENCE_INDEX_PREFIX}${conferenceId}`;
       const screenIds = await redis.smembers(indexKey);
-      if (screenIds.length > 0) {
-        const multi = redis.multi();
-        screenIds.forEach((id) => {
+      const multi = redis.multi();
+      for (const id of screenIds) {
+        const raw = await redis.get(`${SCREEN_KEY_PREFIX}${id}`);
+        const current = raw ? JSON.parse(raw)?.conferenceId : undefined;
+        if (current === conferenceId) {
           multi.del(`${SCREEN_KEY_PREFIX}${id}`);
           clearedScreenIds.add(id);
-        });
-        multi.del(indexKey);
-        await multi.exec();
+        }
       }
+      multi.del(indexKey);
+      await multi.exec();
     } catch (err: any) {
       console.error('[VideoConferenceState] Redis conference clear failed:', err.message);
     }

@@ -50,6 +50,9 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
   // negotiates a separate SDP offer/answer with each screen, so they can't
   // share a single peer connection the way a one-to-one call can.
   const webrtcHandlersRef = useRef<Map<string, WebRTCHandler>>(new Map());
+  // STUN/TURN servers for this call, from the server (the relay credentials
+  // are short-lived, so they're fetched per call — see services/iceServers.ts).
+  const iceServersRef = useRef<{ iceServers: RTCIceServer[]; iceTransportPolicy?: RTCIceTransportPolicy } | undefined>(undefined);
   const screenShareRef = useRef<{ displayStream: MediaStream; screenTrack: MediaStreamTrack } | null>(null);
 
   const [selectedScreens, setSelectedScreens] = useState<string[]>([]);
@@ -121,7 +124,7 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
       setConnectionStatus('initiating');
 
       webrtcHandlersRef.current.get(screenId)?.close();
-      const handler = new WebRTCHandler();
+      const handler = new WebRTCHandler(iceServersRef.current || {});
       webrtcHandlersRef.current.set(screenId, handler);
       setRemoteStreams(prev => {
         const next = new Map(prev);
@@ -230,6 +233,10 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
       }
 
       const conference = await response.json();
+      iceServersRef.current = await fetch(`${API_BASE}/video-conference/ice-servers`, { headers: authHeaders() })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => (Array.isArray(d?.iceServers) && d.iceServers.length ? { iceServers: d.iceServers, iceTransportPolicy: d.iceTransportPolicy === 'relay' ? 'relay' as const : 'all' as const } : undefined))
+        .catch(() => undefined);
       setConferenceId(conference.conferenceId);
       setCallTargetIds(targetIds);
       setConnectionStatus('initiating');
@@ -285,6 +292,13 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
           if (data.signal?.type === 'answer') {
             await handler.handleAnswer(data.signal);
             setConnectionStatus('connected');
+            // Every TV in a call gets its own stream from this device, so the
+            // upload adds up: 4 TVs at full quality need ~10 Mbit/s, more than
+            // a phone hotspot or busy venue Wi-Fi gives. Several TVs share a
+            // ~3 Mbit/s budget instead; a single TV keeps full quality.
+            if (targetIds.length > 1) {
+              handler.setVideoBitrate(Math.max(400, Math.round(3000 / targetIds.length)));
+            }
           } else if (data.signal?.candidate) {
             await handler.addICECandidate(data.signal);
           }
@@ -294,7 +308,7 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
       });
 
       targetIds.forEach(async (screenId) => {
-        const handler = new WebRTCHandler();
+        const handler = new WebRTCHandler(iceServersRef.current || {});
         webrtcHandlersRef.current.set(screenId, handler);
 
         if (sharedStream) {
