@@ -29,6 +29,9 @@ export class WebRTCHandler {
   private remoteStream: MediaStream | null = null;
   private screenStream: MediaStream | null = null;
   private cameraVideoTrack: MediaStreamTrack | null = null;
+  // False when the stream was handed in with setLocalStream: it is shared with
+  // other screens' connections, and its owner stops it when the call ends.
+  private ownsLocalStream = true;
   private config: WebRTCConfig;
 
   constructor(config: WebRTCConfig = {}) {
@@ -103,6 +106,7 @@ export class WebRTCHandler {
    */
   setLocalStream(stream: MediaStream): void {
     this.localStream = stream;
+    this.ownsLocalStream = false;
   }
 
   /**
@@ -359,10 +363,14 @@ export class WebRTCHandler {
    * Close peer connection and cleanup
    */
   close(): void {
-    if (this.localStream) {
+    // A shared camera/mic stream is left running: closing one screen's
+    // connection (a TV that dropped and rejoined, say) used to stop it, which
+    // blacked out and muted the caller for every screen in the call — the
+    // rejoined one included, as it reuses the same stream.
+    if (this.localStream && this.ownsLocalStream) {
       this.localStream.getTracks().forEach(track => track.stop());
-      this.localStream = null;
     }
+    this.localStream = null;
 
     if (this.screenStream) {
       this.screenStream.getTracks().forEach(track => track.stop());

@@ -39,6 +39,8 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs}`;
 }
 
+const canShareScreen = typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function';
+
 export default function CallOverlay({
   targetName,
   connectionStatus,
@@ -169,14 +171,18 @@ export default function CallOverlay({
           iconOff={<VideoOff size={20} />}
           label={cameraEnabled ? 'Stop Video' : 'Start Video'}
         />
-        <ControlButton
-          active={!isScreenSharing}
-          onClick={onToggleScreenShare}
-          iconOn={<MonitorUp size={20} />}
-          iconOff={<MonitorUp size={20} />}
-          label={isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
-          activeColorOverride={isScreenSharing ? 'bg-blue-600 hover:bg-blue-700' : undefined}
-        />
+        {/* Phones (and the phone app's WebView) can't share their screen —
+            the button did nothing there, so it only shows where it works. */}
+        {canShareScreen && (
+          <ControlButton
+            active={!isScreenSharing}
+            onClick={onToggleScreenShare}
+            iconOn={<MonitorUp size={20} />}
+            iconOff={<MonitorUp size={20} />}
+            label={isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+            activeColorOverride={isScreenSharing ? 'bg-blue-600 hover:bg-blue-700' : undefined}
+          />
+        )}
         <button
           onClick={() => { setChatOpen(o => !o); if (!chatOpen) setUnread(0); }}
           className={`relative w-14 h-14 rounded-full text-white flex items-center justify-center transition-all ${chatOpen ? 'bg-blue-600 hover:bg-blue-700' : 'bg-white/10 hover:bg-white/20'}`}
