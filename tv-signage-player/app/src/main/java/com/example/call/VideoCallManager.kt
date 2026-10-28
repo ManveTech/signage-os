@@ -131,7 +131,7 @@ class VideoCallManager(private val context: Context) {
                 })
             }
             newSocket.on("conference:initiated") { args -> onConferenceInitiated(args) }
-            newSocket.on("conference:ended") { onConferenceEnded() }
+            newSocket.on("conference:ended") { args -> onConferenceEnded(args) }
             newSocket.on("webrtc:signal") { args -> onSignal(args) }
             newSocket.on("chat:message") { args -> onChatMessage(args) }
             newSocket.on("screen:config-changed") {
@@ -181,16 +181,34 @@ class VideoCallManager(private val context: Context) {
     private fun onConferenceInitiated(args: Array<Any>) {
         val data = args.firstOrNull() as? JSONObject ?: return
         val conferenceId = data.optString("conferenceId").takeIf { it.isNotEmpty() } ?: return
+        // Still holding a call — the caller refreshed and rang again, or our
+        // socket reconnected and the server replayed this call. The caller will
+        // send a fresh offer from a brand-new connection, which the old one
+        // can't take, so drop ours first (without telling the server we left).
+        if (peerConnection != null || currentConferenceId != null) {
+            Log.d(TAG, "New call request while holding ${currentConferenceId ?: "a call"} — starting fresh")
+            endCall(notifyServer = false)
+        }
         val mode = data.optString("mode", "one-to-one")
         Log.d(TAG, "Conference initiated: $conferenceId")
         com.example.util.Breadcrumbs.mark(context, "conference-initiated")
         pendingRemoteVolume = data.optInt("defaultVolume", 100).coerceIn(0, 100) / 100.0
+        callIceServers = parseIceServers(data.optJSONArray("iceServers"))
+        relayOnly = data.optString("iceTransportPolicy") == "relay"
         currentConferenceId = conferenceId
         _callState.value = CallState.Ringing(conferenceId, mode)
-        scope.launch { setupPeerConnectionForIncomingCall() }
+        setupJob = scope.launch { setupPeerConnectionForIncomingCall() }
     }
 
-    private fun onConferenceEnded() {
+    private fun onConferenceEnded(args: Array<Any>) {
+        // Only the call we're in. A late "ended" for an earlier call (its
+        // cleanup runs 15 s after the caller's tab closed) used to hang up the
+        // new call the caller had just placed.
+        val endedId = (args.firstOrNull() as? JSONObject)?.optString("conferenceId").orEmpty()
+        if (endedId.isNotEmpty() && currentConferenceId != null && endedId != currentConferenceId) {
+            Log.d(TAG, "Ignoring end of earlier call $endedId (in $currentConferenceId)")
+            return
+        }
         Log.d(TAG, "Conference ended by caller")
         endCall()
     }
@@ -222,6 +240,33 @@ class VideoCallManager(private val context: Context) {
         }
     }
 
+    // STUN/TURN servers sent by the server with each call. TURN (a relay)
+    // lets the call connect on carrier and corporate networks where the TV
+    // and the caller can't reach each other directly; the credentials are
+    // short-lived, so they come with the call rather than being built in.
+    private var callIceServers: List<PeerConnection.IceServer> = emptyList()
+    // Server-side switch (ICE_TRANSPORT_POLICY=relay) to prove the relay works.
+    private var relayOnly = false
+
+    private fun parseIceServers(list: org.json.JSONArray?): List<PeerConnection.IceServer> {
+        if (list == null) return emptyList()
+        val out = mutableListOf<PeerConnection.IceServer>()
+        for (i in 0 until list.length()) {
+            val entry = list.optJSONObject(i) ?: continue
+            val urls = mutableListOf<String>()
+            when (val u = entry.opt("urls")) {
+                is String -> urls.add(u)
+                is org.json.JSONArray -> for (j in 0 until u.length()) u.optString(j).takeIf { it.isNotEmpty() }?.let { urls.add(it) }
+            }
+            if (urls.isEmpty()) continue
+            val builder = PeerConnection.IceServer.builder(urls)
+            entry.optString("username").takeIf { it.isNotEmpty() }?.let { builder.setUsername(it) }
+            entry.optString("credential").takeIf { it.isNotEmpty() }?.let { builder.setPassword(it) }
+            out.add(builder.createIceServer())
+        }
+        return out
+    }
+
     private suspend fun setupPeerConnectionForIncomingCall() {
         if (peerConnectionFactory == null) {
             com.example.util.Breadcrumbs.mark(context, "pc-factory-init-start")
@@ -231,8 +276,9 @@ class VideoCallManager(private val context: Context) {
         if (peerConnection != null) return
 
         val rtcConfig = PeerConnection.RTCConfiguration(
-            listOf(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
+            callIceServers.ifEmpty { listOf(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()) }
         )
+        if (relayOnly) rtcConfig.iceTransportsType = PeerConnection.IceTransportsType.RELAY
 
         peerConnection = peerConnectionFactory!!.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate?) {
@@ -308,21 +354,37 @@ class VideoCallManager(private val context: Context) {
         )
         val encoderFactory = DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true)
         val decoderFactory = DefaultVideoDecoderFactory(eglBase.eglBaseContext)
+        // WebRTC's own echo canceller and noise suppressor instead of the
+        // device's: on many Android TV boxes the built-in ones are missing or
+        // poor, and a TV's loud speaker right next to its mic is exactly the
+        // case they have to handle. Software AEC behaves the same everywhere.
+        val audioDeviceModule = org.webrtc.audio.JavaAudioDeviceModule.builder(context)
+            .setUseHardwareAcousticEchoCanceler(false)
+            .setUseHardwareNoiseSuppressor(false)
+            .createAudioDeviceModule()
         peerConnectionFactory = PeerConnectionFactory.builder()
+            .setAudioDeviceModule(audioDeviceModule)
             .setVideoEncoderFactory(encoderFactory)
             .setVideoDecoderFactory(decoderFactory)
             .createPeerConnectionFactory()
+        audioDeviceModule.release()
     }
 
     private fun attachLocalMedia() {
         val factory = peerConnectionFactory ?: return
         val pc = peerConnection ?: return
 
-        val audioSource = factory.createAudioSource(MediaConstraints())
+        val audioConstraints = MediaConstraints().apply {
+            listOf("googEchoCancellation", "googNoiseSuppression", "googAutoGainControl", "googHighpassFilter")
+                .forEach { mandatory.add(MediaConstraints.KeyValuePair(it, "true")) }
+        }
+        val audioSource = factory.createAudioSource(audioConstraints)
         localAudioTrack = factory.createAudioTrack("audio0", audioSource)
-        // TVs join meetings muted by default so a room full of screens doesn't
-        // open with every mic hot; the caller/screen can unmute explicitly.
+        // TVs always join muted, so a room with several screens doesn't open
+        // with every mic live (decided 2026-10-28). Someone at the TV unmutes
+        // with the remote.
         localAudioTrack?.setEnabled(false)
+        _micEnabled.value = false
         localAudioTrack?.let { pc.addTrack(it, listOf("stream0")) }
 
         val enumerator = Camera2Enumerator(context)
@@ -356,7 +418,14 @@ class VideoCallManager(private val context: Context) {
     private val pendingCandidates = mutableListOf<IceCandidate>()
     private var remoteDescriptionSet = false
 
+    // The connection is set up in the background when the call arrives; the
+    // caller's offer can come in before that finishes (the first call after
+    // the app starts also loads WebRTC), and was then dropped — the call just
+    // hung on "connecting". The offer waits for the setup instead.
+    private var setupJob: Job? = null
+
     private suspend fun handleOffer(signal: JSONObject) {
+        setupJob?.join()
         val pc = peerConnection ?: return
         val sdp = SessionDescription(SessionDescription.Type.OFFER, signal.optString("sdp"))
         setRemoteDescription(pc, sdp)
@@ -382,7 +451,6 @@ class VideoCallManager(private val context: Context) {
     }
 
     private fun handleRemoteCandidate(signal: JSONObject) {
-        val pc = peerConnection ?: return
         val candidate = IceCandidate(
             signal.optString("sdpMid"),
             signal.optInt("sdpMLineIndex"),
@@ -392,7 +460,7 @@ class VideoCallManager(private val context: Context) {
             if (!remoteDescriptionSet) pendingCandidates.add(candidate)
             remoteDescriptionSet
         }
-        if (ready) pc.addIceCandidate(candidate)
+        if (ready) peerConnection?.addIceCandidate(candidate)
     }
 
     fun toggleMic() {
