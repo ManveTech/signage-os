@@ -269,7 +269,7 @@ export default function AdminDashboard({ onLogout, onSwitchToClient, userEmail =
 
         {/* Pull to Refresh wrapper for mobile */}
         <PullToRefresh onRefresh={handleRefresh} enabled={isMobile}>
-          <main ref={mainRef} className="flex-1 overflow-y-auto pb-20 md:pb-4">
+          <main ref={mainRef} className="flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-4">
             <SectionTransition viewKey={activeView} scrollRoot={mainRef} className="sg-page">
               {renderView(activeView, handleNavigate, userEmail)}
             </SectionTransition>

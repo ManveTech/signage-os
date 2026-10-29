@@ -97,10 +97,10 @@ export default function CallOverlay({
   const statusLabel = connectionStatus === 'connected' ? formatDuration(elapsed) : 'Connecting…';
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950 flex select-none animate-fadeIn">
+    <div className="fixed inset-0 z-[300] bg-slate-950 flex select-none animate-fadeIn">
     <div className="flex-1 flex flex-col relative min-w-0">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-b from-black/60 to-transparent absolute top-0 left-0 right-0 z-10">
+      <div className="flex items-center justify-between px-6 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] bg-gradient-to-b from-black/60 to-transparent absolute top-0 left-0 right-0 z-10">
         <div className="flex items-center gap-2 text-white">
           <Tv size={16} className="text-blue-400" />
           <span className="text-sm font-semibold">{targetName}</span>
@@ -155,8 +155,10 @@ export default function CallOverlay({
         </div>
       </div>
 
-      {/* Control bar */}
-      <div className="flex items-center justify-center gap-4 px-6 py-6 bg-gradient-to-t from-black/70 to-transparent">
+      {/* Control bar. The call covers the whole screen, above the phone's tab
+          bar (z-[210]) — it used to sit under it, so the tab bar hid End call.
+          The bottom padding clears Android's own navigation bar. */}
+      <div className="flex items-center justify-center gap-4 px-6 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] bg-gradient-to-t from-black/70 to-transparent">
         <ControlButton
           active={micEnabled}
           onClick={onToggleMic}
