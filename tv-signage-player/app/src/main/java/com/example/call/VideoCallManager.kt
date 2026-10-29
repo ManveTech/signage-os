@@ -353,7 +353,22 @@ class VideoCallManager(private val context: Context) {
                 .createInitializationOptions()
         )
         val encoderFactory = DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true)
-        val decoderFactory = DefaultVideoDecoderFactory(eglBase.eglBaseContext)
+        // VP8/VP9 (what Chrome sends) are decoded in software. Many TV boxes'
+        // hardware decoders freeze when the picture size changes mid-call —
+        // camera to a shared screen — and keep showing the last frame while
+        // the call carries on ("video paused" on screen share). libvpx handles
+        // size changes on every device, and 1080p at 15 fps (the screen-share
+        // cap) is well within a TV box's CPU. Other codecs stay on hardware.
+        val hardwareDecoders = DefaultVideoDecoderFactory(eglBase.eglBaseContext)
+        val softwareDecoders = org.webrtc.SoftwareVideoDecoderFactory()
+        val decoderFactory = object : org.webrtc.VideoDecoderFactory {
+            override fun createDecoder(info: org.webrtc.VideoCodecInfo): org.webrtc.VideoDecoder? {
+                val software = info.name.equals("VP8", ignoreCase = true) || info.name.equals("VP9", ignoreCase = true)
+                return (if (software) softwareDecoders.createDecoder(info) else null) ?: hardwareDecoders.createDecoder(info)
+            }
+            override fun getSupportedCodecs(): Array<org.webrtc.VideoCodecInfo> =
+                (hardwareDecoders.supportedCodecs + softwareDecoders.supportedCodecs).distinctBy { it.name.uppercase() }.toTypedArray()
+        }
         // WebRTC's own echo canceller and noise suppressor instead of the
         // device's: on many Android TV boxes the built-in ones are missing or
         // poor, and a TV's loud speaker right next to its mic is exactly the
