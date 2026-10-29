@@ -509,7 +509,7 @@ export function createCrudRouter(collectionName: string) {
         // Live values kept by heartbeats. The dashboard saves the whole
         // screen, so these were copies from when the page loaded — saving a
         // rename could write back an old "online" or last-seen time.
-        for (const f of ['lastHeartbeat', 'onlineSince', 'cumulativeUptime', 'cumulativeLoops', 'storageUsed']) delete body[f];
+        for (const f of ['lastHeartbeat', 'onlineSince', 'cumulativeUptime', 'cumulativeLoops', 'storageUsed', 'displayWidth', 'displayHeight', 'displayRotation']) delete body[f];
         // "Sleep now / Wake now" only changes via /screens/:id/sleep — a whole-
         // screen save from the dashboard would write back a stale copy.
         delete body.sleepOverride;

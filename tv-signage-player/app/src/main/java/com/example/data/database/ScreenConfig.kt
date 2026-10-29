@@ -18,6 +18,11 @@ data class ScreenConfig(
     val playlistOrientation: String = "horizontal", // "horizontal" | "vertical"
     // Shown upside down (display mounted the other way up).
     @ColumnInfo(defaultValue = "0") val playlistFlipped: Boolean = false,
+    // How this screen is mounted, set on the screen in the dashboard: "landscape"
+    // | "portrait", and upside down. Null from servers that only had it on the
+    // playlist — the playlist's values are used then.
+    val screenOrientation: String? = null,
+    val screenFlipped: Boolean? = null,
     val playlistShuffle: Boolean = false,
     val playlistLoop: Boolean = true,
     val playlistVolume: Int = 80,

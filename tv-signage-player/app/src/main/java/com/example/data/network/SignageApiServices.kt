@@ -56,6 +56,10 @@ data class PocketBaseScreenResponse(
     val websiteName: String? = null,
     val cameraMountEnabled: Boolean? = null,
     val paused: Boolean? = null,
+    // How the screen is mounted: "landscape" | "portrait", and upside down.
+    // flipped is null from servers that kept these on the playlist.
+    val orientation: String? = null,
+    val flipped: Boolean? = null,
     // Sleep times and any "Sleep now / Wake now" (null from older servers).
     val sleep: com.example.util.SleepConfig? = null
 )

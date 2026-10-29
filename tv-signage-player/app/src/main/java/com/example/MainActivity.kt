@@ -1,7 +1,6 @@
 package com.example
 
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -128,22 +127,35 @@ fun SignagePlayerApp(
     // is playable does the full-screen download progress take over.
     val hasPlayableContent = uiState.playbackPlaylist.isNotEmpty()
 
-    LaunchedEffect(uiState.status, uiState.playlist, uiState.playlistOrientation) {
-        val isPlaying = com.example.ui.isPlayingStatus(uiState.status) && uiState.playlist.isNotEmpty()
-        
-        try {
-            activity?.requestedOrientation = if (isPlaying) {
-                if (uiState.playlistOrientation == "vertical") {
-                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                }
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("SignagePlayerApp", "Device orientation change not supported on this hardware", e)
-        }
+    // Orientation is never requested from Android any more. Many signage
+    // displays (e.g. Philips with PBS "rotate 90°") rotate Android themselves
+    // and lock it there, so a requested orientation was ignored — and where it
+    // wasn't, it fought the display's own setting. Instead: if the display is
+    // already portrait, nothing is turned; if the screen is set to portrait
+    // but the display is landscape, the app turns the content itself.
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val displayIsLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val rotateForPortrait = uiState.playlistOrientation == "vertical" && displayIsLandscape
+    // Flip: the display is mounted the other way up — turn everything a further 180°.
+    val flipped = uiState.playlistFlipped
+    val turnModifier = when {
+        rotateForPortrait -> Modifier.rotatedToPortrait(flipped)
+        flipped -> Modifier.graphicsLayer { rotationZ = 180f }
+        else -> Modifier
+    }
+    // The same turn, clockwise, for call video frames (see rotatedToPortrait).
+    val videoRotation = when {
+        rotateForPortrait -> if (flipped) 90 else 270
+        flipped -> 180
+        else -> 0
+    }
+
+    // The display was turned while running (in its own settings): report it
+    // straight away so the dashboard's orientation option is right.
+    var lastDisplayShape by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(displayIsLandscape) {
+        if (lastDisplayShape != null && lastDisplayShape != displayIsLandscape) viewModel.onDisplayChanged()
+        lastDisplayShape = displayIsLandscape
     }
 
     // While asleep, turn the backlight right down where the device allows it
@@ -161,7 +173,11 @@ fun SignagePlayerApp(
             // The signage state machine underneath keeps ticking untouched and
             // resumes automatically the instant the call ends and callState
             // returns to Idle.
-            VideoCallScreen(callManager = viewModel.videoCallManager)
+            VideoCallScreen(
+                callManager = viewModel.videoCallManager,
+                videoRotation = videoRotation,
+                overlayModifier = turnModifier
+            )
         } else if (!uiState.showSplash) {
             when {
                 uiState.status == "suspended" -> {
@@ -180,21 +196,6 @@ fun SignagePlayerApp(
                 // "warning" (or any status added later) used to fall through to
                 // the pairing screen on a TV that was already set up.
                 com.example.ui.isPlayingStatus(uiState.status) -> {
-                    // Portrait playlist on a display that is still landscape
-                    // (the TV ignored requestedOrientation): rotate everything
-                    // ourselves. If the OS did switch to portrait, the window
-                    // is already taller than wide and nothing is rotated.
-                    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-                    val rotateForPortrait = uiState.playlistOrientation == "vertical" &&
-                        configuration.screenWidthDp > configuration.screenHeightDp
-                    // Flip: the display is mounted the other way up — turn
-                    // everything a further 180°.
-                    val flipped = uiState.playlistFlipped
-                    val turnModifier = when {
-                        rotateForPortrait -> Modifier.rotatedToPortrait(flipped)
-                        flipped -> Modifier.graphicsLayer { rotationZ = 180f }
-                        else -> Modifier
-                    }
                     Box(modifier = Modifier.fillMaxSize()) {
                         Box(modifier = Modifier.fillMaxSize().then(turnModifier)) {
                             if (uiState.paused) {

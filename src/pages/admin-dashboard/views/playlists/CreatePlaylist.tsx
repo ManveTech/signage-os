@@ -3,7 +3,7 @@ import MediaThumb, { PreviewMedia } from '../../../../components/media/MediaThum
 import { CornerPicker, WidgetPreviewOverlay } from '../../../../components/playlists/WidgetControls';
 import { withoutWeather, clockLabelFrom, qrLinkFrom, buildWidgetLink, qrCornerWithClock, cornerLabel } from '../../../../lib/playlistWidgets';
 import {
-  Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Eye, Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive, Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2, Building2, FlipVertical2
+  Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Eye, Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive, Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2, Building2
 } from 'lucide-react';
 import { checkFiles, uploadMediaFile } from '../../../../lib/mediaUpload';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
@@ -89,6 +89,8 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
   const [allowCustomOrientation, setAllowCustomOrientation] = useState<boolean>(false);
   const [playlistOrientation, setPlaylistOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [playlistFlipped, setPlaylistFlipped] = useState<boolean>(false);
+  // Shape of the preview only; never saved.
+  const [previewOrientation, setPreviewOrientation] = useState<'horizontal' | 'vertical'>('horizontal');
   const [playlistTransition, setPlaylistTransition] = useState<'fade' | 'slide' | 'zoom' | 'slide-up' | 'slide-down' | 'flip' | 'spin' | 'blur' | 'bounce' | 'wipe'>('fade');
   const [showAllTransitions, setShowAllTransitions] = useState(false);
   const [playlistShuffle, setPlaylistShuffle] = useState<boolean>(false);
@@ -172,6 +174,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
       setPlaylistDesc(play.description || '');
       setCategory(play.category || 'Advertising');
       setPlaylistOrientation(play.orientation || 'horizontal');
+      setPreviewOrientation(play.orientation === 'vertical' ? 'vertical' : 'horizontal');
       setPlaylistFlipped(!!play.flipped);
       // The toggle itself isn't stored (PocketBase has no field for it) — only
       // orientation is. Without this it always reopened switched off, and the
@@ -278,6 +281,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
     setPlaylistDesc('');
     setPlaylistItems([]);
     setPlaylistOrientation('horizontal');
+    setPreviewOrientation('horizontal');
     setPlaylistFlipped(false);
     setPlaylistTransition('fade');
     setPlaylistShuffle(false);
@@ -1111,56 +1115,14 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 />
               </div>
 
-              {/* Screen orientation. This used to be a separate "Enable custom
-                  orientation" switch plus a Landscape/Portrait picker that still looked
-                  selectable while the switch was off — picking Portrait without also
-                  flipping the switch silently saved the playlist as landscape. One
-                  control now sets both. */}
-              <div className="space-y-1.5">
-                <label className="block text-[10px] text-slate-400 uppercase tracking-widest font-bold">Screen Orientation</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    { value: 'horizontal' as const, label: 'Landscape', box: 'w-6 h-4' },
-                    { value: 'vertical' as const, label: 'Portrait', box: 'w-4 h-6' }
-                  ]).map(opt => {
-                    const selected = (allowCustomOrientation ? playlistOrientation : 'horizontal') === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() => {
-                          setPlaylistOrientation(opt.value);
-                          setAllowCustomOrientation(opt.value === 'vertical');
-                        }}
-                        className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${selected ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                      >
-                        <span className={`${opt.box} rounded-[3px] border-2 ${selected ? 'border-blue-600' : 'border-slate-400'}`} />
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex items-center justify-between border border-slate-200 rounded-xl px-4 h-[42px] bg-white shadow-xs">
-                  <div className="flex items-center gap-2">
-                    <FlipVertical2 size={14} className="text-gray-400" />
-                    <span className="font-bold text-gray-600 text-xs">Flip upside down</span>
-                  </div>
-                  <button
-                    type="button"
-                    aria-pressed={playlistFlipped}
-                    title="For a display mounted the other way up"
-                    onClick={() => setPlaylistFlipped(prev => !prev)}
-                    style={{ width: '36px', height: '20px', minWidth: '36px', minHeight: '20px', padding: '2px' }}
-                    className={`flex items-center rounded-full cursor-pointer transition-colors duration-200 shrink-0 ${playlistFlipped ? 'bg-blue-600' : 'bg-slate-300'}`}
-                  >
-                    <div
-                      style={{ width: '16px', height: '16px' }}
-                      className={`bg-white rounded-full shadow-xs transform transition-transform duration-200 ${playlistFlipped ? 'translate-x-4' : 'translate-x-0'}`}
-                    />
-                  </button>
-                </div>
-              </div>
+              {/* Orientation and "Flip upside down" moved to each screen
+                  (Screens → Edit details): they describe how a display is
+                  mounted, and one playlist can play on landscape and portrait
+                  screens at once. The saved values stay on the playlist only
+                  for TVs on player 1.4 and older. */}
+              <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5">
+                Landscape, portrait and flip are now set for each screen, under <span className="font-semibold text-slate-700">Screens → Edit details</span>.
+              </p>
 
               {/* Transition Settings */}
               <div>
@@ -1469,6 +1431,20 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                 Simulating screen output: Slide {previewIndex + 1} of {simulatedItems.length} · {getMediaItem(simulatedItems[previewIndex]?.mediaId)?.title}
               </p>
             </div>
+            {/* Preview only — the screen decides how it is really shown. */}
+            <div className="self-end sm:self-auto flex-shrink-0 flex rounded-xl border border-slate-200 bg-white p-0.5 text-[11px] font-bold">
+              {([['horizontal', 'Landscape'], ['vertical', 'Portrait']] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={previewOrientation === value}
+                  onClick={() => setPreviewOrientation(value)}
+                  className={`px-3 py-1.5 rounded-[10px] cursor-pointer transition-colors ${previewOrientation === value ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => { setShowPreviewModal(false); setIsPlaying(false); }}
               className="self-end sm:self-auto flex-shrink-0 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold uppercase border border-slate-200 rounded-xl transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer whitespace-nowrap"
@@ -1479,7 +1455,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
           {/* Screen Outline Container (Sleek Modern Silver/Aluminum Commercial Display Enclosure) */}
           <div className={`w-full bg-[#f8fafc] rounded-[32px] p-2 border-[12px] border-slate-200 shadow-2xl relative overflow-hidden flex items-center justify-center transition-all duration-300 ${
-            playlistOrientation === 'horizontal' ? 'aspect-video max-w-4xl' : 'aspect-[9/16] max-w-[340px] h-[75vh]'
+            previewOrientation === 'horizontal' ? 'aspect-video max-w-4xl' : 'aspect-[9/16] max-w-[340px] h-[75vh]'
           }`} style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.08), inset 0 0 10px rgba(0,0,0,0.05)' }}>
             
             {/* Screen Glass Reflection Overlay */}
@@ -1513,13 +1489,13 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
                       <PreviewMedia src={pMedia.thumbnail} type={pMedia.type} alt="primary fullscreen" />
                     </div>
                   ) : (
-                    <div className={`w-full h-full flex ${playlistOrientation === 'horizontal' ? 'flex-row' : 'flex-col'}`}>
+                    <div className={`w-full h-full flex ${previewOrientation === 'horizontal' ? 'flex-row' : 'flex-col'}`}>
                       <div 
                         style={{ 
-                          width: playlistOrientation === 'horizontal' ? (slide.layoutType === '50-50' ? '50%' : slide.layoutType === '70-30' ? '70%' : '30%') : '100%',
-                          height: playlistOrientation === 'vertical' ? (slide.layoutType === '50-50' ? '50%' : slide.layoutType === '70-30' ? '70%' : '30%') : '100%'
+                          width: previewOrientation === 'horizontal' ? (slide.layoutType === '50-50' ? '50%' : slide.layoutType === '70-30' ? '70%' : '30%') : '100%',
+                          height: previewOrientation === 'vertical' ? (slide.layoutType === '50-50' ? '50%' : slide.layoutType === '70-30' ? '70%' : '30%') : '100%'
                         }} 
-                        className={`overflow-hidden flex-shrink-0 border-slate-200 ${playlistOrientation === 'horizontal' ? 'border-r-2' : 'border-b-2'}`}
+                        className={`overflow-hidden flex-shrink-0 border-slate-200 ${previewOrientation === 'horizontal' ? 'border-r-2' : 'border-b-2'}`}
                       >
                         <PreviewMedia src={pMedia.thumbnail} type={pMedia.type} alt="primary layout split" />
                       </div>

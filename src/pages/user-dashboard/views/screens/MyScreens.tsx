@@ -8,6 +8,7 @@ import {
   Calendar, Link, ListVideo, FolderMinus, ChevronRight, Play, Activity, Unlink, Tv, Moon, Sun
 } from 'lucide-react';
 import ScreenDetailsSheet from '../../../../components/screens/ScreenDetailsSheet';
+import ScreenOrientationEditor from '../../../../components/screens/ScreenOrientationEditor';
 import PairTvDialog from '../../../../components/screens/PairTvDialog';
 import ConfirmDialog from '../../../../components/screens/ConfirmDialog';
 import { pingScreen, unlinkScreen, pairTvToScreen, setScreenSleep } from '../../../../lib/screenActions';
@@ -1249,6 +1250,10 @@ export default function MyScreens({ onNavigate, userEmail = 'priya@demo.com' }: 
                 onChange={v => setEditScreen(p => p && ({ ...p, sleepSchedule: v }))}
                 groupName={groups.find(g => g.id === editScreen.groupId)?.name}
                 groupSchedule={groups.find(g => g.id === editScreen.groupId)?.sleepSchedule}
+              />
+              <ScreenOrientationEditor
+                screen={editScreen}
+                onChange={patch => setEditScreen(p => p && ({ ...p, ...patch }))}
               />
 
               {videoConferencingEnabled && (

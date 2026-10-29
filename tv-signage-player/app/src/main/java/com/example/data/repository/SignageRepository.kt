@@ -317,10 +317,16 @@ class SignageRepository(private val context: Context) {
             // every device polling PocketBase straight was the single biggest
             // source of load. Same record shape either way.
             val url = "${initialConfig.serverUrl}/api/v1/devices/sync"
-            val response = apiService.getScreenStatus(
-                url,
-                mapOf("screenId" to initialConfig.screenId, "hardwareUuid" to initialConfig.hardwareUuid)
-            )
+            // The display's own size and rotation ride along, so the dashboard
+            // can tell when the display rotates itself (sent as text, like the rest).
+            val display = com.example.util.DisplayReport.read(context)
+            val body = mutableMapOf("screenId" to initialConfig.screenId, "hardwareUuid" to initialConfig.hardwareUuid)
+            if (display != null) {
+                body["displayWidth"] = display.width.toString()
+                body["displayHeight"] = display.height.toString()
+                body["displayRotation"] = display.rotation.toString()
+            }
+            val response = apiService.getScreenStatus(url, body)
 
             Log.d("SignageRepository", "Synced screen status: ${response.status}")
             val currentConfig = getOrCreateConfig()
@@ -386,6 +392,10 @@ class SignageRepository(private val context: Context) {
                 whiteLabelName = if (nameNow.isNotEmpty()) nameNow else currentConfig.whiteLabelName,
                 whiteLabelLogoPath = if (isLogoChanged) null else currentConfig.whiteLabelLogoPath,
                 cameraMountEnabled = response.cameraMountEnabled ?: false,
+                // Servers that keep orientation on the screen always send
+                // flipped; older ones don't, and the playlist's values apply.
+                screenOrientation = if (response.flipped != null) (if (response.orientation == "portrait") "portrait" else "landscape") else null,
+                screenFlipped = response.flipped,
                 lastSyncedAt = System.currentTimeMillis()
             )
             configDao.saveConfig(updatedConfig)

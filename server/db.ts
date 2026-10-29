@@ -479,6 +479,37 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('Programmatically added paused field to screens collection');
     }
 
+    // Orientation is a property of how the screen is mounted, so it lives on
+    // the screen (it used to be on the playlist, which made one playlist
+    // unusable on a landscape and a portrait screen at once). The TV reports
+    // its display's own size and rotation, so the dashboard can tell when the
+    // display rotates itself (e.g. a Philips PBS "rotate 90°" setting) and
+    // there is nothing for the app to do.
+    let backfillScreenOrientation = false;
+    if (!sFields.some((f: any) => f.name === 'flipped')) {
+      sFields.push({
+        id: 'boolscreenflipped', name: 'flipped', type: 'bool', required: false, system: false,
+        help: 'Show content upside down (display mounted the other way up)', hidden: false, presentable: false
+      });
+      screensUpdated = true;
+      backfillScreenOrientation = true;
+      console.log('Programmatically added flipped field to screens collection');
+    }
+    for (const [fieldName, fieldId, help] of [
+      ['displayWidth', 'numscreendispw', 'Width of the picture as the TV reports it, in pixels'],
+      ['displayHeight', 'numscreendisph', 'Height of the picture as the TV reports it, in pixels'],
+      ['displayRotation', 'numscreendisprot', 'Rotation the display itself applies, in degrees (0/90/180/270)']
+    ] as const) {
+      if (!sFields.some((f: any) => f.name === fieldName)) {
+        sFields.push({
+          id: fieldId, name: fieldName, type: 'number', required: false, system: false,
+          help, hidden: false, presentable: false, onlyInt: true
+        });
+        screensUpdated = true;
+        console.log(`Programmatically added ${fieldName} field to screens collection`);
+      }
+    }
+
     // This previously forced listRule/viewRule/updateRule to "" (fully public)
     // on every boot — meaning anyone with the PocketBase URL could list every
     // tenant's screens (assignedToUserEmail, pairing_code, hardware_uuid,
@@ -522,6 +553,26 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       screensCollection.fields = sFields;
       await pb.collections.update('screens', screensCollection);
       console.log('Successfully updated screens collection schema and rules');
+      if (backfillScreenOrientation) {
+        // Once, when the field first appears: screens keep the look their
+        // playlist gave them (portrait and/or flipped).
+        try {
+          const screens = await pb.collection('screens').getFullList({ filter: 'playlistId != ""', fields: 'id,playlistId' });
+          let moved = 0;
+          for (const s of screens as any[]) {
+            const p: any = await pb.collection('playlists').getOne(s.playlistId, { fields: 'orientation,flipped' }).catch(() => null);
+            if (!p) continue;
+            await pb.collection('screens').update(s.id, {
+              orientation: p.orientation === 'vertical' ? 'portrait' : 'landscape',
+              flipped: p.flipped === true
+            });
+            moved++;
+          }
+          console.log(`Copied playlist orientation onto ${moved} screen(s)`);
+        } catch (err: any) {
+          console.error('Could not copy playlist orientation onto screens:', err.message);
+        }
+      }
     } else {
       console.log('screens collection schema is already up to date');
     }

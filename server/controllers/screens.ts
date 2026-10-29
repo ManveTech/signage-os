@@ -772,6 +772,17 @@ export async function getScreenStatusForDevice(req: any, res: any) {
       return res.status(403).json({ message: 'This TV was unlinked from the screen.', unpaired: true });
     }
 
+    // The TV's own display, so the dashboard knows when the display rotates
+    // itself. Written only when it changed, which is rarely.
+    const display = readDisplayReport(req.body);
+    if (display && (display.displayWidth !== screenRecord.displayWidth ||
+        display.displayHeight !== screenRecord.displayHeight ||
+        display.displayRotation !== screenRecord.displayRotation)) {
+      await pb.collection('screens').update(screenRecord.id, display)
+        .then(() => Object.assign(screenRecord, display))
+        .catch((err: any) => console.error(`[DeviceSync] Could not save display info for ${screenId}:`, err?.message));
+    }
+
     // Sleep times (its own or its group's) and any "Sleep now / Wake now",
     // so the TV can sleep and wake on time even if it loses its connection.
     const sleep = await deviceSleepPayload(screenRecord).catch(() => null);
@@ -780,6 +791,13 @@ export async function getScreenStatusForDevice(req: any, res: any) {
     console.error('Error fetching screen status for device:', error);
     res.status(500).json({ message: error.message || 'Error fetching screen status' });
   }
+}
+
+/** displayWidth/Height/Rotation from a TV's request, or null if it sent none (older builds). */
+function readDisplayReport(body: any): { displayWidth: number; displayHeight: number; displayRotation: number } | null {
+  const w = Number(body?.displayWidth), h = Number(body?.displayHeight), r = Number(body?.displayRotation);
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w <= 0 || h <= 0 || w > 20000 || h > 20000) return null;
+  return { displayWidth: w, displayHeight: h, displayRotation: [0, 90, 180, 270].includes(r) ? r : 0 };
 }
 
 export async function recordHeartbeat(req: any, res: any) {

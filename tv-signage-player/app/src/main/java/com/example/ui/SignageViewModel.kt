@@ -191,8 +191,10 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
                             serverUrl = config.serverUrl,
                             pocketbaseUrl = config.pocketbaseUrl,
                             lastSyncedAt = config.lastSyncedAt,
-                            playlistOrientation = config.playlistOrientation,
-                            playlistFlipped = config.playlistFlipped,
+                            // The screen's own setting; the playlist's on older servers.
+                            playlistOrientation = config.screenOrientation?.let { o -> if (o == "portrait") "vertical" else "horizontal" }
+                                ?: config.playlistOrientation,
+                            playlistFlipped = config.screenFlipped ?: config.playlistFlipped,
                             playlistShuffle = config.playlistShuffle,
                             playlistLoop = config.playlistLoop,
                             playlistVolume = config.playlistVolume,
@@ -656,6 +658,18 @@ class SignageViewModel(application: Application) : AndroidViewModel(application)
     }
 
 
+
+    /**
+     * The display turned (e.g. rotated in its own settings while running):
+     * tell the server now rather than at the next minute's sync, so the
+     * dashboard's orientation option is right when someone looks.
+     */
+    fun onDisplayChanged() {
+        if (_uiState.value.screenId.isEmpty()) return
+        viewModelScope.launch {
+            try { repository.syncScreenStatus() } catch (e: Exception) { Log.e("SignageViewModel", "Display change sync failed", e) }
+        }
+    }
 
     fun triggerPendingDownloads() {
         try {

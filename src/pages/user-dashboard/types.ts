@@ -35,6 +35,14 @@ export type Screen = {
   onlineSince?: string;
   force_sync?: boolean;
   restart_playlist?: boolean;
+  /** How the display is mounted. Ignored when the display rotates itself. */
+  orientation?: string;
+  /** Content shown upside down (display mounted the other way up). */
+  flipped?: boolean;
+  /** The picture as the TV reports it — set by the TV, not the dashboard. */
+  displayWidth?: number;
+  displayHeight?: number;
+  displayRotation?: number;
   cameraMountEnabled?: boolean;
 };
 

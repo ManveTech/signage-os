@@ -291,9 +291,6 @@ export default function PlaylistsView({
                 ) : (
                   <ListVideo size={20} className="text-slate-400" />
                 )}
-                {p.orientation === 'vertical' && (
-                  <span className="absolute top-1 right-1 px-1 rounded bg-black/60 text-white text-[9px] font-semibold">Portrait</span>
-                )}
               </span>
               <span className="flex-1 min-w-0">
                 <span className="flex items-center gap-1.5">
@@ -378,7 +375,6 @@ export default function PlaylistsView({
               },
               ...(plays.groups.length ? [{ label: 'Groups', value: plays.groups.map(g => g.name).join(', ') }] : []),
               ...(plays.direct.length ? [{ label: 'Screens', value: plays.direct.map(s => s.name).join(', ') }] : []),
-              { label: 'Orientation', value: (open.orientation === 'vertical' ? 'Portrait' : 'Landscape') + (open.flipped ? ', flipped' : '') },
               { label: 'Transition', value: TRANSITION_LABELS[open.transition || 'fade'] || open.transition || 'Fade' },
               { label: 'Playback', value: [open.shuffle ? 'Shuffle' : 'In order', open.loop === false ? 'once' : 'loops'].join(', ') },
               ...(open.createdDate ? [{ label: 'Created', value: open.createdDate }] : []),
@@ -390,7 +386,7 @@ export default function PlaylistsView({
                   {
                     key: 'edit',
                     label: 'Edit playlist',
-                    description: 'Slides, timing, orientation and widgets',
+                    description: 'Slides, timing and widgets',
                     icon: <Edit size={17} />,
                     onClick: () => editPlaylist(open)
                   },

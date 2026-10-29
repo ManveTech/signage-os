@@ -15,6 +15,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,7 +39,17 @@ import org.webrtc.VideoTrack
  * on its own (this screen holds no signage state itself).
  */
 @Composable
-fun VideoCallScreen(callManager: VideoCallManager) {
+fun VideoCallScreen(
+    callManager: VideoCallManager,
+    /**
+     * How far content is turned for this screen (portrait on a landscape
+     * display, or flipped), clockwise. The video is a SurfaceView, which
+     * ignores Compose rotation, so its frames are turned instead…
+     */
+    videoRotation: Int = 0,
+    /** …and the overlay is turned like playback is. */
+    overlayModifier: Modifier = Modifier
+) {
     val callState by callManager.callState.collectAsState()
     val remoteTrack by callManager.remoteVideoTrack.collectAsState()
     val micEnabled by callManager.micEnabled.collectAsState()
@@ -48,8 +62,12 @@ fun VideoCallScreen(callManager: VideoCallManager) {
             .background(Color.Black)
     ) {
         if (remoteTrack != null) {
-            RemoteVideoView(track = remoteTrack, eglContext = callManager.eglBase.eglBaseContext)
-        } else {
+            key(videoRotation, remoteTrack) {
+                RemoteVideoView(track = remoteTrack, eglContext = callManager.eglBase.eglBaseContext, rotation = videoRotation)
+            }
+        }
+        Box(modifier = Modifier.fillMaxSize().then(overlayModifier)) {
+        if (remoteTrack == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = Color.White)
@@ -136,6 +154,7 @@ fun VideoCallScreen(callManager: VideoCallManager) {
                 }
             }
         }
+        }
     }
 }
 
@@ -157,7 +176,8 @@ private fun CallControlButton(
 }
 
 @Composable
-private fun RemoteVideoView(track: VideoTrack?, eglContext: org.webrtc.EglBase.Context) {
+private fun RemoteVideoView(track: VideoTrack?, eglContext: org.webrtc.EglBase.Context, rotation: Int) {
+    var sink by remember { mutableStateOf<org.webrtc.VideoSink?>(null) }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
@@ -167,10 +187,29 @@ private fun RemoteVideoView(track: VideoTrack?, eglContext: org.webrtc.EglBase.C
                 setEnableHardwareScaler(true)
             }
         },
-        update = { renderer -> track?.addSink(renderer) },
+        update = { renderer ->
+            if (sink == null) {
+                val s = RotatingSink(renderer, rotation)
+                track?.addSink(s)
+                sink = s
+            }
+        },
         onRelease = { renderer ->
-            track?.removeSink(renderer)
+            sink?.let { track?.removeSink(it) }
             renderer.release()
         }
     )
+}
+
+/** Hands frames on with [extra] degrees (clockwise) added to their own rotation. */
+private class RotatingSink(private val target: org.webrtc.VideoSink, private val extra: Int) : org.webrtc.VideoSink {
+    override fun onFrame(frame: org.webrtc.VideoFrame) {
+        if (extra % 360 == 0) {
+            target.onFrame(frame)
+            return
+        }
+        // Shares the buffer; the renderer retains/releases it as usual and the
+        // caller still releases the original frame.
+        target.onFrame(org.webrtc.VideoFrame(frame.buffer, (frame.rotation + extra) % 360, frame.timestampNs))
+    }
 }

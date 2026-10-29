@@ -211,8 +211,10 @@ fun PairingSetupScreen(
                     BrandMark(uiState, height = 36.dp)
                 }
 
+                // fillMaxWidth: without it the column shrinks to its content
+                // and sits at the left, so the heading, QR and code were off-centre.
                 Column(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {

@@ -1442,6 +1442,51 @@
         "required": false,
         "system": false,
         "type": "bool"
+      },
+      {
+        "id": "boolscreenflipped",
+        "name": "flipped",
+        "type": "bool",
+        "required": false,
+        "system": false,
+        "hidden": false,
+        "presentable": false
+      },
+      {
+        "id": "numscreendispw",
+        "name": "displayWidth",
+        "type": "number",
+        "required": false,
+        "system": false,
+        "hidden": false,
+        "presentable": false,
+        "onlyInt": true,
+        "min": null,
+        "max": null
+      },
+      {
+        "id": "numscreendisph",
+        "name": "displayHeight",
+        "type": "number",
+        "required": false,
+        "system": false,
+        "hidden": false,
+        "presentable": false,
+        "onlyInt": true,
+        "min": null,
+        "max": null
+      },
+      {
+        "id": "numscreendisprot",
+        "name": "displayRotation",
+        "type": "number",
+        "required": false,
+        "system": false,
+        "hidden": false,
+        "presentable": false,
+        "onlyInt": true,
+        "min": null,
+        "max": null
       }
     ],
     "indexes": [],
