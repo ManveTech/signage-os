@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Phone, Search, X, Lock, Video, VideoOff, Check, Volume2, MicOff, ChevronDown, Loader2 } from 'lucide-react';
-import { WebRTCHandler, acquireSharedLocalStream } from '../../utils/webrtcHandler';
+import { WebRTCHandler, acquireSharedLocalStream, captureScreen } from '../../utils/webrtcHandler';
 import { useVideoConferencing } from '../../hooks/useVideoConferencing';
 import { API_BASE } from '../../config';
 import CallOverlay, { ChatMessage } from '../CallOverlay';
@@ -423,7 +423,7 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
       if (isScreenSharing) {
         revertScreenShare();
       } else {
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const displayStream = await captureScreen();
         const screenTrack = displayStream.getVideoTracks()[0];
         screenShareRef.current = { displayStream, screenTrack };
         for (const handler of webrtcHandlersRef.current.values()) {

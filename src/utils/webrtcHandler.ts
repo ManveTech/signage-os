@@ -15,6 +15,24 @@ export interface WebRTCConfig {
  * instances (one peer connection per target screen in a group call), instead
  * of prompting getUserMedia — and opening the camera — once per screen.
  */
+/**
+ * Screen sharing, capped at 1080p and 15 fps. Uncapped, a retina or 4K screen
+ * is captured at full size (2560×1600 and up) at 30 fps — more than a laptop
+ * can encode live and more than many TV boxes can decode, so the shared
+ * screen stalled on the TV and the call looked hung. 1080p/15 is plenty for
+ * slides and documents; 'detail' tells the encoder to keep text sharp
+ * rather than motion smooth.
+ */
+export async function captureScreen(): Promise<MediaStream> {
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 15, max: 15 } },
+    audio: false,
+  });
+  const track = stream.getVideoTracks()[0];
+  if (track && 'contentHint' in track) track.contentHint = 'detail';
+  return stream;
+}
+
 export async function acquireSharedLocalStream(constraints?: MediaStreamConstraints): Promise<MediaStream> {
   const defaultConstraints: MediaStreamConstraints = {
     video: { width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -268,7 +286,7 @@ export class WebRTCHandler {
   async startScreenShare(onStoppedByBrowser?: () => void): Promise<MediaStream> {
     if (!this.peerConnection) throw new Error('Peer connection not initialized');
 
-    const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    const displayStream = await captureScreen();
     const screenTrack = displayStream.getVideoTracks()[0];
     this.screenStream = displayStream;
 
