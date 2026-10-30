@@ -5,10 +5,10 @@ import {
   Search, Plus, Wifi, WifiOff, AlertTriangle, AlertCircle, Info, RefreshCw, Trash2, Edit,
   Clock, Monitor, X, Check, CheckCircle, MapPin,
   Grid3X3, List, Pause, Eraser, Lock, Trash,
-  Calendar, Link, ListVideo, FolderMinus, ChevronRight, Play, Activity, Unlink, Tv, Moon, Sun
+  Calendar, Link, ListVideo, FolderMinus, ChevronRight, Play, Activity, Unlink, Tv, Moon, Sun, RotateCw
 } from 'lucide-react';
 import ScreenDetailsSheet from '../../../../components/screens/ScreenDetailsSheet';
-import ScreenOrientationEditor from '../../../../components/screens/ScreenOrientationEditor';
+import ScreenOrientationEditor, { displayRotatesItself } from '../../../../components/screens/ScreenOrientationEditor';
 import PairTvDialog from '../../../../components/screens/PairTvDialog';
 import ConfirmDialog from '../../../../components/screens/ConfirmDialog';
 import { pingScreen, unlinkScreen, pairTvToScreen, setScreenSleep } from '../../../../lib/screenActions';
@@ -166,6 +166,12 @@ const renderStatusBadge = (screenOrStatus: any) => {
 type Toast = { id: number; message: string; type: 'success' | 'info' | 'error' };
 type ViewMode = 'grid' | 'list';
 
+/** One line for the screen menu: how this screen is shown. */
+function orientationSummary(s: Screen): string {
+  const base = displayRotatesItself(s) ? 'Rotated by the display itself' : s.orientation === 'portrait' ? 'Portrait' : 'Landscape';
+  return s.flipped ? `${base}, flipped` : base;
+}
+
 export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: { onNavigate: (v: string) => void; userEmail?: string }) {
   // Our own screens, counting every admin account — not just whoever is
   // signed in. See lib/adminOwnership.
@@ -189,6 +195,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'warning'>('all');
   const [editScreen, setEditScreen] = useState<Screen | null>(null);
+  const [orientationScreen, setOrientationScreen] = useState<Screen | null>(null);
   // Screen whose details sheet is open (tapping a card opens it).
   const [detailsScreenId, setDetailsScreenId] = useState<string | null>(null);
   const [unlinkTarget, setUnlinkTarget] = useState<Screen | null>(null);
@@ -447,6 +454,21 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
     setScreens(updated.filter(s => isOurs(s.assignedToUserEmail)));
     setEditScreen(null);
     addToast(`"${editScreen.name}" updated`);
+  };
+
+  const handleOrientationSave = async () => {
+    if (!orientationScreen) return;
+    const screen = orientationScreen;
+    const res = await pushToDatabase('screens', screen.id, screen, 'PUT');
+    if (res.ok === false) {
+      addToast("Couldn't save the orientation.", 'error');
+      return;
+    }
+    const updated = mediaStore.getScreens().map(s => s.id === screen.id ? { ...s, orientation: screen.orientation, flipped: screen.flipped } : s);
+    mediaStore.saveScreens(updated);
+    setScreens(updated.filter(s => isOurs(s.assignedToUserEmail)));
+    setOrientationScreen(null);
+    addToast(`"${screen.name}" orientation saved`);
   };
 
   const handleScheduleSave = () => {
@@ -780,6 +802,13 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                 title: 'Settings',
                 actions: [
                   {
+                    key: 'orientation',
+                    label: 'Orientation',
+                    description: orientationSummary(screen),
+                    icon: <RotateCw size={17} />,
+                    onClick: () => setOrientationScreen({ ...screen })
+                  },
+                  {
                     key: 'edit',
                     label: 'Edit details',
                     description: 'Name, location and settings',
@@ -879,6 +908,13 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
                     description: 'Delete all downloaded media on the TV and download it again — blank until done',
                     icon: <Eraser size={17} />,
                     onClick: () => handleClearCache(screen)
+                  },
+                  {
+                    key: 'orientation',
+                    label: 'Orientation',
+                    description: orientationSummary(screen),
+                    icon: <RotateCw size={17} />,
+                    onClick: () => setOrientationScreen({ ...screen })
                   },
                   {
                     key: 'edit',
@@ -1135,6 +1171,28 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
 
       {/* Click outside to close menu */}
       {openMenu && <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />}
+
+      {/* Orientation */}
+      {orientationScreen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setOrientationScreen(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5">
+              <h2 className="text-base font-semibold text-gray-900">Orientation — {orientationScreen.name}</h2>
+              <button onClick={() => setOrientationScreen(null)} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"><X size={18} /></button>
+            </div>
+            <div className="px-5 pb-1 [&>div]:border-t-0 [&>div]:pt-3">
+              <ScreenOrientationEditor
+                screen={orientationScreen}
+                onChange={patch => setOrientationScreen(p => p && ({ ...p, ...patch }))}
+              />
+            </div>
+            <div className="flex gap-3 p-5">
+              <button onClick={() => setOrientationScreen(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={handleOrientationSave} className="flex-1 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Modal */}
       {editScreen && (

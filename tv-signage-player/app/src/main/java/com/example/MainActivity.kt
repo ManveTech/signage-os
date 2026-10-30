@@ -145,7 +145,7 @@ fun SignagePlayerApp(
     }
     // The same turn, clockwise, for call video frames (see rotatedToPortrait).
     val videoRotation = when {
-        rotateForPortrait -> if (flipped) 90 else 270
+        rotateForPortrait -> if (flipped) 270 else 90
         flipped -> 180
         else -> 0
     }
@@ -354,10 +354,8 @@ fun SignagePlayerApp(
 
 /**
  * Lays the content out in portrait (width and height swapped) and turns it
- * 90° so it fills a landscape display mounted on its side. Matches Android's
- * own default portrait rotation on landscape-native devices (ROTATION_270:
- * the TV is turned 90° clockwise, so content is drawn turned 90° counter-
- * clockwise to appear upright).
+ * 90° so it fills a landscape display mounted on its side: clockwise, or
+ * counter-clockwise when flipped (the display turned the other way).
  */
 internal fun Modifier.rotatedToPortrait(flipped: Boolean = false): Modifier = this.layout { measurable, constraints ->
     val width = constraints.maxWidth
@@ -365,7 +363,9 @@ internal fun Modifier.rotatedToPortrait(flipped: Boolean = false): Modifier = th
     val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(height, width))
     layout(width, height) {
         placeable.placeWithLayer(x = (width - height) / 2, y = (height - width) / 2) {
-            rotationZ = if (flipped) 90f else -90f
+            // Clockwise by default (the way most portrait signage is mounted,
+            // and what people expected here); Flip turns it the other way.
+            rotationZ = if (flipped) -90f else 90f
         }
     }
 }
