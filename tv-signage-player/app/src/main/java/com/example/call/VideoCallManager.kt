@@ -384,10 +384,16 @@ class VideoCallManager(private val context: Context) {
         val decoderFactory = object : org.webrtc.VideoDecoderFactory {
             override fun createDecoder(info: org.webrtc.VideoCodecInfo): org.webrtc.VideoDecoder? {
                 val software = info.name.equals("VP8", ignoreCase = true) || info.name.equals("VP9", ignoreCase = true)
+                Log.d(TAG, "Video decoder for ${info.name}: ${if (software) "software" else "hardware"}")
                 return (if (software) softwareDecoders.createDecoder(info) else null) ?: hardwareDecoders.createDecoder(info)
             }
+            // Every H.264 profile the hardware offers is kept (deduplicating by
+            // name alone dropped all but one, and a laptop's offer might only
+            // match another) — the dashboard now asks for H.264 first, so calls
+            // decode on the TV's video chip instead of its CPU.
             override fun getSupportedCodecs(): Array<org.webrtc.VideoCodecInfo> =
-                (hardwareDecoders.supportedCodecs + softwareDecoders.supportedCodecs).distinctBy { it.name.uppercase() }.toTypedArray()
+                (hardwareDecoders.supportedCodecs + softwareDecoders.supportedCodecs)
+                    .distinctBy { it.name.uppercase() + it.params.toSortedMap() }.toTypedArray()
         }
         // WebRTC's own echo canceller and noise suppressor instead of the
         // device's: on many Android TV boxes the built-in ones are missing or

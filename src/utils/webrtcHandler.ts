@@ -198,6 +198,46 @@ export class WebRTCHandler {
   }
 
   /**
+   * Ask for H.264 first, in both directions.
+   *
+   * Chrome's default is VP8, which the TV app decodes in software (its
+   * hardware VP8 decoders froze on screen share). On a TV box's CPU that
+   * can't keep up with 720p at 30 fps: frames queue and the picture fell
+   * seconds behind the sound. Every TV box decodes and encodes H.264 in
+   * hardware — it's what it plays films with — and so does the laptop or
+   * phone. Constrained baseline (packetization-mode 1) goes first: it's the
+   * profile every hardware decoder takes. If the TV can't do H.264 at all,
+   * the answer simply picks VP8 as before.
+   */
+  private preferH264(): void {
+    const pc = this.peerConnection;
+    const caps = typeof RTCRtpReceiver !== 'undefined' && RTCRtpReceiver.getCapabilities?.('video');
+    if (!pc || !caps || typeof RTCRtpTransceiver === 'undefined' || !('setCodecPreferences' in RTCRtpTransceiver.prototype)) return;
+
+    // A call without a camera still receives the TV's video.
+    if (!pc.getTransceivers().some(t => t.receiver.track?.kind === 'video')) {
+      pc.addTransceiver('video', { direction: 'recvonly' });
+    }
+
+    const rank = (c: RTCRtpCodec) => {
+      if (c.mimeType.toLowerCase() !== 'video/h264') return 2;
+      const fmtp = (c.sdpFmtpLine || '').toLowerCase();
+      return fmtp.includes('packetization-mode=1') && fmtp.includes('profile-level-id=42e0') ? 0 : 1;
+    };
+    const ordered = [...caps.codecs].sort((a, b) => rank(a) - rank(b));
+    if (rank(ordered[0]) === 2) return; // this browser has no H.264
+
+    for (const t of pc.getTransceivers()) {
+      if (t.receiver.track?.kind !== 'video') continue;
+      try {
+        t.setCodecPreferences(ordered);
+      } catch (err) {
+        console.warn('[WebRTC] Could not prefer H.264', err);
+      }
+    }
+  }
+
+  /**
    * Create and send SDP offer
    */
   async createOffer(): Promise<RTCSessionDescriptionInit> {
@@ -208,6 +248,8 @@ export class WebRTCHandler {
     if (!this.localStream) {
       await this.addLocalStreamToPeerConnection();
     }
+
+    this.preferH264();
 
     try {
       const offer = await this.peerConnection!.createOffer({
