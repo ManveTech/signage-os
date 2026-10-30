@@ -5,7 +5,7 @@ import { withoutWeather, clockLabelFrom, qrLinkFrom, buildWidgetLink, qrCornerWi
 import {
   Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Eye, Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive, Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2
 } from 'lucide-react';
-import { checkFiles, uploadMediaFile } from '../../../../lib/mediaUpload';
+import { checkFiles, uploadMediaFile, formatBytes } from '../../../../lib/mediaUpload';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
@@ -103,6 +103,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
   const [totalFilesToUpload, setTotalFilesToUpload] = useState(0);
   const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedBytes, setUploadedBytes] = useState<{ sent: number; total: number } | null>(null);
 
   useEffect(() => {
     loadMedia();
@@ -443,35 +444,66 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     e.target.value = '';
   };
 
-  const uploadSingleFile = async (file: File): Promise<void> => {
+  const uploadSingleFile = async (file: File, onProgress: (fraction: number) => void) => {
     const [check] = checkFiles([file], storageUsedBytes, storageLimitGb > 0 ? storageLimitGb * 1024 ** 3 : null);
     if (check.error) throw new Error(check.error);
-    const newMedia = await uploadMediaFile(file, userEmail);
-    loadMedia();
-    addAssetToTimeline(newMedia);
-    showToast(`"${newMedia.title}" uploaded and added to the playlist`);
+    return uploadMediaFile(file, userEmail, undefined, onProgress);
   };
+
+  /** Files uploading at once. Big videos already go up in several pieces each. */
+  const PARALLEL_FILES = 2;
 
   const processUploadedFiles = async (files: File[]) => {
     setTotalFilesToUpload(files.length);
     setUploadingFilesCount(0);
     setUploadProgress(0);
 
-    let count = 0;
-    let failedCount = 0;
-    for (const file of files) {
-      count++;
-      setUploadingFilesCount(count);
-      setUploadProgress(((count - 1) / files.length) * 100);
-      try {
-        await uploadSingleFile(file);
-      } catch (err) {
-        console.error(err);
-        failedCount++;
-        showToast(`Failed: ${file.name} — ${err instanceof Error ? err.message : 'Upload error'}`);
+    // Progress by bytes, so one big video moves the bar while it uploads
+    // (it used to sit at 0% until the whole file had gone).
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0) || 1;
+    const sent = files.map(() => 0);
+    const report = () => {
+      const done = sent.reduce((a, b) => a + b, 0);
+      setUploadProgress(Math.min(100, (done / totalBytes) * 100));
+      setUploadedBytes({ sent: done, total: totalBytes });
+    };
+    report();
+
+    let next = 0;
+    let finished = 0;
+    type Uploaded = Awaited<ReturnType<typeof uploadMediaFile>> | null;
+    const settle: ((media: Uploaded) => void)[] = [];
+    const results = files.map((_, i) => new Promise<Uploaded>(r => { settle[i] = r; }));
+    const worker = async () => {
+      while (next < files.length) {
+        const i = next++;
+        try {
+          const media = await uploadSingleFile(files[i], f => { sent[i] = f * files[i].size; report(); });
+          sent[i] = files[i].size;
+          settle[i](media);
+        } catch (err) {
+          console.error(err);
+          sent[i] = files[i].size;
+          showToast(`Failed: ${files[i].name} — ${err instanceof Error ? err.message : 'Upload error'}`);
+          settle[i](null);
+        }
+        finished++;
+        setUploadingFilesCount(finished);
+        report();
       }
-      setUploadProgress((count / files.length) * 100);
+    };
+    const workers = Promise.all(Array.from({ length: Math.min(PARALLEL_FILES, files.length) }, worker));
+
+    // Slides are added in the order the files were picked, whichever finishes first.
+    let failedCount = 0;
+    for (const result of results) {
+      const media = await result;
+      if (!media) { failedCount++; continue; }
+      addAssetToTimeline(media);
+      showToast(`"${media.title}" uploaded and added to the playlist`);
     }
+    await workers;
+    loadMedia();
 
     if (failedCount === 0) {
       showToast(`All ${files.length} file(s) uploaded successfully!`);
@@ -483,6 +515,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       setTotalFilesToUpload(0);
       setUploadingFilesCount(0);
       setUploadProgress(0);
+      setUploadedBytes(null);
     }, 1500);
   };
 
@@ -633,7 +666,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-slate-700">
-                  File {uploadingFilesCount} of {totalFilesToUpload}
+                  {totalFilesToUpload === 1 ? 'Uploading 1 file' : `${uploadingFilesCount} of ${totalFilesToUpload} files done`}
                 </span>
                 <span className="text-xs font-bold text-blue-600">{Math.round(uploadProgress)}%</span>
               </div>
@@ -644,7 +677,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 />
               </div>
               <p className="text-[10px] text-slate-400 text-center">
-                Uploading to server and adding to your media library...
+                {uploadedBytes ? `${formatBytes(uploadedBytes.sent)} of ${formatBytes(uploadedBytes.total)}` : 'Starting upload...'}
               </p>
             </div>
           </div>
@@ -790,7 +823,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3.5 space-y-2">
                 <div className="flex justify-between items-center text-xs font-bold text-slate-800">
                   <span>Uploading playlist assets...</span>
-                  <span>{uploadingFilesCount} of {totalFilesToUpload} files ({Math.round(uploadProgress)}%)</span>
+                  <span>{uploadingFilesCount} of {totalFilesToUpload} files done ({Math.round(uploadProgress)}%)</span>
                 </div>
                 <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
                   <div 

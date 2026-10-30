@@ -18,9 +18,14 @@ import { getHeaders } from './syncHelper';
  */
 
 export interface DirectUploadTarget {
-  uploadUrl: string;
   key: string;
   mimeType: string;
+  /** One PUT for the whole file… */
+  uploadUrl?: string;
+  /** …or, for a big file, a URL per piece of `partSize` bytes (see putInParts). */
+  uploadId?: string;
+  partSize?: number;
+  partUrls?: string[];
 }
 
 /** Thrown when storage isn't set up for direct uploads, so the caller falls back. */
@@ -38,6 +43,8 @@ export async function requestUploadUrl(params: {
   mimeType: string;
   fileSizeBytes: number;
   uploadedBy: string;
+  /** Offer to send it in pieces; the server decides (big files only). */
+  multipart?: boolean;
 }): Promise<DirectUploadTarget> {
   const res = await fetch(`${API_BASE}/media_items/upload-url`, {
     method: 'POST',
@@ -60,44 +67,133 @@ export async function requestUploadUrl(params: {
 }
 
 /**
- * PUT the file to the signed URL.
+ * PUT one blob to a signed URL.
  *
  * XMLHttpRequest rather than fetch purely for upload progress — fetch still
  * can't report it in Safari or an Android WebView, and a 200 MB upload with
  * no feedback looks like a hang.
- *
- * The Content-Type has to match what the URL was signed for, or the
- * signature check fails.
  */
+function putBlob(
+  url: string,
+  blob: Blob,
+  contentType: string | null,
+  onProgress?: (loaded: number) => void,
+  register?: (xhr: XMLHttpRequest) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    register?.(xhr);
+    xhr.open('PUT', url, true);
+    // The single PUT is signed for a Content-Type and must send the same one;
+    // pieces are signed without one.
+    if (contentType) xhr.setRequestHeader('Content-Type', contentType);
+
+    xhr.upload.onprogress = e => onProgress?.(e.loaded);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(blob.size);
+        resolve();
+      } else if (xhr.status === 403) {
+        // Nearly always the signature expiring on a slow connection, or the
+        // bucket's CORS rules not allowing PUT.
+        reject(new UploadError('The upload was refused by storage — start it again', false));
+      } else {
+        reject(new UploadError(`Storage rejected the upload (${xhr.status})`, xhr.status >= 500));
+      }
+    };
+    xhr.onerror = () => reject(new UploadError('Lost connection while uploading — check your internet and try again', true));
+    xhr.ontimeout = () => reject(new UploadError('The upload timed out', true));
+    xhr.onabort = () => reject(new UploadError('Upload cancelled', false));
+
+    xhr.send(blob);
+  });
+}
+
+class UploadError extends Error {
+  constructor(message: string, readonly retryable: boolean) { super(message); }
+}
+
+/** PUT the whole file to the signed URL (Content-Type must match the signature). */
 export function putToStorage(
   target: DirectUploadTarget,
   file: Blob,
   onProgress?: (fraction: number) => void
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', target.uploadUrl, true);
-    xhr.setRequestHeader('Content-Type', target.mimeType);
+  if (!target.uploadUrl) return Promise.reject(new Error('No upload address'));
+  return putBlob(target.uploadUrl, file, target.mimeType, loaded => onProgress?.(file.size ? loaded / file.size : 1));
+}
 
-    xhr.upload.onprogress = e => {
-      if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress?.(1);
-        resolve();
-      } else if (xhr.status === 403) {
-        // Nearly always the 15-minute signature expiring mid-upload on a slow
-        // connection, or the bucket's CORS rules not allowing PUT.
-        reject(new Error('The upload was refused by storage — start it again'));
-      } else {
-        reject(new Error(`Storage rejected the upload (${xhr.status})`));
+/** Pieces sent at the same time. More than this mostly just competes for the same line. */
+const PARALLEL_PARTS = 4;
+const PART_ATTEMPTS = 3;
+
+/**
+ * Send a big file as pieces, PARALLEL_PARTS at a time.
+ *
+ * One stream rarely fills a phone's mobile-data connection; several do. A
+ * piece that fails (a dropped connection, a 5xx) is retried on its own
+ * instead of restarting a 200 MB upload from zero. The server joins the
+ * pieces when the upload is recorded.
+ */
+export async function putInParts(
+  target: DirectUploadTarget,
+  file: Blob,
+  onProgress?: (fraction: number) => void
+): Promise<void> {
+  const urls = target.partUrls || [];
+  const size = target.partSize || 0;
+  if (!urls.length || !size) throw new Error('No upload address');
+
+  const loaded = new Array<number>(urls.length).fill(0);
+  const report = () => onProgress?.(Math.min(1, loaded.reduce((a, b) => a + b, 0) / (file.size || 1)));
+  const live = new Set<XMLHttpRequest>();
+  let failed: Error | null = null;
+  let next = 0;
+
+  const sendPart = async (index: number) => {
+    const blob = file.slice(index * size, Math.min(file.size, (index + 1) * size));
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await putBlob(urls[index], blob, null, n => { loaded[index] = n; report(); }, xhr => live.add(xhr));
+        return;
+      } catch (err) {
+        loaded[index] = 0;
+        report();
+        const retryable = err instanceof UploadError && err.retryable;
+        if (failed || !retryable || attempt >= PART_ATTEMPTS) throw err;
+        await new Promise(r => setTimeout(r, 1000 * attempt));
       }
-    };
-    xhr.onerror = () => reject(new Error('Lost connection while uploading — check your internet and try again'));
-    xhr.ontimeout = () => reject(new Error('The upload timed out'));
-    xhr.onabort = () => reject(new Error('Upload cancelled'));
+    }
+  };
 
-    xhr.send(file);
-  });
+  const worker = async () => {
+    while (!failed && next < urls.length) {
+      const index = next++;
+      try {
+        await sendPart(index);
+      } catch (err) {
+        if (!failed) failed = err instanceof Error ? err : new Error('Upload failed');
+        // Stop the other pieces rather than finish an upload that can't complete.
+        live.forEach(x => x.abort());
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(PARALLEL_PARTS, urls.length) }, worker));
+  if (failed) {
+    abortUpload(target);
+    throw failed;
+  }
+  onProgress?.(1);
+}
+
+/** Tell the server to drop the pieces of an upload that didn't finish. Best effort. */
+export function abortUpload(target: DirectUploadTarget): void {
+  if (!target.uploadId) return;
+  fetch(`${API_BASE}/media_items/upload-abort`, {
+    method: 'POST',
+    headers: getHeaders(),
+    credentials: 'include',
+    body: JSON.stringify({ key: target.key, uploadId: target.uploadId })
+  }).catch(() => {});
 }

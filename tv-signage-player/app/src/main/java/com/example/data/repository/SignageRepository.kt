@@ -1274,7 +1274,7 @@ class SignageRepository(private val context: Context) {
                             outputStream.write(bytes)
                         }
 
-                        if (!asset.checksum.isNullOrEmpty()) {
+                        if (isSha256(asset.checksum)) {
                             val calculated = calculateSHA256(tmpFile)
                             if (!calculated.equals(asset.checksum, ignoreCase = true)) {
                                 throw Exception("Checksum verification failed for base64 asset. Expected: ${asset.checksum}, got: $calculated")
@@ -1358,7 +1358,7 @@ class SignageRepository(private val context: Context) {
                     }
 
                     val tVerificationStart = System.currentTimeMillis()
-                    if (!asset.checksum.isNullOrEmpty()) {
+                    if (isSha256(asset.checksum)) {
                         val calculated = calculateSHA256(tmpFile)
                         if (!calculated.equals(asset.checksum, ignoreCase = true)) {
                             throw Exception("Checksum verification failed for downloaded asset. Expected: ${asset.checksum}, got: $calculated")
@@ -1422,6 +1422,12 @@ class SignageRepository(private val context: Context) {
         )
         failures
     }
+
+    // Only a SHA-256 can be checked here. Servers before 2026-10-30 stored
+    // R2's MD5 ETag for directly uploaded files, which could never match and
+    // left those files failing their download forever.
+    private fun isSha256(value: String?): Boolean =
+        value != null && value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
 
     private fun calculateSHA256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")

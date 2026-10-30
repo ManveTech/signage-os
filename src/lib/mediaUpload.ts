@@ -1,6 +1,6 @@
 import { mediaStore, MediaItem } from './mediaStore';
 import { maxUploadBytesFor } from './uploadLimits';
-import { requestUploadUrl, putToStorage, DirectUploadUnavailable } from './directUpload';
+import { requestUploadUrl, putToStorage, putInParts, DirectUploadUnavailable } from './directUpload';
 
 /**
  * The one place that turns a picked file into a media item — used by the
@@ -204,8 +204,8 @@ export async function uploadMediaFile(
       fileName: file.name
     };
 
-    const key = await sendDirect(file, mimeOf(file), owner, onProgress);
-    if (key) return mediaStore.uploadMedia({ ...common, r2Key: key });
+    const sent = await sendDirect(file, mimeOf(file), owner, onProgress);
+    if (sent) return mediaStore.uploadMedia({ ...common, ...sent });
 
     // Fallback: the whole file as base64 in a JSON body.
     const dataUrl = await readAsDataUrl(file);
@@ -230,11 +230,11 @@ export async function uploadMediaFile(
     fileName: img.fileName
   };
 
-  const key = await sendDirect(img.blob, img.mimeType, owner, onProgress, img.fileName);
-  if (key) {
+  const sent = await sendDirect(img.blob, img.mimeType, owner, onProgress, img.fileName);
+  if (sent) {
     // No data URL on this path, and none needed: the server points the
     // thumbnail at the stored file.
-    return mediaStore.uploadMedia({ ...common, thumbnail: '', r2Key: key });
+    return mediaStore.uploadMedia({ ...common, thumbnail: '', ...sent });
   }
 
   const dataUrl = await readAsDataUrl(img.blob);
@@ -242,7 +242,10 @@ export async function uploadMediaFile(
 }
 
 /**
- * Put the bytes in storage and return the key, or null to use the old path.
+ * Put the bytes in storage and say where they went, or null to use the old path.
+ *
+ * Big files go up as pieces several at a time (the server decides from the
+ * size); r2UploadId and r2PartCount tell it to join them.
  *
  * Only "storage isn't available" returns null. A real failure — refused,
  * connection lost, over quota — is thrown, because retrying a 200 MB video
@@ -255,19 +258,24 @@ async function sendDirect(
   owner: string,
   onProgress?: (fraction: number) => void,
   fileName?: string
-): Promise<string | null> {
+): Promise<{ r2Key: string; r2UploadId?: string; r2PartCount?: number } | null> {
   let target;
   try {
     target = await requestUploadUrl({
       fileName: fileName || (blob as File).name || 'upload',
       mimeType,
       fileSizeBytes: blob.size,
-      uploadedBy: owner
+      uploadedBy: owner,
+      multipart: true
     });
   } catch (err) {
     if (err instanceof DirectUploadUnavailable) return null;
     throw err;
   }
+  if (target.uploadId && target.partUrls?.length) {
+    await putInParts(target, blob, onProgress);
+    return { r2Key: target.key, r2UploadId: target.uploadId, r2PartCount: target.partUrls.length };
+  }
   await putToStorage(target, blob, onProgress);
-  return target.key;
+  return { r2Key: target.key };
 }

@@ -725,6 +725,19 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('media_items collection schema is already up to date');
     }
 
+    // Direct uploads stored R2's ETag (an MD5) as `checksum`, which the TV
+    // checks as a SHA-256 — so those files failed verification on every TV
+    // and never played. Anything that isn't a SHA-256 is cleared; the TV
+    // then re-fetches and skips the check. Only ever finds work once.
+    try {
+      const withChecksum = await pb.collection('media_items').getFullList({ filter: 'checksum != ""', fields: 'id,checksum' });
+      const bad = (withChecksum as any[]).filter(m => !/^[0-9a-f]{64}$/i.test(m.checksum || ''));
+      for (const m of bad) await pb.collection('media_items').update(m.id, { checksum: '' });
+      if (bad.length) console.log(`Cleared ${bad.length} media checksum(s) the TV could not verify`);
+    } catch (err: any) {
+      console.error('Could not tidy media checksums:', err.message);
+    }
+
     // Ensure playlists collection has widgetLink field
     try {
       console.log('Ensuring playlists collection schema has widgetLink field...');

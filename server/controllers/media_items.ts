@@ -1,5 +1,8 @@
 import { pb, ensurePBAuth } from '../db';
-import { uploadToR2, deleteFromR2, getKeyFromUrl, isR2Enabled, presignR2Upload, headR2Object, publicUrlForKey } from '../r2';
+import {
+  uploadToR2, deleteFromR2, getKeyFromUrl, isR2Enabled, presignR2Upload, headR2Object, publicUrlForKey,
+  startR2MultipartUpload, completeR2MultipartUpload, abortR2MultipartUpload
+} from '../r2';
 import crypto from 'crypto';
 import { MAX_VIDEO_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES } from '../uploadLimits';
 
@@ -19,6 +22,17 @@ const ALLOWED_MEDIA_MIME_TYPES = new Set([
   'video/webm',
   'video/quicktime',
 ]);
+
+/**
+ * Files at least this big go up in pieces of PART_SIZE, several at once
+ * (see startR2MultipartUpload). Smaller ones are a single PUT — for a few
+ * MB the extra round trips would cost more than they save.
+ */
+const MULTIPART_MIN_BYTES = 16 * 1024 * 1024;
+const PART_SIZE = 8 * 1024 * 1024;
+
+/** Keys this server hands out for media; anything else is refused. */
+const MEDIA_KEY = /^media\/\d{4}\/\d{2}\/[0-9a-f-]{36}\/[A-Za-z0-9._-]+$/;
 
 /**
  * Generate a unique R2 object key for a media file.
@@ -110,6 +124,14 @@ export async function createMediaUploadUrl(req: any, res: any) {
     }
 
     const key = buildR2Key(fileName);
+    // Dashboards that can send pieces ask for them; older ones get one URL.
+    if (req.body.multipart === true && fileSizeBytes >= MULTIPART_MIN_BYTES) {
+      const partCount = Math.ceil(fileSizeBytes / PART_SIZE);
+      // An hour, not 15 minutes: every piece is signed now, and the last
+      // ones may only start well into a long upload on mobile data.
+      const { uploadId, partUrls } = await startR2MultipartUpload(key, mimeType, partCount, 3600);
+      return res.json({ key, mimeType, uploadId, partSize: PART_SIZE, partUrls, expiresIn: 3600 });
+    }
     const uploadUrl = await presignR2Upload(key, mimeType);
     res.json({ uploadUrl, key, mimeType, expiresIn: 900 });
   } catch (error: any) {
@@ -263,6 +285,21 @@ export async function uploadMediaItem(req: any, res: any) {
  * billable and orphaned, with no record pointing at it.
  */
 async function finishDirectUpload(req: any, res: any, key: string) {
+  if (!MEDIA_KEY.test(key)) {
+    return res.status(400).json({ error: "That upload didn't arrive — try again." });
+  }
+  // Sent in pieces: join them first.
+  const uploadId = typeof req.body.r2UploadId === 'string' ? req.body.r2UploadId : '';
+  if (uploadId) {
+    try {
+      const expected = Number(req.body.r2PartCount) || undefined;
+      await completeR2MultipartUpload(key, uploadId, expected);
+    } catch (err: any) {
+      console.error(`[R2] Could not join upload ${key}:`, err?.message);
+      await abortR2MultipartUpload(key, uploadId).catch(() => {});
+      return res.status(400).json({ error: "That upload didn't fully arrive — try again." });
+    }
+  }
   const head = await headR2Object(key);
   if (!head) {
     return res.status(400).json({ error: "That upload didn't arrive — try again." });
@@ -301,10 +338,11 @@ async function finishDirectUpload(req: any, res: any, key: string) {
     thumbnail: fileUrl,
     fileUrl,
     mimeType,
-    // R2's ETag for a single-part PUT is the MD5 of the body. It isn't the
-    // SHA-256 the base64 path stores, but it is a real integrity value for a
-    // file this server never had in hand.
-    checksum: head.etag,
+    // No checksum: the TV verifies `checksum` as a SHA-256 of the file, and
+    // this server never sees the bytes to make one. R2's ETag (an MD5, or
+    // "md5-N" for a file sent in pieces) used to go here, so every directly
+    // uploaded file failed the TV's check and never played.
+    checksum: '',
     width: req.body.width || 0,
     height: req.body.height || 0,
     fileSizeBytes: head.size,
@@ -321,6 +359,19 @@ async function finishDirectUpload(req: any, res: any, key: string) {
   const record = await pb.collection('media_items').create(recordData);
   console.log(`Direct upload recorded: ${record.id} (${head.size} bytes at ${key})`);
   res.status(201).json(record);
+}
+
+/** A piece-by-piece upload was cancelled or failed: drop the pieces stored so far. */
+export async function abortMediaUpload(req: any, res: any) {
+  const key = String(req.body?.key || '');
+  const uploadId = String(req.body?.uploadId || '');
+  if (!MEDIA_KEY.test(key) || !uploadId) return res.status(400).json({ error: 'key and uploadId are required' });
+  try {
+    await abortR2MultipartUpload(key, uploadId);
+  } catch (err: any) {
+    console.warn(`[R2] Could not abort upload ${key}:`, err?.message);
+  }
+  res.json({ ok: true });
 }
 
 /** Deletes a media item's file from R2 (when it's there) and then the record. */

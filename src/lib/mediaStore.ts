@@ -30,6 +30,9 @@ export interface MediaItem {
   fileName?: string;
   /** Object-storage key when the browser uploaded straight to storage. */
   r2Key?: string;
+  /** Set when the file went up in pieces: the server joins them on save. */
+  r2UploadId?: string;
+  r2PartCount?: number;
 }
 
 export interface Playlist {
@@ -144,6 +147,8 @@ export const mediaStore = {
       if (idx !== -1) {
         // The local data URL / file payload is no longer needed once stored.
         delete currentAll[idx].fileData;
+        delete currentAll[idx].r2UploadId;
+        delete currentAll[idx].r2PartCount;
         if (serverRecord.thumbnail) currentAll[idx].thumbnail = serverRecord.thumbnail;
         if (serverRecord.fileUrl) currentAll[idx].fileUrl = serverRecord.fileUrl;
         if (serverRecord.fileSizeBytes) currentAll[idx].fileSizeBytes = serverRecord.fileSizeBytes;

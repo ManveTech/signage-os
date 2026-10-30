@@ -1,5 +1,5 @@
 import express from 'express';
-import { uploadMediaItem, deleteMediaItem, createMediaUploadUrl } from '../controllers/media_items';
+import { uploadMediaItem, deleteMediaItem, createMediaUploadUrl, abortMediaUpload } from '../controllers/media_items';
 import { createCrudRouter } from '../controllers/crud';
 import { uploadLimiter } from '../middleware/rateLimiter';
 
@@ -13,6 +13,8 @@ const router = express.Router();
 // same hourly allowance as a finished upload, since it's the step that lets
 // one happen.
 router.post('/upload-url', uploadLimiter, createMediaUploadUrl);
+
+router.post('/upload-abort', abortMediaUpload);
 
 router.post('/', uploadLimiter, uploadMediaItem);
 

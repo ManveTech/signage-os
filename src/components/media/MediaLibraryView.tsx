@@ -136,21 +136,30 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
     if (queue.length === 0) return;
     setUploading(true);
     let ok = 0;
-    const uploaded: MediaItem[] = [];
-    for (const row of queue) {
-      setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'uploading' } : r)));
-      try {
-        uploaded.push(await uploadMediaFile(row.file, userEmail, undefined, fraction => {
-          setRows(prev => prev.map(r => (r.file === row.file ? { ...r, progress: fraction } : r)));
-        }));
-        ok++;
-        setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'done' } : r)));
-        load();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Upload failed';
-        setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'failed', message } : r)));
+    // Kept in the order the files were picked, whichever finishes first.
+    const results: (MediaItem | null)[] = queue.map(() => null);
+    let next = 0;
+    // Two files at a time; big videos already go up in several pieces each.
+    const worker = async () => {
+      while (next < queue.length) {
+        const i = next++;
+        const row = queue[i];
+        setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'uploading' } : r)));
+        try {
+          results[i] = await uploadMediaFile(row.file, userEmail, undefined, fraction => {
+            setRows(prev => prev.map(r => (r.file === row.file ? { ...r, progress: fraction } : r)));
+          });
+          ok++;
+          setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'done' } : r)));
+          load();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Upload failed';
+          setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'failed', message } : r)));
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, queue.length) }, worker));
+    const uploaded = results.filter((m): m is MediaItem => m !== null);
 
     // Only files that actually reached the server get a slide — a playlist
     // pointing at a file that failed to upload shows a gap on the TV.

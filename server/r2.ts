@@ -1,4 +1,7 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadBucketCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client, PutObjectCommand, DeleteObjectCommand, HeadBucketCommand, HeadObjectCommand,
+  CreateMultipartUploadCommand, UploadPartCommand, ListPartsCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getCloudflareConfig, CloudflareConfig } from './integrationsStore';
 
@@ -86,6 +89,77 @@ export async function presignR2Upload(
     new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: mimeType }),
     { expiresIn: expiresInSeconds }
   );
+}
+
+/**
+ * A big file sent as several pieces at once (S3 multipart upload).
+ *
+ * One PUT is one stream, and on a phone's mobile data a single stream rarely
+ * fills the connection — a 200 MB video took minutes longer than the line
+ * allowed. With the pieces signed up front, the browser sends four at a time
+ * and retries only a piece that fails, not the whole file.
+ *
+ * R2 needs every piece but the last to be the same size (at least 5 MB).
+ */
+export async function startR2MultipartUpload(
+  key: string,
+  mimeType: string,
+  partCount: number,
+  expiresInSeconds = 3600
+): Promise<{ uploadId: string; partUrls: string[] }> {
+  const cfg = await getCloudflareConfig();
+  if (!cfg.enabled || !cfg.bucket || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    throw new Error('R2 storage is not configured');
+  }
+  const client = buildS3Client(cfg);
+  const created = await client.send(new CreateMultipartUploadCommand({ Bucket: cfg.bucket, Key: key, ContentType: mimeType }));
+  const uploadId = created.UploadId;
+  if (!uploadId) throw new Error('Storage did not start the upload');
+  const partUrls = await Promise.all(Array.from({ length: partCount }, (_, i) =>
+    getSignedUrl(
+      client,
+      new UploadPartCommand({ Bucket: cfg.bucket, Key: key, UploadId: uploadId, PartNumber: i + 1 }),
+      { expiresIn: expiresInSeconds }
+    )
+  ));
+  return { uploadId, partUrls };
+}
+
+/**
+ * Joins the pieces into one object. The pieces' ETags are read from R2 here
+ * rather than sent by the browser: reading a response's ETag in the browser
+ * needs the bucket's CORS rules to expose it, and this way they don't.
+ */
+export async function completeR2MultipartUpload(key: string, uploadId: string, expectedParts?: number): Promise<void> {
+  const cfg = await getCloudflareConfig();
+  if (!cfg.enabled || !cfg.bucket) throw new Error('R2 storage is not configured');
+  const client = buildS3Client(cfg);
+  const parts: { PartNumber: number; ETag: string }[] = [];
+  let marker: string | undefined;
+  do {
+    const page = await client.send(new ListPartsCommand({ Bucket: cfg.bucket, Key: key, UploadId: uploadId, PartNumberMarker: marker }));
+    for (const p of page.Parts || []) {
+      if (p.PartNumber && p.ETag) parts.push({ PartNumber: p.PartNumber, ETag: p.ETag });
+    }
+    marker = page.IsTruncated ? page.NextPartNumberMarker : undefined;
+  } while (marker);
+  if (parts.length === 0) throw new Error('No pieces of the upload arrived');
+  parts.sort((a, b) => a.PartNumber - b.PartNumber);
+  // A missing piece would join into a file with a hole in it.
+  if (parts.some((p, i) => p.PartNumber !== i + 1) || (expectedParts && parts.length !== expectedParts)) {
+    throw new Error('Part of the upload is missing');
+  }
+  await client.send(new CompleteMultipartUploadCommand({
+    Bucket: cfg.bucket, Key: key, UploadId: uploadId, MultipartUpload: { Parts: parts }
+  }));
+}
+
+/** Throws away the pieces of an upload that was cancelled or failed. */
+export async function abortR2MultipartUpload(key: string, uploadId: string): Promise<void> {
+  const cfg = await getCloudflareConfig();
+  if (!cfg.enabled || !cfg.bucket) return;
+  const client = buildS3Client(cfg);
+  await client.send(new AbortMultipartUploadCommand({ Bucket: cfg.bucket, Key: key, UploadId: uploadId }));
 }
 
 /** What R2 actually holds at `key`, or null if nothing is there. */
