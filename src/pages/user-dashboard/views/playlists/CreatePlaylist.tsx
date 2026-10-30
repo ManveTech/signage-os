@@ -5,7 +5,7 @@ import { withoutWeather, clockLabelFrom, qrLinkFrom, buildWidgetLink, qrCornerWi
 import {
   Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Eye, Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive, Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2
 } from 'lucide-react';
-import { checkFiles, uploadMediaFile, formatBytes } from '../../../../lib/mediaUpload';
+import { checkFiles, uploadMediaFile, formatBytes, UploadStage } from '../../../../lib/mediaUpload';
 import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
@@ -104,6 +104,8 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
   const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedBytes, setUploadedBytes] = useState<{ sent: number; total: number } | null>(null);
+  /** 0-100 while a video is being shrunk on this device before upload, else null. */
+  const [optimisingPct, setOptimisingPct] = useState<number | null>(null);
 
   useEffect(() => {
     loadMedia();
@@ -444,7 +446,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     e.target.value = '';
   };
 
-  const uploadSingleFile = async (file: File, onProgress: (fraction: number) => void) => {
+  const uploadSingleFile = async (file: File, onProgress: (fraction: number, stage: UploadStage) => void) => {
     const [check] = checkFiles([file], storageUsedBytes, storageLimitGb > 0 ? storageLimitGb * 1024 ** 3 : null);
     if (check.error) throw new Error(check.error);
     return uploadMediaFile(file, userEmail, undefined, onProgress);
@@ -462,6 +464,12 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
     // (it used to sit at 0% until the whole file had gone).
     const totalBytes = files.reduce((sum, f) => sum + f.size, 0) || 1;
     const sent = files.map(() => 0);
+    // Videos being compressed right now, by file index.
+    const optimising = new Map<number, number>();
+    const reportOptimising = () => {
+      const active = [...optimising.values()];
+      setOptimisingPct(active.length ? Math.round((active.reduce((a, b) => a + b, 0) / active.length) * 100) : null);
+    };
     const report = () => {
       const done = sent.reduce((a, b) => a + b, 0);
       setUploadProgress(Math.min(100, (done / totalBytes) * 100));
@@ -478,7 +486,12 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       while (next < files.length) {
         const i = next++;
         try {
-          const media = await uploadSingleFile(files[i], f => { sent[i] = f * files[i].size; report(); });
+          const media = await uploadSingleFile(files[i], (f, stage) => {
+            if (stage === 'optimising') { optimising.set(i, f); reportOptimising(); return; }
+            if (optimising.delete(i)) reportOptimising();
+            sent[i] = f * files[i].size;
+            report();
+          });
           sent[i] = files[i].size;
           settle[i](media);
         } catch (err) {
@@ -516,6 +529,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
       setUploadingFilesCount(0);
       setUploadProgress(0);
       setUploadedBytes(null);
+      setOptimisingPct(null);
     }, 1500);
   };
 
@@ -677,7 +691,9 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                 />
               </div>
               <p className="text-[10px] text-slate-400 text-center">
-                {uploadedBytes ? `${formatBytes(uploadedBytes.sent)} of ${formatBytes(uploadedBytes.total)}` : 'Starting upload...'}
+                {optimisingPct !== null
+                  ? `Optimising video on this device… ${optimisingPct}%`
+                  : uploadedBytes ? `${formatBytes(uploadedBytes.sent)} of ${formatBytes(uploadedBytes.total)}` : 'Starting upload...'}
               </p>
             </div>
           </div>
@@ -822,7 +838,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
             {totalFilesToUpload > 0 && (
               <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3.5 space-y-2">
                 <div className="flex justify-between items-center text-xs font-bold text-slate-800">
-                  <span>Uploading playlist assets...</span>
+                  <span>{optimisingPct !== null ? `Optimising video… ${optimisingPct}%` : 'Uploading playlist assets...'}</span>
                   <span>{uploadingFilesCount} of {totalFilesToUpload} files done ({Math.round(uploadProgress)}%)</span>
                 </div>
                 <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">

@@ -12,7 +12,7 @@ import { mediaStore, MediaItem, Playlist } from '../../lib/mediaStore';
 import { makeOursTest } from '../../lib/adminOwnership';
 import { licensingStore } from '../../lib/licensingStore';
 import { syncCollection } from '../../lib/syncHelper';
-import { checkFiles, formatBytes, uploadMediaFile, FileCheck } from '../../lib/mediaUpload';
+import { checkFiles, formatBytes, uploadMediaFile, FileCheck, UploadStage } from '../../lib/mediaUpload';
 import { MAX_IMAGE_UPLOAD_BYTES, MAX_VIDEO_UPLOAD_BYTES } from '../../lib/uploadLimits';
 
 const TYPES: { key: string; label: string; icon: typeof Film }[] = [
@@ -25,6 +25,8 @@ type UploadRow = FileCheck & {
   message?: string;
   /** 0-1 while uploading. Only the direct-to-storage path reports it. */
   progress?: number;
+  /** 'optimising' while a video is being shrunk on this device first. */
+  stage?: UploadStage;
 };
 
 const formatDate = (d?: string) => {
@@ -146,8 +148,8 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
         const row = queue[i];
         setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'uploading' } : r)));
         try {
-          results[i] = await uploadMediaFile(row.file, userEmail, undefined, fraction => {
-            setRows(prev => prev.map(r => (r.file === row.file ? { ...r, progress: fraction } : r)));
+          results[i] = await uploadMediaFile(row.file, userEmail, undefined, (fraction, stage) => {
+            setRows(prev => prev.map(r => (r.file === row.file ? { ...r, progress: fraction, stage } : r)));
           });
           ok++;
           setRows(prev => prev.map(r => (r.file === row.file ? { ...r, state: 'done' } : r)));
@@ -474,7 +476,9 @@ export default function MediaLibraryView({ userEmail, isAdmin = false }: {
                       <span className="block text-sm text-slate-900 truncate">{r.file.name}</span>
                       <span className={`block text-xs ${r.error || r.state === 'failed' ? 'text-rose-600' : 'text-slate-500 truncate'}`}>
                         {r.error || r.message || (r.state === 'uploading'
-                          ? (r.progress !== undefined ? `Uploading ${Math.round(r.progress * 100)}%` : 'Uploading…')
+                          ? (r.stage === 'optimising'
+                            ? `Optimising video ${Math.round((r.progress || 0) * 100)}%`
+                            : r.progress !== undefined ? `Uploading ${Math.round(r.progress * 100)}%` : 'Uploading…')
                           : r.state === 'done' ? 'Uploaded' : formatBytes(r.file.size))}
                       </span>
                     </span>

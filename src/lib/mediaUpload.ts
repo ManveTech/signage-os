@@ -173,18 +173,40 @@ async function optimiseImage(file: File): Promise<{ blob: Blob; width: number; h
  *
  * Throws with a readable message on failure.
  */
+/**
+ * 'optimising' = a video being re-encoded on this device before it goes up;
+ * 'uploading' = bytes on their way. Each stage reports its own 0–1 fraction.
+ */
+export type UploadStage = 'optimising' | 'uploading';
+
 export async function uploadMediaFile(
-  file: File,
+  original: File,
   owner: string,
   title?: string,
-  onProgress?: (fraction: number) => void
+  onProgress?: (fraction: number, stage: UploadStage) => void
 ): Promise<MediaItem> {
+  let file = original;
   const isVideo = mimeOf(file).startsWith('video/');
+  const sendProgress = onProgress && ((f: number) => onProgress(f, 'uploading'));
   const cleanTitle = (title || '').trim() || file.name.replace(/\.[^/.]+$/, '');
   const expiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   if (isVideo) {
-    const info = await videoInfo(file);
+    // Shrink it on this device first. Any failure (unsupported browser,
+    // odd codec, encoder stall) just means the original goes up instead.
+    let info: { width: number; height: number; duration: number } | null = null;
+    try {
+      onProgress?.(0, 'optimising');
+      const { compressVideo } = await import('./videoCompress');
+      const small = await compressVideo(file, f => onProgress?.(f, 'optimising'));
+      if (small) {
+        file = small.file;
+        info = small;
+      }
+    } catch (err) {
+      console.warn('[upload] video compression unavailable, uploading the original:', err);
+    }
+    info = info || await videoInfo(file);
     const common = {
       title: cleanTitle,
       type: 'video' as const,
@@ -204,7 +226,7 @@ export async function uploadMediaFile(
       fileName: file.name
     };
 
-    const sent = await sendDirect(file, mimeOf(file), owner, onProgress);
+    const sent = await sendDirect(file, mimeOf(file), owner, sendProgress);
     if (sent) return mediaStore.uploadMedia({ ...common, ...sent });
 
     // Fallback: the whole file as base64 in a JSON body.
@@ -230,7 +252,7 @@ export async function uploadMediaFile(
     fileName: img.fileName
   };
 
-  const sent = await sendDirect(img.blob, img.mimeType, owner, onProgress, img.fileName);
+  const sent = await sendDirect(img.blob, img.mimeType, owner, sendProgress, img.fileName);
   if (sent) {
     // No data URL on this path, and none needed: the server points the
     // thumbnail at the stored file.
