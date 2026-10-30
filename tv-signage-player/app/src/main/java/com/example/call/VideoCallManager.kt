@@ -78,9 +78,6 @@ class VideoCallManager(private val context: Context) {
     private val _callerSharing = MutableStateFlow(false)
     private val _fillScreen = MutableStateFlow(false)
     val fillScreen: StateFlow<Boolean> = _fillScreen.asStateFlow()
-    /** Degrees (clockwise) the screen turns its picture; the camera's frames are turned to match. */
-    @Volatile var outgoingRotation: Int = 0
-
     private fun updateFill() { _fillScreen.value = _callerChoseFill.value && !_callerSharing.value }
 
     // Receive-only chat — this is a TV, there's no keyboard to reply with.
@@ -439,19 +436,6 @@ class VideoCallManager(private val context: Context) {
         val helper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
         surfaceTextureHelper = helper
         val videoSource = factory.createVideoSource(capturer.isScreencast)
-        // A portrait screen turns its picture (see MainActivity); a camera fixed
-        // to the display turns with it, so its frames are turned the same way
-        // and the caller sees an upright, tall picture.
-        videoSource.setVideoProcessor(object : org.webrtc.VideoProcessor {
-            private var sink: org.webrtc.VideoSink? = null
-            override fun setSink(sink: org.webrtc.VideoSink?) { this.sink = sink }
-            override fun onCapturerStarted(success: Boolean) {}
-            override fun onCapturerStopped() {}
-            override fun onFrameCaptured(frame: org.webrtc.VideoFrame) {
-                val extra = outgoingRotation
-                sink?.onFrame(if (extra % 360 == 0) frame else org.webrtc.VideoFrame(frame.buffer, (frame.rotation + extra) % 360, frame.timestampNs))
-            }
-        })
         capturer.initialize(helper, context, videoSource.capturerObserver)
         capturer.startCapture(1280, 720, 30)
 
