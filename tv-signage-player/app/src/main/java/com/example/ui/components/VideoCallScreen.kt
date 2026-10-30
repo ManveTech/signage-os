@@ -55,6 +55,7 @@ fun VideoCallScreen(
     val micEnabled by callManager.micEnabled.collectAsState()
     val cameraEnabled by callManager.cameraEnabled.collectAsState()
     val chatMessages by callManager.chatMessages.collectAsState()
+    val fillScreen by callManager.fillScreen.collectAsState()
 
     Box(
         modifier = Modifier
@@ -63,7 +64,7 @@ fun VideoCallScreen(
     ) {
         if (remoteTrack != null) {
             key(videoRotation, remoteTrack) {
-                RemoteVideoView(track = remoteTrack, eglContext = callManager.eglBase.eglBaseContext, rotation = videoRotation)
+                RemoteVideoView(track = remoteTrack, eglContext = callManager.eglBase.eglBaseContext, rotation = videoRotation, fill = fillScreen)
             }
         }
         Box(modifier = Modifier.fillMaxSize().then(overlayModifier)) {
@@ -175,28 +176,42 @@ private fun CallControlButton(
     }
 }
 
+/**
+ * The caller's video.
+ *
+ * Fit: the renderer is sized to the video's own shape and centred, so the
+ * whole picture shows with black bars. (Stretched to the full screen, WebRTC's
+ * renderer crops every frame to the screen's shape — a 4:3 webcam or a phone
+ * held upright lost its sides, even with ASPECT_FIT set.)
+ * Fill: the renderer covers the screen and the edges are cut instead.
+ */
 @Composable
-private fun RemoteVideoView(track: VideoTrack?, eglContext: org.webrtc.EglBase.Context, rotation: Int) {
+private fun RemoteVideoView(track: VideoTrack?, eglContext: org.webrtc.EglBase.Context, rotation: Int, fill: Boolean) {
     var sink by remember { mutableStateOf<org.webrtc.VideoSink?>(null) }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
-            SurfaceViewRenderer(context).apply {
-                init(eglContext, null)
-                setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
-                setEnableHardwareScaler(true)
+            android.widget.FrameLayout(context).apply {
+                addView(SurfaceViewRenderer(context).apply {
+                    init(eglContext, null)
+                    setEnableHardwareScaler(true)
+                })
             }
         },
-        update = { renderer ->
+        update = { frame ->
+            val renderer = frame.getChildAt(0) as SurfaceViewRenderer
+            renderer.setScalingType(if (fill) RendererCommon.ScalingType.SCALE_ASPECT_FILL else RendererCommon.ScalingType.SCALE_ASPECT_FIT)
+            val size = if (fill) android.view.ViewGroup.LayoutParams.MATCH_PARENT else android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            renderer.layoutParams = android.widget.FrameLayout.LayoutParams(size, size, android.view.Gravity.CENTER)
             if (sink == null) {
                 val s = RotatingSink(renderer, rotation)
                 track?.addSink(s)
                 sink = s
             }
         },
-        onRelease = { renderer ->
+        onRelease = { frame ->
             sink?.let { track?.removeSink(it) }
-            renderer.release()
+            (frame.getChildAt(0) as SurfaceViewRenderer).release()
         }
     )
 }

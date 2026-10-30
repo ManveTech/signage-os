@@ -7,7 +7,7 @@ import { GST_STATES, GSTIN_PATTERN, stateFromGstin } from '../services/gst';
  * The signed-in user's own preferences (Settings page). Kept to an explicit
  * list so this can't be used to change anything else on the user record.
  */
-const BOOLEAN_SETTINGS = ['alertScreenOffline'] as const;
+const BOOLEAN_SETTINGS = ['alertScreenOffline', 'callVideoFill'] as const;
 
 async function loadSelf(req: any) {
   if (!req.user?.email) return null;

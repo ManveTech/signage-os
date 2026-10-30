@@ -12,6 +12,8 @@ interface ConferenceEventData {
   mode?: string;
   defaultVolume?: number;
   muteOnStart?: boolean;
+  /** TV shows the caller filling the screen (edges cut) instead of fitted whole. */
+  videoFill?: boolean;
 }
 
 export function useVideoConferencing() {
@@ -188,6 +190,11 @@ export function useVideoConferencing() {
   /**
    * Send an in-call chat message
    */
+  /** Tell the TVs in the call that a screen share started or stopped (they always fit a shared screen). */
+  const sendScreenShareState = useCallback((data: { conferenceId: string; sharing: boolean }) => {
+    socketRef.current?.emit('call:screen-share', data);
+  }, []);
+
   const sendChatMessage = useCallback((data: { conferenceId: string; targetScreenIds?: string[]; senderName: string; text: string }) => {
     if (!socketRef.current) return;
     socketRef.current.emit('chat:message', { ...data, ts: Date.now() });
@@ -219,6 +226,7 @@ export function useVideoConferencing() {
     onScreenRejoined,
     onDisplayStatus,
     sendChatMessage,
+    sendScreenShareState,
     onChatMessage
   };
 }

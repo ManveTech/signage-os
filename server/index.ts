@@ -517,6 +517,17 @@ io.on('connection', (socket) => {
     }
   }));
 
+  // The caller started or stopped sharing their screen. TVs always fit a
+  // shared screen whole (text cut off at the edges is useless), whatever the
+  // account's fit/fill setting. Owner only, to screens in the call.
+  socket.on('call:screen-share', (data: any) => inOrder(socket, async () => {
+    const conferenceId = data?.conferenceId;
+    if (!(await ownsConference(socket, conferenceId))) return;
+    const targets = await conferenceTargets(socket, conferenceId);
+    const event = { conferenceId, sharing: data?.sharing === true };
+    for (const screenId of targets) io.to(`screen-${screenId}`).emit('call:screen-share', event);
+  }));
+
   socket.on('disconnect', () => {
     console.log(`[Socket.io] Client disconnected: ${socket.id}`);
     // Deliberately leave activeConferences untouched here for the DISPLAY side

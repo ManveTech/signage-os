@@ -71,6 +71,18 @@ class VideoCallManager(private val context: Context) {
     private val _cameraEnabled = MutableStateFlow(true)
     val cameraEnabled: StateFlow<Boolean> = _cameraEnabled.asStateFlow()
 
+    // How the caller's picture is laid out: whole (fit, black bars) unless
+    // the caller's account chose fill — and always whole while they share
+    // their screen, where cut-off edges lose the text.
+    private val _callerChoseFill = MutableStateFlow(false)
+    private val _callerSharing = MutableStateFlow(false)
+    private val _fillScreen = MutableStateFlow(false)
+    val fillScreen: StateFlow<Boolean> = _fillScreen.asStateFlow()
+    /** Degrees (clockwise) the screen turns its picture; the camera's frames are turned to match. */
+    @Volatile var outgoingRotation: Int = 0
+
+    private fun updateFill() { _fillScreen.value = _callerChoseFill.value && !_callerSharing.value }
+
     // Receive-only chat — this is a TV, there's no keyboard to reply with.
     // Keeps only the last 5 messages, mirroring the web display client.
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -134,6 +146,14 @@ class VideoCallManager(private val context: Context) {
             newSocket.on("conference:ended") { args -> onConferenceEnded(args) }
             newSocket.on("webrtc:signal") { args -> onSignal(args) }
             newSocket.on("chat:message") { args -> onChatMessage(args) }
+            newSocket.on("call:screen-share") { args ->
+                val data = args.firstOrNull() as? JSONObject
+                val id = data?.optString("conferenceId").orEmpty()
+                if (data != null && (id.isEmpty() || id == currentConferenceId)) {
+                    _callerSharing.value = data.optBoolean("sharing", false)
+                    updateFill()
+                }
+            }
             newSocket.on("screen:config-changed") {
                 Log.d(TAG, "Received screen:config-changed push, signaling immediate re-sync")
                 _configChanged.tryEmit(Unit)
@@ -195,6 +215,9 @@ class VideoCallManager(private val context: Context) {
         pendingRemoteVolume = data.optInt("defaultVolume", 100).coerceIn(0, 100) / 100.0
         callIceServers = parseIceServers(data.optJSONArray("iceServers"))
         relayOnly = data.optString("iceTransportPolicy") == "relay"
+        _callerChoseFill.value = data.optBoolean("videoFill", false)
+        _callerSharing.value = false
+        updateFill()
         currentConferenceId = conferenceId
         _callState.value = CallState.Ringing(conferenceId, mode)
         setupJob = scope.launch { setupPeerConnectionForIncomingCall() }
@@ -416,6 +439,19 @@ class VideoCallManager(private val context: Context) {
         val helper = SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
         surfaceTextureHelper = helper
         val videoSource = factory.createVideoSource(capturer.isScreencast)
+        // A portrait screen turns its picture (see MainActivity); a camera fixed
+        // to the display turns with it, so its frames are turned the same way
+        // and the caller sees an upright, tall picture.
+        videoSource.setVideoProcessor(object : org.webrtc.VideoProcessor {
+            private var sink: org.webrtc.VideoSink? = null
+            override fun setSink(sink: org.webrtc.VideoSink?) { this.sink = sink }
+            override fun onCapturerStarted(success: Boolean) {}
+            override fun onCapturerStopped() {}
+            override fun onFrameCaptured(frame: org.webrtc.VideoFrame) {
+                val extra = outgoingRotation
+                sink?.onFrame(if (extra % 360 == 0) frame else org.webrtc.VideoFrame(frame.buffer, (frame.rotation + extra) % 360, frame.timestampNs))
+            }
+        })
         capturer.initialize(helper, context, videoSource.capturerObserver)
         capturer.startCapture(1280, 720, 30)
 
@@ -532,6 +568,8 @@ class VideoCallManager(private val context: Context) {
         _micEnabled.value = false
         _cameraEnabled.value = true
         _chatMessages.value = emptyList()
+        _callerSharing.value = false
+        updateFill()
         _callState.value = CallState.Idle
         com.example.util.Breadcrumbs.mark(context, "call-ended-clean")
     }

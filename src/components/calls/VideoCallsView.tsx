@@ -5,7 +5,7 @@ import { useVideoConferencing } from '../../hooks/useVideoConferencing';
 import { API_BASE } from '../../config';
 import CallOverlay, { ChatMessage } from '../CallOverlay';
 import { getAuthToken } from '../../lib/authStorage';
-import { syncCollection, pushToDatabase } from '../../lib/syncHelper';
+import { syncCollection, pushToDatabase, getHeaders } from '../../lib/syncHelper';
 import { toast } from '../Toast';
 
 type ConferenceMode = 'one-to-one' | 'group' | 'manual-select';
@@ -45,7 +45,7 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
   licenseChecked?: boolean;
   userEmail: string;
 }) {
-  const { socket, initiateConference: emitInitiateConference, joinConference, onWebRTCSignal, onScreenRejoined, sendChatMessage, onChatMessage } = useVideoConferencing();
+  const { socket, initiateConference: emitInitiateConference, joinConference, onWebRTCSignal, onScreenRejoined, sendChatMessage, sendScreenShareState, onChatMessage } = useVideoConferencing();
   // One WebRTCHandler (one RTCPeerConnection) per target screen — a group call
   // negotiates a separate SDP offer/answer with each screen, so they can't
   // share a single peer connection the way a one-to-one call can.
@@ -64,6 +64,22 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
   const [loading, setLoading] = useState(false);
   const [defaultVolume, setDefaultVolume] = useState(50);
   const [muteOnStart, setMuteOnStart] = useState(true);
+  // Video call settings: how the TV shows the caller. Saved on the account.
+  const [videoFill, setVideoFill] = useState(false);
+  useEffect(() => {
+    fetch(`${API_BASE}/me/settings`, { headers: getHeaders(), credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setVideoFill(!!d.callVideoFill); })
+      .catch(() => {});
+  }, []);
+  const saveVideoFill = async (fill: boolean) => {
+    const before = videoFill;
+    setVideoFill(fill);
+    const res = await fetch(`${API_BASE}/me/settings`, {
+      method: 'PUT', headers: getHeaders(), credentials: 'include', body: JSON.stringify({ callVideoFill: fill })
+    }).catch(() => null);
+    if (!res?.ok) { setVideoFill(before); toast.error("Couldn't save the video call setting"); }
+  };
   const [screenSearch, setScreenSearch] = useState('');
   const [showNoCamera, setShowNoCamera] = useState(false);
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -144,6 +160,12 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
           handler.setAudioEnabled(false);
         }
         await handler.addLocalStreamToPeerConnection();
+        // Mid screen share: the rebuilt connection must carry the shared
+        // screen, not the camera (it used to come back showing the camera).
+        const share = screenShareRef.current;
+        if (share && share.screenTrack.readyState === 'live') {
+          await handler.replaceOutgoingVideoTrack(share.screenTrack);
+        }
       } catch (err) {
         console.warn('Could not access camera/microphone on rejoin, continuing without local media', err);
       }
@@ -174,13 +196,15 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
       try {
         const offer = await handler.createOffer();
         socket.emit('webrtc:signal', { conferenceId, toScreenId: screenId, signal: offer });
+        // The TV started over, so tell it again that a screen is being shared.
+        if (screenShareRef.current) sendScreenShareState({ conferenceId, sharing: true });
       } catch (err) {
         console.error(`Error creating rejoin offer for ${screenId}:`, err);
         setConnectionStatus('error');
       }
     });
     return unsubscribe;
-  }, [onScreenRejoined, socket, conferenceId, callTargetIds, micEnabled, localStream]);
+  }, [onScreenRejoined, socket, conferenceId, callTargetIds, micEnabled, localStream, sendScreenShareState]);
 
   const ownerName = (email?: string) => {
     if (!isAdmin || !email || email === userEmail) return '';
@@ -259,7 +283,8 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
         mode: selectedMode,
         targetScreenIds: targetIds,
         defaultVolume,
-        muteOnStart
+        muteOnStart,
+        videoFill
       } as any);
 
       // One camera/mic capture shared across every target screen's peer
@@ -414,6 +439,7 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
     if (cameraTrack) {
       webrtcHandlersRef.current.forEach(h => { h.replaceOutgoingVideoTrack(cameraTrack); });
     }
+    if (conferenceId) sendScreenShareState({ conferenceId, sharing: false });
     setIsScreenSharing(false);
   };
 
@@ -430,6 +456,7 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
           await handler.replaceOutgoingVideoTrack(screenTrack);
         }
         screenTrack.onended = () => revertScreenShare();
+        if (conferenceId) sendScreenShareState({ conferenceId, sharing: true });
         setIsScreenSharing(true);
       }
     } catch (err) {
@@ -581,6 +608,35 @@ export default function VideoCallsView({ isAdmin = false, enabled = true, organi
         <h1 className="display text-2xl sm:text-3xl text-ink-950">Video calls</h1>
         <p className="text-sm text-gray-500 mt-0.5">Call a TV that has a camera — you'll see and hear each other</p>
       </div>
+
+      {/* Video call settings */}
+      <section className="bg-white border border-gray-200 rounded-2xl p-4 space-y-2.5">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Video call settings</h2>
+          <p className="text-xs text-gray-500 mt-0.5">How your picture shows on the TV. A shared screen is always shown whole.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Picture on the TV">
+          {([
+            { fill: false, label: 'Fit', hint: 'Whole picture, black bars if needed' },
+            { fill: true, label: 'Fill', hint: 'Fills the screen, edges cut off' }
+          ]).map(opt => {
+            const selected = videoFill === opt.fill;
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => !selected && saveVideoFill(opt.fill)}
+                className={`text-left px-3 py-2.5 rounded-xl border transition-colors cursor-pointer ${selected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+              >
+                <span className={`block text-sm font-semibold ${selected ? 'text-blue-700' : 'text-gray-800'}`}>{opt.label}</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">{opt.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {screens.length > 6 && (
         <div className="relative">

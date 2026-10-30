@@ -306,6 +306,15 @@
         "required": false,
         "system": false,
         "type": "bool"
+      },
+      {
+        "id": "boolcallvideofill",
+        "name": "callVideoFill",
+        "type": "bool",
+        "required": false,
+        "system": false,
+        "hidden": false,
+        "presentable": false
       }
     ],
     "indexes": [

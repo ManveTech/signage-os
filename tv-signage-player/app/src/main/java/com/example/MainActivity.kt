@@ -150,6 +150,8 @@ fun SignagePlayerApp(
         else -> 0
     }
 
+    LaunchedEffect(videoRotation) { viewModel.videoCallManager.outgoingRotation = videoRotation }
+
     // The display was turned while running (in its own settings): report it
     // straight away so the dashboard's orientation option is right.
     var lastDisplayShape by remember { mutableStateOf<Boolean?>(null) }

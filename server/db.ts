@@ -139,6 +139,14 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
       console.log('Programmatically added alertScreenOffline field to users collection');
     }
 
+    // Video calls: show the caller's picture on the TV filling the screen
+    // (edges cut) instead of fitted whole. Off = fit, the default.
+    if (!fields.some((f: any) => f.name === 'callVideoFill')) {
+      fields.push({ id: 'boolcallvideofill', name: 'callVideoFill', type: 'bool', required: false, system: false, hidden: false, presentable: false });
+      usersUpdated = true;
+      console.log('Programmatically added callVideoFill field to users collection');
+    }
+
     if (!fields.some((f: any) => f.name === 'enableBroadcasting')) {
       fields.push({
         id: 'boolenablebroadcasting',
