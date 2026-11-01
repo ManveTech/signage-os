@@ -208,8 +208,12 @@ export default function CallOverlay({
     </div>
 
     {chatOpen && (
-      <div className="w-80 flex-shrink-0 bg-slate-900 border-l border-white/10 flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10">
+      // On a phone the chat covers the call; from sm up it's a column beside
+      // it. As a flex sibling at a fixed 320px it left the video stage 70px
+      // wide on a 390px screen, and squeezed the control bar 101px past its
+      // own edge — mute, camera and End call all pushed off-screen.
+      <div className="absolute inset-0 z-20 sm:static sm:w-80 sm:flex-shrink-0 bg-slate-900 sm:border-l border-white/10 flex flex-col">
+        <div className="flex items-center justify-between px-4 pb-3.5 pt-[calc(0.875rem+env(safe-area-inset-top))] sm:pt-3.5 border-b border-white/10">
           <span className="text-sm font-semibold text-white">In-call chat</span>
           <button onClick={() => setChatOpen(false)} className="text-slate-400 hover:text-white">
             <X size={18} />
@@ -230,7 +234,8 @@ export default function CallOverlay({
           )}
           <div ref={chatEndRef} />
         </div>
-        <div className="flex items-center gap-2 p-3 border-t border-white/10">
+        {/* Clears Android's navigation bar when the chat is full-screen. */}
+        <div className="flex items-center gap-2 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3 border-t border-white/10">
           <input
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
