@@ -5,6 +5,7 @@ import AdminLogin from './components/AdminLogin';
 const DisplayClient = lazy(() => import('./pages/display/DisplayClient'));
 import { ToastContainer } from './components/Toast';
 import BootScreen from './components/BootScreen';
+import UpdateGate from './components/UpdateGate';
 import { setPendingPairCode } from './lib/pendingPair';
 import { getAuthToken } from './lib/authStorage';
 import { ADMIN_ROUTES, USER_ROUTES } from './lib/routes';
@@ -59,6 +60,8 @@ export default function App() {
   return (
     <div className="relative w-full min-h-screen bg-slate-950 font-sans text-slate-900 selection:bg-accent selection:text-primary">
       {booting && <BootScreen onDone={() => setBooting(false)} />}
+      {/* Sits over everything: an app too old to be supported stops here. */}
+      <UpdateGate />
       <Routes>
         <Route path="/login" element={<AdminLogin initialView="login" />} />
         <Route path="/forgot-password" element={<AdminLogin initialView="forgot" />} />

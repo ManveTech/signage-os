@@ -1,6 +1,6 @@
 import { useEffect, useState, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, ChevronRight, Compass, Mail, Plug, Palette, UserRound, AlertCircle, Loader2 } from 'lucide-react';
+import { Bell, ChevronRight, Compass, Mail, Plug, Palette, UserRound, AlertCircle, Loader2, Smartphone } from 'lucide-react';
 import { API_BASE } from '../../config';
 import { getHeaders } from '../../lib/syncHelper';
 import { licensingStore } from '../../lib/licensingStore';
@@ -12,6 +12,7 @@ import { markTourSeen } from '../../lib/tour/state';
 import { toast } from '../Toast';
 
 type MySettings = { email: string; emailReady: boolean; alertScreenOffline: boolean };
+type AppVersions = { android: { minBuild: number }; ios: { minBuild: number } };
 
 function Toggle({ checked, onChange, disabled, label }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string }) {
   return (
@@ -95,6 +96,42 @@ export default function SettingsView({ userEmail, isAdmin = false }: { userEmail
     onFinish: () => markTourSeen(isAdmin ? 'admin-dashboard' : 'user-dashboard', userEmail)
   });
 
+  // Oldest phone build still allowed in. Admin-only; see UpdateGate.tsx and
+  // server/controllers/appVersion.ts.
+  const [minBuild, setMinBuild] = useState<AppVersions | null>(null);
+  const [minBuildDraft, setMinBuildDraft] = useState('');
+  const [savingBuild, setSavingBuild] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch(`${API_BASE}/app-version`, { headers: getHeaders(), credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) { setMinBuild(d); setMinBuildDraft(String(d.android?.minBuild ?? 0)); } })
+      .catch(() => {});
+  }, [isAdmin]);
+
+  const saveMinBuild = async () => {
+    const n = Number(minBuildDraft);
+    if (!Number.isInteger(n) || n < 0) { toast.warning('Use a whole build number, or 0 for no minimum.'); return; }
+    setSavingBuild(true);
+    try {
+      const res = await fetch(`${API_BASE}/app-version`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ android: { minBuild: n }, ios: { minBuild: minBuild?.ios?.minBuild ?? 0 } })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(data.message || "Couldn't save the minimum version."); return; }
+      setMinBuild(data);
+      toast.success(n === 0 ? 'No minimum version — every build can sign in.' : `Builds below ${n} will be asked to update.`);
+    } catch {
+      toast.error('Could not reach the server.');
+    } finally {
+      setSavingBuild(false);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-2xl">
       <div>
@@ -130,6 +167,45 @@ export default function SettingsView({ userEmail, isAdmin = false }: { userEmail
           ) : !loadError && <Loader2 size={18} className="animate-spin text-slate-300 mt-1" />}
         </div>
       </Card>
+
+      {isAdmin && (
+        <Card title="Phone app">
+          <div className="flex items-start gap-3 px-4 py-4">
+            <span className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Smartphone size={17} /></span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-900">Oldest version allowed</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Phones on an older build see a full-screen update page and can't use the app until they update.
+                Use the build number (Android versionCode), not the name like 1.0.12. 0 means no minimum.
+              </p>
+              <div className="flex items-center gap-2 mt-3">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={minBuildDraft}
+                  onChange={e => setMinBuildDraft(e.target.value)}
+                  aria-label="Oldest phone build allowed"
+                  className="w-28 h-10 px-3 text-sm border border-slate-200 rounded-xl outline-none focus:border-blue-400 bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={saveMinBuild}
+                  disabled={savingBuild || minBuildDraft === String(minBuild?.android?.minBuild ?? '')}
+                  className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-semibold"
+                >
+                  {savingBuild ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              <p className="flex items-start gap-1.5 text-xs text-amber-700 mt-2">
+                <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                Raise this only once the new version is live on the Play Store, or people will be asked to install an update they can't get yet.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card title="Account">
         <LinkRow icon={<UserRound size={17} />} label="Profile" description="Photo, name and password" onClick={() => navigate(routes['profile'])} />

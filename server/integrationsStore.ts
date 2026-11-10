@@ -4,7 +4,7 @@ import {
   SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_SENDER_EMAIL, SMTP_SENDER_NAME
 } from './config';
 
-export type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'razorpay' | 'business' | 'turn';
+export type IntegrationType = 'cloudflare' | 'smtp' | 'oauth_google' | 'razorpay' | 'business' | 'turn' | 'app_version';
 
 export interface IntegrationRecord {
   id: string;

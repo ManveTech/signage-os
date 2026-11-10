@@ -13,6 +13,7 @@ import { authenticateToken, enforceLicense } from '../middleware/auth';
 import { clearAllScreenLogs } from '../controllers/screens';
 import { postTicketMessage } from '../controllers/tickets';
 import { getBusinessDetails, putBusinessDetails, getPublicContact } from '../controllers/businessDetails';
+import { getAppVersion, getAppVersionAdmin, putAppVersion } from '../controllers/appVersion';
 import { createPublicLead } from '../controllers/publicLeads';
 import { getPublicReleases, downloadLatest, uploadRelease, deleteRelease, MAX_APK_BYTES } from '../controllers/appReleases';
 import { addDefaultHelp, uploadHelpImage } from '../controllers/helpContent';
@@ -176,6 +177,9 @@ apiRouter.post('/public/leads', leadLimiter, validateBody(publicLeadSchema), cre
  */
 apiRouter.get('/public/contact', getPublicContact);
 
+// The phone app asks this on launch and on resume, before anyone signs in.
+apiRouter.get('/public/app-version', getAppVersion);
+
 /*
  * TV player downloads for bluestardigitech.com/app. /latest redirects to the
  * newest APK so the link alone is the download; /releases lists them all.
@@ -225,6 +229,8 @@ apiRouter.get('/me/settings', getMySettings);
 apiRouter.put('/me/settings', updateMySettings);
 apiRouter.get('/business-details', getBusinessDetails);
 apiRouter.put('/business-details', putBusinessDetails);
+apiRouter.get('/app-version', getAppVersionAdmin);
+apiRouter.put('/app-version', putAppVersion);
 apiRouter.post('/tickets/:id/messages', postTicketMessage);
 apiRouter.use('/tickets', createCrudRouter('tickets'));
 apiRouter.use('/faqs', createCrudRouter('faqs'));
