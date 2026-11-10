@@ -1174,7 +1174,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
 
       {/* Orientation */}
       {orientationScreen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setOrientationScreen(null)}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setOrientationScreen(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-5">
               <h2 className="text-base font-semibold text-gray-900">Orientation — {orientationScreen.name}</h2>
@@ -1196,7 +1196,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
 
       {/* Edit Modal */}
       {editScreen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditScreen(null)}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setEditScreen(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">Edit Screen</h2>
@@ -1365,7 +1365,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
 
       {/* Delete Confirm */}
       {deleteScreen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setDeleteScreen(null)}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setDeleteScreen(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="p-6 text-center">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1383,7 +1383,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
       )}
       {/* Delete Selected Confirm */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(false)}>
+        <div className="fixed inset-0 bg-black/50 z-[220] flex items-center justify-center p-4" onClick={() => setDeleteConfirm(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="p-6 text-center">
               <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1403,7 +1403,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
 
       {/* Schedule Playlist Modal */}
       {scheduleScreen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setScheduleScreen(null); setScheduleEnabled(false); }}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => { setScheduleScreen(null); setScheduleEnabled(false); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div className="flex items-center gap-2.5">
@@ -1488,7 +1488,7 @@ export default function MyScreens({ onNavigate, userEmail = 'admin@demo.com' }: 
         );
         const clamped = Math.min(assignHighlight, filteredPlaylists.length - 1);
         return (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4"
             onClick={() => { setAssignScreen(null); setAssignSearch(''); }}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-5 border-b border-gray-100">

@@ -113,7 +113,7 @@ export function GuideShot({ step, alt }: { step: GuideStep; alt: string }) {
         </span>
       </button>
       {zoomed && (
-        <div className="fixed inset-0 z-[80] bg-slate-950/85 flex items-center justify-center p-3 sm:p-8" onClick={() => setZoomed(false)} role="dialog" aria-label={alt}>
+        <div className="fixed inset-0 z-[220] bg-slate-950/85 flex items-center justify-center p-3 sm:p-8" onClick={() => setZoomed(false)} role="dialog" aria-label={alt}>
           <button type="button" className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center" aria-label="Close">
             <X size={20} />
           </button>

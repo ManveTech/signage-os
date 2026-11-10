@@ -712,7 +712,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
       {/* Full-page Upload Progress Overlay */}
       {totalFilesToUpload > 0 && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[60] flex items-center justify-center">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[220] flex items-center justify-center">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 w-full max-w-sm mx-4 space-y-5">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0">
@@ -1468,7 +1468,7 @@ export default function CreatePlaylist({ userEmail = 'admin@demo.com', onNavigat
 
       {/* ================= FULLSCREEN SIMULATION PREVIEW MODAL ================= */}
       {showPreviewModal && simulatedItems.length > 0 && (
-        <div className="fixed inset-0 bg-slate-50/98 backdrop-blur-md z-[60] flex flex-col items-center justify-center p-6 text-slate-800 font-sans animate-fadeIn overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-50/98 backdrop-blur-md z-[220] flex flex-col items-center justify-center p-6 text-slate-800 font-sans animate-fadeIn overflow-y-auto">
           
           <div className="w-full max-w-5xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div className="min-w-0">

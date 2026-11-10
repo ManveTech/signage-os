@@ -703,7 +703,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
           }
         });
         return (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAddScreensTo(null)}>
+          <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setAddScreensTo(null)}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
                 <div>
@@ -744,7 +744,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
 
       {/* Edit Group Modal */}
       {editGroup && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditGroup(null)}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setEditGroup(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
               <h2 className="text-base font-semibold text-gray-900">Edit Group</h2>
@@ -918,7 +918,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
 
       {/* New Group Modal */}
       {showNewGroup && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowNewGroup(false)}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setShowNewGroup(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
               <h2 className="text-base font-semibold text-gray-900">New Group</h2>
@@ -1034,7 +1034,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
 
       {/* Delete Group Confirm */}
       {deleteGroup && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setDeleteGroup(null)}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setDeleteGroup(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="p-6 text-center">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1102,7 +1102,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
       )}
       {/* Assign Playlist Modal (Direct) */}
       {assignPlaylistDirectTo && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAssignPlaylistDirectTo(null)}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setAssignPlaylistDirectTo(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
               <div>
@@ -1136,7 +1136,7 @@ export default function ScreenGroups({ mode = 'all', onNavigate, userEmail = 'ad
 
       {/* Schedule Playlist Modal */}
       {schedulePlaylistTo && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSchedulePlaylistTo(null)}>
+        <div className="fixed inset-0 bg-black/40 z-[220] flex items-center justify-center p-4" onClick={() => setSchedulePlaylistTo(null)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
               <div>

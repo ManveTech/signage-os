@@ -272,6 +272,25 @@ export default function MobileDock({ activeView, onNavigate, onLogout, role = 'a
         </>
       )}
 
+      {/*
+        The dock floats over the page, so anything meant to sit *over the dock*
+        has to clear z-210. Several dialogs were written at z-50 and the dock
+        covered their bottom 64px — the footer buttons of a form, the whole
+        control row of a full-screen preview — and stayed tappable, so you
+        could navigate away mid-edit. The order in use:
+
+          190  the dock's own backdrop
+          200  the dock's sheets
+          210  the dock itself
+          220  page dialogs (screens, groups, playlists, QR, help)
+          300  screen/details sheets, the call overlay
+          310  confirm dialogs, which open from any of the above
+          400  first-login password gate, header search
+          999  boot screen
+
+        A new full-screen dialog belongs at 220 unless it opens from something
+        higher.
+      */}
       <nav
         className="md:hidden fixed bottom-0 left-0 right-0 z-[210] bg-white/95 backdrop-blur border-t border-slate-200/80 flex items-stretch select-none"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
