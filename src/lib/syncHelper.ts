@@ -191,25 +191,29 @@ if (typeof window !== 'undefined' && !(window as any).__sgWriteAwareFetch) {
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = (init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    const requestUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const isOurApi = requestUrl.startsWith(API_BASE) || requestUrl.startsWith('/api/');
     const response = await originalFetch(input, init);
+    // The session is over — expired, or the account was deleted, deactivated
+    // or had its role changed. Any 401 from our API means this token is no
+    // good for anything, so sign out rather than waiting for a particular
+    // code in the body: the server sends `session_ended` for some of these
+    // and a plain "Access token is required" for others, and a client that
+    // only reacts to the code sits in a dead dashboard for the rest.
+    // Scoped to our own API because storage and other hosts answer 401 for
+    // reasons that have nothing to do with this session.
+    if (response.status === 401 && isOurApi) {
+      window.dispatchEvent(new Event('signageos_session_ended'));
+    }
     // The server pauses the dashboard (402) once a plan's grace period ends.
     // Clients see this from their own licence; team members have none of
     // their own, so the dashboard learns it from here.
-    // The account was deleted, its role changed or it was deactivated.
-    if (response.status === 401) {
-      response.clone().json().then(body => {
-        if (body?.code === 'session_ended') window.dispatchEvent(new Event('signageos_session_ended'));
-      }).catch(() => {});
-    }
     if (response.status === 402) {
       response.clone().json().then(body => {
         if (body?.code === 'license_paused') window.dispatchEvent(new CustomEvent('signageos_license_paused', { detail: body }));
       }).catch(() => {});
     }
-    if (method !== 'GET' && method !== 'HEAD') {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url.startsWith(API_BASE) || url.startsWith('/api/')) lastSyncedAt.clear();
-    }
+    if (method !== 'GET' && method !== 'HEAD' && isOurApi) lastSyncedAt.clear();
     return response;
   };
 }

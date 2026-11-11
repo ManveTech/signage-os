@@ -147,8 +147,15 @@ export async function authenticateToken(req: any, res: any, next: any) {
   const payload = verifyJwt(token);
   // Password-reset links are signed with the same key; they must only ever
   // reset a password, never act as a login.
+  //
+  // This is the ordinary end of a session — tokens last 7 days — so it has to
+  // answer the same way as endSession below. It used to return a bare 403 with
+  // no code, which no client listens for: every call failed, nothing signed
+  // the user out, and they were left in a dashboard where nothing loaded and
+  // uploads died with no explanation. 403 was wrong anyway; the request isn't
+  // authenticated, which is 401.
   if (!payload || payload.purpose) {
-    return res.status(403).json({ message: 'Invalid or expired session token.' });
+    return endSession(res);
   }
 
   if (!(await sessionStillValid(payload))) {
