@@ -1,5 +1,5 @@
 import { pb, ensurePBAuth } from '../db';
-import { AUDIT_CATEGORIES, RETENTION_DAYS, categoryFilter } from './auditLog';
+import { AUDIT_CATEGORIES, RETENTION_DAYS, LONG_RETENTION_DAYS, categoryFilter } from './auditLog';
 
 /**
  * Device logs (screen_logs) outlive what they describe: deleting a screen
@@ -83,10 +83,16 @@ export async function pruneAuditLogs(): Promise<number> {
     let removed = 0;
 
     for (const category of AUDIT_CATEGORIES) {
-      const cutoff = new Date(Date.now() - RETENTION_DAYS[category] * 86400_000)
+      const days = RETENTION_DAYS[category];
+      const cutoff = new Date(Date.now() - days * 86400_000)
         .toISOString().slice(0, 19).replace('T', ' ');
-      const clause = categoryFilter([category]);
+      let clause = categoryFilter([category]);
       if (!clause) continue;
+      // Deletions are kept for the long window whatever category they fall
+      // in, so a short-retention sweep must step over them — see isDeletion().
+      if (days < LONG_RETENTION_DAYS) {
+        clause = `${clause} && action !~ "%.deleted"`;
+      }
 
       // Page 1 each time: deleting the batch shifts everything that's left
       // forward, so walking page numbers would skip rows.

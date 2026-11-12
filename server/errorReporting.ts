@@ -30,6 +30,19 @@ const SECRET_PARAMS = /([?&])(token|auth|access_token|key|password|secret|code|s
 export function initErrorReporting(): void {
   if (!DSN) return;
 
+  // Wrapped because this is the first import in server/index.ts: if it ever
+  // threw, the API would not start at all. Crash reporting failing to start
+  // is not a reason to take the server down with it. (Sentry currently logs
+  // and swallows a malformed DSN rather than throwing — this is so that
+  // staying true is not something we have to rely on.)
+  try {
+    initSentry();
+  } catch (err: any) {
+    console.error('[ErrorReporting] Sentry failed to start; continuing without it:', err?.message);
+  }
+}
+
+function initSentry(): void {
   Sentry.init({
     dsn: DSN,
     environment: ENVIRONMENT,

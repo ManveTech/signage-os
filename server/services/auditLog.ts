@@ -46,10 +46,17 @@ export function getClientIp(req: any): string {
 
 export type AuditCategory = 'auth' | 'account' | 'billing' | 'content' | 'email' | 'system';
 
+// Both the singular and plural form of every subject. The two are not
+// interchangeable: hand-written entries use the singular ('user.deleted' from
+// the users controller) while the generic CRUD router uses the collection
+// name, which is plural ('users.deleted'). Listing only the singular filed
+// account deletions under System and kept them for 90 days instead of a year.
+// src/lib/auditText.ts mirrors this; sameCategoriesAsClient() below keeps the
+// two from drifting apart again.
 const PREFIXES_BY_CATEGORY: Record<AuditCategory, string[]> = {
   auth: ['login', 'logout', 'password_reset', 'password'],
-  account: ['user', 'organization', 'admin'],
-  billing: ['payment', 'payment_webhook', 'billing', 'license', 'licenses', 'invoice', 'invoices'],
+  account: ['user', 'users', 'organization', 'organizations', 'admin', 'admins'],
+  billing: ['payment', 'payments', 'payment_webhook', 'billing', 'license', 'licenses', 'invoice', 'invoices'],
   content: ['playlist', 'playlists', 'media', 'media_items', 'screen', 'screens', 'screen_group', 'screen_groups', 'schedule'],
   email: ['email'],
   system: ['app_release', 'help', 'faqs', 'support_docs', 'ticket', 'tickets', 'lead', 'leads', 'integration', 'backup']
@@ -163,3 +170,30 @@ export const RETENTION_DAYS: Record<AuditCategory, number> = {
   content: 90,
   system: 90
 };
+
+export const LONG_RETENTION_DAYS = 365;
+
+/**
+ * Deletions are kept for a year whatever they were, so they never fall under
+ * the shorter content/system window.
+ *
+ * "Who deleted this, and when?" is the question people come back with months
+ * later, and the answer is gone for good if the record of it isn't there —
+ * the thing it describes has already been destroyed, so there is nothing else
+ * left to look at. A record of an edit can be inferred from what the record
+ * says now; a record of a deletion cannot be inferred from anything.
+ *
+ * This also matters for what is already stored: until the activity log was
+ * extended, a deletion was the ONLY thing the CRUD router recorded. Treating
+ * those as 90-day content would have destroyed the whole existing history on
+ * the first prune after deploying.
+ */
+export function isDeletion(action: string): boolean {
+  return String(action || '').endsWith('.deleted');
+}
+
+/** How long one specific entry is kept. */
+export function retentionDaysFor(action: string): number {
+  if (isDeletion(action)) return LONG_RETENTION_DAYS;
+  return RETENTION_DAYS[categoryOf(action)];
+}

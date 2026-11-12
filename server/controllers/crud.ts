@@ -480,7 +480,12 @@ export function createCrudRouter(collectionName: string) {
       // playlist-reassignment check, the role-change audit and the activity
       // log all need it, and each used to fetch its own copy — up to three
       // reads of the same row per save.
-      const before: any = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id)).catch(() => null);
+      // Only a genuine 404 becomes null. Anything else — the database being
+      // briefly unreachable — is rethrown and answered as a 500, because
+      // telling someone their screen was "not found" when the database merely
+      // blipped reads as "it has been deleted".
+      const before: any = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id))
+        .catch((err: any) => { if (err?.status === 404) return null; throw err; });
 
       // Enforce security tenancy
       if (!isAdmin) {
@@ -634,14 +639,20 @@ export function createCrudRouter(collectionName: string) {
       // is gone), clearing screens that referenced a deleted playlist and
       // switching video conferencing back off after a licence all need it, and
       // each used to fetch its own copy.
-      const doomed: any = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id)).catch(() => null);
+      // Only a genuine 404 becomes null — see the same note in handleUpdate.
+      const doomed: any = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id))
+        .catch((err: any) => { if (err?.status === 404) return null; throw err; });
+
+      // Already gone: success, as deleting it again asks for nothing that
+      // hasn't happened. The handler's own catch below has always answered a
+      // 404 from the delete this way, and this keeps the two in step — a
+      // double-tap on Delete must not start reporting an error.
+      if (!doomed) {
+        return res.status(204).end();
+      }
 
       // Enforce security tenancy
       if (!isAdmin) {
-        // No record to check ownership against is a denial, never a pass.
-        if (!doomed) {
-          return res.status(404).json({ error: 'Record not found' });
-        }
         if (!(await isOwnRecord(collectionName, doomed, req.user))) {
           return res.status(403).json({ error: 'Access denied' });
         }

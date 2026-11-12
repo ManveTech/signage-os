@@ -48,15 +48,28 @@ android {
     manifestPlaceholders["SENTRY_ENVIRONMENT"] = envOrDefault("SENTRY_ENVIRONMENT", "production")
 
     // ARM only. The WebRTC and media native libraries were being shipped for
-    // four architectures — 41 MB of the APK, 24 MB of it x86/x86_64, which no
-    // Android TV box, stick or commercial display can execute. They are there
-    // for emulators, and an emulator build can drop this line.
+    // four architectures — 41 MB of a 64 MB APK was native code, and 24 MB of
+    // that was x86/x86_64, which no Android TV box, stick or commercial
+    // display can execute.
     //
     // This matters beyond download size: installing extracts the native libs
     // and AOT-compiles the app, so every megabyte is also work the TV has to
-    // do and space it has to find while installing.
+    // do and space it has to find while installing — and an install that
+    // never finishes is the symptom we are chasing.
+    //
+    // x86_64 is only needed by the Android emulator (see isEmulator() in
+    // SignageRepository, which redirects localhost to 10.0.2.2 for a local
+    // dev server). Build for one with:
+    //
+    //     ./gradlew assembleDebug -PwithEmulatorAbis
+    //
+    // Never ship that APK to a TV — it is 20 MB of dead weight there.
     ndk {
-      abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+      abiFilters += if (project.hasProperty("withEmulatorAbis")) {
+        listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+      } else {
+        listOf("arm64-v8a", "armeabi-v7a")
+      }
     }
   }
 
