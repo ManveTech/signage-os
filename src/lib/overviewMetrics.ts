@@ -35,7 +35,11 @@ export type Overview = {
   contentSeconds: number;
   playlists: number;
   growth: MonthPoint[];
+  clientTrends: ClientTrend[];
+  mediaAdded: { month: string; label: string; count: number }[];
   topLocations: { name: string; count: number }[];
+  /** Every location worth a tile in the treemap, with a folded tail. */
+  locationTree: { name: string; size: number }[];
   mediaMix: Slice[];
   roster: ClientRow[];
   /** Every deployed screen as a status cell, for the grid. */
@@ -195,6 +199,81 @@ export function buildMediaMix(media: any[]): Slice[] {
   ];
 }
 
+/**
+ * Each client's screen count at the end of each month — the lines of the
+ * growth chart.
+ *
+ * Every line is in the same unit on the same axis, which is the whole reason
+ * this is one chart: plotting screens against, say, playback hours would need
+ * a second y-scale, and the alignment of two scales is arbitrary, so the chart
+ * would invent a relationship that isn't in the data.
+ *
+ * Only the biggest `top` clients get a line of their own. The rest are summed
+ * into "Other" rather than given generated colours, which stop being
+ * distinguishable past the palette's slots.
+ */
+export type ClientTrend = { name: string; values: number[] };
+
+export function buildClientTrends(
+  clientScreens: any[], roster: ClientRow[], months = 12, top = 5
+): ClientTrend[] {
+  if (roster.length === 0) return [];
+  const now = new Date();
+  const ends: number[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    ends.push(new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime());
+  }
+
+  const timesByEmail = new Map<string, number[]>();
+  for (const s of clientScreens) {
+    const email = String(s.assignedToUserEmail || '').toLowerCase();
+    if (!email) continue;
+    const t = new Date(createdAt(s)).getTime();
+    if (!Number.isFinite(t)) continue;
+    const list = timesByEmail.get(email);
+    if (list) list.push(t); else timesByEmail.set(email, [t]);
+  }
+
+  const countsFor = (emails: string[]) => ends.map(end =>
+    emails.reduce((n, e) => n + (timesByEmail.get(e) || []).filter(t => t < end).length, 0));
+
+  const head = roster.slice(0, top);
+  const tail = roster.slice(top);
+  const trends: ClientTrend[] = head.map(c => ({ name: c.name, values: countsFor([c.email]) }));
+  if (tail.length === 1) {
+    // Exactly one left over: naming it costs the same line and reads better
+    // than "1 others" — there is nothing to summarise.
+    trends.push({ name: tail[0].name, values: countsFor([tail[0].email]) });
+  } else if (tail.length > 1) {
+    trends.push({ name: `${tail.length} others`, values: countsFor(tail.map(c => c.email)) });
+  }
+  return trends;
+}
+
+/**
+ * How much media was added in each month — a count per month, not a running
+ * total, so a quiet month reads as a short column rather than a flat line.
+ */
+export function buildMediaAdded(media: any[], months = 12): { month: string; label: string; count: number }[] {
+  const now = new Date();
+  const out: { month: string; label: string; count: number }[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const start = d.getTime();
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+    out.push({
+      month: monthKey(d),
+      label: d.toLocaleDateString(undefined, { month: 'short' }),
+      count: media.filter(m => {
+        const t = new Date(createdAt(m)).getTime();
+        return Number.isFinite(t) && t >= start && t < end;
+      }).length
+    });
+  }
+  return out;
+}
+
 export function buildTopLocations(deployed: any[], limit = 6): { name: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const s of deployed) {
@@ -206,6 +285,22 @@ export function buildTopLocations(deployed: any[], limit = 6): { name: string; c
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, limit);
+}
+
+/**
+ * Locations as treemap tiles, biggest first. A long tail of one-screen sites
+ * would be a row of slivers too thin to label, so past `limit` they become a
+ * single "N more locations" tile that still carries their screens.
+ */
+export function buildLocationTree(deployed: any[], limit = 12): { name: string; size: number }[] {
+  const all = buildTopLocations(deployed, Number.MAX_SAFE_INTEGER);
+  if (all.length <= limit) return all.map(l => ({ name: l.name, size: l.count }));
+  const head = all.slice(0, limit - 1);
+  const tail = all.slice(limit - 1);
+  return [
+    ...head.map(l => ({ name: l.name, size: l.count })),
+    { name: `${tail.length} more locations`, size: tail.reduce((n, l) => n + l.count, 0) }
+  ];
 }
 
 export function computeOverview(input: {
@@ -235,7 +330,10 @@ export function computeOverview(input: {
     contentSeconds: input.media.reduce((n, m) => n + (Number(m?.duration) || 0), 0),
     playlists: input.playlists.length,
     growth: buildGrowth(clientScreens, roster, input.media),
+    clientTrends: buildClientTrends(clientScreens, roster),
+    mediaAdded: buildMediaAdded(input.media),
     topLocations: buildTopLocations(deployed),
+    locationTree: buildLocationTree(deployed),
     mediaMix: buildMediaMix(input.media),
     roster,
     statusCells: deployed.map(s => ({

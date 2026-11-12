@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis
+  Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart,
+  ResponsiveContainer, Tooltip, Treemap, XAxis, YAxis
 } from 'recharts';
 import {
   Monitor, Building2, PlaySquare, Film, RefreshCw, Table2, LineChart as LineIcon
@@ -21,30 +22,26 @@ import {
  *
  * Built to be shown to someone — projected in a meeting or screen-shared with
  * a prospective client — so it carries no revenue, no margins and no billing
- * state, and it leans on shapes rather than figures: a reader across the table
- * takes in a rising line and a wall of green far faster than a column of
- * numbers. It is still an admin page behind login, because it names real
- * clients.
+ * state, and it leans on shapes rather than figures. Each panel is a different
+ * form on purpose: lines for who grew when, a mosaic for where, a ring for
+ * what, columns for when, a grid for right now. A page of one shape is a page
+ * nobody's eye moves around.
  *
- * Everything draws itself in as you reach it (see lib/useMotion). The motion is
- * there to direct attention in a room where someone is talking over the page —
- * a bar growing to its length says "watch this" better than a bar that was
- * always there — so it runs once per card and then stops. Under
- * prefers-reduced-motion every bit of it is skipped and the page renders at its
- * final state.
+ * Everything draws itself in as you reach it (see lib/useMotion), once, and
+ * all of it is skipped under prefers-reduced-motion.
  *
- * Everything here is computed in the browser from collections the dashboard
- * already syncs, so it needs no new API endpoint.
+ * It is still an admin page behind login, because it names real clients, and
+ * everything is computed in the browser from collections the dashboard already
+ * syncs, so it needs no new API endpoint.
  */
 
 // Chart palette, validated as a set against this page's white card surface
-// (lightness band, chroma floor, CVD separation across all pairs, normal-vision
-// floor). Three slots is the cap that clears every gate — the library mix folds
-// its tail into "Other" rather than reaching for a fourth hue.
-const SERIES_1 = '#2a78d6';
-const SERIES_2 = '#eb6834';
-const SERIES_3 = '#1baf7a';
-const MIX_COLORS = [SERIES_1, SERIES_2, SERIES_3];
+// (lightness band, chroma floor, CVD separation, normal-vision floor). Six
+// slots clear every adjacent gate, which is what the line chart and the ring
+// need; three of them fall below 3:1 against white, so both ship a legend with
+// the figures on it and a table view, which is the relief that WARN requires.
+const SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'];
+const SERIES_1 = SERIES[0];
 
 // Blue sequential ramp: step 100 for a meter's unfilled track, step 450 for its
 // fill, so the whole bar reads as one hue, light to dark.
@@ -68,12 +65,35 @@ const MAX_CELLS = 160;
 /** Decelerating curve — things arrive at their value rather than stopping dead. */
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
-/** A bar that grows to its width the first time its card is reached. */
 function grow(pct: number, shown: boolean, reduced: boolean, delayMs = 0) {
   return {
     width: `${shown || reduced ? pct : 0}%`,
     transition: reduced ? undefined : `width 900ms ${EASE} ${delayMs}ms`
   };
+}
+
+function Swatch({ color }: { color: string }) {
+  return <span aria-hidden className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />;
+}
+
+function ChartTooltip({ active, payload, label, unit }: any) {
+  if (!active || !payload?.length) return null;
+  const rows = payload.filter((p: any) => p.value !== undefined && p.value !== null);
+  if (rows.length === 0) return null;
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-3 py-2 text-xs max-w-[220px]">
+      <p className="font-semibold text-slate-800">{label}</p>
+      <ul className="mt-1 space-y-0.5">
+        {rows.map((p: any, i: number) => (
+          <li key={i} className="flex items-center gap-2">
+            <Swatch color={p.color || p.fill} />
+            <span className="text-slate-600 flex-1 min-w-0 truncate">{p.name}</span>
+            <span className="font-semibold text-slate-800 tabular-nums">{p.value}{unit || ''}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function Sparkline({ values, run, width = 104, height = 30 }: {
@@ -108,17 +128,10 @@ function Sparkline({ values, run, width = 104, height = 30 }: {
   const [lx, ly] = pts[pts.length - 1];
   const drawn = run || reduced;
   return (
-    // The run is de-emphasised and only the current point wears the accent, so
-    // the tile's eye-catch is where the series has got to, not its whole path.
     <svg width={width} height={height} aria-hidden className="overflow-visible">
       <path
-        ref={pathRef}
-        d={d}
-        fill="none"
-        stroke={SPARK_INK}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        ref={pathRef} d={d} fill="none" stroke={SPARK_INK} strokeWidth={2}
+        strokeLinecap="round" strokeLinejoin="round"
         style={length ? {
           strokeDasharray: length,
           strokeDashoffset: drawn ? 0 : length,
@@ -126,12 +139,8 @@ function Sparkline({ values, run, width = 104, height = 30 }: {
         } : undefined}
       />
       <circle
-        cx={lx} cy={ly} r={4}
-        fill={SERIES_1} stroke="#ffffff" strokeWidth={2}
-        style={{
-          opacity: drawn ? 1 : 0,
-          transition: reduced ? undefined : 'opacity 300ms ease-out 850ms'
-        }}
+        cx={lx} cy={ly} r={4} fill={SERIES_1} stroke="#ffffff" strokeWidth={2}
+        style={{ opacity: drawn ? 1 : 0, transition: reduced ? undefined : 'opacity 300ms ease-out 850ms' }}
       />
     </svg>
   );
@@ -156,11 +165,7 @@ function Tile({ icon, value, format, label, sub, series, delta, run }: {
         {typeof delta === 'number' && delta > 0 && (
           <span
             className="text-[11px] font-semibold"
-            style={{
-              color: SUCCESS_INK,
-              opacity: run ? 1 : 0,
-              transition: `opacity 400ms ease-out 700ms`
-            }}
+            style={{ color: SUCCESS_INK, opacity: run ? 1 : 0, transition: 'opacity 400ms ease-out 700ms' }}
           >
             +{compactNumber(delta)} this year
           </span>
@@ -197,18 +202,6 @@ function Card({ title, hint, action, shown, children }: {
   );
 }
 
-function GrowthTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  const p = payload[0].payload;
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-3 py-2 text-xs">
-      <p className="font-semibold text-slate-800">{label}</p>
-      <p className="text-slate-600 mt-0.5">{p.screens} screen{p.screens === 1 ? '' : 's'} live</p>
-      <p className="text-slate-600">{p.clients} client{p.clients === 1 ? '' : 's'}</p>
-    </div>
-  );
-}
-
 function TableToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <button
@@ -222,13 +215,45 @@ function TableToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   );
 }
 
+/**
+ * One treemap tile. Every tile is the same hue: the rectangle's area already
+ * carries the screen count, and shading it darker-where-bigger would spend the
+ * only free channel restating what the size says. The 2px inset is the surface
+ * showing between tiles rather than a stroke drawn round them.
+ */
+function LocationTile(props: any) {
+  const { x, y, width, height, name, size } = props;
+  if (!(width > 0) || !(height > 0)) return null;
+  // Roughly 6px per character at 11px — a label is only drawn when it fits
+  // with padding, because a clipped one is worse than none.
+  const room = Math.floor((width - 16) / 6);
+  const fits = width > 56 && height > 30 && room >= 4;
+  const label = name && name.length > room ? `${String(name).slice(0, Math.max(1, room - 1))}…` : name;
+  return (
+    <g>
+      <rect
+        x={x + 1} y={y + 1}
+        width={Math.max(0, width - 2)} height={Math.max(0, height - 2)}
+        rx={4} fill={SERIES_1}
+      />
+      {fits && (
+        <>
+          <text x={x + 8} y={y + 18} fill="#ffffff" fontSize={11} fontWeight={600}>{label}</text>
+          <text x={x + 8} y={y + 32} fill="#ffffff" fontSize={11} opacity={0.85}>{size}</text>
+        </>
+      )}
+    </g>
+  );
+}
+
 export default function BusinessOverview({ userEmail = '' }: { userEmail?: string }) {
   const reduced = useReducedMotion();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tick, setTick] = useState(0);
-  const [growthAsTable, setGrowthAsTable] = useState(false);
+  const [trendAsTable, setTrendAsTable] = useState(false);
   const [mixAsTable, setMixAsTable] = useState(false);
+  const [placesAsTable, setPlacesAsTable] = useState(false);
 
   // One per band of the page, so each draws itself in as it is reached.
   const [tilesRef, tilesIn] = useInView<HTMLDivElement>();
@@ -236,6 +261,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
   const [nowRef, nowIn] = useInView<HTMLDivElement>();
   const [placesRef, placesIn] = useInView<HTMLDivElement>();
   const [libraryRef, libraryIn] = useInView<HTMLDivElement>();
+  const [uploadsRef, uploadsIn] = useInView<HTMLDivElement>();
   const [rosterRef, rosterIn] = useInView<HTMLDivElement>();
 
   const load = (force = false) => Promise.all([
@@ -274,12 +300,17 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
   const clientSeries = data.growth.map(p => p.clients);
   const mediaSeries = data.growth.map(p => p.media);
   const mixTotal = data.mediaMix.reduce((n, s) => n + s.count, 0);
-  const maxLocation = data.topLocations[0]?.count || 1;
   const maxClientScreens = data.roster[0]?.screens || 1;
   const empty = data.screensDeployed === 0;
 
-  // Nothing animates until the data is in: counting up to a figure that is
-  // still loading would run the tiles twice and land on the wrong number.
+  // Keyed by index rather than client name: a client called "label" or "month"
+  // would otherwise collide with the axis fields.
+  const trendData = data.growth.map((p, i) => {
+    const row: Record<string, string | number> = { label: p.label, month: p.month };
+    data.clientTrends.forEach((t, ti) => { row[`c${ti}`] = t.values[i]; });
+    return row;
+  });
+
   const tilesRun = tilesIn && !loading;
   const onlinePct = useCountUp(data.onlinePct, nowIn && !loading);
 
@@ -320,43 +351,31 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
         <>
           <div ref={tilesRef} className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <Tile
-              run={tilesRun}
-              icon={<Monitor size={16} />}
-              value={data.screensDeployed}
-              format={n => compactNumber(Math.round(n))}
+              run={tilesRun} icon={<Monitor size={16} />}
+              value={data.screensDeployed} format={n => compactNumber(Math.round(n))}
               label="Screens deployed"
               sub={`Across ${data.locations} location${data.locations === 1 ? '' : 's'}`}
-              series={screenSeries}
-              delta={deltaOver(screenSeries)}
+              series={screenSeries} delta={deltaOver(screenSeries)}
             />
             <Tile
-              run={tilesRun}
-              icon={<Building2 size={16} />}
-              value={data.clients}
-              format={n => compactNumber(Math.round(n))}
-              label="Businesses served"
-              sub="Active client networks"
-              series={clientSeries}
-              delta={deltaOver(clientSeries)}
+              run={tilesRun} icon={<Building2 size={16} />}
+              value={data.clients} format={n => compactNumber(Math.round(n))}
+              label="Businesses served" sub="Active client networks"
+              series={clientSeries} delta={deltaOver(clientSeries)}
             />
             <Tile
-              run={tilesRun}
-              icon={<Film size={16} />}
-              value={data.mediaFiles}
-              format={n => compactNumber(Math.round(n))}
+              run={tilesRun} icon={<Film size={16} />}
+              value={data.mediaFiles} format={n => compactNumber(Math.round(n))}
               label="Media in the library"
               sub={`${formatBytes(data.libraryBytes)} · ${compactNumber(data.playlists)} playlists`}
-              series={mediaSeries}
-              delta={deltaOver(mediaSeries)}
+              series={mediaSeries} delta={deltaOver(mediaSeries)}
             />
             {/* No sparkline here on purpose: playback hours are a running total
                 with no history behind them, and drawing a trend we cannot
                 source would be an invented line. */}
             <Tile
-              run={tilesRun}
-              icon={<PlaySquare size={16} />}
-              value={data.uptimeSeconds}
-              format={formatHours}
+              run={tilesRun} icon={<PlaySquare size={16} />}
+              value={data.uptimeSeconds} format={formatHours}
               label="Hours of playback"
               sub={`${compactNumber(data.loopsPlayed)} playlist loops`}
             />
@@ -366,78 +385,81 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
             <div ref={chartRef} className="lg:col-span-2">
               <Card
                 shown={chartIn}
-                title="Screens live over time"
-                hint="Cumulative total at each month end · last 12 months"
-                action={<TableToggle on={growthAsTable} onClick={() => setGrowthAsTable(v => !v)} />}
+                title="How each client's network grew"
+                hint="Screens live at each month end · last 12 months"
+                action={<TableToggle on={trendAsTable} onClick={() => setTrendAsTable(v => !v)} />}
               >
-                {growthAsTable ? (
+                {trendAsTable ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs tabular-nums">
                       <thead>
                         <tr className="text-left text-slate-400">
-                          <th className="font-medium py-1.5 pr-4">Month</th>
-                          <th className="font-medium py-1.5 pr-4">Screens live</th>
-                          <th className="font-medium py-1.5">Clients</th>
+                          <th className="font-medium py-1.5 pr-3">Month</th>
+                          {data.clientTrends.map(t => (
+                            <th key={t.name} className="font-medium py-1.5 pr-3 text-right">{t.name}</th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {data.growth.map(p => (
+                        {data.growth.map((p, i) => (
                           <tr key={p.month} className="border-t border-slate-100">
-                            <td className="py-1.5 pr-4 text-slate-600">{p.month}</td>
-                            <td className="py-1.5 pr-4 font-medium text-slate-800">{p.screens}</td>
-                            <td className="py-1.5 text-slate-600">{p.clients}</td>
+                            <td className="py-1.5 pr-3 text-slate-600">{p.month}</td>
+                            {data.clientTrends.map(t => (
+                              <td key={t.name} className="py-1.5 pr-3 text-right text-slate-700">{t.values[i]}</td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  // Height covers the plot plus the x-axis band, so the axis
-                  // labels are never cropped into a nested scrollbar.
+                  // Every line is screens, on one axis. A second y-scale would
+                  // let the chart invent a relationship that isn't in the data.
                   <div style={{ height: 272 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={data.growth} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="growthFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={SERIES_1} stopOpacity={0.16} />
-                            <stop offset="100%" stopColor={SERIES_1} stopOpacity={0.02} />
-                          </linearGradient>
-                        </defs>
-                        {/* Solid hairlines, horizontal only — dashes read as a
-                            threshold when they are just a grid. */}
+                      <LineChart data={trendData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                         <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
                         <XAxis
-                          dataKey="label"
-                          tick={{ fontSize: 11, fill: AXIS_INK }}
-                          tickLine={false}
-                          axisLine={{ stroke: GRID }}
-                          dy={4}
+                          dataKey="label" tick={{ fontSize: 11, fill: AXIS_INK }}
+                          tickLine={false} axisLine={{ stroke: GRID }} dy={4}
                         />
                         <YAxis
-                          width={34}
-                          tick={{ fontSize: 11, fill: AXIS_INK }}
-                          tickLine={false}
-                          axisLine={false}
-                          allowDecimals={false}
+                          width={34} tick={{ fontSize: 11, fill: AXIS_INK }}
+                          tickLine={false} axisLine={false} allowDecimals={false}
                         />
-                        <Tooltip content={<GrowthTooltip />} cursor={{ stroke: AXIS_INK, strokeWidth: 1 }} />
-                        {/* One series, so no legend — the card title names it.
-                            The line sweeps in left to right as the card lands. */}
-                        <Area
-                          type="monotone"
-                          dataKey="screens"
-                          stroke={SERIES_1}
-                          strokeWidth={2}
-                          fill="url(#growthFill)"
-                          dot={false}
-                          activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }}
-                          isAnimationActive={!reduced && chartIn}
-                          animationDuration={1200}
-                          animationEasing="ease-out"
-                        />
-                      </AreaChart>
+                        <Tooltip content={<ChartTooltip />} cursor={{ stroke: AXIS_INK, strokeWidth: 1 }} />
+                        {data.clientTrends.map((t, i) => (
+                          <Line
+                            key={t.name}
+                            dataKey={`c${i}`}
+                            name={t.name}
+                            type="monotone"
+                            stroke={SERIES[i % SERIES.length]}
+                            strokeWidth={2}
+                            strokeLinecap="round"
+                            dot={false}
+                            activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }}
+                            isAnimationActive={!reduced && chartIn}
+                            animationDuration={1100}
+                            animationBegin={i * 90}
+                          />
+                        ))}
+                      </LineChart>
                     </ResponsiveContainer>
                   </div>
+                )}
+                {/* A legend for two or more series is the dependable identity
+                    channel — the lines converge at the left, so end-labels
+                    would detach from them and read as noise. */}
+                {!trendAsTable && data.clientTrends.length > 1 && (
+                  <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
+                    {data.clientTrends.map((t, i) => (
+                      <li key={t.name} className="flex items-center gap-2 text-xs text-slate-600">
+                        <Swatch color={SERIES[i % SERIES.length]} />
+                        <span className="truncate max-w-[140px]" title={t.name}>{t.name}</span>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </Card>
             </div>
@@ -457,16 +479,10 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                 <div
                   className="mt-2.5 h-2.5 rounded-full overflow-hidden"
                   style={{ backgroundColor: RAMP_TRACK }}
-                  role="meter"
-                  aria-valuenow={data.onlinePct}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
+                  role="meter" aria-valuenow={data.onlinePct} aria-valuemin={0} aria-valuemax={100}
                   aria-label="Screens online"
                 >
-                  <div
-                    className="h-full rounded-full"
-                    style={{ ...grow(data.onlinePct, nowIn, reduced), backgroundColor: SERIES_1 }}
-                  />
+                  <div className="h-full rounded-full" style={{ ...grow(data.onlinePct, nowIn, reduced), backgroundColor: SERIES_1 }} />
                 </div>
 
                 {data.statusCells.length <= MAX_CELLS ? (
@@ -492,14 +508,8 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                     </div>
                     {/* Labelled, so the state never rests on colour alone. */}
                     <ul className="flex items-center gap-4 mt-3.5 text-[11px] text-slate-500">
-                      <li className="flex items-center gap-1.5">
-                        <span aria-hidden className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: STATUS_GOOD }} />
-                        Online
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <span aria-hidden className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: STATUS_IDLE }} />
-                        Offline
-                      </li>
+                      <li className="flex items-center gap-1.5"><Swatch color={STATUS_GOOD} />Online</li>
+                      <li className="flex items-center gap-1.5"><Swatch color={STATUS_IDLE} />Offline</li>
                     </ul>
                   </>
                 ) : (
@@ -513,35 +523,49 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div ref={placesRef}>
-              <Card shown={placesIn} title="Where the screens are" hint={`Busiest of ${data.locations} locations`}>
-                {data.topLocations.length === 0 ? (
+              <Card
+                shown={placesIn}
+                title="Where the screens are"
+                hint={`${data.locations} location${data.locations === 1 ? '' : 's'} · tile size is screen count`}
+                action={<TableToggle on={placesAsTable} onClick={() => setPlacesAsTable(v => !v)} />}
+              >
+                {data.locationTree.length === 0 ? (
                   <p className="text-sm text-slate-400">No locations recorded yet.</p>
+                ) : placesAsTable ? (
+                  <div className="max-h-[232px] overflow-y-auto">
+                    <table className="w-full text-xs tabular-nums">
+                      <thead>
+                        <tr className="text-left text-slate-400">
+                          <th className="font-medium py-1.5">Location</th>
+                          <th className="font-medium py-1.5 text-right">Screens</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.locationTree.map(l => (
+                          <tr key={l.name} className="border-t border-slate-100">
+                            <td className="py-1.5 text-slate-600">{l.name}</td>
+                            <td className="py-1.5 text-right font-medium text-slate-800">{l.size}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {data.topLocations.map((loc, i) => (
-                      <li key={loc.name} className="flex items-center gap-3">
-                        <span className="w-28 sm:w-36 shrink-0 text-xs text-slate-600 truncate" title={loc.name}>
-                          {loc.name}
-                        </span>
-                        <span className="flex-1 min-w-0 h-2.5 bg-slate-50 rounded-full overflow-hidden">
-                          {/* One series, one colour. Length already encodes the
-                              value; shading it by size would spend the only free
-                              channel on what the bar says twice. Staggered so the
-                              ranking reads top-down as it fills. */}
-                          <span
-                            className="block h-full rounded-full"
-                            style={{
-                              ...grow(Math.max(4, (loc.count / maxLocation) * 100), placesIn, reduced, i * 70),
-                              backgroundColor: SERIES_1
-                            }}
-                          />
-                        </span>
-                        <span className="w-6 shrink-0 text-right text-xs font-semibold text-slate-700 tabular-nums">
-                          {loc.count}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div style={{ height: 232 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <Treemap
+                        data={data.locationTree}
+                        dataKey="size"
+                        nameKey="name"
+                        stroke="none"
+                        content={<LocationTile />}
+                        isAnimationActive={!reduced && placesIn}
+                        animationDuration={900}
+                      >
+                        <Tooltip content={<ChartTooltip unit=" screens" />} />
+                      </Treemap>
+                    </ResponsiveContainer>
+                  </div>
                 )}
               </Card>
             </div>
@@ -577,123 +601,152 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                     </tbody>
                   </table>
                 ) : (
-                  <>
-                    {/* Tall segmented bar: one whole split into parts, read at a
-                        glance. 28px, shares printed inside where they fit, and the
-                        2px gaps are the surface showing through, not borders. The
-                        blocks unfurl left to right in legend order. */}
-                    <div className="flex gap-0.5" style={{ height: 28 }}>
-                      {data.mediaMix.map((s, i) => (
-                        <div
-                          key={s.key}
-                          className="h-full flex items-center rounded overflow-hidden"
-                          style={{
-                            ...grow((s.count / mixTotal) * 100, libraryIn, reduced, i * 110),
-                            backgroundColor: MIX_COLORS[i % MIX_COLORS.length]
-                          }}
-                          title={`${s.label}: ${s.count} file${s.count === 1 ? '' : 's'} (${Math.round((s.count / mixTotal) * 100)}%)`}
-                        >
-                          {/* Only printed where the block is wide enough to hold
-                              it with padding — a cropped label is worse than none,
-                              and the value stays in the table view either way. */}
-                          {(s.count / mixTotal) > 0.14 && (
-                            <span
-                              className="text-[11px] font-semibold text-white pl-2 whitespace-nowrap"
-                              style={reduced ? undefined : {
-                                opacity: libraryIn ? 1 : 0,
-                                transition: `opacity 300ms ease-out ${600 + i * 110}ms`
-                              }}
-                            >
-                              {Math.round((s.count / mixTotal) * 100)}%
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                  <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
+                    <div className="relative shrink-0" style={{ width: 176, height: 176 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={data.mediaMix}
+                            dataKey="count"
+                            nameKey="label"
+                            innerRadius="62%"
+                            outerRadius="92%"
+                            // The gap between segments is the surface showing
+                            // through, not a border drawn round each one.
+                            paddingAngle={2}
+                            stroke="#ffffff"
+                            strokeWidth={2}
+                            isAnimationActive={!reduced && libraryIn}
+                            animationDuration={900}
+                          >
+                            {data.mediaMix.map((s, i) => (
+                              <Cell key={s.key} fill={SERIES[i % SERIES.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip content={<ChartTooltip unit=" files" />} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {/* The hole is the right place for the total — it is the
+                          one number the ring cannot show. */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-2xl font-semibold text-slate-900 tracking-tight">
+                          {compactNumber(data.mediaFiles)}
+                        </span>
+                        <span className="text-[11px] text-slate-400">files</span>
+                      </div>
                     </div>
-                    {/* The legend names the parts in block order and repeats no
-                        numbers — the bar and the table carry those. */}
-                    <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3.5">
+                    {/* The legend carries each share, which is the relief the
+                        lighter slots need against a white surface. */}
+                    <ul className="flex-1 min-w-0 space-y-2.5">
                       {data.mediaMix.map((s, i) => (
-                        <li key={s.key} className="flex items-center gap-2 text-xs text-slate-600">
-                          <span
-                            aria-hidden
-                            className="w-2.5 h-2.5 rounded-sm shrink-0"
-                            style={{ backgroundColor: MIX_COLORS[i % MIX_COLORS.length] }}
-                          />
-                          {s.label}
+                        <li key={s.key} className="flex items-center gap-2.5 text-xs">
+                          <Swatch color={SERIES[i % SERIES.length]} />
+                          <span className="text-slate-600 flex-1 min-w-0 truncate">{s.label}</span>
+                          <span className="font-semibold text-slate-800 tabular-nums">
+                            {Math.round((s.count / mixTotal) * 100)}%
+                          </span>
                         </li>
                       ))}
                     </ul>
-                  </>
+                  </div>
                 )}
               </Card>
             </div>
           </div>
 
-          <div ref={rosterRef}>
-            <Card
-              shown={rosterIn}
-              title="Who we run screens for"
-              hint="Each client's network, and how much of it is live"
-            >
-              {data.roster.length === 0 ? (
-                <p className="text-sm text-slate-400">No client screens deployed yet.</p>
-              ) : (
-                // A meter list: a name, a bar and a figure per row, bars aligned
-                // so the networks compare against each other down the column.
-                <ul className="space-y-3.5">
-                  {data.roster.map((c, i) => (
-                    <li key={c.email} className="flex items-center gap-3">
-                      {c.logo ? (
-                        <img src={c.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-slate-50 shrink-0" />
-                      ) : (
-                        <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-semibold flex items-center justify-center shrink-0">
-                          {c.name.slice(0, 2).toUpperCase()}
-                        </span>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        {/* Stacked on a phone: side by side, the metadata
-                            squeezes the name down to "Apollo P…". */}
-                        <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-                          <p className="text-xs font-medium text-slate-800 truncate" title={c.name}>{c.name}</p>
-                          <p className="text-[11px] text-slate-400 sm:shrink-0 truncate">
-                            {c.locations > 1 ? `${c.locations} locations` : '1 location'}
-                            {c.since ? ` · since ${formatMonthYear(c.since)}` : ''}
-                          </p>
-                        </div>
-                        {/* One bar per client, all on the same scale: the full
-                            length is their screen count against the largest
-                            client's, and the green part is the share of it that
-                            is live. The two multiply out to online/largest, so
-                            green lengths compare straight across rows as online
-                            counts — the row is a stacked bar, not a nested one. */}
-                        <div className="mt-1.5 h-2 bg-slate-50 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full overflow-hidden"
-                            style={{
-                              ...grow(Math.max(6, (c.screens / maxClientScreens) * 100), rosterIn, reduced, i * 80),
-                              backgroundColor: STATUS_IDLE
-                            }}
-                            title={`${c.screens} screen${c.screens === 1 ? '' : 's'}, ${c.online} online`}
-                          >
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div ref={uploadsRef}>
+              <Card shown={uploadsIn} title="Content added each month" hint="New media uploaded · last 12 months">
+                {/* Columns, not a line: these are twelve separate months, and a
+                    quiet one should read as a short bar rather than a dip. */}
+                <div style={{ height: 212 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.mediaAdded} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
+                      <XAxis
+                        dataKey="label" tick={{ fontSize: 11, fill: AXIS_INK }}
+                        tickLine={false} axisLine={{ stroke: GRID }} dy={4}
+                      />
+                      <YAxis
+                        width={30} tick={{ fontSize: 11, fill: AXIS_INK }}
+                        tickLine={false} axisLine={false} allowDecimals={false}
+                      />
+                      <Tooltip content={<ChartTooltip unit=" files" />} cursor={{ fill: 'rgba(11,11,11,0.04)' }} />
+                      {/* One series, one hue; capped width so the column never
+                          fills its slot and the band keeps its air. */}
+                      <Bar
+                        dataKey="count" name="Added" fill={SERIES_1}
+                        radius={[4, 4, 0, 0]} maxBarSize={24}
+                        isAnimationActive={!reduced && uploadsIn}
+                        animationDuration={900}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </div>
+
+            <div ref={rosterRef}>
+              <Card shown={rosterIn} title="Who we run screens for" hint="Each client's network, and how much of it is live">
+                {data.roster.length === 0 ? (
+                  <p className="text-sm text-slate-400">No client screens deployed yet.</p>
+                ) : (
+                  // A meter list: a name, a bar and a figure per row, bars
+                  // aligned so the networks compare down the column.
+                  <ul className="space-y-3.5">
+                    {data.roster.map((c, i) => (
+                      <li key={c.email} className="flex items-center gap-3">
+                        {c.logo ? (
+                          <img src={c.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-slate-50 shrink-0" />
+                        ) : (
+                          <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-semibold flex items-center justify-center shrink-0">
+                            {c.name.slice(0, 2).toUpperCase()}
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          {/* Stacked on a phone: side by side, the metadata
+                              squeezes the name down to "Apollo P…". */}
+                          <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                            <p className="text-xs font-medium text-slate-800 truncate" title={c.name}>{c.name}</p>
+                            <p className="text-[11px] text-slate-400 sm:shrink-0 truncate">
+                              {c.locations > 1 ? `${c.locations} locations` : '1 location'}
+                              {c.since ? ` · since ${formatMonthYear(c.since)}` : ''}
+                            </p>
+                          </div>
+                          {/* One bar per client, all on the same scale: the full
+                              length is their screen count against the largest
+                              client's, and the green part is the share of it
+                              that is live. The two multiply out to
+                              online/largest, so green lengths compare straight
+                              across rows as online counts. */}
+                          <div className="mt-1.5 h-2 bg-slate-50 rounded-full overflow-hidden">
                             <div
-                              className="h-full rounded-full"
+                              className="h-full rounded-full overflow-hidden"
                               style={{
-                                ...grow(c.screens > 0 ? (c.online / c.screens) * 100 : 0, rosterIn, reduced, 250 + i * 80),
-                                backgroundColor: STATUS_GOOD
+                                ...grow(Math.max(6, (c.screens / maxClientScreens) * 100), rosterIn, reduced, i * 80),
+                                backgroundColor: STATUS_IDLE
                               }}
-                            />
+                              title={`${c.screens} screen${c.screens === 1 ? '' : 's'}, ${c.online} online`}
+                            >
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  ...grow(c.screens > 0 ? (c.online / c.screens) * 100 : 0, rosterIn, reduced, 250 + i * 80),
+                                  backgroundColor: STATUS_GOOD
+                                }}
+                              />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-700 tabular-nums shrink-0 w-12 text-right">
-                        {c.online}/{c.screens}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+                        <span className="text-xs font-semibold text-slate-700 tabular-nums shrink-0 w-12 text-right">
+                          {c.online}/{c.screens}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
           </div>
         </>
       )}
