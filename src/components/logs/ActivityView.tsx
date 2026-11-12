@@ -358,10 +358,16 @@ export default function ActivityView() {
                               {CATEGORY_LABELS[category]}
                             </span>
                           </span>
-                          <span className="block text-xs text-slate-500 mt-0.5 truncate">
-                            {actorLabel(entry.actorEmail)}
-                            {entry.detail ? ` · ${entry.detail}` : ''}
-                          </span>
+                          {/* Collapsed summary only: expanded, every part of
+                              this reappears below with a label, and showing
+                              both printed the actor's email twice a line
+                              apart. */}
+                          {!open && (
+                            <span className="block text-xs text-slate-500 mt-0.5 truncate">
+                              {actorLabel(entry.actorEmail)}
+                              {entry.detail ? ` · ${entry.detail}` : ''}
+                            </span>
+                          )}
                         </span>
                         <span className="flex items-center gap-1.5 shrink-0 pt-0.5">
                           <span className="text-[11px] text-slate-400" title={fullTime(entry.created)}>
@@ -390,7 +396,10 @@ export default function ActivityView() {
                           <div className="min-w-0">
                             <dt className="text-slate-400">When</dt>
                             <dd className="text-slate-700 font-medium">
-                              {fullTime(entry.created)} <span className="text-slate-400">({timeAgo(entry.created)})</span>
+                              {fullTime(entry.created)}
+                              {timeAgo(entry.created) && (
+                                <span className="text-slate-400"> ({timeAgo(entry.created)})</span>
+                              )}
                             </dd>
                           </div>
                           <div className="min-w-0">

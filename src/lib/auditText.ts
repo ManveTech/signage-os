@@ -161,11 +161,18 @@ export function categoryOf(action: string): AuditCategory {
   return CATEGORY_BY_PREFIX[String(action || '').split('.')[0]] || 'system';
 }
 
-/** "2 minutes ago", "3 Feb" — relative while it's recent, then a date. */
+/**
+ * "2 minutes ago", "3 days ago" — and empty once it's older than a week.
+ *
+ * This only ever reads alongside fullTime(), to say how long ago that
+ * timestamp was. Past a week there is no phrasing that beats the date itself,
+ * and falling back to one printed "Oct 22, 2026, 11:36 PM (Oct 22)" — the
+ * same date twice. Empty means the caller shows the timestamp on its own.
+ */
 export function timeAgo(iso?: string): string {
-  if (!iso) return '—';
+  if (!iso) return '';
   const then = new Date(String(iso).replace(' ', 'T'));
-  if (isNaN(then.getTime())) return '—';
+  if (isNaN(then.getTime())) return '';
   const seconds = Math.floor((Date.now() - then.getTime()) / 1000);
   if (seconds < 60) return 'just now';
   const minutes = Math.floor(seconds / 60);
@@ -174,7 +181,7 @@ export function timeAgo(iso?: string): string {
   if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
-  return then.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: then.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  return '';
 }
 
 /** The full timestamp, for the tooltip and the expanded row. */
