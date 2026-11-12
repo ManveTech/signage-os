@@ -4,6 +4,7 @@ import { mediaStore } from '../../../lib/mediaStore';
 
 const breadcrumbMap: Record<string, string[]> = {
   dashboard: ['Dashboard'],
+  overview: ['Business Overview'],
   'my-screens-list': ['My Screens', 'Screens'],
   'screens-groups-my': ['My Screens', 'Groups'],
   'screens-logs': ['My Screens', 'Logs'],
@@ -54,6 +55,7 @@ const breadcrumbMap: Record<string, string[]> = {
 
 const PAGES: HeaderSearchItem[] = [
   { title: 'Dashboard', type: 'Page', view: 'dashboard' },
+  { title: 'Business overview', type: 'Page', view: 'overview' },
   { title: 'My screens', type: 'Page', view: 'my-screens-list' },
   { title: 'Client screens', type: 'Page', view: 'screens-all' },
   { title: 'Add a screen', type: 'Page', view: 'screens-add-my' },

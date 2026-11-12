@@ -4,6 +4,7 @@
 
 export const ADMIN_ROUTES: Record<string, string> = {
   'dashboard': '/admin/dashboard',
+  'overview': '/admin/overview',
   'client-screens': '/admin/client-screens',
   'my-media': '/admin/my-channel/media',
   'my-playlists': '/admin/my-channel/playlists',

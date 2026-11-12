@@ -20,6 +20,7 @@ import Leads from './views/Leads';
 import Admins from './views/Admins';
 import AppReleases from './views/AppReleases';
 import ActivityView from '../../components/logs/ActivityView';
+import BusinessOverview from '../../components/overview/BusinessOverview';
 import Licenses from './views/Licenses';
 import Organizations from './views/Organizations';
 import LicenseDecoder from './views/LicenseDecoder';
@@ -48,6 +49,7 @@ import { refreshProfileName } from '../../lib/profileName';
 function renderView(view: string, navigate: (v: string) => void, adminEmail: string) {
   switch (view) {
     case 'dashboard': return <Dashboard userEmail={adminEmail} onNavigate={navigate} />;
+    case 'overview': return <BusinessOverview userEmail={adminEmail} />;
     case 'client-screens': return <AllScreens onNavigate={navigate} userEmail={adminEmail} />;
 
     // My Channel

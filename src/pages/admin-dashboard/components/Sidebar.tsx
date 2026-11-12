@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Monitor, Film, List, BarChart2, Users, Key, Building2,
   Settings, HelpCircle, User, ChevronDown, ChevronRight, Search, LogOut,
   Tv, MonitorPlay, Layers, Tag, CalendarDays, FileBarChart, Shield,
-  MessageSquare, Video, Plug, Inbox, ShieldCheck, Package, History
+  MessageSquare, Video, Plug, Inbox, ShieldCheck, Package, History, PieChart
 } from 'lucide-react';
 
 type NavSection = {
@@ -16,6 +16,7 @@ type NavSection = {
 
 const navSections: NavSection[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
+  { id: 'overview', label: 'Business Overview', icon: <PieChart size={18} /> },
   {
     id: 'my-screens', label: 'My Screens', icon: <MonitorPlay size={18} />,
     children: [

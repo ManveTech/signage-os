@@ -1,0 +1,259 @@
+/**
+ * The numbers behind the Business Overview page.
+ *
+ * Kept apart from the view because this is arithmetic over the whole network
+ * and is worth testing on its own — and because the view should not be where
+ * decisions like "a screen showing a pairing code isn't deployed yet" live.
+ *
+ * Deliberately no money. The page exists to be shown to a client sitting
+ * across the table, so it answers "is this platform real and reliable?" and
+ * never "what do we earn?".
+ */
+
+export type MonthPoint = { month: string; label: string; screens: number; clients: number };
+export type Slice = { key: string; label: string; count: number; bytes: number };
+export type ClientRow = {
+  email: string;
+  name: string;
+  logo: string;
+  screens: number;
+  online: number;
+  locations: number;
+  since: string;
+};
+
+export type Overview = {
+  screensDeployed: number;
+  screensOnline: number;
+  onlinePct: number;
+  uptimeSeconds: number;
+  loopsPlayed: number;
+  clients: number;
+  locations: number;
+  mediaFiles: number;
+  libraryBytes: number;
+  contentSeconds: number;
+  playlists: number;
+  growth: MonthPoint[];
+  topLocations: { name: string; count: number }[];
+  mediaMix: Slice[];
+  roster: ClientRow[];
+};
+
+const ONLINE = new Set(['online', 'active']);
+
+/** A screen somebody owns and has paired — not a TV sitting on a pairing code. */
+export function isDeployed(s: any): boolean {
+  return s.status !== 'pairing' && s.status !== 'unlinked' && !!s.assignedToUserEmail;
+}
+
+export function isOnline(s: any): boolean {
+  return ONLINE.has(String(s.status));
+}
+
+/**
+ * Seconds this screen has ever been playing, including the session it is in
+ * right now — cumulativeUptime is only banked when a screen goes offline, so
+ * leaving it out would make a network that is currently up look idle.
+ */
+export function uptimeSeconds(s: any): number {
+  let total = Number(s.cumulativeUptime) || 0;
+  if (isOnline(s) && s.onlineSince) {
+    const session = Math.floor((Date.now() - new Date(s.onlineSince).getTime()) / 1000);
+    if (session > 0) total += session;
+  }
+  return total;
+}
+
+const createdAt = (r: any): string => String(r?.created || r?.createdDate || '').replace(' ', 'T');
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Cumulative totals at the end of each of the last `months` months — the
+ * count of everything deployed up to that point, not what was added during
+ * it. A showcase wants the line that rises, and a month where nothing was
+ * installed should read as flat rather than as a drop to zero.
+ *
+ * A record with no creation date is counted in the running total but never
+ * attributed to a month, so the final figure still matches the headline.
+ */
+export function buildGrowth(screens: any[], roster: ClientRow[], months = 12): MonthPoint[] {
+  const now = new Date();
+  const points: MonthPoint[] = [];
+
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+    points.push({
+      month: monthKey(d),
+      label: d.toLocaleDateString(undefined, { month: 'short' }),
+      screens: screens.filter(s => {
+        const t = new Date(createdAt(s)).getTime();
+        return Number.isFinite(t) && t < end;
+      }).length,
+      clients: roster.filter(c => {
+        const t = new Date(c.since).getTime();
+        return Number.isFinite(t) && t < end;
+      }).length
+    });
+  }
+  return points;
+}
+
+/** Every client with at least one deployed screen, biggest first. */
+export function buildRoster(deployed: any[], orgs: any[]): ClientRow[] {
+  const byEmail = new Map<string, any[]>();
+  for (const s of deployed) {
+    const email = String(s.assignedToUserEmail || '').toLowerCase();
+    if (!email) continue;
+    const list = byEmail.get(email);
+    if (list) list.push(s); else byEmail.set(email, [s]);
+  }
+
+  const orgByEmail = new Map<string, any>();
+  for (const o of orgs) {
+    const email = String(o?.email || '').toLowerCase();
+    if (email) orgByEmail.set(email, o);
+  }
+
+  const rows: ClientRow[] = [];
+  for (const [email, list] of byEmail) {
+    const org = orgByEmail.get(email);
+    // The org record is the better source for a name and a logo, but a client
+    // can have screens before anyone fills one in — so fall back to the name
+    // on the screen record, then to the email, rather than dropping the row.
+    const name = org?.name || org?.adminName || list.find(s => s.websiteName)?.websiteName || email;
+    const logo = org?.websiteLogo || list.find(s => s.websiteLogo)?.websiteLogo || '';
+    const dates = [createdAt(org), ...list.map(createdAt)]
+      .filter(d => Number.isFinite(new Date(d).getTime()) && d);
+    rows.push({
+      email,
+      name: String(name),
+      logo: String(logo),
+      screens: list.length,
+      online: list.filter(isOnline).length,
+      locations: new Set(list.map(s => String(s.location || '').trim()).filter(Boolean)).size,
+      since: dates.sort()[0] || ''
+    });
+  }
+
+  return rows.sort((a, b) => b.screens - a.screens || a.name.localeCompare(b.name));
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  image: 'Images',
+  video: 'Videos',
+  layout: 'Layouts',
+  ticker: 'Tickers'
+};
+
+/** Media broken down by kind, biggest first, with everything unusual folded in. */
+export function buildMediaMix(media: any[]): Slice[] {
+  const byType = new Map<string, Slice>();
+  for (const m of media) {
+    const key = String(m?.type || 'other');
+    const slice = byType.get(key) || { key, label: TYPE_LABELS[key] || 'Other', count: 0, bytes: 0 };
+    slice.count++;
+    slice.bytes += Number(m?.fileSizeBytes) || 0;
+    byType.set(key, slice);
+  }
+  const all = [...byType.values()].sort((a, b) => b.count - a.count);
+
+  // Never more hues than the palette validates for. Past three, the tail
+  // becomes one "Other" segment rather than a generated colour.
+  if (all.length <= 3) return all;
+  const head = all.slice(0, 2);
+  const tail = all.slice(2);
+  return [
+    ...head,
+    {
+      key: 'other',
+      label: 'Other',
+      count: tail.reduce((n, s) => n + s.count, 0),
+      bytes: tail.reduce((n, s) => n + s.bytes, 0)
+    }
+  ];
+}
+
+export function buildTopLocations(deployed: any[], limit = 6): { name: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const s of deployed) {
+    const name = String(s.location || '').trim();
+    if (!name) continue;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
+
+export function computeOverview(input: {
+  screens: any[];
+  media: any[];
+  playlists: any[];
+  orgs: any[];
+  /** From lib/adminOwnership — tells our own display estate from a client's. */
+  isOurs: (email?: string) => boolean;
+}): Overview {
+  const deployed = input.screens.filter(isDeployed);
+  const clientScreens = deployed.filter(s => !input.isOurs(s.assignedToUserEmail));
+  const roster = buildRoster(clientScreens, input.orgs);
+
+  const online = deployed.filter(isOnline).length;
+
+  return {
+    screensDeployed: deployed.length,
+    screensOnline: online,
+    onlinePct: deployed.length > 0 ? Math.round((online / deployed.length) * 100) : 0,
+    uptimeSeconds: deployed.reduce((n, s) => n + uptimeSeconds(s), 0),
+    loopsPlayed: deployed.reduce((n, s) => n + (Number(s.cumulativeLoops) || 0), 0),
+    clients: roster.length,
+    locations: new Set(deployed.map(s => String(s.location || '').trim()).filter(Boolean)).size,
+    mediaFiles: input.media.length,
+    libraryBytes: input.media.reduce((n, m) => n + (Number(m?.fileSizeBytes) || 0), 0),
+    contentSeconds: input.media.reduce((n, m) => n + (Number(m?.duration) || 0), 0),
+    playlists: input.playlists.length,
+    growth: buildGrowth(clientScreens, roster),
+    topLocations: buildTopLocations(deployed),
+    mediaMix: buildMediaMix(input.media),
+    roster
+  };
+}
+
+// --- Formatting --------------------------------------------------------------
+
+/** 12400 -> "12.4K". Big numbers are the point of this page; nine digits are not. */
+export function compactNumber(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 MB';
+  const tb = bytes / 1024 ** 4;
+  if (tb >= 1) return `${tb.toFixed(1)} TB`;
+  const gb = bytes / 1024 ** 3;
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+}
+
+/** Playback totals run to years, so this stops at the two units that matter. */
+export function formatHours(totalSeconds: number): string {
+  const hours = Math.floor((Number(totalSeconds) || 0) / 3600);
+  if (hours < 1) return `${Math.max(0, Math.floor((Number(totalSeconds) || 0) / 60))}m`;
+  if (hours < 1000) return `${hours}h`;
+  // "69Kh" runs the magnitude and the unit together into something unreadable
+  // at tile size, so the compact form takes a spaced unit instead.
+  return `${compactNumber(hours)} hrs`;
+}
+
+export function formatMonthYear(iso: string): string {
+  const d = new Date(String(iso).replace(' ', 'T'));
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+}
