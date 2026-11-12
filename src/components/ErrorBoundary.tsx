@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { reportError } from '../lib/errorReporting';
 
 interface Props {
   children: ReactNode;
@@ -34,6 +35,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // This is the screen someone actually sees when the app breaks, so it's
+    // the one crash worth knowing about without being told. Does nothing
+    // unless error reporting is configured.
+    reportError(error, { componentStack: errorInfo.componentStack });
     this.setState({
       error,
       errorInfo

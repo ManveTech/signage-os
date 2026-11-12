@@ -26,6 +26,7 @@ import {
 import { syncAllFromDatabase } from '../lib/syncHelper';
 import { storeProfileName } from '../lib/profileName';
 import { getAuthToken, setAuthToken, clearAuthToken } from '../lib/authStorage';
+import { identifyForErrorReporting } from '../lib/errorReporting';
 
 interface Props {
   initialView?: 'login' | 'forgot' | 'reset' | 'dashboard';
@@ -148,6 +149,8 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
       localStorage.setItem('signageos_first_time_login', data.user.firstTimeLogin ? 'true' : 'false');
       storeProfileName(data.user.email, data.user.role === 'admin' || data.user.role === 'super_admin', data.user.name);
       rememberToursFromLogin(data.user.email, data.user.toursSeen);
+      // Account id only — never the email. See lib/errorReporting.ts.
+      identifyForErrorReporting(data.user.id, data.user.role);
     }
 
     try {
@@ -391,6 +394,7 @@ export default function AdminLogin({ initialView = 'login' }: Props) {
     localStorage.removeItem('signageos_user_id');
     localStorage.removeItem('signageos_user_email');
     localStorage.removeItem('signageos_user_role');
+    identifyForErrorReporting(undefined);
     setLoggedInUser(null);
     navigate('/login');
   };

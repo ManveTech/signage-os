@@ -5,6 +5,11 @@ import ErrorBoundary from './components/ErrorBoundary';
 import App from './App.tsx';
 import './index.css';
 import { Capacitor } from '@capacitor/core';
+import { initErrorReporting } from './lib/errorReporting';
+
+// Before anything else renders, so a crash during the first paint is still
+// reported. Does nothing unless VITE_SENTRY_DSN was set at build time.
+initErrorReporting();
 
 // Initialize service worker for offline support
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

@@ -1,3 +1,6 @@
+// Must stay first — see the note in instrument.ts.
+import './instrument';
+import { reportError, errorReportingMiddleware } from './errorReporting';
 import express from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -16,11 +19,15 @@ dns.setDefaultResultOrder('ipv4first');
 // default — one stray unawaited/uncaught async error anywhere in the app would
 // otherwise take down every connected TV and dashboard user, not just the
 // failing request. Log and keep running instead.
+// Reported as well as logged: these are swallowed to keep the server up, so
+// without a report they are invisible outside the container's own logs.
 process.on('unhandledRejection', (reason) => {
   console.error('[Process] Unhandled Promise Rejection:', reason);
+  reportError(reason, { source: 'unhandledRejection' });
 });
 process.on('uncaughtException', (err) => {
   console.error('[Process] Uncaught Exception:', err);
+  reportError(err, { source: 'uncaughtException' });
 });
 
 import { PORT, CORS_ALLOWED_ORIGINS } from './config';
@@ -560,6 +567,11 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+// Reports the error, then passes it along untouched to the handler below —
+// the response a client gets is exactly what it was before. A no-op without
+// SENTRY_DSN.
+app.use(errorReportingMiddleware());
 
 // Safety-net error handler — catches anything a route handler throws/forwards
 // without its own try/catch, so a single bad request returns a clean 500
