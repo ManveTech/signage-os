@@ -176,7 +176,11 @@ function Tile({ icon, value, format, label, sub, series, delta, run }: {
   const shown = useCountUp(value, run);
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-4">
-      <div className="flex items-start justify-between gap-2">
+      {/* The sparkline's height is reserved whether or not there is one to
+          draw. Without it a tile with no series collapses this row to the
+          icon, and its figure rides ~14px above the figures either side of
+          it — the row stops reading as a row. */}
+      <div className="flex items-start justify-between gap-2 h-[30px]">
         <span className="text-slate-400">{icon}</span>
         {series && series.length > 1 && <Sparkline values={series} run={run} />}
       </div>
@@ -206,7 +210,7 @@ function Card({ title, hint, action, shown, children }: {
   const reduced = useReducedMotion();
   return (
     <div
-      className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 h-full"
+      className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 h-full flex flex-col"
       style={reduced ? undefined : {
         opacity: shown ? 1 : 0,
         transform: shown ? 'translateY(0)' : 'translateY(10px)',
@@ -220,7 +224,11 @@ function Card({ title, hint, action, shown, children }: {
         </div>
         {action}
       </div>
-      {children}
+      {/* Cards in a row are stretched to the tallest of them, so the body gets
+          the leftover height rather than letting it pool under a short one.
+          A chart keeps its own fixed height and sits at the top as before;
+          only something asking for h-full — an empty state — uses the room. */}
+      <div className="flex-1 min-h-0">{children}</div>
     </div>
   );
 }
@@ -420,7 +428,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                     </table>
                   </div>
                 ) : activity.points.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-10 text-center">
+                  <p className="text-sm text-slate-400 h-full min-h-[160px] flex items-center justify-center text-center">
                     No device activity recorded yet.
                   </p>
                 ) : (
@@ -564,7 +572,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                 action={<TableToggle on={placesAsTable} onClick={() => setPlacesAsTable(v => !v)} />}
               >
                 {data.locationTree.length === 0 ? (
-                  <p className="text-sm text-slate-400">No locations recorded yet.</p>
+                  <p className="text-sm text-slate-400 h-full min-h-[160px] flex items-center justify-center">No locations recorded yet.</p>
                 ) : placesAsTable ? (
                   <div className="max-h-[300px] overflow-y-auto">
                     <table className="w-full text-xs tabular-nums">
@@ -604,7 +612,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
             <div ref={rosterRef}>
               <Card shown={rosterIn} title="Who we run screens for" hint="Each client's network, and how much of it is live">
                 {data.roster.length === 0 ? (
-                  <p className="text-sm text-slate-400">No client screens deployed yet.</p>
+                  <p className="text-sm text-slate-400 h-full min-h-[160px] flex items-center justify-center">No client screens deployed yet.</p>
                 ) : (
                   // A meter list: a name, a bar and a figure per row, bars
                   // aligned so the networks compare down the column.
@@ -711,7 +719,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                 action={mixTotal > 0 ? <TableToggle on={mixAsTable} onClick={() => setMixAsTable(v => !v)} /> : undefined}
               >
                 {mixTotal === 0 ? (
-                  <p className="text-sm text-slate-400">Nothing uploaded yet.</p>
+                  <p className="text-sm text-slate-400 h-full min-h-[160px] flex items-center justify-center">Nothing uploaded yet.</p>
                 ) : mixAsTable ? (
                   <table className="w-full text-xs tabular-nums">
                     <thead>
