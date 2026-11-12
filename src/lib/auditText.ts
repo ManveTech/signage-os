@@ -15,13 +15,25 @@
 
 export type AuditCategory = 'auth' | 'account' | 'billing' | 'content' | 'email' | 'system';
 
+/**
+ * What each category is called on screen. The keys are the server's and must
+ * not change; these are only the words shown.
+ *
+ * 'system' is labelled Platform, not System: the chip sits immediately after
+ * the action, where "Deleted a ticket · System" read as though the system had
+ * done the deleting — while the row underneath named the admin who actually
+ * did. actorLabel() already uses "System" for an entry with no person behind
+ * it, so the one word was doing two jobs and meaning the opposite thing in
+ * one of them. Platform says what the entry is about (releases, support
+ * content, integrations, backups), which is what a category is for.
+ */
 export const CATEGORY_LABELS: Record<AuditCategory, string> = {
   auth: 'Sign-ins',
   account: 'Accounts',
   billing: 'Billing',
   content: 'Content',
   email: 'Email',
-  system: 'System'
+  system: 'Platform'
 };
 
 /** Tailwind classes per category, for the chips and the row markers. */
