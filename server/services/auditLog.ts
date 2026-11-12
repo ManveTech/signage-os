@@ -143,15 +143,40 @@ export function describeChanges(before: any, after: any): string {
 }
 
 /**
- * The human name of a record, for an audit entry about it. Empty when the
- * record has no name worth showing — callers pass this straight to `detail`,
- * and short()'s "empty" placeholder would read as a value rather than the
- * absence of one.
+ * What a record is called, and whose it is — e.g. `Screen won't pair ·
+ * bob@acme.com`. Empty when there is nothing worth showing: callers pass this
+ * straight to `detail`, where short()'s "empty" placeholder would read as a
+ * value rather than the absence of one.
+ *
+ * This matters most on a deletion, where the entry is all that is left. Only
+ * `name`/`title`/`email`/`fileName`/`version` were looked at, and four
+ * collections have none of them — a deleted ticket, FAQ, payment or invoice
+ * logged a bare id like `ty1fbrdzbbgu41c`, which identifies nothing once the
+ * record it points at is gone. Payments and invoices are kept for a year
+ * precisely so someone can answer "which one?" later.
+ *
+ * Only fields that are a label or an owner are read, never a free-text body,
+ * an amount or anything secret.
  */
+const LABEL_FIELDS = ['name', 'title', 'subject', 'question', 'number', 'licenseName', 'fileName', 'version'];
+const OWNER_FIELDS = ['clientName', 'clientEmail', 'email', 'assignedUserEmail', 'assignedOrgName'];
+
+function firstOf(record: any, fields: string[]): string {
+  for (const f of fields) {
+    const v = record[f];
+    if (v !== null && v !== undefined && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+}
+
 export function describeRecord(record: any): string {
   if (!record) return '';
-  const name = record.name || record.title || record.email || record.fileName || record.version || '';
-  return name ? short(name) : '';
+  const label = firstOf(record, LABEL_FIELDS);
+  const owner = firstOf(record, OWNER_FIELDS);
+  // A users record is its own owner: "Bob · bob@acme.com" is worth having,
+  // but "bob@acme.com · bob@acme.com" is not.
+  const parts = owner && owner !== label ? [label, owner] : [label || owner];
+  return parts.filter(Boolean).map(short).join(' · ');
 }
 
 // --- Retention --------------------------------------------------------------
