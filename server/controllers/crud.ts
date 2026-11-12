@@ -4,7 +4,7 @@ import { pb, ensurePBAuth } from '../db';
 import { refreshDeviceStatusesForList, getLiveScreenMetrics } from './screens';
 import { syncScreenSchedule, removeScreenSchedule, syncPlaylistDeletion } from '../scheduler';
 import { isRedisReady, redis } from '../redis';
-import { logAudit, getClientIp } from '../services/auditLog';
+import { logAudit, getClientIp, describeChanges, describeRecord } from '../services/auditLog';
 import { forgetSession } from '../middleware/auth';
 import { notifyScreenConfigChanged, notifyScreensConfigChanged } from '../services/screenPush';
 import { resolveUserOrgId, groupBelongsTo } from '../services/ownership';
@@ -51,6 +51,13 @@ const ADMIN_ONLY_COLLECTIONS = new Set(['leads']);
 // themselves, for example.
 const WRITE_ADMIN_ONLY_COLLECTIONS = new Set(['licenses', 'organizations', 'invoices', 'faqs', 'support_docs', 'tickets', 'payments']);
 const CREATE_ADMIN_ONLY_COLLECTIONS = new Set(['licenses', 'organizations', 'invoices', 'faqs', 'support_docs', 'payments']);
+
+// Creates and updates are recorded to the activity log for every collection
+// except device logs: those are written by the TVs themselves, several per
+// screen per hour, and would bury every entry worth reading. (Their own
+// retention and cleanup is services/logCleanup.ts.) Deletes have always been
+// logged and still are, for every collection including this one.
+const AUDIT_SKIP_COLLECTIONS = new Set(['screen_logs']);
 
 function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
@@ -425,6 +432,18 @@ export function createCrudRouter(collectionName: string) {
 
       const record = await retryWithBackoff(() => pb.collection(collectionName).create(body));
 
+      if (!AUDIT_SKIP_COLLECTIONS.has(collectionName)) {
+        logAudit({
+          actorId: req.user?.id,
+          actorEmail: req.user?.email,
+          action: `${collectionName}.created`,
+          targetType: collectionName,
+          targetId: record.id,
+          detail: describeRecord(record) || undefined,
+          ip: getClientIp(req)
+        });
+      }
+
       // Sync scheduling on creation
       if (collectionName === 'screens') {
         syncScreenSchedule(record);
@@ -449,13 +468,27 @@ export function createCrudRouter(collectionName: string) {
   async function handleUpdate(req: any, res: any) {
     try {
       const isAdmin = isAdminUser(req.user);
+
+      // Refused before any database work: this needs nothing but the caller's
+      // own role, so a client aiming at an admin-only collection shouldn't
+      // cost a read first.
+      if (!isAdmin && (ADMIN_ONLY_COLLECTIONS.has(collectionName) || WRITE_ADMIN_ONLY_COLLECTIONS.has(collectionName))) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // The record as it stands, read once up front. The tenancy check, the
+      // playlist-reassignment check, the role-change audit and the activity
+      // log all need it, and each used to fetch its own copy — up to three
+      // reads of the same row per save.
+      const before: any = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id)).catch(() => null);
+
       // Enforce security tenancy
       if (!isAdmin) {
-        if (ADMIN_ONLY_COLLECTIONS.has(collectionName) || WRITE_ADMIN_ONLY_COLLECTIONS.has(collectionName)) {
-          return res.status(403).json({ error: 'Access denied' });
+        // No record to check ownership against is a denial, never a pass.
+        if (!before) {
+          return res.status(404).json({ error: 'Record not found' });
         }
-        const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
-        if (!(await isOwnRecord(collectionName, record, req.user))) {
+        if (!(await isOwnRecord(collectionName, before, req.user))) {
           return res.status(403).json({ error: 'Access denied' });
         }
         // Client cannot update tenancy properties
@@ -475,7 +508,7 @@ export function createCrudRouter(collectionName: string) {
         // belonging to a different organization, and silently move their
         // screen into another tenant's group. Require the target group to
         // resolve to this caller's own org before the assignment is allowed.
-        if (collectionName === 'screens' && req.body.groupId && req.body.groupId !== record.groupId) {
+        if (collectionName === 'screens' && req.body.groupId && req.body.groupId !== before.groupId) {
           const targetGroup = await retryWithBackoff(() => pb.collection('screen_groups').getOne(req.body.groupId)).catch(() => null);
           if (!(await groupBelongsTo(targetGroup, req.user?.email))) {
             return res.status(403).json({ error: 'Access denied: that group does not belong to your organization.' });
@@ -487,9 +520,8 @@ export function createCrudRouter(collectionName: string) {
       // another client's screen by mistake. The dashboard sends the whole
       // screen, so only a changed playlist is checked.
       if (collectionName === 'screens' && req.body.playlistId) {
-        const current = await retryWithBackoff(() => pb.collection('screens').getOne(req.params.id)).catch(() => null);
-        if (current && req.body.playlistId !== current.playlistId) {
-          const playlist = await loadUsablePlaylist(req.body.playlistId, current.assignedToUserEmail || '');
+        if (before && req.body.playlistId !== before.playlistId) {
+          const playlist = await loadUsablePlaylist(req.body.playlistId, before.assignedToUserEmail || '');
           if (!playlist) {
             return res.status(403).json({ error: 'That playlist is not in this account.' });
           }
@@ -518,15 +550,10 @@ export function createCrudRouter(collectionName: string) {
       }
       if (collectionName === 'screen_groups' && 'sleepSchedule' in body) body.sleepSchedule = cleanGroupSchedule(body.sleepSchedule);
 
-      // Role changes are a privilege-escalation-sensitive action — capture the
-      // prior role before it's overwritten so the audit entry shows the change.
-      let previousRole: string | undefined;
-      if (collectionName === 'users' && typeof body.role === 'string') {
-        try {
-          const existing = await retryWithBackoff(() => pb.collection('users').getOne(req.params.id));
-          previousRole = existing.role;
-        } catch (_) { /* best-effort — don't block the update if this lookup fails */ }
-      }
+      // Role changes are a privilege-escalation-sensitive action, so they get
+      // their own entry rather than being one field among many in the general
+      // update summary below.
+      const previousRole: string | undefined = collectionName === 'users' ? before?.role : undefined;
 
       const record = await retryWithBackoff(() => pb.collection(collectionName).update(req.params.id, body));
 
@@ -541,6 +568,25 @@ export function createCrudRouter(collectionName: string) {
           detail: `${previousRole ?? 'unknown'} -> ${body.role}`,
           ip: getClientIp(req)
         });
+      }
+
+      if (!AUDIT_SKIP_COLLECTIONS.has(collectionName)) {
+        // The dashboard saves whole records, so most keys in a typical PATCH
+        // are identical to what was already stored. An entry is only worth
+        // writing when something actually differs — otherwise opening and
+        // closing an edit dialog would log a change.
+        const changes = describeChanges(before, body);
+        if (changes) {
+          logAudit({
+            actorId: req.user?.id,
+            actorEmail: req.user?.email,
+            action: `${collectionName}.updated`,
+            targetType: collectionName,
+            targetId: req.params.id,
+            detail: [describeRecord(record), changes].filter(Boolean).join(' — '),
+            ip: getClientIp(req)
+          });
+        }
       }
 
       if (collectionName === 'screens') {
@@ -577,13 +623,26 @@ export function createCrudRouter(collectionName: string) {
   router.delete('/:id', async (req: any, res: any) => {
     try {
       const isAdmin = isAdminUser(req.user);
+
+      // Refused before any database work — see the same check in handleUpdate.
+      if (!isAdmin && (ADMIN_ONLY_COLLECTIONS.has(collectionName) || WRITE_ADMIN_ONLY_COLLECTIONS.has(collectionName))) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // The record about to go, read once up front. The tenancy check, the
+      // GST check, the audit entry (an id alone tells you nothing once the row
+      // is gone), clearing screens that referenced a deleted playlist and
+      // switching video conferencing back off after a licence all need it, and
+      // each used to fetch its own copy.
+      const doomed: any = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id)).catch(() => null);
+
       // Enforce security tenancy
       if (!isAdmin) {
-        if (ADMIN_ONLY_COLLECTIONS.has(collectionName) || WRITE_ADMIN_ONLY_COLLECTIONS.has(collectionName)) {
-          return res.status(403).json({ error: 'Access denied' });
+        // No record to check ownership against is a denial, never a pass.
+        if (!doomed) {
+          return res.status(404).json({ error: 'Record not found' });
         }
-        const record = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id));
-        if (!(await isOwnRecord(collectionName, record, req.user))) {
+        if (!(await isOwnRecord(collectionName, doomed, req.user))) {
           return res.status(403).json({ error: 'Access denied' });
         }
       }
@@ -591,24 +650,13 @@ export function createCrudRouter(collectionName: string) {
       // Billing records are kept (GST needs them for 6 years). Only test
       // payments — and invoices settled by one — can be removed, by anyone.
       if (collectionName === 'payments' || collectionName === 'invoices') {
-        const rec = await retryWithBackoff(() => pb.collection(collectionName).getOne(req.params.id)).catch(() => null);
-        if (rec && !(collectionName === 'payments' ? isTestPayment(rec) : isTestInvoice(rec))) {
+        if (doomed && !(collectionName === 'payments' ? isTestPayment(doomed) : isTestInvoice(doomed))) {
           return res.status(403).json({ error: 'Only test payments and their invoices can be deleted. Real billing records are kept for GST.' });
         }
       }
 
-      let playlistName = '';
-      if (collectionName === 'playlists') {
-        try {
-          const pl = await retryWithBackoff(() => pb.collection('playlists').getOne(req.params.id));
-          playlistName = pl.name;
-        } catch (_) { /* ignore */ }
-      }
-
-      let deletedLicense: any = null;
-      if (collectionName === 'licenses') {
-        deletedLicense = await retryWithBackoff(() => pb.collection('licenses').getOne(req.params.id)).catch(() => null);
-      }
+      const playlistName = collectionName === 'playlists' ? (doomed?.name || '') : '';
+      const deletedLicense = collectionName === 'licenses' ? doomed : null;
 
       await retryWithBackoff(() => pb.collection(collectionName).delete(req.params.id));
 
@@ -628,7 +676,7 @@ export function createCrudRouter(collectionName: string) {
         action: `${collectionName}.deleted`,
         targetType: collectionName,
         targetId: req.params.id,
-        detail: playlistName || undefined,
+        detail: describeRecord(doomed) || undefined,
         ip: getClientIp(req)
       });
 

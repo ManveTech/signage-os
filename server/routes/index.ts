@@ -14,6 +14,7 @@ import { clearAllScreenLogs } from '../controllers/screens';
 import { postTicketMessage } from '../controllers/tickets';
 import { getBusinessDetails, putBusinessDetails, getPublicContact } from '../controllers/businessDetails';
 import { getAppVersion, getAppVersionAdmin, putAppVersion } from '../controllers/appVersion';
+import { listAuditLogs, getAuditLogSummary } from '../controllers/auditLogs';
 import { createPublicLead } from '../controllers/publicLeads';
 import { getPublicReleases, downloadLatest, uploadRelease, deleteRelease, MAX_APK_BYTES } from '../controllers/appReleases';
 import { addDefaultHelp, uploadHelpImage } from '../controllers/helpContent';
@@ -231,6 +232,12 @@ apiRouter.get('/business-details', getBusinessDetails);
 apiRouter.put('/business-details', putBusinessDetails);
 apiRouter.get('/app-version', getAppVersionAdmin);
 apiRouter.put('/app-version', putAppVersion);
+
+// The activity log. Read-only and admin-only on purpose — deliberately not
+// mounted through createCrudRouter, which would expose create/update/delete
+// and let the record of an action be edited by whoever took it.
+apiRouter.get('/audit-logs', listAuditLogs);
+apiRouter.get('/audit-logs/summary', getAuditLogSummary);
 apiRouter.post('/tickets/:id/messages', postTicketMessage);
 apiRouter.use('/tickets', createCrudRouter('tickets'));
 apiRouter.use('/faqs', createCrudRouter('faqs'));

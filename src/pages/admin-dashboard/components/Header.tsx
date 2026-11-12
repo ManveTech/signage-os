@@ -35,13 +35,17 @@ const breadcrumbMap: Record<string, string[]> = {
   'reports-overview': ['Reports'],
   'reports-screens': ['Reports', 'Screens'],
   'reports-media': ['Reports', 'Media'],
-  'reports-logs': ['Reports', 'Activity'],
+  // "Device logs", matching its own sidebar label — these are screens going
+  // online, offline and syncing. The Activity entry below is the audit trail
+  // of what people did, which is a different thing.
+  'reports-logs': ['Reports', 'Device logs'],
   support: ['Helpdesk'],
   'support-issues': ['Helpdesk', 'Tickets'],
   'support-faq': ['Helpdesk', 'FAQs'],
   'support-docs': ['Helpdesk', 'Guides'],
   integrations: ['Integrations'],
   admins: ['Admin team'],
+  activity: ['Activity'],
   'app-releases': ['App releases'],
   'settings-general': ['Settings'],
   'video-conferencing': ['Video calls'],
@@ -70,6 +74,7 @@ const PAGES: HeaderSearchItem[] = [
   { title: 'Helpdesk', subtitle: 'Tickets, FAQs and guides', type: 'Page', view: 'support-issues' },
   { title: 'Integrations', subtitle: 'Storage, email, Google sign-in', type: 'Page', view: 'integrations' },
   { title: 'Admin team', subtitle: 'Invite and remove admins', type: 'Page', view: 'admins' },
+  { title: 'Activity', subtitle: 'Sign-ins, changes and emails sent', type: 'Page', view: 'activity' },
   { title: 'App releases', subtitle: 'Upload the TV app, download links', type: 'Page', view: 'app-releases' },
   { title: 'Profile & password', type: 'Page', view: 'profile' },
 ];

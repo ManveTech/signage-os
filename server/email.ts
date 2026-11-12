@@ -2,6 +2,36 @@ import nodemailer from 'nodemailer';
 import dns from 'dns';
 import { getSmtpConfig, SmtpConfig } from './integrationsStore';
 import { renderEmail, fromLine } from './emailLayout';
+import { logAudit } from './services/auditLog';
+
+/**
+ * Every send records its outcome to the activity log, so "did they ever get
+ * their login?" has an answer. Three outcomes, because they need different
+ * answers: `sent` means the SMTP server accepted it, `failed` means it was
+ * refused, and `not_configured` means no SMTP server is set up at all and
+ * nothing was even attempted — the one people get wrong, since the dashboard
+ * otherwise looks like it worked.
+ *
+ * Deliberately records only the recipient, the kind of email and the result.
+ * Never the body, the temporary password or the reset link: the whole point of
+ * those is that they are secret, and the log is readable by every admin.
+ *
+ * `sent` is the SMTP server taking responsibility for the message, which is
+ * not the same as it reaching an inbox — a later bounce happens out of our
+ * sight and won't appear here.
+ */
+type MailKind =
+  | 'welcome' | 'password_reset' | 'password_changed'
+  | 'billing_reminder' | 'payment_receipt' | 'notice' | 'smtp_test';
+
+function logMail(kind: MailKind, toEmail: string, outcome: 'sent' | 'failed' | 'not_configured', error?: string) {
+  logAudit({
+    action: `email.${outcome}`,
+    targetType: 'email',
+    targetId: toEmail,
+    detail: [kind, error].filter(Boolean).join(': ')
+  });
+}
 
 // Dashboard-saved SMTP config (Admin > Integrations) takes priority over
 // .env when enabled — see integrationsStore.getSmtpConfig(). Falls back to
@@ -70,6 +100,7 @@ export async function sendCredentialsEmail({ toEmail, userName, role, tempPasswo
     if (process.env.NODE_ENV !== 'production') console.log(`Temporary Password: ${tempPassword}`);
     // Nothing was sent. Saying otherwise has the admin tell someone to
     // check an inbox that will stay empty.
+    logMail('welcome', toEmail, 'not_configured');
     return false;
   }
 
@@ -100,10 +131,12 @@ export async function sendCredentialsEmail({ toEmail, userName, role, tempPasswo
   try {
     const info = await transporter.sendMail({ from: await fromLine(), to: toEmail, subject: headline, ...mail });
     console.log(`Welcome email sent to ${toEmail}. MessageID: ${info.messageId}`);
+    logMail('welcome', toEmail, 'sent');
     return true;
   } catch (error: any) {
     console.error(`Failed to send welcome email to ${toEmail}:`, error.message);
     console.log(`To: ${toEmail} | Role: ${role}${process.env.NODE_ENV !== 'production' ? ` | Password: ${tempPassword}` : ''}`);
+    logMail('welcome', toEmail, 'failed', error.message);
     return false;
   }
 }
@@ -120,7 +153,10 @@ export async function sendPasswordResetEmail({ toEmail, userName, resetLink }: R
   if (!transporter) {
     // No email set up. The link is a live password-reset token, so it's
     // only ever printed in development — never into production logs.
-    if (process.env.NODE_ENV === 'production') return false;
+    if (process.env.NODE_ENV === 'production') {
+      logMail('password_reset', toEmail, 'not_configured');
+      return false;
+    }
     console.log(`[Mail] Password reset for ${toEmail}: ${resetLink}`);
     return true;
   }
@@ -139,9 +175,11 @@ export async function sendPasswordResetEmail({ toEmail, userName, resetLink }: R
   try {
     await transporter.sendMail({ from: await fromLine(), to: toEmail, subject: 'Reset your password', ...mail });
     console.log(`Password reset email sent to ${toEmail}`);
+    logMail('password_reset', toEmail, 'sent');
     return true;
   } catch (error: any) {
     console.error(`Failed to send password reset email to ${toEmail}:`, error.message);
+    logMail('password_reset', toEmail, 'failed', error.message);
     return false;
   }
 }
@@ -159,6 +197,8 @@ interface BillingReminderOptions {
   ctaUrl?: string;
   tone?: 'info' | 'warn' | 'danger';
   callout?: string;
+  /** What to call this in the activity log. Several callers share this sender. */
+  kind?: MailKind;
 }
 
 /**
@@ -168,7 +208,11 @@ interface BillingReminderOptions {
  */
 export async function sendBillingReminderEmail(opts: BillingReminderOptions): Promise<ReminderResult> {
   const transporter = await getTransporter();
-  if (!transporter) return 'not_configured';
+  const kind = opts.kind || 'notice';
+  if (!transporter) {
+    logMail(kind, opts.toEmail, 'not_configured');
+    return 'not_configured';
+  }
   // Greet the person, not the company: callers often only know the
   // organisation name ("Hi Metro," for Metro Clinic).
   const { pb } = await import('./db');
@@ -184,9 +228,11 @@ export async function sendBillingReminderEmail(opts: BillingReminderOptions): Pr
   });
   try {
     await transporter.sendMail({ from: await fromLine(), to: opts.toEmail, subject: opts.subject, ...mail });
+    logMail(kind, opts.toEmail, 'sent');
     return 'sent';
   } catch (error: any) {
     console.error(`Failed to send email to ${opts.toEmail}:`, error.message);
+    logMail(kind, opts.toEmail, 'failed', error.message);
     return 'failed';
   }
 }
@@ -221,6 +267,7 @@ export async function sendPaymentReceiptEmail(opts: {
   if (opts.invoiceNumber) rows.push(['Invoice', opts.invoiceNumber]);
   rows.push(['Payment', manual ? 'Recorded by our team' : opts.paymentRef]);
   return sendBillingReminderEmail({
+    kind: 'payment_receipt',
     toEmail: opts.toEmail,
     subject: `Payment received — ${inrAmount(opts.amount)}`,
     headline: 'Payment received — thank you',
@@ -237,6 +284,7 @@ export async function sendPaymentReceiptEmail(opts: {
 export async function sendPasswordChangedEmail(opts: { toEmail: string; byAdmin?: boolean }): Promise<ReminderResult> {
   const when = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   return sendBillingReminderEmail({
+    kind: 'password_changed',
     toEmail: opts.toEmail,
     subject: 'Your password was changed',
     headline: 'Your password was changed',
@@ -275,8 +323,10 @@ export async function sendSmtpTestEmail(
       paragraphs: ['This is a test from your signage dashboard. Welcome emails, password resets, billing reminders and screen alerts will be delivered from this address.'],
     });
     await transporter.sendMail({ from: `"${cfg.senderName}" <${cfg.senderEmail}>`, to, subject: 'Test email from your signage dashboard', ...mail });
+    logMail('smtp_test', to, 'sent');
     return { ok: true };
   } catch (error: any) {
+    logMail('smtp_test', to, 'failed', error?.message);
     return { ok: false, error: error?.message || 'Sending failed' };
   }
 }
