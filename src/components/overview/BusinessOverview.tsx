@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart,
+  Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis
 } from 'recharts';
 import {
@@ -168,6 +168,66 @@ function Sparkline({ values, run, width = 104, height = 30 }: {
   );
 }
 
+/**
+ * One panel of the small-multiples grid: a client's screen count over the
+ * window, as an area.
+ *
+ * `max` is shared across every panel rather than fitted per panel. Fitting
+ * each one would draw a client with two screens exactly like a client with
+ * twenty, which is the standard way a grid of panels lies.
+ *
+ * The viewBox is fixed and the stroke is non-scaling, so the panel can be any
+ * width without the line thickening or thinning with it.
+ */
+function MiniArea({ values, max, run, delayMs = 0, height = 52 }: {
+  values: number[]; max: number; run: boolean; delayMs?: number; height?: number;
+}) {
+  const reduced = useReducedMotion();
+  const gradientId = useId().replace(/:/g, '');
+  if (values.length < 2) return null;
+
+  const top = Math.max(1, max);
+  const pts = values.map((v, i) => [
+    (i / (values.length - 1)) * 100,
+    38 - (Math.min(v, top) / top) * 36
+  ] as const);
+  const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+  const area = `${line} L100,40 L0,40 Z`;
+
+  return (
+    <svg
+      viewBox="0 0 100 40"
+      preserveAspectRatio="none"
+      className="w-full mt-1.5"
+      style={{ height }}
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={SERIES_1} stopOpacity={0.3} />
+          <stop offset="100%" stopColor={SERIES_1} stopOpacity={0.03} />
+        </linearGradient>
+      </defs>
+      <line x1="0" y1="40" x2="100" y2="40" stroke={GRID} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      <g
+        style={reduced ? undefined : {
+          transformBox: 'fill-box',
+          transformOrigin: 'bottom',
+          transform: run ? 'scaleY(1)' : 'scaleY(0)',
+          transition: `transform 800ms ${EASE} ${delayMs}ms`
+        }}
+      >
+        <path d={area} fill={`url(#${gradientId})`} />
+        <path
+          d={line} fill="none" stroke={SERIES_1} strokeWidth={2}
+          strokeLinecap="round" strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </g>
+    </svg>
+  );
+}
+
 function Tile({ icon, value, format, label, sub, series, delta, run }: {
   icon: React.ReactNode; value: number; format: (n: number) => string;
   label: string; sub?: string; series?: number[]; delta?: number | null; run: boolean;
@@ -294,14 +354,11 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
   const maxClientScreens = data.roster[0]?.screens || 1;
   const empty = data.screensDeployed === 0;
 
-  // Keyed by index rather than client name: a client called "label" or "month"
-  // would otherwise collide with the axis fields.
-  const trendData = data.growth.map((p, i) => {
-    const row: Record<string, string | number> = { label: p.label, month: p.month };
-    data.clientTrends.forEach((t, ti) => { row[`c${ti}`] = t.values[i]; });
-    return row;
-  });
+  // One scale across every panel of the grid, so a small client's curve is
+  // read against a big one rather than against itself.
+  const trendMax = Math.max(1, ...data.clientTrends.flatMap(t => t.values));
 
+  const offline = data.statusCells.filter(c => !c.online);
   const tilesRun = tilesIn && !loading;
   const onlinePct = useCountUp(data.onlinePct, nowIn && !loading);
 
@@ -404,53 +461,39 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                     </table>
                   </div>
                 ) : (
-                  // Every line is screens, on one axis. A second y-scale would
-                  // let the chart invent a relationship that isn't in the data.
-                  <div style={{ height: 272 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={trendData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                        <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
-                        <XAxis
-                          dataKey="label" tick={{ fontSize: 11, fill: AXIS_INK }}
-                          tickLine={false} axisLine={{ stroke: GRID }} dy={4}
-                        />
-                        <YAxis
-                          width={34} tick={{ fontSize: 11, fill: AXIS_INK }}
-                          tickLine={false} axisLine={false} allowDecimals={false}
-                        />
-                        <Tooltip content={<ChartTooltip />} cursor={{ stroke: AXIS_INK, strokeWidth: 1 }} />
-                        {data.clientTrends.map((t, i) => (
-                          <Line
-                            key={t.name}
-                            dataKey={`c${i}`}
-                            name={t.name}
-                            type="monotone"
-                            stroke={SERIES[i % SERIES.length]}
-                            strokeWidth={2}
-                            strokeLinecap="round"
-                            dot={false}
-                            activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }}
-                            isAnimationActive={!reduced && chartIn}
-                            animationDuration={1100}
-                            animationBegin={i * 90}
+                  // Small multiples rather than six lines on one plot. Lines
+                  // stack by value, not by palette slot, so the data decided
+                  // which colours ended up neighbours — and it put the two
+                  // least separable side by side. One panel per client in a
+                  // single hue removes the question: there are no colours to
+                  // tell apart, and it scales past the palette's slots.
+                  <>
+                    <ul className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4">
+                      {data.clientTrends.map((t, i) => (
+                        <li key={t.name}>
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs font-medium text-slate-700 truncate" title={t.name}>
+                              {t.name}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-900 tabular-nums shrink-0">
+                              {t.values[t.values.length - 1]}
+                            </span>
+                          </div>
+                          <MiniArea
+                            values={t.values}
+                            max={trendMax}
+                            run={chartIn}
+                            delayMs={i * 70}
                           />
-                        ))}
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-                {/* A legend for two or more series is the dependable identity
-                    channel — the lines converge at the left, so end-labels
-                    would detach from them and read as noise. */}
-                {!trendAsTable && data.clientTrends.length > 1 && (
-                  <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3">
-                    {data.clientTrends.map((t, i) => (
-                      <li key={t.name} className="flex items-center gap-2 text-xs text-slate-600">
-                        <Swatch color={SERIES[i % SERIES.length]} />
-                        <span className="truncate max-w-[140px]" title={t.name}>{t.name}</span>
-                      </li>
-                    ))}
-                  </ul>
+                        </li>
+                      ))}
+                    </ul>
+                    {/* Said once, because it is the thing that makes a grid of
+                        panels comparable at all. */}
+                    <p className="text-[11px] text-slate-400 mt-4">
+                      All panels share one scale, 0 to {trendMax} screens · Dec to Nov
+                    </p>
+                  </>
                 )}
               </Card>
             </div>
@@ -502,6 +545,30 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                       <li className="flex items-center gap-1.5"><Swatch color={STATUS_GOOD} />Online</li>
                       <li className="flex items-center gap-1.5"><Swatch color={STATUS_IDLE} />Offline</li>
                     </ul>
+
+                    {/* The grid says how many are down; the first question
+                        anyone asks next is which. This card sits beside a tall
+                        chart and had the room standing empty. */}
+                    {offline.length > 0 && (
+                      <div className="mt-4 pt-3.5 border-t border-slate-100">
+                        <p className="text-[11px] font-semibold text-slate-500">
+                          Offline now
+                        </p>
+                        <ul className="mt-2 space-y-1.5">
+                          {offline.slice(0, 6).map(c => (
+                            <li key={c.id} className="flex items-center gap-2 text-xs text-slate-600">
+                              <Swatch color={STATUS_IDLE} />
+                              <span className="truncate" title={c.name}>{c.name}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {offline.length > 6 && (
+                          <p className="text-[11px] text-slate-400 mt-2">
+                            and {offline.length - 6} more
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <p className="text-[11px] text-slate-400 mt-4">

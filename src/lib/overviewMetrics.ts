@@ -368,7 +368,10 @@ export function computeOverview(input: {
     contentSeconds: input.media.reduce((n, m) => n + (Number(m?.duration) || 0), 0),
     playlists: input.playlists.length,
     growth: buildGrowth(clientScreens, roster, input.media),
-    clientTrends: buildClientTrends(clientScreens, roster),
+    // Eight rather than the default five: these are drawn as small multiples,
+    // one panel each in a single hue, so the number of clients shown is no
+    // longer limited by how many colours can be told apart.
+    clientTrends: buildClientTrends(clientScreens, roster, 12, 8),
     mediaAdded: buildMediaAdded(input.media),
     topLocations: buildTopLocations(deployed),
     locationTree: buildLocationTree(deployed),
