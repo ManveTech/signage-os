@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis
 } from 'recharts';
@@ -8,6 +8,7 @@ import {
 import { syncCollection } from '../../lib/syncHelper';
 import { mediaStore } from '../../lib/mediaStore';
 import { makeOursTest } from '../../lib/adminOwnership';
+import { useCountUp, useInView, useReducedMotion } from '../../lib/useMotion';
 import {
   computeOverview, compactNumber, formatBytes, formatHours, formatMonthYear,
   deltaOver, Overview
@@ -24,6 +25,13 @@ import {
  * takes in a rising line and a wall of green far faster than a column of
  * numbers. It is still an admin page behind login, because it names real
  * clients.
+ *
+ * Everything draws itself in as you reach it (see lib/useMotion). The motion is
+ * there to direct attention in a room where someone is talking over the page —
+ * a bar growing to its length says "watch this" better than a bar that was
+ * always there — so it runs once per card and then stops. Under
+ * prefers-reduced-motion every bit of it is skipped and the page renders at its
+ * final state.
  *
  * Everything here is computed in the browser from collections the dashboard
  * already syncs, so it needs no new API endpoint.
@@ -57,46 +65,103 @@ const STATUS_IDLE = '#c3c2b7';
 /** Past this many screens the grid stops being readable and the meter carries it. */
 const MAX_CELLS = 160;
 
-function Sparkline({ values, width = 104, height = 30 }: {
-  values: number[]; width?: number; height?: number;
+/** Decelerating curve — things arrive at their value rather than stopping dead. */
+const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+/** A bar that grows to its width the first time its card is reached. */
+function grow(pct: number, shown: boolean, reduced: boolean, delayMs = 0) {
+  return {
+    width: `${shown || reduced ? pct : 0}%`,
+    transition: reduced ? undefined : `width 900ms ${EASE} ${delayMs}ms`
+  };
+}
+
+function Sparkline({ values, run, width = 104, height = 30 }: {
+  values: number[]; run: boolean; width?: number; height?: number;
 }) {
-  if (values.length < 2) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const reduced = useReducedMotion();
+  const pathRef = useRef<SVGPathElement>(null);
+  const [length, setLength] = useState(0);
+
+  // Every hook runs before the "nothing to draw" exit: bailing out earlier
+  // would change the hook order the moment a second data point arrived.
+  const enough = values.length >= 2;
+  const min = enough ? Math.min(...values) : 0;
+  const max = enough ? Math.max(...values) : 0;
   const span = max - min || 1;
-  const pts = values.map((v, i) => [
-    2 + (i / (values.length - 1)) * (width - 8),
-    height - 4 - ((v - min) / span) * (height - 10)
-  ] as const);
+  const pts = enough
+    ? values.map((v, i) => [
+        2 + (i / (values.length - 1)) * (width - 8),
+        height - 4 - ((v - min) / span) * (height - 10)
+      ] as const)
+    : [];
   const d = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+
+  // Measured rather than estimated: the dash length has to be the path's real
+  // length or the line would either start part-drawn or never finish.
+  useEffect(() => {
+    if (pathRef.current && d) setLength(pathRef.current.getTotalLength());
+  }, [d]);
+
+  if (!enough) return null;
+
   const [lx, ly] = pts[pts.length - 1];
+  const drawn = run || reduced;
   return (
     // The run is de-emphasised and only the current point wears the accent, so
     // the tile's eye-catch is where the series has got to, not its whole path.
     <svg width={width} height={height} aria-hidden className="overflow-visible">
-      <path d={d} fill="none" stroke={SPARK_INK} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={lx} cy={ly} r={4} fill={SERIES_1} stroke="#ffffff" strokeWidth={2} />
+      <path
+        ref={pathRef}
+        d={d}
+        fill="none"
+        stroke={SPARK_INK}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={length ? {
+          strokeDasharray: length,
+          strokeDashoffset: drawn ? 0 : length,
+          transition: reduced ? undefined : `stroke-dashoffset 1000ms ${EASE}`
+        } : undefined}
+      />
+      <circle
+        cx={lx} cy={ly} r={4}
+        fill={SERIES_1} stroke="#ffffff" strokeWidth={2}
+        style={{
+          opacity: drawn ? 1 : 0,
+          transition: reduced ? undefined : 'opacity 300ms ease-out 850ms'
+        }}
+      />
     </svg>
   );
 }
 
-function Tile({ icon, value, label, sub, series, delta }: {
-  icon: React.ReactNode; value: string; label: string; sub?: string;
-  series?: number[]; delta?: number | null;
+function Tile({ icon, value, format, label, sub, series, delta, run }: {
+  icon: React.ReactNode; value: number; format: (n: number) => string;
+  label: string; sub?: string; series?: number[]; delta?: number | null; run: boolean;
 }) {
+  const shown = useCountUp(value, run);
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-4">
       <div className="flex items-start justify-between gap-2">
         <span className="text-slate-400">{icon}</span>
-        {series && series.length > 1 && <Sparkline values={series} />}
+        {series && series.length > 1 && <Sparkline values={series} run={run} />}
       </div>
       {/* Proportional figures: tabular-nums makes a large standalone number
-          look loosely spaced. */}
-      <p className="text-3xl font-semibold text-slate-900 mt-2 tracking-tight">{value}</p>
+          look loosely spaced — and makes a counting one jitter. */}
+      <p className="text-3xl font-semibold text-slate-900 mt-2 tracking-tight">{format(shown)}</p>
       <div className="flex items-baseline gap-1.5 mt-0.5 flex-wrap">
         <p className="text-xs font-medium text-slate-600">{label}</p>
         {typeof delta === 'number' && delta > 0 && (
-          <span className="text-[11px] font-semibold" style={{ color: SUCCESS_INK }}>
+          <span
+            className="text-[11px] font-semibold"
+            style={{
+              color: SUCCESS_INK,
+              opacity: run ? 1 : 0,
+              transition: `opacity 400ms ease-out 700ms`
+            }}
+          >
             +{compactNumber(delta)} this year
           </span>
         )}
@@ -106,11 +171,20 @@ function Tile({ icon, value, label, sub, series, delta }: {
   );
 }
 
-function Card({ title, hint, action, children }: {
-  title: string; hint?: string; action?: React.ReactNode; children: React.ReactNode;
+function Card({ title, hint, action, shown, children }: {
+  title: string; hint?: string; action?: React.ReactNode;
+  shown: boolean; children: React.ReactNode;
 }) {
+  const reduced = useReducedMotion();
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 h-full">
+    <div
+      className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5 h-full"
+      style={reduced ? undefined : {
+        opacity: shown ? 1 : 0,
+        transform: shown ? 'translateY(0)' : 'translateY(10px)',
+        transition: `opacity 500ms ease-out, transform 500ms ${EASE}`
+      }}
+    >
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
@@ -149,11 +223,20 @@ function TableToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 }
 
 export default function BusinessOverview({ userEmail = '' }: { userEmail?: string }) {
+  const reduced = useReducedMotion();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tick, setTick] = useState(0);
   const [growthAsTable, setGrowthAsTable] = useState(false);
   const [mixAsTable, setMixAsTable] = useState(false);
+
+  // One per band of the page, so each draws itself in as it is reached.
+  const [tilesRef, tilesIn] = useInView<HTMLDivElement>();
+  const [chartRef, chartIn] = useInView<HTMLDivElement>();
+  const [nowRef, nowIn] = useInView<HTMLDivElement>();
+  const [placesRef, placesIn] = useInView<HTMLDivElement>();
+  const [libraryRef, libraryIn] = useInView<HTMLDivElement>();
+  const [rosterRef, rosterIn] = useInView<HTMLDivElement>();
 
   const load = (force = false) => Promise.all([
     syncCollection('screens', 'signageos_screens', { force }),
@@ -195,6 +278,11 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
   const maxClientScreens = data.roster[0]?.screens || 1;
   const empty = data.screensDeployed === 0;
 
+  // Nothing animates until the data is in: counting up to a figure that is
+  // still loading would run the tiles twice and land on the wrong number.
+  const tilesRun = tilesIn && !loading;
+  const onlinePct = useCountUp(data.onlinePct, nowIn && !loading);
+
   return (
     // Held at reduced opacity while refreshing rather than replaced by a
     // skeleton, so the page never jumps while someone is looking at it.
@@ -230,26 +318,32 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div ref={tilesRef} className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <Tile
+              run={tilesRun}
               icon={<Monitor size={16} />}
-              value={compactNumber(data.screensDeployed)}
+              value={data.screensDeployed}
+              format={n => compactNumber(Math.round(n))}
               label="Screens deployed"
               sub={`Across ${data.locations} location${data.locations === 1 ? '' : 's'}`}
               series={screenSeries}
               delta={deltaOver(screenSeries)}
             />
             <Tile
+              run={tilesRun}
               icon={<Building2 size={16} />}
-              value={compactNumber(data.clients)}
+              value={data.clients}
+              format={n => compactNumber(Math.round(n))}
               label="Businesses served"
               sub="Active client networks"
               series={clientSeries}
               delta={deltaOver(clientSeries)}
             />
             <Tile
+              run={tilesRun}
               icon={<Film size={16} />}
-              value={compactNumber(data.mediaFiles)}
+              value={data.mediaFiles}
+              format={n => compactNumber(Math.round(n))}
               label="Media in the library"
               sub={`${formatBytes(data.libraryBytes)} · ${compactNumber(data.playlists)} playlists`}
               series={mediaSeries}
@@ -259,16 +353,19 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                 with no history behind them, and drawing a trend we cannot
                 source would be an invented line. */}
             <Tile
+              run={tilesRun}
               icon={<PlaySquare size={16} />}
-              value={formatHours(data.uptimeSeconds)}
+              value={data.uptimeSeconds}
+              format={formatHours}
               label="Hours of playback"
               sub={`${compactNumber(data.loopsPlayed)} playlist loops`}
             />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
+            <div ref={chartRef} className="lg:col-span-2">
               <Card
+                shown={chartIn}
                 title="Screens live over time"
                 hint="Cumulative total at each month end · last 12 months"
                 action={<TableToggle on={growthAsTable} onClick={() => setGrowthAsTable(v => !v)} />}
@@ -324,7 +421,8 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                           allowDecimals={false}
                         />
                         <Tooltip content={<GrowthTooltip />} cursor={{ stroke: AXIS_INK, strokeWidth: 1 }} />
-                        {/* One series, so no legend — the card title names it. */}
+                        {/* One series, so no legend — the card title names it.
+                            The line sweeps in left to right as the card lands. */}
                         <Area
                           type="monotone"
                           dataKey="screens"
@@ -333,6 +431,9 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                           fill="url(#growthFill)"
                           dot={false}
                           activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }}
+                          isAnimationActive={!reduced && chartIn}
+                          animationDuration={1200}
+                          animationEasing="ease-out"
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -341,232 +442,259 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
               </Card>
             </div>
 
-            <Card title="Right now" hint="Every deployed screen, one square each">
-              {/* A ratio against a whole is a meter, not a dial: one hue, the
-                  unfilled track a lighter step of the same ramp. */}
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-3xl font-semibold text-slate-900 tracking-tight">
-                  {data.onlinePct}%
-                </span>
-                <span className="text-xs text-slate-500">
-                  {data.screensOnline} of {data.screensDeployed} online
-                </span>
-              </div>
-              <div
-                className="mt-2.5 h-2.5 rounded-full overflow-hidden"
-                style={{ backgroundColor: RAMP_TRACK }}
-                role="meter"
-                aria-valuenow={data.onlinePct}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Screens online"
-              >
+            <div ref={nowRef}>
+              <Card shown={nowIn} title="Right now" hint="Every deployed screen, one square each">
+                {/* A ratio against a whole is a meter, not a dial: one hue, the
+                    unfilled track a lighter step of the same ramp. */}
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-3xl font-semibold text-slate-900 tracking-tight">
+                    {Math.round(onlinePct)}%
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {data.screensOnline} of {data.screensDeployed} online
+                  </span>
+                </div>
                 <div
-                  className="h-full rounded-full"
-                  style={{ width: `${data.onlinePct}%`, backgroundColor: SERIES_1 }}
-                />
-              </div>
+                  className="mt-2.5 h-2.5 rounded-full overflow-hidden"
+                  style={{ backgroundColor: RAMP_TRACK }}
+                  role="meter"
+                  aria-valuenow={data.onlinePct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Screens online"
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{ ...grow(data.onlinePct, nowIn, reduced), backgroundColor: SERIES_1 }}
+                  />
+                </div>
 
-              {data.statusCells.length <= MAX_CELLS ? (
-                <>
-                  <div className="flex flex-wrap gap-1 mt-4">
-                    {data.statusCells.map(c => (
-                      <span
-                        key={c.id}
-                        title={`${c.name} — ${c.online ? 'online' : 'offline'}`}
-                        className="w-3.5 h-3.5 rounded-[3px]"
-                        style={{ backgroundColor: c.online ? STATUS_GOOD : STATUS_IDLE }}
-                      />
-                    ))}
-                  </div>
-                  {/* Labelled, so the state never rests on colour alone. */}
-                  <ul className="flex items-center gap-4 mt-3.5 text-[11px] text-slate-500">
-                    <li className="flex items-center gap-1.5">
-                      <span aria-hidden className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: STATUS_GOOD }} />
-                      Online
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <span aria-hidden className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: STATUS_IDLE }} />
-                      Offline
-                    </li>
-                  </ul>
-                </>
-              ) : (
-                <p className="text-[11px] text-slate-400 mt-4">
-                  {compactNumber(data.statusCells.length)} screens — too many to show one square each.
-                </p>
-              )}
-            </Card>
+                {data.statusCells.length <= MAX_CELLS ? (
+                  <>
+                    <div className="flex flex-wrap gap-1 mt-4">
+                      {data.statusCells.map((c, i) => (
+                        <span
+                          key={c.id}
+                          title={`${c.name} — ${c.online ? 'online' : 'offline'}`}
+                          className="w-3.5 h-3.5 rounded-[3px]"
+                          style={{
+                            backgroundColor: c.online ? STATUS_GOOD : STATUS_IDLE,
+                            ...(reduced ? {} : {
+                              opacity: nowIn ? 1 : 0,
+                              transform: nowIn ? 'scale(1)' : 'scale(0.4)',
+                              // Capped so a large estate still finishes
+                              // arriving in well under a second.
+                              transition: `opacity 260ms ease-out ${Math.min(i * 14, 700)}ms, transform 260ms ${EASE} ${Math.min(i * 14, 700)}ms`
+                            })
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {/* Labelled, so the state never rests on colour alone. */}
+                    <ul className="flex items-center gap-4 mt-3.5 text-[11px] text-slate-500">
+                      <li className="flex items-center gap-1.5">
+                        <span aria-hidden className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: STATUS_GOOD }} />
+                        Online
+                      </li>
+                      <li className="flex items-center gap-1.5">
+                        <span aria-hidden className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: STATUS_IDLE }} />
+                        Offline
+                      </li>
+                    </ul>
+                  </>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-4">
+                    {compactNumber(data.statusCells.length)} screens — too many to show one square each.
+                  </p>
+                )}
+              </Card>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card title="Where the screens are" hint={`Busiest of ${data.locations} locations`}>
-              {data.topLocations.length === 0 ? (
-                <p className="text-sm text-slate-400">No locations recorded yet.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {data.topLocations.map(loc => (
-                    <li key={loc.name} className="flex items-center gap-3">
-                      <span className="w-28 sm:w-36 shrink-0 text-xs text-slate-600 truncate" title={loc.name}>
-                        {loc.name}
-                      </span>
-                      <span className="flex-1 min-w-0 h-2.5 bg-slate-50 rounded-full overflow-hidden">
-                        {/* One series, one colour. Length already encodes the
-                            value; shading it by size would spend the only free
-                            channel on what the bar says twice. */}
-                        <span
-                          className="block h-full rounded-full"
+            <div ref={placesRef}>
+              <Card shown={placesIn} title="Where the screens are" hint={`Busiest of ${data.locations} locations`}>
+                {data.topLocations.length === 0 ? (
+                  <p className="text-sm text-slate-400">No locations recorded yet.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {data.topLocations.map((loc, i) => (
+                      <li key={loc.name} className="flex items-center gap-3">
+                        <span className="w-28 sm:w-36 shrink-0 text-xs text-slate-600 truncate" title={loc.name}>
+                          {loc.name}
+                        </span>
+                        <span className="flex-1 min-w-0 h-2.5 bg-slate-50 rounded-full overflow-hidden">
+                          {/* One series, one colour. Length already encodes the
+                              value; shading it by size would spend the only free
+                              channel on what the bar says twice. Staggered so the
+                              ranking reads top-down as it fills. */}
+                          <span
+                            className="block h-full rounded-full"
+                            style={{
+                              ...grow(Math.max(4, (loc.count / maxLocation) * 100), placesIn, reduced, i * 70),
+                              backgroundColor: SERIES_1
+                            }}
+                          />
+                        </span>
+                        <span className="w-6 shrink-0 text-right text-xs font-semibold text-slate-700 tabular-nums">
+                          {loc.count}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+
+            <div ref={libraryRef}>
+              <Card
+                shown={libraryIn}
+                title="What's in the library"
+                hint={`${compactNumber(data.mediaFiles)} files · ${formatBytes(data.libraryBytes)}`}
+                action={mixTotal > 0 ? <TableToggle on={mixAsTable} onClick={() => setMixAsTable(v => !v)} /> : undefined}
+              >
+                {mixTotal === 0 ? (
+                  <p className="text-sm text-slate-400">Nothing uploaded yet.</p>
+                ) : mixAsTable ? (
+                  <table className="w-full text-xs tabular-nums">
+                    <thead>
+                      <tr className="text-left text-slate-400">
+                        <th className="font-medium py-1.5">Kind</th>
+                        <th className="font-medium py-1.5 text-right">Files</th>
+                        <th className="font-medium py-1.5 text-right">Share</th>
+                        <th className="font-medium py-1.5 text-right">Size</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.mediaMix.map(s => (
+                        <tr key={s.key} className="border-t border-slate-100">
+                          <td className="py-1.5 text-slate-600">{s.label}</td>
+                          <td className="py-1.5 text-right font-medium text-slate-800">{s.count}</td>
+                          <td className="py-1.5 text-right text-slate-600">{Math.round((s.count / mixTotal) * 100)}%</td>
+                          <td className="py-1.5 text-right text-slate-500">{formatBytes(s.bytes)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <>
+                    {/* Tall segmented bar: one whole split into parts, read at a
+                        glance. 28px, shares printed inside where they fit, and the
+                        2px gaps are the surface showing through, not borders. The
+                        blocks unfurl left to right in legend order. */}
+                    <div className="flex gap-0.5" style={{ height: 28 }}>
+                      {data.mediaMix.map((s, i) => (
+                        <div
+                          key={s.key}
+                          className="h-full flex items-center rounded overflow-hidden"
                           style={{
-                            width: `${Math.max(4, (loc.count / maxLocation) * 100)}%`,
-                            backgroundColor: SERIES_1
+                            ...grow((s.count / mixTotal) * 100, libraryIn, reduced, i * 110),
+                            backgroundColor: MIX_COLORS[i % MIX_COLORS.length]
                           }}
-                        />
-                      </span>
-                      <span className="w-6 shrink-0 text-right text-xs font-semibold text-slate-700 tabular-nums">
-                        {loc.count}
+                          title={`${s.label}: ${s.count} file${s.count === 1 ? '' : 's'} (${Math.round((s.count / mixTotal) * 100)}%)`}
+                        >
+                          {/* Only printed where the block is wide enough to hold
+                              it with padding — a cropped label is worse than none,
+                              and the value stays in the table view either way. */}
+                          {(s.count / mixTotal) > 0.14 && (
+                            <span
+                              className="text-[11px] font-semibold text-white pl-2 whitespace-nowrap"
+                              style={reduced ? undefined : {
+                                opacity: libraryIn ? 1 : 0,
+                                transition: `opacity 300ms ease-out ${600 + i * 110}ms`
+                              }}
+                            >
+                              {Math.round((s.count / mixTotal) * 100)}%
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {/* The legend names the parts in block order and repeats no
+                        numbers — the bar and the table carry those. */}
+                    <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3.5">
+                      {data.mediaMix.map((s, i) => (
+                        <li key={s.key} className="flex items-center gap-2 text-xs text-slate-600">
+                          <span
+                            aria-hidden
+                            className="w-2.5 h-2.5 rounded-sm shrink-0"
+                            style={{ backgroundColor: MIX_COLORS[i % MIX_COLORS.length] }}
+                          />
+                          {s.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </Card>
+            </div>
+          </div>
+
+          <div ref={rosterRef}>
+            <Card
+              shown={rosterIn}
+              title="Who we run screens for"
+              hint="Each client's network, and how much of it is live"
+            >
+              {data.roster.length === 0 ? (
+                <p className="text-sm text-slate-400">No client screens deployed yet.</p>
+              ) : (
+                // A meter list: a name, a bar and a figure per row, bars aligned
+                // so the networks compare against each other down the column.
+                <ul className="space-y-3.5">
+                  {data.roster.map((c, i) => (
+                    <li key={c.email} className="flex items-center gap-3">
+                      {c.logo ? (
+                        <img src={c.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-slate-50 shrink-0" />
+                      ) : (
+                        <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-semibold flex items-center justify-center shrink-0">
+                          {c.name.slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        {/* Stacked on a phone: side by side, the metadata
+                            squeezes the name down to "Apollo P…". */}
+                        <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                          <p className="text-xs font-medium text-slate-800 truncate" title={c.name}>{c.name}</p>
+                          <p className="text-[11px] text-slate-400 sm:shrink-0 truncate">
+                            {c.locations > 1 ? `${c.locations} locations` : '1 location'}
+                            {c.since ? ` · since ${formatMonthYear(c.since)}` : ''}
+                          </p>
+                        </div>
+                        {/* One bar per client, all on the same scale: the full
+                            length is their screen count against the largest
+                            client's, and the green part is the share of it that
+                            is live. The two multiply out to online/largest, so
+                            green lengths compare straight across rows as online
+                            counts — the row is a stacked bar, not a nested one. */}
+                        <div className="mt-1.5 h-2 bg-slate-50 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full overflow-hidden"
+                            style={{
+                              ...grow(Math.max(6, (c.screens / maxClientScreens) * 100), rosterIn, reduced, i * 80),
+                              backgroundColor: STATUS_IDLE
+                            }}
+                            title={`${c.screens} screen${c.screens === 1 ? '' : 's'}, ${c.online} online`}
+                          >
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                ...grow(c.screens > 0 ? (c.online / c.screens) * 100 : 0, rosterIn, reduced, 250 + i * 80),
+                                backgroundColor: STATUS_GOOD
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-700 tabular-nums shrink-0 w-12 text-right">
+                        {c.online}/{c.screens}
                       </span>
                     </li>
                   ))}
                 </ul>
               )}
             </Card>
-
-            <Card
-              title="What's in the library"
-              hint={`${compactNumber(data.mediaFiles)} files · ${formatBytes(data.libraryBytes)}`}
-              action={mixTotal > 0 ? <TableToggle on={mixAsTable} onClick={() => setMixAsTable(v => !v)} /> : undefined}
-            >
-              {mixTotal === 0 ? (
-                <p className="text-sm text-slate-400">Nothing uploaded yet.</p>
-              ) : mixAsTable ? (
-                <table className="w-full text-xs tabular-nums">
-                  <thead>
-                    <tr className="text-left text-slate-400">
-                      <th className="font-medium py-1.5">Kind</th>
-                      <th className="font-medium py-1.5 text-right">Files</th>
-                      <th className="font-medium py-1.5 text-right">Share</th>
-                      <th className="font-medium py-1.5 text-right">Size</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.mediaMix.map(s => (
-                      <tr key={s.key} className="border-t border-slate-100">
-                        <td className="py-1.5 text-slate-600">{s.label}</td>
-                        <td className="py-1.5 text-right font-medium text-slate-800">{s.count}</td>
-                        <td className="py-1.5 text-right text-slate-600">{Math.round((s.count / mixTotal) * 100)}%</td>
-                        <td className="py-1.5 text-right text-slate-500">{formatBytes(s.bytes)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <>
-                  {/* Tall segmented bar: one whole split into parts, read at a
-                      glance. 28px, shares printed inside where they fit, and the
-                      2px gaps are the surface showing through, not borders. */}
-                  <div className="flex gap-0.5" style={{ height: 28 }}>
-                    {data.mediaMix.map((s, i) => (
-                      <div
-                        key={s.key}
-                        className="h-full flex items-center rounded"
-                        style={{
-                          width: `${(s.count / mixTotal) * 100}%`,
-                          backgroundColor: MIX_COLORS[i % MIX_COLORS.length]
-                        }}
-                        title={`${s.label}: ${s.count} file${s.count === 1 ? '' : 's'} (${Math.round((s.count / mixTotal) * 100)}%)`}
-                      >
-                        {/* Only printed where the block is wide enough to hold
-                            it with padding — a cropped label is worse than none,
-                            and the value stays in the table view either way. */}
-                        {(s.count / mixTotal) > 0.14 && (
-                          <span className="text-[11px] font-semibold text-white pl-2">
-                            {Math.round((s.count / mixTotal) * 100)}%
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {/* The legend names the parts in block order and repeats no
-                      numbers — the bar and the table carry those. */}
-                  <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3.5">
-                    {data.mediaMix.map((s, i) => (
-                      <li key={s.key} className="flex items-center gap-2 text-xs text-slate-600">
-                        <span
-                          aria-hidden
-                          className="w-2.5 h-2.5 rounded-sm shrink-0"
-                          style={{ backgroundColor: MIX_COLORS[i % MIX_COLORS.length] }}
-                        />
-                        {s.label}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </Card>
           </div>
-
-          <Card
-            title="Who we run screens for"
-            hint="Each client's network, and how much of it is live"
-          >
-            {data.roster.length === 0 ? (
-              <p className="text-sm text-slate-400">No client screens deployed yet.</p>
-            ) : (
-              // A meter list: a name, a bar and a figure per row, bars aligned
-              // so the networks compare against each other down the column.
-              <ul className="space-y-3.5">
-                {data.roster.map(c => (
-                  <li key={c.email} className="flex items-center gap-3">
-                    {c.logo ? (
-                      <img src={c.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-slate-50 shrink-0" />
-                    ) : (
-                      <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-semibold flex items-center justify-center shrink-0">
-                        {c.name.slice(0, 2).toUpperCase()}
-                      </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      {/* Stacked on a phone: side by side, the metadata
-                          squeezes the name down to "Apollo P…". */}
-                      <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-                        <p className="text-xs font-medium text-slate-800 truncate" title={c.name}>{c.name}</p>
-                        <p className="text-[11px] text-slate-400 sm:shrink-0 truncate">
-                          {c.locations > 1 ? `${c.locations} locations` : '1 location'}
-                          {c.since ? ` · since ${formatMonthYear(c.since)}` : ''}
-                        </p>
-                      </div>
-                      {/* One bar per client, all on the same scale: the full
-                          length is their screen count against the largest
-                          client's, and the green part is the share of it that
-                          is live. The two multiply out to online/largest, so
-                          green lengths compare straight across rows as online
-                          counts — the row is a stacked bar, not a nested one. */}
-                      <div className="mt-1.5 h-2 bg-slate-50 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full overflow-hidden"
-                          style={{
-                            width: `${Math.max(6, (c.screens / maxClientScreens) * 100)}%`,
-                            backgroundColor: STATUS_IDLE
-                          }}
-                          title={`${c.screens} screen${c.screens === 1 ? '' : 's'}, ${c.online} online`}
-                        >
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${c.screens > 0 ? (c.online / c.screens) * 100 : 0}%`,
-                              backgroundColor: STATUS_GOOD
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-xs font-semibold text-slate-700 tabular-nums shrink-0 w-12 text-right">
-                      {c.online}/{c.screens}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
         </>
       )}
     </div>
