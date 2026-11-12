@@ -10,7 +10,7 @@
  * never "what do we earn?".
  */
 
-export type MonthPoint = { month: string; label: string; screens: number; clients: number };
+export type MonthPoint = { month: string; label: string; screens: number; clients: number; media: number };
 export type Slice = { key: string; label: string; count: number; bytes: number };
 export type ClientRow = {
   email: string;
@@ -38,6 +38,8 @@ export type Overview = {
   topLocations: { name: string; count: number }[];
   mediaMix: Slice[];
   roster: ClientRow[];
+  /** Every deployed screen as a status cell, for the grid. */
+  statusCells: { id: string; name: string; client: string; online: boolean }[];
 };
 
 const ONLINE = new Set(['online', 'active']);
@@ -80,27 +82,42 @@ function monthKey(d: Date): string {
  * A record with no creation date is counted in the running total but never
  * attributed to a month, so the final figure still matches the headline.
  */
-export function buildGrowth(screens: any[], roster: ClientRow[], months = 12): MonthPoint[] {
+export function buildGrowth(
+  screens: any[], roster: ClientRow[], media: any[], months = 12
+): MonthPoint[] {
   const now = new Date();
-  const points: MonthPoint[] = [];
+  const screenTimes = screens.map(s => new Date(createdAt(s)).getTime());
+  const clientTimes = roster.map(c => new Date(c.since).getTime());
+  const mediaTimes = media.map(m => new Date(createdAt(m)).getTime());
+  const upTo = (times: number[], end: number) =>
+    times.filter(t => Number.isFinite(t) && t < end).length;
 
+  const points: MonthPoint[] = [];
   for (let i = months - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
     points.push({
       month: monthKey(d),
       label: d.toLocaleDateString(undefined, { month: 'short' }),
-      screens: screens.filter(s => {
-        const t = new Date(createdAt(s)).getTime();
-        return Number.isFinite(t) && t < end;
-      }).length,
-      clients: roster.filter(c => {
-        const t = new Date(c.since).getTime();
-        return Number.isFinite(t) && t < end;
-      }).length
+      screens: upTo(screenTimes, end),
+      clients: upTo(clientTimes, end),
+      media: upTo(mediaTimes, end)
     });
   }
   return points;
+}
+
+/**
+ * How much a series grew over the window — the figure a stat tile's delta
+ * shows. Returns null when there is no earlier point to compare against, so
+ * the tile can leave the delta off rather than claim a rise from zero.
+ */
+export function deltaOver(series: number[]): number | null {
+  if (series.length < 2) return null;
+  const first = series[0];
+  const last = series[series.length - 1];
+  if (first === last) return 0;
+  return last - first;
 }
 
 /** Every client with at least one deployed screen, biggest first. */
@@ -217,10 +234,16 @@ export function computeOverview(input: {
     libraryBytes: input.media.reduce((n, m) => n + (Number(m?.fileSizeBytes) || 0), 0),
     contentSeconds: input.media.reduce((n, m) => n + (Number(m?.duration) || 0), 0),
     playlists: input.playlists.length,
-    growth: buildGrowth(clientScreens, roster),
+    growth: buildGrowth(clientScreens, roster, input.media),
     topLocations: buildTopLocations(deployed),
     mediaMix: buildMediaMix(input.media),
-    roster
+    roster,
+    statusCells: deployed.map(s => ({
+      id: String(s.id),
+      name: String(s.name || 'Screen'),
+      client: String(s.assignedToUserEmail || ''),
+      online: isOnline(s)
+    }))
   };
 }
 
