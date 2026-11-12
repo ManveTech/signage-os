@@ -10,7 +10,10 @@
  * never "what do we earn?".
  */
 
+import { stateFromLocation } from './indiaStates';
+
 export type MonthPoint = { month: string; label: string; screens: number; clients: number; media: number };
+export type StateCount = { state: string; count: number; clients: number };
 export type Slice = { key: string; label: string; count: number; bytes: number };
 export type ClientRow = {
   email: string;
@@ -40,6 +43,9 @@ export type Overview = {
   topLocations: { name: string; count: number }[];
   /** Every location worth a tile in the treemap, with a folded tail. */
   locationTree: { name: string; size: number }[];
+  /** Screens per Indian state, and how many had no state to read. */
+  stateCounts: StateCount[];
+  unplacedScreens: number;
   mediaMix: Slice[];
   roster: ClientRow[];
   /** Every deployed screen as a status cell, for the grid. */
@@ -303,6 +309,35 @@ export function buildLocationTree(deployed: any[], limit = 12): { name: string; 
   ];
 }
 
+/**
+ * Screens per state, for the map, plus however many could not be placed.
+ *
+ * The unplaced count is returned rather than swallowed: a map that quietly
+ * drops a third of the estate because those screens predate the "City, State"
+ * location format would overstate nothing and understate everything, and the
+ * reader would have no way to tell.
+ */
+export function buildStateCounts(deployed: any[]): { states: StateCount[]; unplaced: number } {
+  const byState = new Map<string, { count: number; clients: Set<string> }>();
+  let unplaced = 0;
+
+  for (const s of deployed) {
+    const state = stateFromLocation(s.location);
+    if (!state) { unplaced++; continue; }
+    const entry = byState.get(state) || { count: 0, clients: new Set<string>() };
+    entry.count++;
+    const owner = String(s.assignedToUserEmail || '').toLowerCase();
+    if (owner) entry.clients.add(owner);
+    byState.set(state, entry);
+  }
+
+  const states = [...byState.entries()]
+    .map(([state, v]) => ({ state, count: v.count, clients: v.clients.size }))
+    .sort((a, b) => b.count - a.count || a.state.localeCompare(b.state));
+
+  return { states, unplaced };
+}
+
 export function computeOverview(input: {
   screens: any[];
   media: any[];
@@ -316,8 +351,11 @@ export function computeOverview(input: {
   const roster = buildRoster(clientScreens, input.orgs);
 
   const online = deployed.filter(isOnline).length;
+  const { states, unplaced } = buildStateCounts(deployed);
 
   return {
+    stateCounts: states,
+    unplacedScreens: unplaced,
     screensDeployed: deployed.length,
     screensOnline: online,
     onlinePct: deployed.length > 0 ? Math.round((online / deployed.length) * 100) : 0,

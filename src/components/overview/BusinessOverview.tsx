@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart,
-  ResponsiveContainer, Tooltip, Treemap, XAxis, YAxis
+  ResponsiveContainer, Tooltip, XAxis, YAxis
 } from 'recharts';
 import {
   Monitor, Building2, PlaySquare, Film, RefreshCw, Table2, LineChart as LineIcon
@@ -10,6 +10,7 @@ import { syncCollection } from '../../lib/syncHelper';
 import { mediaStore } from '../../lib/mediaStore';
 import { makeOursTest } from '../../lib/adminOwnership';
 import { useCountUp, useInView, useReducedMotion } from '../../lib/useMotion';
+import IndiaMap from './IndiaMap';
 import {
   computeOverview, compactNumber, formatBytes, formatHours, formatMonthYear,
   deltaOver, Overview
@@ -102,6 +103,9 @@ function Sparkline({ values, run, width = 104, height = 30 }: {
   const reduced = useReducedMotion();
   const pathRef = useRef<SVGPathElement>(null);
   const [length, setLength] = useState(0);
+  // Each sparkline needs its own gradient: a shared id would have every tile
+  // painting from whichever one mounted last.
+  const gradientId = useId().replace(/:/g, '');
 
   // Every hook runs before the "nothing to draw" exit: bailing out earlier
   // would change the hook order the moment a second data point arrived.
@@ -127,8 +131,26 @@ function Sparkline({ values, run, width = 104, height = 30 }: {
 
   const [lx, ly] = pts[pts.length - 1];
   const drawn = run || reduced;
+  // The same path closed down to the baseline, for the wash underneath it.
+  const area = `${d} L${lx.toFixed(1)},${height} L${pts[0][0].toFixed(1)},${height} Z`;
   return (
     <svg width={width} height={height} aria-hidden className="overflow-visible">
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={SERIES_1} stopOpacity={0.26} />
+          <stop offset="100%" stopColor={SERIES_1} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      {/* A wash, not a block: it sits under the line to give the tile some
+          weight without competing with the figure beside it. */}
+      <path
+        d={area}
+        fill={`url(#${gradientId})`}
+        style={{
+          opacity: drawn ? 1 : 0,
+          transition: reduced ? undefined : 'opacity 700ms ease-out 250ms'
+        }}
+      />
       <path
         ref={pathRef} d={d} fill="none" stroke={SPARK_INK} strokeWidth={2}
         strokeLinecap="round" strokeLinejoin="round"
@@ -212,37 +234,6 @@ function TableToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
       {on ? <LineIcon size={12} /> : <Table2 size={12} />}
       {on ? 'Chart' : 'Table'}
     </button>
-  );
-}
-
-/**
- * One treemap tile. Every tile is the same hue: the rectangle's area already
- * carries the screen count, and shading it darker-where-bigger would spend the
- * only free channel restating what the size says. The 2px inset is the surface
- * showing between tiles rather than a stroke drawn round them.
- */
-function LocationTile(props: any) {
-  const { x, y, width, height, name, size } = props;
-  if (!(width > 0) || !(height > 0)) return null;
-  // Roughly 6px per character at 11px — a label is only drawn when it fits
-  // with padding, because a clipped one is worse than none.
-  const room = Math.floor((width - 16) / 6);
-  const fits = width > 56 && height > 30 && room >= 4;
-  const label = name && name.length > room ? `${String(name).slice(0, Math.max(1, room - 1))}…` : name;
-  return (
-    <g>
-      <rect
-        x={x + 1} y={y + 1}
-        width={Math.max(0, width - 2)} height={Math.max(0, height - 2)}
-        rx={4} fill={SERIES_1}
-      />
-      {fits && (
-        <>
-          <text x={x + 8} y={y + 18} fill="#ffffff" fontSize={11} fontWeight={600}>{label}</text>
-          <text x={x + 8} y={y + 32} fill="#ffffff" fontSize={11} opacity={0.85}>{size}</text>
-        </>
-      )}
-    </g>
   );
 }
 
@@ -526,13 +517,13 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
               <Card
                 shown={placesIn}
                 title="Where the screens are"
-                hint={`${data.locations} location${data.locations === 1 ? '' : 's'} · tile size is screen count`}
+                hint={`${data.stateCounts.length} state${data.stateCounts.length === 1 ? '' : 's'} · ${data.locations} location${data.locations === 1 ? '' : 's'}`}
                 action={<TableToggle on={placesAsTable} onClick={() => setPlacesAsTable(v => !v)} />}
               >
                 {data.locationTree.length === 0 ? (
                   <p className="text-sm text-slate-400">No locations recorded yet.</p>
                 ) : placesAsTable ? (
-                  <div className="max-h-[232px] overflow-y-auto">
+                  <div className="max-h-[300px] overflow-y-auto">
                     <table className="w-full text-xs tabular-nums">
                       <thead>
                         <tr className="text-left text-slate-400">
@@ -551,21 +542,18 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                     </table>
                   </div>
                 ) : (
-                  <div style={{ height: 232 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <Treemap
-                        data={data.locationTree}
-                        dataKey="size"
-                        nameKey="name"
-                        stroke="none"
-                        content={<LocationTile />}
-                        isAnimationActive={!reduced && placesIn}
-                        animationDuration={900}
-                      >
-                        <Tooltip content={<ChartTooltip unit=" screens" />} />
-                      </Treemap>
-                    </ResponsiveContainer>
-                  </div>
+                  <>
+                    <IndiaMap states={data.stateCounts} animate={!reduced && placesIn} />
+                    {/* Said plainly rather than hidden: a map that silently
+                        drops screens it could not place would understate the
+                        network without the reader having any way to tell. */}
+                    {data.unplacedScreens > 0 && (
+                      <p className="text-[11px] text-slate-400 mt-2 text-center">
+                        {data.unplacedScreens} screen{data.unplacedScreens === 1 ? '' : 's'} not on the map —
+                        {' '}no state recorded in the location. The table view lists every location.
+                      </p>
+                    )}
+                  </>
                 )}
               </Card>
             </div>
@@ -662,6 +650,15 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                 <div style={{ height: 212 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data.mediaAdded} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <defs>
+                        {/* Full strength at the cap, easing toward the baseline
+                            — the column still reads as one solid mark, which a
+                            fade to transparent would not. */}
+                        <linearGradient id="columnFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={SERIES_1} stopOpacity={1} />
+                          <stop offset="100%" stopColor={SERIES_1} stopOpacity={0.55} />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
                       <XAxis
                         dataKey="label" tick={{ fontSize: 11, fill: AXIS_INK }}
@@ -675,7 +672,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                       {/* One series, one hue; capped width so the column never
                           fills its slot and the band keeps its air. */}
                       <Bar
-                        dataKey="count" name="Added" fill={SERIES_1}
+                        dataKey="count" name="Added" fill="url(#columnFill)"
                         radius={[4, 4, 0, 0]} maxBarSize={24}
                         isAnimationActive={!reduced && uploadsIn}
                         animationDuration={900}
