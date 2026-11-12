@@ -745,8 +745,11 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                             innerRadius="62%"
                             outerRadius="92%"
                             // The gap between segments is the surface showing
-                            // through, not a border drawn round each one.
-                            paddingAngle={2}
+                            // through, not a border drawn round each one — so
+                            // it is the 2px stroke alone, with no padding
+                            // angle on top of it. The two together came to
+                            // ~4.7px, and an angular pad also widens with the
+                            // radius and eats a thin slice alive.
                             stroke="#ffffff"
                             strokeWidth={2}
                             isAnimationActive={!reduced && libraryIn}
@@ -769,13 +772,26 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                       </div>
                     </div>
                     {/* The legend carries each share, which is the relief the
-                        lighter slots need against a white surface. */}
+                        lighter slots need against a white surface. Size rides
+                        along because this card is wider than the ring needs:
+                        without it the name and its share sit at opposite edges
+                        with a hand-span of nothing between them, and the eye
+                        stops being sure which value belongs to which row. */}
                     <ul className="flex-1 min-w-0 space-y-2.5">
                       {data.mediaMix.map((s, i) => (
                         <li key={s.key} className="flex items-center gap-2.5 text-xs">
                           <Swatch color={SERIES[i % SERIES.length]} />
                           <span className="text-slate-600 flex-1 min-w-0 truncate">{s.label}</span>
-                          <span className="font-semibold text-slate-800 tabular-nums">
+                          {/* Only where there is room for them: beside the ring
+                              on a phone these overflow the row, and the table
+                              view carries the same figures regardless. */}
+                          <span className="hidden sm:inline text-slate-400 tabular-nums shrink-0">
+                            {s.count} files
+                          </span>
+                          <span className="hidden sm:inline text-slate-400 tabular-nums shrink-0 w-20 text-right">
+                            {formatBytes(s.bytes)}
+                          </span>
+                          <span className="font-semibold text-slate-800 tabular-nums shrink-0 w-9 text-right">
                             {Math.round((s.count / mixTotal) * 100)}%
                           </span>
                         </li>
