@@ -22,6 +22,43 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.MyApplication">
+
+        <!--
+          Crash reporting.
+
+          The existing CrashReportingHandler posts stack traces to the screen's
+          own Device Logs, and still does — that is what an installer looks at
+          for one TV. This is the other half: every TV's crashes in one place,
+          grouped, so one fault across forty screens reads as one problem
+          instead of forty log lines nobody is watching.
+
+          It also covers what the existing handler structurally cannot:
+            - Anything before MainActivity.onCreate. That is where the old
+              handler installs itself, so a crash in app or ContentProvider
+              startup happened before it existed. Sentry starts from its own
+              ContentProvider, ahead of Application.onCreate.
+            - ANRs — a frozen TV, which is the complaint we actually get, and
+              never throws anything for a handler to catch.
+            - Native crashes in the WebRTC and media libraries.
+            - Crashes on a TV that has not been paired yet. The old handler
+              returns early with no screenId, so those vanish.
+
+          Off unless SENTRY_DSN is set in tv-signage-player/.env. An empty DSN
+          disables the SDK outright — no init, no network, nothing sent.
+        -->
+        <meta-data android:name="io.sentry.dsn" android:value="${SENTRY_DSN}" />
+        <meta-data android:name="io.sentry.environment" android:value="${SENTRY_ENVIRONMENT}" />
+        <!-- Errors only. Tracing is what makes this expensive, and a TV that
+             crashed does not need a performance trace to explain why. -->
+        <meta-data android:name="io.sentry.traces.sample-rate" android:value="0.0" />
+        <!-- No IP addresses, no device name. A screen is identified by its own
+             screenId tag, set in MainActivity once the config is known. -->
+        <meta-data android:name="io.sentry.send-default-pii" android:value="false" />
+        <meta-data android:name="io.sentry.attach-screenshot" android:value="false" />
+        <meta-data android:name="io.sentry.attach-view-hierarchy" android:value="false" />
+        <!-- The reason this is worth adding at all: a TV that locks up. -->
+        <meta-data android:name="io.sentry.anr.enable" android:value="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

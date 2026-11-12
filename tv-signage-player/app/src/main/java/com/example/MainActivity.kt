@@ -49,6 +49,12 @@ class MainActivity : ComponentActivity() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler(CrashReportingHandler(applicationContext, defaultHandler))
 
+        // Sentry is already running by now — it starts from its own
+        // ContentProvider, before Application.onCreate, which is how it covers
+        // the startup crashes that happen before the handler above exists.
+        // This only tells it which screen it is on. No-op without a DSN.
+        com.example.util.ErrorReporting.identify(applicationContext)
+
         // Runs before any breadcrumb from *this* process start overwrites the
         // previous one — if last run died mid-call-setup with no JVM exception
         // (native crash, OOM kill), this is the only trace of it we get.

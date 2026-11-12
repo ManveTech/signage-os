@@ -6,6 +6,24 @@ plugins {
   alias(libs.plugins.secrets)
 }
 
+/**
+ * A value from tv-signage-player/.env, falling back to the environment and
+ * then to [fallback]. Keeps .env as the one place to configure a build, the
+ * same convention the secrets plugin uses for GEMINI_API_KEY.
+ */
+fun envOrDefault(key: String, fallback: String): String {
+  val fromEnvFile = rootProject.file(".env")
+    .takeIf { it.exists() }
+    ?.readLines()
+    ?.firstOrNull { it.trimStart().startsWith("$key=") }
+    ?.substringAfter('=')
+    ?.trim()
+    ?.trim('"')
+  return fromEnvFile?.takeIf { it.isNotEmpty() }
+    ?: System.getenv(key)?.takeIf { it.isNotEmpty() }
+    ?: fallback
+}
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -14,10 +32,32 @@ android {
     applicationId = "com.aistudio.tvsignageplayer.fkvsqm"
     minSdk = 24
     targetSdk = 36
-    versionCode = 12
-    versionName = "1.11"
+    versionCode = 13
+    versionName = "1.12"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // Crash reporting, read from .env (or the environment, which is how CI
+    // would set it). Empty is the default and means off: an empty DSN
+    // disables the Sentry SDK completely.
+    //
+    // Deliberately not routed through the secrets plugin like GEMINI_API_KEY:
+    // that generates a BuildConfig field, and an empty value generates one
+    // that doesn't compile. These only ever need to reach the manifest.
+    manifestPlaceholders["SENTRY_DSN"] = envOrDefault("SENTRY_DSN", "")
+    manifestPlaceholders["SENTRY_ENVIRONMENT"] = envOrDefault("SENTRY_ENVIRONMENT", "production")
+
+    // ARM only. The WebRTC and media native libraries were being shipped for
+    // four architectures — 41 MB of the APK, 24 MB of it x86/x86_64, which no
+    // Android TV box, stick or commercial display can execute. They are there
+    // for emulators, and an emulator build can drop this line.
+    //
+    // This matters beyond download size: installing extracts the native libs
+    // and AOT-compiles the app, so every megabyte is also work the TV has to
+    // do and space it has to find while installing.
+    ndk {
+      abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+    }
   }
 
   signingConfigs {
@@ -103,6 +143,7 @@ dependencies {
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
+  implementation(libs.sentry.android)
   implementation(libs.socket.io.client) {
     exclude(group = "org.json", module = "json")
   }

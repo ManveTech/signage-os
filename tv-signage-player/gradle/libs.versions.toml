@@ -44,6 +44,7 @@ coreSplashscreen = "1.0.1"
 socketIoClient = "2.1.2"
 streamWebrtcAndroid = "1.3.10"
 zxingCore = "3.5.3"
+sentryAndroid = "8.26.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -100,6 +101,7 @@ androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscree
 socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIoClient" }
 stream-webrtc-android = { group = "io.getstream", name = "stream-webrtc-android", version.ref = "streamWebrtcAndroid" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxingCore" }
+sentry-android = { group = "io.sentry", name = "sentry-android", version.ref = "sentryAndroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
