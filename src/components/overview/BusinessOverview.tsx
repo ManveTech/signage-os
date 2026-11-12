@@ -1,19 +1,20 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis
 } from 'recharts';
 import {
   Monitor, Building2, PlaySquare, Film, RefreshCw, Table2, LineChart as LineIcon
 } from 'lucide-react';
-import { syncCollection } from '../../lib/syncHelper';
+import { syncCollection, getHeaders } from '../../lib/syncHelper';
+import { API_BASE } from '../../config';
 import { mediaStore } from '../../lib/mediaStore';
 import { makeOursTest } from '../../lib/adminOwnership';
 import { useCountUp, useInView, useReducedMotion } from '../../lib/useMotion';
 import IndiaMap from './IndiaMap';
 import {
   computeOverview, compactNumber, formatBytes, formatHours, formatMonthYear,
-  deltaOver, Overview
+  deltaOver, buildDailyActivity, Overview
 } from '../../lib/overviewMetrics';
 
 /**
@@ -168,66 +169,6 @@ function Sparkline({ values, run, width = 104, height = 30 }: {
   );
 }
 
-/**
- * One panel of the small-multiples grid: a client's screen count over the
- * window, as an area.
- *
- * `max` is shared across every panel rather than fitted per panel. Fitting
- * each one would draw a client with two screens exactly like a client with
- * twenty, which is the standard way a grid of panels lies.
- *
- * The viewBox is fixed and the stroke is non-scaling, so the panel can be any
- * width without the line thickening or thinning with it.
- */
-function MiniArea({ values, max, run, delayMs = 0, height = 52 }: {
-  values: number[]; max: number; run: boolean; delayMs?: number; height?: number;
-}) {
-  const reduced = useReducedMotion();
-  const gradientId = useId().replace(/:/g, '');
-  if (values.length < 2) return null;
-
-  const top = Math.max(1, max);
-  const pts = values.map((v, i) => [
-    (i / (values.length - 1)) * 100,
-    38 - (Math.min(v, top) / top) * 36
-  ] as const);
-  const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-  const area = `${line} L100,40 L0,40 Z`;
-
-  return (
-    <svg
-      viewBox="0 0 100 40"
-      preserveAspectRatio="none"
-      className="w-full mt-1.5"
-      style={{ height }}
-      aria-hidden
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={SERIES_1} stopOpacity={0.3} />
-          <stop offset="100%" stopColor={SERIES_1} stopOpacity={0.03} />
-        </linearGradient>
-      </defs>
-      <line x1="0" y1="40" x2="100" y2="40" stroke={GRID} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-      <g
-        style={reduced ? undefined : {
-          transformBox: 'fill-box',
-          transformOrigin: 'bottom',
-          transform: run ? 'scaleY(1)' : 'scaleY(0)',
-          transition: `transform 800ms ${EASE} ${delayMs}ms`
-        }}
-      >
-        <path d={area} fill={`url(#${gradientId})`} />
-        <path
-          d={line} fill="none" stroke={SERIES_1} strokeWidth={2}
-          strokeLinecap="round" strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </g>
-    </svg>
-  );
-}
-
 function Tile({ icon, value, format, label, sub, series, delta, run }: {
   icon: React.ReactNode; value: number; format: (n: number) => string;
   label: string; sub?: string; series?: number[]; delta?: number | null; run: boolean;
@@ -297,6 +238,26 @@ function TableToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   );
 }
 
+/**
+ * The newest slice of the device log, for the daily activity chart.
+ *
+ * Asks for far more than the endpoint's default page because the chart covers
+ * thirty days and a busy network writes a lot of rows in one. The page is
+ * still bounded, which is why buildDailyActivity reports how far back the rows
+ * actually reach instead of drawing the gap as zeroes. Failure is empty rather
+ * than fatal: one card goes quiet, the rest of the page is unaffected.
+ */
+async function fetchRecentLogs(): Promise<any[]> {
+  try {
+    const res = await fetch(`${API_BASE}/screen_logs?perPage=3000`, { headers: getHeaders() });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return Array.isArray(body) ? body : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function BusinessOverview({ userEmail = '' }: { userEmail?: string }) {
   const reduced = useReducedMotion();
   const [loading, setLoading] = useState(true);
@@ -305,6 +266,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
   const [trendAsTable, setTrendAsTable] = useState(false);
   const [mixAsTable, setMixAsTable] = useState(false);
   const [placesAsTable, setPlacesAsTable] = useState(false);
+  const [logs, setLogs] = useState<any[]>([]);
 
   // One per band of the page, so each draws itself in as it is reached.
   const [tilesRef, tilesIn] = useInView<HTMLDivElement>();
@@ -321,6 +283,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
     syncCollection('playlists', 'signageos_playlists', { force }),
     syncCollection('users', 'signageos_users', { force }),
     syncCollection('organizations', 'signageos_organizations', { force }),
+    fetchRecentLogs().then(setLogs),
   ]).finally(() => setTick(t => t + 1));
 
   useEffect(() => { load().finally(() => setLoading(false)); }, []);
@@ -354,9 +317,7 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
   const maxClientScreens = data.roster[0]?.screens || 1;
   const empty = data.screensDeployed === 0;
 
-  // One scale across every panel of the grid, so a small client's curve is
-  // read against a big one rather than against itself.
-  const trendMax = Math.max(1, ...data.clientTrends.flatMap(t => t.values));
+  const activity = useMemo(() => buildDailyActivity(logs), [logs]);
 
   const offline = data.statusCells.filter(c => !c.online);
   const tilesRun = tilesIn && !loading;
@@ -433,66 +394,81 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
             <div ref={chartRef} className="lg:col-span-2">
               <Card
                 shown={chartIn}
-                title="How each client's network grew"
-                hint="Screens live at each month end · last 12 months"
+                title="Screens active each day"
+                hint="Distinct screens reporting in · last 30 days"
                 action={<TableToggle on={trendAsTable} onClick={() => setTrendAsTable(v => !v)} />}
               >
                 {trendAsTable ? (
-                  <div className="overflow-x-auto">
+                  <div className="max-h-[248px] overflow-y-auto">
                     <table className="w-full text-xs tabular-nums">
                       <thead>
                         <tr className="text-left text-slate-400">
-                          <th className="font-medium py-1.5 pr-3">Month</th>
-                          {data.clientTrends.map(t => (
-                            <th key={t.name} className="font-medium py-1.5 pr-3 text-right">{t.name}</th>
-                          ))}
+                          <th className="font-medium py-1.5">Day</th>
+                          <th className="font-medium py-1.5 text-right">Screens active</th>
+                          <th className="font-medium py-1.5 text-right">Events</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {data.growth.map((p, i) => (
-                          <tr key={p.month} className="border-t border-slate-100">
-                            <td className="py-1.5 pr-3 text-slate-600">{p.month}</td>
-                            {data.clientTrends.map(t => (
-                              <td key={t.name} className="py-1.5 pr-3 text-right text-slate-700">{t.values[i]}</td>
-                            ))}
+                        {activity.points.map(p => (
+                          <tr key={p.date} className="border-t border-slate-100">
+                            <td className="py-1.5 text-slate-600">{p.date}</td>
+                            <td className="py-1.5 text-right font-medium text-slate-800">{p.screens}</td>
+                            <td className="py-1.5 text-right text-slate-500">{p.events}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
+                ) : activity.points.length === 0 ? (
+                  <p className="text-sm text-slate-400 py-10 text-center">
+                    No device activity recorded yet.
+                  </p>
                 ) : (
-                  // Small multiples rather than six lines on one plot. Lines
-                  // stack by value, not by palette slot, so the data decided
-                  // which colours ended up neighbours — and it put the two
-                  // least separable side by side. One panel per client in a
-                  // single hue removes the question: there are no colours to
-                  // tell apart, and it scales past the palette's slots.
                   <>
-                    <ul className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-4">
-                      {data.clientTrends.map((t, i) => (
-                        <li key={t.name}>
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="text-xs font-medium text-slate-700 truncate" title={t.name}>
-                              {t.name}
-                            </span>
-                            <span className="text-xs font-semibold text-slate-900 tabular-nums shrink-0">
-                              {t.values[t.values.length - 1]}
-                            </span>
-                          </div>
-                          <MiniArea
-                            values={t.values}
-                            max={trendMax}
-                            run={chartIn}
-                            delayMs={i * 70}
+                    <div style={{ height: 248 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={activity.points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                          <defs>
+                            {/* Defined here rather than borrowed from another
+                                chart: SVG gradient ids are document-wide, so a
+                                shared one breaks the moment the chart that owns
+                                it stops rendering. Full strength at the cap,
+                                easing toward the baseline — the column still
+                                reads as one solid mark, which a fade to
+                                transparent would not. */}
+                            <linearGradient id="columnFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={SERIES_1} stopOpacity={1} />
+                              <stop offset="100%" stopColor={SERIES_1} stopOpacity={0.55} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
+                          <XAxis
+                            dataKey="label" tick={{ fontSize: 11, fill: AXIS_INK }}
+                            tickLine={false} axisLine={{ stroke: GRID }} dy={4}
+                            interval="preserveStartEnd" minTickGap={14}
                           />
-                        </li>
-                      ))}
-                    </ul>
-                    {/* Said once, because it is the thing that makes a grid of
-                        panels comparable at all. */}
-                    <p className="text-[11px] text-slate-400 mt-4">
-                      All panels share one scale, 0 to {trendMax} screens · Dec to Nov
-                    </p>
+                          <YAxis
+                            width={30} tick={{ fontSize: 11, fill: AXIS_INK }}
+                            tickLine={false} axisLine={false} allowDecimals={false}
+                          />
+                          <Tooltip content={<ChartTooltip unit=" screens" />} cursor={{ fill: 'rgba(11,11,11,0.04)' }} />
+                          <Bar
+                            dataKey="screens" name="Active"
+                            fill="url(#columnFill)" radius={[4, 4, 0, 0]} maxBarSize={18}
+                            isAnimationActive={!reduced && chartIn}
+                            animationDuration={900}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    {/* Where the log stops is stated, not drawn as zero: an
+                        empty column before the first row would read as a day
+                        the network was dead rather than a day we cannot see. */}
+                    {activity.coveredFrom && (
+                      <p className="text-[11px] text-slate-400 mt-3">
+                        From {activity.coveredFrom} — as far back as the device log reaches.
+                      </p>
+                    )}
                   </>
                 )}
               </Card>
@@ -625,6 +601,108 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
               </Card>
             </div>
 
+            <div ref={rosterRef}>
+              <Card shown={rosterIn} title="Who we run screens for" hint="Each client's network, and how much of it is live">
+                {data.roster.length === 0 ? (
+                  <p className="text-sm text-slate-400">No client screens deployed yet.</p>
+                ) : (
+                  // A meter list: a name, a bar and a figure per row, bars
+                  // aligned so the networks compare down the column.
+                  <ul className="space-y-3.5">
+                    {data.roster.map((c, i) => (
+                      <li key={c.email} className="flex items-center gap-3">
+                        {c.logo ? (
+                          <img src={c.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-slate-50 shrink-0" />
+                        ) : (
+                          <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-semibold flex items-center justify-center shrink-0">
+                            {c.name.slice(0, 2).toUpperCase()}
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          {/* Stacked on a phone: side by side, the metadata
+                              squeezes the name down to "Apollo P…". */}
+                          <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                            <p className="text-xs font-medium text-slate-800 truncate" title={c.name}>{c.name}</p>
+                            <p className="text-[11px] text-slate-400 sm:shrink-0 truncate">
+                              {c.locations > 1 ? `${c.locations} locations` : '1 location'}
+                              {c.since ? ` · since ${formatMonthYear(c.since)}` : ''}
+                            </p>
+                          </div>
+                          {/* One bar per client, all on the same scale: the full
+                              length is their screen count against the largest
+                              client's, and the green part is the share of it
+                              that is live. The two multiply out to
+                              online/largest, so green lengths compare straight
+                              across rows as online counts. */}
+                          <div className="mt-1.5 h-2 bg-slate-50 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full overflow-hidden"
+                              style={{
+                                ...grow(Math.max(6, (c.screens / maxClientScreens) * 100), rosterIn, reduced, i * 80),
+                                backgroundColor: STATUS_IDLE
+                              }}
+                              title={`${c.screens} screen${c.screens === 1 ? '' : 's'}, ${c.online} online`}
+                            >
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  ...grow(c.screens > 0 ? (c.online / c.screens) * 100 : 0, rosterIn, reduced, 250 + i * 80),
+                                  backgroundColor: STATUS_GOOD
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-xs font-semibold text-slate-700 tabular-nums shrink-0 w-12 text-right">
+                          {c.online}/{c.screens}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div ref={uploadsRef}>
+              <Card shown={uploadsIn} title="Content added each month" hint="New media uploaded · last 12 months">
+                {/* An area rather than more columns: the daily chart above is
+                    already a column chart, and twelve months of one measure
+                    reads fine as a continuous shape. */}
+                <div style={{ height: 212 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={data.mediaAdded} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="uploadsFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={SERIES_1} stopOpacity={0.28} />
+                          <stop offset="100%" stopColor={SERIES_1} stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
+                      <XAxis
+                        dataKey="label" tick={{ fontSize: 11, fill: AXIS_INK }}
+                        tickLine={false} axisLine={{ stroke: GRID }} dy={4}
+                      />
+                      <YAxis
+                        width={30} tick={{ fontSize: 11, fill: AXIS_INK }}
+                        tickLine={false} axisLine={false} allowDecimals={false}
+                      />
+                      <Tooltip content={<ChartTooltip unit=" files" />} cursor={{ stroke: AXIS_INK, strokeWidth: 1 }} />
+                      {/* One series, so no legend — the card title names it. */}
+                      <Area
+                        type="monotone" dataKey="count" name="Added"
+                        stroke={SERIES_1} strokeWidth={2} fill="url(#uploadsFill)"
+                        dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#ffffff' }}
+                        isAnimationActive={!reduced && uploadsIn}
+                        animationDuration={1000}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </div>
+
             <div ref={libraryRef}>
               <Card
                 shown={libraryIn}
@@ -704,110 +782,6 @@ export default function BusinessOverview({ userEmail = '' }: { userEmail?: strin
                       ))}
                     </ul>
                   </div>
-                )}
-              </Card>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div ref={uploadsRef}>
-              <Card shown={uploadsIn} title="Content added each month" hint="New media uploaded · last 12 months">
-                {/* Columns, not a line: these are twelve separate months, and a
-                    quiet one should read as a short bar rather than a dip. */}
-                <div style={{ height: 212 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data.mediaAdded} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                      <defs>
-                        {/* Full strength at the cap, easing toward the baseline
-                            — the column still reads as one solid mark, which a
-                            fade to transparent would not. */}
-                        <linearGradient id="columnFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={SERIES_1} stopOpacity={1} />
-                          <stop offset="100%" stopColor={SERIES_1} stopOpacity={0.55} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
-                      <XAxis
-                        dataKey="label" tick={{ fontSize: 11, fill: AXIS_INK }}
-                        tickLine={false} axisLine={{ stroke: GRID }} dy={4}
-                      />
-                      <YAxis
-                        width={30} tick={{ fontSize: 11, fill: AXIS_INK }}
-                        tickLine={false} axisLine={false} allowDecimals={false}
-                      />
-                      <Tooltip content={<ChartTooltip unit=" files" />} cursor={{ fill: 'rgba(11,11,11,0.04)' }} />
-                      {/* One series, one hue; capped width so the column never
-                          fills its slot and the band keeps its air. */}
-                      <Bar
-                        dataKey="count" name="Added" fill="url(#columnFill)"
-                        radius={[4, 4, 0, 0]} maxBarSize={24}
-                        isAnimationActive={!reduced && uploadsIn}
-                        animationDuration={900}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-            </div>
-
-            <div ref={rosterRef}>
-              <Card shown={rosterIn} title="Who we run screens for" hint="Each client's network, and how much of it is live">
-                {data.roster.length === 0 ? (
-                  <p className="text-sm text-slate-400">No client screens deployed yet.</p>
-                ) : (
-                  // A meter list: a name, a bar and a figure per row, bars
-                  // aligned so the networks compare down the column.
-                  <ul className="space-y-3.5">
-                    {data.roster.map((c, i) => (
-                      <li key={c.email} className="flex items-center gap-3">
-                        {c.logo ? (
-                          <img src={c.logo} alt="" className="w-8 h-8 rounded-lg object-contain bg-slate-50 shrink-0" />
-                        ) : (
-                          <span className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-semibold flex items-center justify-center shrink-0">
-                            {c.name.slice(0, 2).toUpperCase()}
-                          </span>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          {/* Stacked on a phone: side by side, the metadata
-                              squeezes the name down to "Apollo P…". */}
-                          <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-                            <p className="text-xs font-medium text-slate-800 truncate" title={c.name}>{c.name}</p>
-                            <p className="text-[11px] text-slate-400 sm:shrink-0 truncate">
-                              {c.locations > 1 ? `${c.locations} locations` : '1 location'}
-                              {c.since ? ` · since ${formatMonthYear(c.since)}` : ''}
-                            </p>
-                          </div>
-                          {/* One bar per client, all on the same scale: the full
-                              length is their screen count against the largest
-                              client's, and the green part is the share of it
-                              that is live. The two multiply out to
-                              online/largest, so green lengths compare straight
-                              across rows as online counts. */}
-                          <div className="mt-1.5 h-2 bg-slate-50 rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full overflow-hidden"
-                              style={{
-                                ...grow(Math.max(6, (c.screens / maxClientScreens) * 100), rosterIn, reduced, i * 80),
-                                backgroundColor: STATUS_IDLE
-                              }}
-                              title={`${c.screens} screen${c.screens === 1 ? '' : 's'}, ${c.online} online`}
-                            >
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  ...grow(c.screens > 0 ? (c.online / c.screens) * 100 : 0, rosterIn, reduced, 250 + i * 80),
-                                  backgroundColor: STATUS_GOOD
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <span className="text-xs font-semibold text-slate-700 tabular-nums shrink-0 w-12 text-right">
-                          {c.online}/{c.screens}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
                 )}
               </Card>
             </div>

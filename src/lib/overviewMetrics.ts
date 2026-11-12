@@ -280,6 +280,76 @@ export function buildMediaAdded(media: any[], months = 12): { month: string; lab
   return out;
 }
 
+export type DayPoint = { date: string; label: string; screens: number; events: number };
+
+/**
+ * How many distinct screens reported in on each of the last `days` days, from
+ * the device log.
+ *
+ * "Screens active" rather than "events": a screen that reconnects twenty times
+ * in a bad hour would otherwise tower over a day when the whole network ran
+ * quietly, which is the opposite of what the chart should say.
+ *
+ * The log endpoint returns a bounded page of the newest rows, so the window
+ * can easily reach further back than the rows do. Days before the oldest row
+ * are not charted as zero — a zero there would read as "nothing happened"
+ * when it means "we did not look". `coveredFrom` says where the real data
+ * starts so the caller can label it.
+ */
+export function buildDailyActivity(logs: any[], days = 30): { points: DayPoint[]; coveredFrom: string | null } {
+  const dayKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const screensByDay = new Map<string, Set<string>>();
+  const eventsByDay = new Map<string, number>();
+  let oldest = Infinity;
+
+  for (const l of logs) {
+    const t = new Date(createdAt(l)).getTime();
+    if (!Number.isFinite(t)) continue;
+    if (t < oldest) oldest = t;
+    const key = dayKey(new Date(t));
+    const set = screensByDay.get(key) || new Set<string>();
+    set.add(String(l.screenId || l.screenName || 'unknown'));
+    screensByDay.set(key, set);
+    eventsByDay.set(key, (eventsByDay.get(key) || 0) + 1);
+  }
+
+  // No usable rows at all is not "thirty quiet days" — it is no data, and
+  // saying so is the caller's job. Returning a flat run of zeroes instead
+  // would draw an empty chart that looks like a dead network.
+  if (!Number.isFinite(oldest)) return { points: [], coveredFrom: null };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const windowStart = new Date(today);
+  windowStart.setDate(windowStart.getDate() - (days - 1));
+
+  // Compared as whole days, not instants. The oldest row lands at whatever
+  // time of day it was written, so an instant comparison calls a log that
+  // covers the window truncated purely because its first row is from the
+  // afternoon rather than midnight.
+  const oldestDay = Number.isFinite(oldest) ? new Date(oldest) : null;
+  oldestDay?.setHours(0, 0, 0, 0);
+  const truncated = !!oldestDay && oldestDay.getTime() > windowStart.getTime();
+  const from = truncated ? oldestDay! : windowStart;
+
+  const points: DayPoint[] = [];
+  // Stepped with setDate rather than by adding 86,400,000ms, which skips or
+  // repeats a day across a daylight-saving change.
+  for (const d = new Date(from); d.getTime() <= today.getTime(); d.setDate(d.getDate() + 1)) {
+    const key = dayKey(d);
+    points.push({
+      date: key,
+      label: String(d.getDate()),
+      screens: screensByDay.get(key)?.size || 0,
+      events: eventsByDay.get(key) || 0
+    });
+  }
+
+  return { points, coveredFrom: truncated ? dayKey(from) : null };
+}
+
 export function buildTopLocations(deployed: any[], limit = 6): { name: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const s of deployed) {
