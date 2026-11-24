@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { licensingStore, License } from '../../../lib/licensingStore';
 import { licenseAccess, bestLicense, isRenewalDue } from '../../../components/licenses/licenseStatus';
-import { mediaStore } from '../../../lib/mediaStore';
+import { mediaStore, withoutDocumentPages } from '../../../lib/mediaStore';
 import { syncCollection } from '../../../lib/syncHelper';
 
 // The database's own creation time. createdDate is only set by uploads made
@@ -102,7 +102,7 @@ export default function Dashboard({
   const myScreens = ownedScreens.filter(s => s.status !== 'unlinked');
   const notLinked = ownedScreens.length - myScreens.length;
   const myPlaylists = mediaStore.getPlaylists().filter(p => p.createdBy === userEmail);
-  const myMedia = mediaStore.getMedia().filter(m => m.uploadedBy === userEmail);
+  const myMedia = withoutDocumentPages(mediaStore.getMedia()).filter(m => m.uploadedBy === userEmail);
   const unpaidInvoice = licensingStore.getInvoices()
     .filter(i => i.clientEmail === userEmail && i.status === 'unpaid')
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];

@@ -38,6 +38,7 @@ export default function ScreenDetailsSheet({
   subtitle,
   badge,
   hero,
+  extra,
   details,
   groups,
   footer
@@ -48,6 +49,8 @@ export default function ScreenDetailsSheet({
   subtitle?: ReactNode;
   badge?: ReactNode;
   hero?: ReactNode;
+  /** Anything this sheet alone needs, between the hero and the details. */
+  extra?: ReactNode;
   details: SheetDetail[];
   groups: SheetActionGroup[];
   /** Pinned below the scrolling content (e.g. a Save button). */
@@ -132,6 +135,8 @@ export default function ScreenDetailsSheet({
 
         <div className={`overflow-y-auto overscroll-contain px-5 ${footer ? 'pb-3' : 'pb-[calc(1.25rem+env(safe-area-inset-bottom))]'}`}>
           {hero && <div className="mb-4">{hero}</div>}
+
+          {extra && <div className="mb-4">{extra}</div>}
 
           {details.length > 0 && <dl className="rounded-2xl border border-slate-100 divide-y divide-slate-100 mb-5">
             {details.map(d => (

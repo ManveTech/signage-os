@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import AppHeader, { HeaderSearchItem } from '../../../components/AppHeader';
-import { mediaStore } from '../../../lib/mediaStore';
+import { mediaStore, withoutDocumentPages } from '../../../lib/mediaStore';
 
 const breadcrumbMap: Record<string, string[]> = {
   dashboard: ['Dashboard'],
@@ -123,7 +123,7 @@ export default function Header({ activeView, onNavigate, onLogout, onSwitchToCli
     mediaStore.getPlaylists().forEach(p => {
       items.push({ title: p.name, subtitle: p.createdBy, type: 'Playlist', view: 'my-playlists' });
     });
-    mediaStore.getMedia().forEach(m => {
+    withoutDocumentPages(mediaStore.getMedia()).forEach(m => {
       items.push({ title: m.title, subtitle: m.uploadedBy, type: 'Media', view: 'my-media' });
     });
     try {

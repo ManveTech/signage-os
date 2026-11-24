@@ -11,7 +11,7 @@ try {
 export interface MediaItem {
   id: string;
   title: string;
-  type: 'image' | 'video' | 'layout' | 'ticker';
+  type: 'image' | 'video' | 'layout' | 'ticker' | 'document';
   duration: number;
   resolution: string;
   fileSize: string; // Friendly text (e.g. "45 MB")
@@ -33,6 +33,45 @@ export interface MediaItem {
   /** Set when the file went up in pieces: the server joins them on save. */
   r2UploadId?: string;
   r2PartCount?: number;
+  /**
+   * A 'document' (a PDF) is the original file plus the page images rendered
+   * from it. The pages are ordinary image items — that is the whole point,
+   * since a TV can show an image and cannot read a PDF — so they are tied
+   * back to the document rather than being a different kind of thing.
+   *
+   * `pageIds` is in page order and lives on the document; `documentId` and
+   * `pageNumber` live on each page. The library lists documents and hides
+   * their pages; a playlist takes the pages and never the document.
+   */
+  pageIds?: string[];
+  documentId?: string;
+  pageNumber?: number;
+  /** Pages the PDF has, when that is more than were rendered. */
+  pageCount?: number;
+}
+
+/** Pages belong to their document; the library lists the document instead. */
+export const isDocumentPage = (m: MediaItem) => !!m.documentId;
+
+/**
+ * Media as a person thinks of it: one entry per thing they uploaded.
+ *
+ * A PDF's pages are real records — they have to be, since that is what a
+ * screen plays — but nobody uploaded fifty images, they uploaded one deck.
+ * Anything that counts, lists, searches or reports on "files" wants this;
+ * anything resolving a slide's mediaId wants getMedia().
+ */
+export const withoutDocumentPages = <T extends { documentId?: string }>(list: T[]) =>
+  list.filter(m => !m.documentId);
+
+/**
+ * What a playlist should actually play for this item: a document becomes its
+ * pages, anything else is itself. Used everywhere media is added to a
+ * playlist, so there is one answer rather than one per caller.
+ */
+export function playableIds(m: MediaItem): string[] {
+  if (m.type === 'document') return m.pageIds || [];
+  return [m.id];
 }
 
 export interface Playlist {
@@ -118,11 +157,20 @@ export const mediaStore = {
     setMemoryMedia(media);
   },
 
-  async uploadMedia(media: Omit<MediaItem, 'id' | 'createdDate' | 'status'>): Promise<MediaItem> {
+  /**
+   * `presetId` lets a caller know the id before the record exists. A PDF's
+   * pages each have to carry their document's id, and the document has to
+   * carry theirs — without this one of the two sides would need a second
+   * round of writes to be told who it belongs to.
+   */
+  async uploadMedia(
+    media: Omit<MediaItem, 'id' | 'createdDate' | 'status'>,
+    presetId?: string
+  ): Promise<MediaItem> {
     const all = this.getMedia();
     const newItem: MediaItem = {
       ...media,
-      id: generatePocketBaseId(),
+      id: presetId || generatePocketBaseId(),
       createdDate: new Date().toISOString().split('T')[0],
       status: 'active'
     };

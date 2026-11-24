@@ -1,5 +1,6 @@
 import { mediaStore, MediaItem } from './mediaStore';
-import { maxUploadBytesFor } from './uploadLimits';
+import { generatePocketBaseId } from './syncHelper';
+import { maxUploadBytesForKind, UploadKind } from './uploadLimits';
 import { requestUploadUrl, putToStorage, putInParts, DirectUploadUnavailable } from './directUpload';
 
 /**
@@ -29,12 +30,17 @@ export const formatBytes = (bytes: number) =>
 export const ACCEPTED_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'video/mp4', 'video/webm', 'video/quicktime',
+  'application/pdf',
 ]);
 
 const EXTENSION_MIME: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
   mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+  pdf: 'application/pdf',
 };
+
+export const PDF_MIME = 'application/pdf';
+export const isPdf = (file: File) => mimeOf(file) === PDF_MIME;
 
 const extensionOf = (name: string) => (name.split('.').pop() || '').toLowerCase();
 
@@ -58,8 +64,17 @@ function unsupportedMessage(file: File): string {
   if (ext === 'heic' || ext === 'heif') {
     return "iPhone HEIC photos can't be used — in Settings › Camera › Formats pick “Most Compatible”, or save this one as a JPEG first";
   }
+  // Slide decks are the most likely thing after PDF to be dragged in here,
+  // and the fix takes one menu item in the program they already have open —
+  // so say that instead of listing formats they didn't ask about.
+  if (ext === 'ppt' || ext === 'pptx' || ext === 'key' || ext === 'odp') {
+    return 'Slide decks need to be PDFs — in PowerPoint, Keynote or Google Slides choose File › Export (or Save As) › PDF, then upload that';
+  }
+  if (ext === 'doc' || ext === 'docx' || ext === 'pages') {
+    return 'Documents need to be PDFs — choose File › Export (or Save As) › PDF, then upload that';
+  }
   const what = ext ? `.${ext} files` : 'This file type';
-  return `${what} can't be used — images must be JPG, PNG, GIF or WebP, videos MP4, WebM or MOV`;
+  return `${what} can't be used — images must be JPG, PNG, GIF or WebP, videos MP4, WebM or MOV, documents PDF`;
 }
 
 export interface FileCheck {
@@ -76,9 +91,11 @@ export function checkFiles(files: File[], usedBytes: number, limitBytes: number 
   let running = usedBytes;
   return files.map(file => {
     if (!isUploadableFile(file)) return { file, error: unsupportedMessage(file) };
-    const isVideo = mimeOf(file).startsWith('video/');
-    const max = maxUploadBytesFor(isVideo);
-    if (file.size > max) return { file, error: `Too large — ${isVideo ? 'videos' : 'images'} must be under ${formatBytes(max)}` };
+    const mime = mimeOf(file);
+    const kind: UploadKind = mime.startsWith('video/') ? 'video' : mime === PDF_MIME ? 'pdf' : 'image';
+    const max = maxUploadBytesForKind(kind);
+    const plural = kind === 'video' ? 'videos' : kind === 'pdf' ? 'PDFs' : 'images';
+    if (file.size > max) return { file, error: `Too large — ${plural} must be under ${formatBytes(max)}` };
     if (limitBytes !== null && running + file.size > limitBytes) return { file, error: 'Not enough storage left on your plan' };
     running += file.size;
     return { file };
@@ -177,7 +194,98 @@ async function optimiseImage(file: File): Promise<{ blob: Blob; width: number; h
  * 'optimising' = a video being re-encoded on this device before it goes up;
  * 'uploading' = bytes on their way. Each stage reports its own 0–1 fraction.
  */
-export type UploadStage = 'optimising' | 'uploading';
+export type UploadStage = 'optimising' | 'uploading' | 'converting';
+
+/**
+ * A PDF, as the pages a screen can show plus the original kept beside them.
+ *
+ * The pages go up first so the document is only ever written once every page
+ * it claims actually exists — the reverse order would leave a document
+ * pointing at pages that failed, which is worse than no document at all.
+ * The document's id is settled up front so each page can name it.
+ */
+async function uploadPdf(
+  file: File,
+  owner: string,
+  cleanTitle: string,
+  expiryDate: string,
+  onProgress?: (fraction: number, stage: UploadStage) => void
+): Promise<MediaItem> {
+  onProgress?.(0, 'converting');
+  const { renderPdfPages, MAX_PDF_PAGES } = await import('./pdfPages');
+  const { pages, pageCount } = await renderPdfPages(file, f => onProgress?.(f, 'converting'));
+  if (pages.length === 0) throw new Error('This PDF has no pages to show');
+
+  const docId = generatePocketBaseId();
+  const pageIds: string[] = [];
+  // Serial rather than parallel: each page is a full-size JPEG and the
+  // rendering above has already held a lot of this device's memory.
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    const fileName = `${cleanTitle}-p${page.pageNumber}.jpg`;
+    const common = {
+      title: `${cleanTitle} — page ${page.pageNumber}`,
+      type: 'image' as const,
+      duration: 10,
+      resolution: `${page.width}x${page.height}`,
+      fileSize: formatBytes(page.blob.size),
+      fileSizeBytes: page.blob.size,
+      uploadedBy: owner,
+      expiryDate,
+      tags: ['uploaded', 'image', 'pdf-page'],
+      width: page.width,
+      height: page.height,
+      mimeType: 'image/jpeg',
+      fileName,
+      documentId: docId,
+      pageNumber: page.pageNumber
+    };
+    // Pages carry the whole bar between them; the original PDF goes up last
+    // and is small next to its own rasterised pages.
+    const share = (n: number) => onProgress?.((i + n) / (pages.length + 1), 'uploading');
+    const sent = await sendDirect(page.blob, 'image/jpeg', owner, share, fileName);
+    const stored = sent
+      ? await mediaStore.uploadMedia({ ...common, thumbnail: '', ...sent })
+      : await (async () => {
+          const dataUrl = await readAsDataUrl(page.blob);
+          return mediaStore.uploadMedia({ ...common, thumbnail: dataUrl, fileData: dataUrl.split(',')[1] });
+        })();
+    pageIds.push(stored.id);
+  }
+
+  const first = pages[0];
+  const docCommon = {
+    title: cleanTitle,
+    type: 'document' as const,
+    // What the document is worth on screen: its pages, at ten seconds each.
+    duration: 10 * pages.length,
+    resolution: `${first.width}x${first.height}`,
+    fileSize: formatBytes(file.size),
+    fileSizeBytes: file.size,
+    uploadedBy: owner,
+    expiryDate,
+    tags: ['uploaded', 'pdf'],
+    width: first.width,
+    height: first.height,
+    mimeType: PDF_MIME,
+    fileName: file.name,
+    pageIds,
+    // The real page count, not the number rendered — a 60-page file says 60
+    // and the library can tell someone only 50 of them will play.
+    pageCount
+  };
+  const toEnd = () => onProgress?.(1, 'uploading');
+  const sentDoc = await sendDirect(file, PDF_MIME, owner, undefined, file.name);
+  toEnd();
+  if (sentDoc) {
+    return mediaStore.uploadMedia({ ...docCommon, thumbnail: '', ...sentDoc }, docId);
+  }
+  const dataUrl = await readAsDataUrl(file);
+  return mediaStore.uploadMedia(
+    { ...docCommon, thumbnail: '', fileData: dataUrl.split(',')[1] },
+    docId
+  );
+}
 
 export async function uploadMediaFile(
   original: File,
@@ -190,6 +298,8 @@ export async function uploadMediaFile(
   const sendProgress = onProgress && ((f: number) => onProgress(f, 'uploading'));
   const cleanTitle = (title || '').trim() || file.name.replace(/\.[^/.]+$/, '');
   const expiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  if (isPdf(file)) return uploadPdf(file, owner, cleanTitle, expiryDate, onProgress);
 
   if (isVideo) {
     // Shrink it on this device first. Any failure (unsupported browser,

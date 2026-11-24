@@ -4,7 +4,7 @@ import {
   startR2MultipartUpload, completeR2MultipartUpload, abortR2MultipartUpload
 } from '../r2';
 import crypto from 'crypto';
-import { MAX_VIDEO_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES } from '../uploadLimits';
+import { MAX_VIDEO_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_BYTES, MAX_PDF_UPLOAD_BYTES } from '../uploadLimits';
 
 function isAdminUser(user: any): boolean {
   return user?.role === 'admin' || user?.role === 'super_admin';
@@ -13,6 +13,12 @@ function isAdminUser(user: any): boolean {
 // SVG is deliberately excluded — unlike raster formats it can carry an
 // embedded <script>, which runs if the file is ever opened directly rather
 // than rendered inside an <img>. Signage media never needs vector graphics.
+//
+// PDF is stored but never rendered by anything we control: the dashboard
+// rasterises its pages in the browser before upload and screens play those
+// images, so the file itself is only ever kept for re-download. It is served
+// from object storage with Content-Disposition set by the bucket, and is
+// never opened inline by the player.
 const ALLOWED_MEDIA_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -21,7 +27,74 @@ const ALLOWED_MEDIA_MIME_TYPES = new Set([
   'video/mp4',
   'video/webm',
   'video/quicktime',
+  'application/pdf',
 ]);
+
+const PDF_MIME = 'application/pdf';
+
+/**
+ * The per-file cap and what to call the file when refusing it.
+ *
+ * Both upload routes ask this rather than testing for video and letting
+ * everything else fall to the image limit — which would have held PDFs to
+ * 20MB while the dashboard happily offered 60.
+ */
+function limitFor(mimeType: string): { maxBytes: number; plural: string } {
+  if (String(mimeType || '').startsWith('video/')) {
+    return { maxBytes: MAX_VIDEO_UPLOAD_BYTES, plural: 'videos' };
+  }
+  if (mimeType === PDF_MIME) return { maxBytes: MAX_PDF_UPLOAD_BYTES, plural: 'PDFs' };
+  return { maxBytes: MAX_IMAGE_UPLOAD_BYTES, plural: 'images' };
+}
+
+const UNSUPPORTED = (mimeType: string) =>
+  `Unsupported file type: ${mimeType || 'unknown'}. Only image, video and PDF files are allowed.`;
+
+/** Matches a PocketBase id, which is what the dashboard generates for pages. */
+const PB_ID = /^[a-z0-9]{15}$/;
+/** Mirrors MAX_PDF_PAGES in src/lib/pdfPages.ts. */
+const MAX_DOCUMENT_PAGES = 50;
+
+/**
+ * The page ids a document may claim, reduced to the ones its own uploader
+ * actually owns.
+ *
+ * `pageIds` is the only field here that becomes a reference to *other*
+ * records, and those records end up as playlist slides that a screen then
+ * plays. Taken on trust, a client could name another client's media ids and
+ * have their own screen play that content. So each id is checked against the
+ * uploader before it is stored — a dropped id costs one missing page; a
+ * trusted one costs someone else's content.
+ */
+async function ownedPageIds(raw: any, owner: string): Promise<string[]> {
+  const ids = (Array.isArray(raw) ? raw : [])
+    .filter((id: any) => typeof id === 'string' && PB_ID.test(id))
+    .slice(0, MAX_DOCUMENT_PAGES);
+  if (ids.length === 0 || !owner) return [];
+  const filter = `(${ids.map(id => `id="${id}"`).join('||')}) && uploadedBy="${String(owner).replace(/"/g, '')}"`;
+  const owned = await pb.collection('media_items').getFullList({ filter, fields: 'id' });
+  const allowed = new Set(owned.map((r: any) => r.id));
+  // Kept in the order given: this is page order, and re-sorting it would
+  // shuffle the deck.
+  return ids.filter(id => allowed.has(id));
+}
+
+/**
+ * The document fields for a create, or {} when this isn't one.
+ *
+ * Every create path calls this, so a PDF saved through object storage, the
+ * base64 fallback, or PocketBase's own storage all keep their pages.
+ */
+async function documentFields(body: any, owner: string): Promise<Record<string, any>> {
+  const out: Record<string, any> = {};
+  if (body.type === 'document') {
+    out.pageIds = await ownedPageIds(body.pageIds, owner);
+    if (Number.isFinite(Number(body.pageCount))) out.pageCount = Math.max(0, Math.trunc(Number(body.pageCount)));
+  }
+  if (typeof body.documentId === 'string' && PB_ID.test(body.documentId)) out.documentId = body.documentId;
+  if (Number.isFinite(Number(body.pageNumber))) out.pageNumber = Math.max(0, Math.trunc(Number(body.pageNumber)));
+  return out;
+}
 
 /**
  * Files at least this big go up in pieces of PART_SIZE, several at once
@@ -109,13 +182,13 @@ export async function createMediaUploadUrl(req: any, res: any) {
     const fileSizeBytes = Number(req.body.fileSizeBytes) || 0;
     if (!fileName) return res.status(400).json({ error: 'fileName is required' });
     if (!ALLOWED_MEDIA_MIME_TYPES.has(mimeType)) {
-      return res.status(400).json({ error: `Unsupported file type: ${mimeType || 'unknown'}. Only image and video files are allowed.` });
+      return res.status(400).json({ error: UNSUPPORTED(mimeType) });
     }
 
-    const maxBytes = mimeType.startsWith('video/') ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+    const { maxBytes, plural } = limitFor(mimeType);
     if (fileSizeBytes > maxBytes) {
       const limitMB = maxBytes / (1024 * 1024);
-      return res.status(413).json({ error: `File too large. Maximum allowed size is ${limitMB}MB for ${mimeType.startsWith('video/') ? 'videos' : 'images'}.` });
+      return res.status(413).json({ error: `File too large. Maximum allowed size is ${limitMB}MB for ${plural}.` });
     }
 
     const remaining = await remainingQuotaBytes(req);
@@ -175,16 +248,16 @@ export async function uploadMediaItem(req: any, res: any) {
     // same Content-Type from R2/PocketBase, which is what actually makes
     // spoofed content dangerous to open directly.
     if (!ALLOWED_MEDIA_MIME_TYPES.has(mimeType)) {
-      return res.status(400).json({ error: `Unsupported file type: ${mimeType || 'unknown'}. Only image and video files are allowed.` });
+      return res.status(400).json({ error: UNSUPPORTED(mimeType) });
     }
 
     const fileBuffer = Buffer.from(fileData, 'base64');
 
     // Validate file size (limits in server/uploadLimits.ts)
-    const maxBytes = mimeType?.startsWith('video/') ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+    const { maxBytes, plural } = limitFor(mimeType);
     if (fileBuffer.length > maxBytes) {
       const limitMB = maxBytes / (1024 * 1024);
-      return res.status(413).json({ error: `File too large. Maximum allowed size is ${limitMB}MB for ${mimeType?.startsWith('video/') ? 'videos' : 'images'}.` });
+      return res.status(413).json({ error: `File too large. Maximum allowed size is ${limitMB}MB for ${plural}.` });
     }
 
     // Enforce the license's storage plan — a per-file size cap alone let a
@@ -231,6 +304,11 @@ export async function uploadMediaItem(req: any, res: any) {
       formData.append('mimeType', mimeType);
       formData.append('checksum', checksum);
       formData.append('fileSizeBytes', String(fileBuffer.length));
+      // FormData carries strings, so the array is sent as JSON — PocketBase
+      // parses a json column back out of it.
+      for (const [k, v] of Object.entries(await documentFields(req.body, req.body.uploadedBy))) {
+        formData.append(k, Array.isArray(v) ? JSON.stringify(v) : String(v));
+      }
 
       const fileBlob = new File([fileBuffer], fileName, { type: mimeType });
       formData.append('file', fileBlob);
@@ -264,6 +342,7 @@ export async function uploadMediaItem(req: any, res: any) {
     if (req.body.id && /^[a-z0-9]{15}$/.test(req.body.id)) {
       recordData['id'] = req.body.id;
     }
+    Object.assign(recordData, await documentFields(req.body, recordData.uploadedBy));
 
     const record = await pb.collection('media_items').create(recordData);
     console.log(`PocketBase record created: ${record.id}`);
@@ -355,6 +434,7 @@ async function finishDirectUpload(req: any, res: any, key: string) {
   if (req.body.id && /^[a-z0-9]{15}$/.test(req.body.id)) {
     recordData['id'] = req.body.id;
   }
+  Object.assign(recordData, await documentFields(req.body, recordData.uploadedBy));
 
   const record = await pb.collection('media_items').create(recordData);
   console.log(`Direct upload recorded: ${record.id} (${head.size} bytes at ${key})`);

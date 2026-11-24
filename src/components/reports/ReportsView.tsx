@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Monitor, Wifi, WifiOff, Film, HardDrive, AlertTriangle, ChevronRight, Building2, Trash2, ListVideo } from 'lucide-react';
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { syncCollection } from '../../lib/syncHelper';
-import { mediaStore } from '../../lib/mediaStore';
+import { mediaStore, withoutDocumentPages } from '../../lib/mediaStore';
 import { licensingStore } from '../../lib/licensingStore';
 import { getEffectiveStatus } from '../../pages/admin-dashboard/views/screens/MyScreens';
 import { lastSeenText } from '../screens/screenStatus';
@@ -113,7 +113,10 @@ export default function ReportsView({
 
   const allScreens = mediaStore.getScreens().filter(isPaired);
   const screens = scope === 'mine' ? allScreens.filter(s => s.assignedToUserEmail === userEmail) : allScreens;
-  const media = scope === 'mine' ? mediaStore.getMedia().filter(m => m.uploadedBy === userEmail) : mediaStore.getMedia();
+  // A report counting a PDF's pages as separate files would overstate the
+  // library against what the customer sees in it.
+  const allMedia = withoutDocumentPages(mediaStore.getMedia());
+  const media = scope === 'mine' ? allMedia.filter(m => m.uploadedBy === userEmail) : allMedia;
   const playlists = mediaStore.getPlaylists();
   const licenses = scope === 'all' ? licensingStore.getLicenses() : [];
   const users: any[] = scope === 'all' ? JSON.parse(localStorage.getItem('signageos_users') || '[]') : [];
@@ -167,7 +170,7 @@ export default function ReportsView({
 
   const clientRows = clientEmails.map(email => {
     const sc = allScreens.filter(s => s.assignedToUserEmail === email);
-    const own = mediaStore.getMedia().filter(m => m.uploadedBy === email);
+    const own = allMedia.filter(m => m.uploadedBy === email);
     const lics = licenses.filter(l => l.assignedUserEmail === email);
     const lic = [...lics].sort((a, b) => (b.expiryDate || '').localeCompare(a.expiryDate || ''))[0];
     const limitGb = lics.reduce((s, l) => s + (l.storageLimit || 0), 0);

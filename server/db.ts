@@ -1018,6 +1018,16 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
         text('textorggstin000', 'gstin'),
         text('textorgbillname', 'billingName'),
       ]);
+      // PDFs: the original is one record of type 'document' holding the ids
+      // of the page images rendered from it, and each page points back at
+      // it. Without these columns PocketBase drops the fields on save and a
+      // document comes back with no pages — an item that shows nothing.
+      await addFields('media_items', [
+        { id: 'jsonmediapageids', name: 'pageIds', type: 'json', required: false, system: false, hidden: false, presentable: false, maxSize: 4000 },
+        text('textmediadocid00', 'documentId'),
+        { id: 'nummediapageno00', name: 'pageNumber', type: 'number', required: false, system: false, hidden: false, presentable: false, onlyInt: true },
+        { id: 'nummediapagecnt0', name: 'pageCount', type: 'number', required: false, system: false, hidden: false, presentable: false, onlyInt: true },
+      ]);
       if (numbered) {
         const { backfillInvoiceNumbers } = await import('./services/invoicing');
         const n = await backfillInvoiceNumbers();

@@ -4,7 +4,7 @@ import {
   CheckCircle2, WifiOff, HardDrive, Users
 } from 'lucide-react';
 import { licensingStore } from '../../../lib/licensingStore';
-import { mediaStore } from '../../../lib/mediaStore';
+import { mediaStore, withoutDocumentPages } from '../../../lib/mediaStore';
 import { makeOursTest } from '../../../lib/adminOwnership';
 import { syncCollection } from '../../../lib/syncHelper';
 import { formatInr, isRenewalDue } from '../../../components/licenses/licenseStatus';
@@ -75,7 +75,9 @@ export default function Dashboard({
 
   const licenses = licensingStore.getLicenses();
   const screens = mediaStore.getScreens();
-  const media = mediaStore.getMedia();
+  // Documents, not the pages rendered from them: one PDF is one upload in
+  // the file count and one line in Recent activity, not fifty of each.
+  const media = withoutDocumentPages(mediaStore.getMedia());
   const playlists = mediaStore.getPlaylists();
 
   // "Waiting to pair" records are TVs showing a pairing code that nobody has

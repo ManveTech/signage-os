@@ -11,6 +11,7 @@
  */
 
 import { stateFromLocation } from './indiaStates';
+import { withoutDocumentPages } from './mediaStore';
 
 export type MonthPoint = { month: string; label: string; screens: number; clients: number; media: number };
 export type StateCount = { state: string; count: number; clients: number };
@@ -419,6 +420,10 @@ export function computeOverview(input: {
   const deployed = input.screens.filter(isDeployed);
   const clientScreens = deployed.filter(s => !input.isOurs(s.assignedToUserEmail));
   const roster = buildRoster(clientScreens, input.orgs);
+  // A PDF's pages are media records but not things anyone uploaded: counting
+  // them would turn one twelve-page deck into twelve files on this page, and
+  // bury the donut's real mix under a pile of JPEGs.
+  const listedMedia = withoutDocumentPages(input.media);
 
   const online = deployed.filter(isOnline).length;
   const { states, unplaced } = buildStateCounts(deployed);
@@ -433,19 +438,21 @@ export function computeOverview(input: {
     loopsPlayed: deployed.reduce((n, s) => n + (Number(s.cumulativeLoops) || 0), 0),
     clients: roster.length,
     locations: new Set(deployed.map(s => String(s.location || '').trim()).filter(Boolean)).size,
-    mediaFiles: input.media.length,
+    // Counts are of things someone uploaded, so a PDF counts once; bytes are
+    // of what is actually stored, which includes every page rendered from it.
+    mediaFiles: listedMedia.length,
     libraryBytes: input.media.reduce((n, m) => n + (Number(m?.fileSizeBytes) || 0), 0),
-    contentSeconds: input.media.reduce((n, m) => n + (Number(m?.duration) || 0), 0),
+    contentSeconds: listedMedia.reduce((n, m) => n + (Number(m?.duration) || 0), 0),
     playlists: input.playlists.length,
-    growth: buildGrowth(clientScreens, roster, input.media),
+    growth: buildGrowth(clientScreens, roster, listedMedia),
     // Eight rather than the default five: these are drawn as small multiples,
     // one panel each in a single hue, so the number of clients shown is no
     // longer limited by how many colours can be told apart.
     clientTrends: buildClientTrends(clientScreens, roster, 12, 8),
-    mediaAdded: buildMediaAdded(input.media),
+    mediaAdded: buildMediaAdded(listedMedia),
     topLocations: buildTopLocations(deployed),
     locationTree: buildLocationTree(deployed),
-    mediaMix: buildMediaMix(input.media),
+    mediaMix: buildMediaMix(listedMedia),
     roster,
     statusCells: deployed.map(s => ({
       id: String(s.id),

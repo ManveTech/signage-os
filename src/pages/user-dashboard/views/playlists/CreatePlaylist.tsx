@@ -6,11 +6,11 @@ import {
   Upload, X, CheckCircle, Clock, ArrowUp, ArrowDown, GripVertical, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Eye, Image as ImageIcon, Sparkles, Layout, FolderOpen, Save, HardDrive, Shuffle, RotateCcw, Plus, Trash2, Check, Tv, Volume2
 } from 'lucide-react';
 import { checkFiles, uploadMediaFile, formatBytes, UploadStage } from '../../../../lib/mediaUpload';
-import { mediaStore, MediaItem, Playlist } from '../../../../lib/mediaStore';
+import { mediaStore, MediaItem, Playlist, isDocumentPage, playableIds } from '../../../../lib/mediaStore';
 import { licensingStore } from '../../../../lib/licensingStore';
 import { syncCollection } from '../../../../lib/syncHelper';
 import CustomSelect from '../../../../components/CustomSelect';
-import { maxUploadBytesFor, MAX_IMAGE_UPLOAD_BYTES, MAX_VIDEO_UPLOAD_BYTES } from '../../../../lib/uploadLimits';
+import { maxUploadBytesFor, MAX_IMAGE_UPLOAD_BYTES, MAX_VIDEO_UPLOAD_BYTES, MAX_PDF_UPLOAD_BYTES } from '../../../../lib/uploadLimits';
 
 type PlaylistItem = {
   id: string;
@@ -365,14 +365,30 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
   // Click asset to directly add to sequence
   const addAssetToTimeline = (asset: MediaItem) => {
-    const newSlide: PlaylistItem = {
-      id: `slide_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      mediaId: asset.id,
-      duration: asset.duration || 10,
+    // A PDF is not one slide but one per page: the pages are what a screen
+    // can display, and they go in in page order.
+    const ids = playableIds(asset);
+    if (ids.length === 0) {
+      showToast(`"${asset.title}" has no pages to add.`);
+      return;
+    }
+    const stamp = Date.now();
+    // A page is fitted, not filled. Cover crops to the screen's shape, which
+    // on a portrait page shown landscape means cutting off the top and
+    // bottom of the page — the part of a deck most likely to carry a
+    // heading or a total. Photos keep cover, where cropping is wanted.
+    const fromDocument = asset.type === 'document';
+    const newSlides: PlaylistItem[] = ids.map((mediaId, i) => ({
+      id: `slide_${stamp}_${i}_${Math.random().toString(36).substr(2, 5)}`,
+      mediaId,
+      duration: (mediaList.find(m => m.id === mediaId)?.duration) || 10,
       layoutType: 'single',
-    };
-    setPlaylistItems(prev => [...prev, newSlide]);
-    showToast(`Added "${asset.title}" to sequence timeline.`);
+      ...(fromDocument ? { objectFit: 'contain' as const, scalePercent: 100 } : {}),
+    }));
+    setPlaylistItems(prev => [...prev, ...newSlides]);
+    showToast(ids.length > 1
+      ? `Added "${asset.title}" as ${ids.length} slides.`
+      : `Added "${asset.title}" to sequence timeline.`);
   };
 
   // -------------------------------------------------------------
@@ -645,6 +661,13 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
 
   const getMediaItem = (id: string) => mediaList.find(m => m.id === id);
 
+  /**
+   * What the asset pool offers. `mediaList` keeps every record because the
+   * timeline has to resolve the page ids already sitting in slides; the pool
+   * shows the PDF rather than the fifty images it was rendered into.
+   */
+  const assetPool = mediaList.filter(m => !isDocumentPage(m));
+
   return (
     <div className="p-3.5 sm:p-6 max-w-6xl mx-auto space-y-4 sm:space-y-5 text-left relative overflow-x-hidden">
       {/* Hidden file input */}
@@ -652,7 +675,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
         type="file" 
         ref={fileInputRef} 
         onChange={handleFileSelect} 
-        accept="image/*,video/*" 
+        accept="image/*,video/*,application/pdf,.pdf" 
         className="hidden" 
         multiple
       />
@@ -751,7 +774,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
           <div>
             <h2 className="text-xs font-bold uppercase text-slate-800 tracking-wider flex items-center justify-between">
               <span>Media Assets</span>
-              <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase">{mediaList.length} Items</span>
+              <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold uppercase">{assetPool.length} Items</span>
             </h2>
             <p className="text-[9.5px] text-gray-400 mt-0.5">Select items to add to timeline or drag them directly. Use Zone 2 lists for screen divisions.</p>
           </div>
@@ -768,12 +791,12 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
           >
             <Upload size={18} className="text-blue-500 mx-auto mb-1.5" />
             <p className="text-[10.5px] font-bold text-slate-700">Drag files here or click to browse</p>
-            <p className="text-[9px] text-gray-400 mt-0.5">Enforces license storage limit ({storageLimitGb} GB). Limits: {MAX_IMAGE_UPLOAD_BYTES / (1024 * 1024)}MB image, {MAX_VIDEO_UPLOAD_BYTES / (1024 * 1024)}MB video</p>
+            <p className="text-[9px] text-gray-400 mt-0.5">Enforces license storage limit ({storageLimitGb} GB). Limits: {MAX_IMAGE_UPLOAD_BYTES / (1024 * 1024)}MB image, {MAX_VIDEO_UPLOAD_BYTES / (1024 * 1024)}MB video, {MAX_PDF_UPLOAD_BYTES / (1024 * 1024)}MB PDF</p>
           </div>
 
           {/* Asset Scroll Area */}
           <div className="grid grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1">
-            {mediaList.map(asset => (
+            {assetPool.map(asset => (
               <div
                 key={asset.id}
                 draggable
@@ -805,7 +828,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
               </div>
             ))}
 
-            {mediaList.length === 0 && (
+            {assetPool.length === 0 && (
               <div className="col-span-2 py-10 text-center text-slate-400 italic text-[11px] border border-dashed border-slate-200 rounded-2xl bg-slate-50">
                 Media bucket is empty. Drag files above to upload them.
               </div>
@@ -1019,7 +1042,7 @@ export default function CreatePlaylist({ userEmail = 'priya@demo.com', onNavigat
                                      placeholder="-- Drop or Select Zone 2 --"
                                      options={[
                                        { value: '', label: '-- Drop or Select Zone 2 --' },
-                                       ...mediaList.filter(m => m.id !== item.mediaId).map(m => ({ value: m.id, label: m.title }))
+                                       ...assetPool.filter(m => m.id !== item.mediaId).map(m => ({ value: m.id, label: m.title }))
                                      ]}
                                      buttonClassName="py-1 px-2 text-[10px] font-bold text-slate-700 min-h-[30px]"
                                    />

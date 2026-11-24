@@ -154,7 +154,15 @@ export default function MediaThumb({
  * videos play with a poster shown while they buffer, and anything that
  * can't load shows a placeholder instead of a broken-media icon.
  */
-export function PreviewMedia({ src, type, alt = '' }: { src?: string; type?: string; alt?: string }) {
+export function PreviewMedia({ src, type, alt = '', fit = 'cover' }: {
+  src?: string; type?: string; alt?: string;
+  /**
+   * 'contain' shows the whole frame letterboxed. A PDF page is usually
+   * portrait, and cropping one to a 16:9 box hides the top and bottom of
+   * the page — which is exactly what someone opening it wants to check.
+   */
+  fit?: 'cover' | 'contain';
+}) {
   const video = isVideoMedia(type, src);
   const [stage, setStage] = useState<Stage>('thumb');
   const [shownSrc, setShownSrc] = useState(src);
@@ -193,7 +201,7 @@ export function PreviewMedia({ src, type, alt = '' }: { src?: string; type?: str
       src={stage === 'original' ? src : thumbnailUrl(src, 1280)}
       alt={alt}
       decoding="async"
-      className="w-full h-full object-cover"
+      className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`}
       onError={() => setStage(s => (s === 'thumb' ? 'original' : 'failed'))}
     />
   );
