@@ -398,13 +398,13 @@ async function finishDirectUpload(req: any, res: any, key: string) {
   // rejected here and deleted again.
   const mimeType = head.mimeType;
   if (!ALLOWED_MEDIA_MIME_TYPES.has(mimeType)) {
-    return discard(400, `Unsupported file type: ${mimeType || 'unknown'}. Only image and video files are allowed.`);
+    return discard(400, UNSUPPORTED(mimeType));
   }
 
-  const maxBytes = mimeType.startsWith('video/') ? MAX_VIDEO_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+  const { maxBytes, plural } = limitFor(mimeType);
   if (head.size > maxBytes) {
     const limitMB = maxBytes / (1024 * 1024);
-    return discard(413, `File too large. Maximum allowed size is ${limitMB}MB for ${mimeType.startsWith('video/') ? 'videos' : 'images'}.`);
+    return discard(413, `File too large. Maximum allowed size is ${limitMB}MB for ${plural}.`);
   }
 
   const remaining = await remainingQuotaBytes(req);

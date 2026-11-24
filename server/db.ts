@@ -716,7 +716,10 @@ export async function setupDatabaseAndSMTP(): Promise<void> {
 
     const typeField = mFields.find((f: any) => f.name === 'type');
     if (typeField && typeField.type === 'select') {
-      const requiredValues = ['video', 'image', 'layout', 'ticker'];
+      // 'document' is a PDF: one record holding the original file plus the ids
+      // of its rasterised pages. Missing from this list, PocketBase rejects the
+      // create outright and a PDF upload fails after every page has gone up.
+      const requiredValues = ['video', 'image', 'layout', 'ticker', 'document'];
       for (const val of requiredValues) {
         if (!typeField.values.includes(val)) {
           typeField.values.push(val);
