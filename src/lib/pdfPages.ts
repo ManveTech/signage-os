@@ -74,7 +74,20 @@ export async function renderPdfPages(
   const pdfjs = await import('pdfjs-dist');
   // Set every time rather than once at module scope: the worker is shared
   // process-wide and a second caller must not race on an unset value.
-  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  //
+  // The query is a one-time cache buster, and it has to be here rather than in
+  // the server config. nginx served this file as application/octet-stream for
+  // one deploy (see nginx.conf), and that deploy sent no Cache-Control, so
+  // browsers cached the rejected response heuristically. Fixing the server did
+  // not change the file, so Vite's content hash in the name did not change
+  // either — the URL is identical and every browser that loaded the dashboard
+  // while it was broken keeps answering from its own disk cache, where no
+  // redeploy can reach it. A different query is a different cache key.
+  //
+  // Future upgrades need no counter here: the name's hash changes with the
+  // file, and /assets/ is now served immutable, which is what should have been
+  // true all along.
+  pdfjs.GlobalWorkerOptions.workerSrc = `${workerUrl}?v=2`;
 
   const bytes = await file.arrayBuffer();
   let doc;
